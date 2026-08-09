@@ -8,4 +8,8 @@ __pycache__/
 *.py[cod]
 
 data/postgres/
+data/qdrant/
+models/bge-m3/
+.model-cache/
+model-cache/
 backups/
