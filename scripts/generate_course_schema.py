@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -13,6 +14,9 @@ from psycopg.rows import dict_row
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_PATH = ROOT / "resources" / "schema" / "course_schema.txt"
+TABLES_OUTPUT_PATH = ROOT / "resources" / "schema" / "tables.json"
+COLUMNS_OUTPUT_PATH = ROOT / "resources" / "schema" / "columns.json"
+RELATIONSHIPS_OUTPUT_PATH = ROOT / "resources" / "schema" / "relationships.json"
 DATABASE_NAME = "chatbi_mvp"
 APP_USER = "chatbi_app"
 EXPECTED_TABLES = (
@@ -89,6 +93,14 @@ EXPECTED_FOREIGN_KEYS = (
     ("sales_orders", "customer_id", "dim_customers", "customer_id"),
     ("sales_orders", "product_id", "dim_products", "product_id"),
 )
+
+TABLE_DESCRIPTIONS = {
+    "dim_customers": "客户主数据表，记录客户基本属性、类型、行业、国家和所属区域。",
+    "dim_products": "产品主数据表，记录产品名称、产品线、类别、技术路线和成本字段。",
+    "sales_orders": "销售订单表，记录订单标识、客户和产品关联、销售区域、日期、状态、数量、金额及币种。",
+    "exchange_rates": "汇率表，记录交易日期、币种及兑人民币汇率。",
+    "finance_expenses": "财务费用表，记录按日期和部门划分的各类费用。",
+}
 
 
 def load_env(path: Path) -> dict[str, str]:
@@ -346,6 +358,98 @@ def render_schema(metadata: dict[str, Any]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def build_json_catalog(metadata: dict[str, Any]) -> tuple[list[dict[str, str]], list[dict[str, str]], dict[str, list[dict[str, Any]]]]:
+    columns_by_table: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in metadata["columns"]:
+        columns_by_table[row["table_name"]].append(row)
+
+    primary_keys = grouped_constraint_columns(metadata["key_constraints"], "PRIMARY KEY")
+    tables = [
+        {"table_name": table, "description": TABLE_DESCRIPTIONS[table]}
+        for table in EXPECTED_TABLES
+    ]
+    columns = [
+        {
+            "table_name": table,
+            "column_name": row["column_name"],
+            "data_type": format_postgres_type(row),
+            "description": FIELD_DESCRIPTIONS[table][row["column_name"]],
+        }
+        for table in EXPECTED_TABLES
+        for row in columns_by_table[table]
+    ]
+    relationships = {
+        "primary_keys": [
+            {"table_name": table, "column_names": list(primary_keys[table])}
+            for table in EXPECTED_TABLES
+        ],
+        "foreign_keys": [
+            {
+                "table_name": table,
+                "column_name": column,
+                "referenced_table": referenced_table,
+                "referenced_column": referenced_column,
+            }
+            for table, column, referenced_table, referenced_column in foreign_key_list(
+                metadata["foreign_keys"]
+            )
+        ],
+    }
+    return tables, columns, relationships
+
+
+def validate_json_catalog(
+    metadata: dict[str, Any],
+    tables: list[dict[str, str]],
+    columns: list[dict[str, str]],
+    relationships: dict[str, list[dict[str, Any]]],
+) -> None:
+    actual_fields = {
+        (row["table_name"], row["column_name"])
+        for row in metadata["columns"]
+    }
+    catalog_fields = {
+        (row["table_name"], row["column_name"])
+        for row in columns
+    }
+    if len(tables) != 5 or {row["table_name"] for row in tables} != set(EXPECTED_TABLES):
+        raise RuntimeError("tables.json must contain exactly 5 database tables")
+    if len(columns) != 40 or catalog_fields != actual_fields:
+        raise RuntimeError("columns.json must contain exactly the database fields")
+    if set(catalog_fields) != {
+        (table, column)
+        for table, fields in FIELD_DESCRIPTIONS.items()
+        for column in fields
+    }:
+        raise RuntimeError("columns.json contains a field without a confirmed description")
+
+    expected_primary_keys = [
+        {"table_name": table, "column_names": list(EXPECTED_PRIMARY_KEYS[table])}
+        for table in EXPECTED_TABLES
+    ]
+    if relationships["primary_keys"] != expected_primary_keys:
+        raise RuntimeError("relationships.json primary_keys do not match PostgreSQL")
+    expected_foreign_keys = [
+        {
+            "table_name": table,
+            "column_name": column,
+            "referenced_table": referenced_table,
+            "referenced_column": referenced_column,
+        }
+        for table, column, referenced_table, referenced_column in sorted(EXPECTED_FOREIGN_KEYS)
+    ]
+    if relationships["foreign_keys"] != expected_foreign_keys:
+        raise RuntimeError("relationships.json foreign_keys do not match PostgreSQL")
+
+
+def write_json(path: Path, value: Any) -> None:
+    path.write_text(
+        json.dumps(value, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
 def main() -> int:
     try:
         env = load_env(ROOT / ".env")
@@ -353,9 +457,16 @@ def main() -> int:
             metadata = read_metadata(conn)
         validate_metadata(metadata)
         content = render_schema(metadata)
+        tables, columns, relationships = build_json_catalog(metadata)
+        validate_json_catalog(metadata, tables, columns, relationships)
         OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
         OUTPUT_PATH.write_text(content, encoding="utf-8", newline="\n")
+        write_json(TABLES_OUTPUT_PATH, tables)
+        write_json(COLUMNS_OUTPUT_PATH, columns)
+        write_json(RELATIONSHIPS_OUTPUT_PATH, relationships)
         print("table_count = 5")
+        print("column_count = 40")
+        print("relationship_count = 2")
         print("tables = " + ", ".join(EXPECTED_TABLES))
         print("primary_key_count = 5")
         print("foreign_key_count = 2")
