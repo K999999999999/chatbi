@@ -100,6 +100,42 @@ class SchemaIndexer:
             column_point_count=column_point_count,
         )
 
+    def build_collection(
+        self,
+        documents: Sequence[Document],
+        *,
+        collection_name: str,
+        kind: str,
+        expected_count: int,
+        identity_key: str,
+    ) -> int:
+        """将一类 Document 批量编码并幂等写入一个 named-vector Collection。"""
+
+        self._validate_collection_documents(
+            documents,
+            expected_count=expected_count,
+            kind=kind,
+            identity_key=identity_key,
+        )
+        embeddings = self.encoder.encode_documents(documents)
+        if len(embeddings) != len(documents):
+            raise SchemaIndexError("embedding count does not match Document count")
+
+        points = self._build_points(
+            documents,
+            embeddings,
+            kind=kind,
+            identity_key=identity_key,
+        )
+        self.store.ensure_collection(collection_name)
+        self.store.upsert(collection_name, points)
+        point_count = self.store.count(collection_name)
+        if point_count != expected_count:
+            raise SchemaIndexError(
+                f"{collection_name} point count must be {expected_count}, got {point_count}"
+            )
+        return point_count
+
     @staticmethod
     def _validate_documents(
         documents: Sequence[Document],
@@ -132,20 +168,45 @@ class SchemaIndexer:
                 raise SchemaIndexError(f"Duplicate Schema identity: {identity}")
             identities.add(identity)
 
+    @staticmethod
+    def _validate_collection_documents(
+        documents: Sequence[Document],
+        *,
+        expected_count: int,
+        kind: str,
+        identity_key: str,
+    ) -> None:
+        if len(documents) != expected_count:
+            raise SchemaIndexError(
+                f"{kind} Document count must be {expected_count}, got {len(documents)}"
+            )
+        identities: set[str] = set()
+        for document in documents:
+            identity = document.metadata.get(identity_key)
+            if not isinstance(identity, str) or not identity:
+                raise SchemaIndexError(f"Document {identity_key} metadata is required")
+            if identity in identities:
+                raise SchemaIndexError(f"Duplicate {kind} identity: {identity}")
+            identities.add(identity)
+
     def _build_points(
         self,
         documents: Sequence[Document],
         embeddings: Sequence[EncodedText],
         *,
         kind: str,
+        identity_key: str | None = None,
     ) -> list[models.PointStruct]:
         points: list[models.PointStruct] = []
         for document, embedding in zip(documents, embeddings, strict=True):
-            table_name = str(document.metadata["table_name"])
-            if kind == "table":
-                identity = table_name
+            if identity_key is not None:
+                identity = str(document.metadata[identity_key])
             else:
-                identity = f"{table_name}.{document.metadata['column_name']}"
+                table_name = str(document.metadata["table_name"])
+                if kind == "table":
+                    identity = table_name
+                else:
+                    identity = f"{table_name}.{document.metadata['column_name']}"
             payload = {"page_content": document.page_content, **document.metadata}
             points.append(
                 models.PointStruct(
