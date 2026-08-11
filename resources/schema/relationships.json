@@ -1,53 +1,83 @@
 {
-  "relationships": {
-    "sales_orders": [
-      {
-        "target": "dim_customers",
-        "fk_col": "customer_id",
-        "pk_col": "customer_id",
-        "join_type": "JOIN"
-      },
-      {
-        "target": "dim_products",
-        "fk_col": "product_id",
-        "pk_col": "product_id",
-        "join_type": "JOIN"
-      },
-      {
-        "target": "exchange_rates",
-        "fk_col": "order_date, currency",
-        "pk_col": "rate_date, currency",
-        "join_type": "LEFT JOIN"
-      }
-    ],
-
-    "dim_customers": [
-      {
-        "target": "sales_orders",
-        "fk_col": "customer_id",
-        "pk_col": "customer_id",
-        "join_type": "LEFT JOIN"
-      }
-    ],
-
-    "dim_products": [
-      {
-        "target": "sales_orders",
-        "fk_col": "product_id",
-        "pk_col": "product_id",
-        "join_type": "LEFT JOIN"
-      }
-    ],
-
-    "exchange_rates": [
-      {
-        "target": "sales_orders",
-        "fk_col": "rate_date, currency",
-        "pk_col": "order_date, currency",
-        "join_type": "LEFT JOIN"
-      }
-    ],
-
-    "finance_expenses": []
-  }
+  "schema_version": 1,
+  "primary_keys": [
+    {
+      "table_name": "dim_customers",
+      "column_names": [
+        "customer_id"
+      ]
+    },
+    {
+      "table_name": "dim_products",
+      "column_names": [
+        "product_id"
+      ]
+    },
+    {
+      "table_name": "sales_orders",
+      "column_names": [
+        "order_id"
+      ]
+    },
+    {
+      "table_name": "exchange_rates",
+      "column_names": [
+        "rate_date",
+        "currency"
+      ]
+    },
+    {
+      "table_name": "finance_expenses",
+      "column_names": [
+        "expense_id"
+      ]
+    }
+  ],
+  "unique_constraints": [
+    {
+      "table_name": "sales_orders",
+      "column_names": [
+        "order_no"
+      ]
+    }
+  ],
+  "foreign_keys": [
+    {
+      "table_name": "sales_orders",
+      "column_names": [
+        "customer_id"
+      ],
+      "referenced_table": "dim_customers",
+      "referenced_column_names": [
+        "customer_id"
+      ]
+    },
+    {
+      "table_name": "sales_orders",
+      "column_names": [
+        "product_id"
+      ],
+      "referenced_table": "dim_products",
+      "referenced_column_names": [
+        "product_id"
+      ]
+    }
+  ],
+  "semantic_relationships": [
+    {
+      "relationship_id": "sales_orders_exchange_rates_by_order_date_currency",
+      "source_table": "sales_orders",
+      "source_columns": [
+        "order_date",
+        "currency"
+      ],
+      "target_table": "exchange_rates",
+      "target_columns": [
+        "rate_date",
+        "currency"
+      ],
+      "cardinality": "many_to_one",
+      "description": "销售订单按订单日期和交易币种匹配汇率。"
+    }
+  ]
 }

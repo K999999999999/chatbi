@@ -19,6 +19,16 @@ COLUMNS_OUTPUT_PATH = ROOT / "resources" / "schema" / "columns.json"
 RELATIONSHIPS_OUTPUT_PATH = ROOT / "resources" / "schema" / "relationships.json"
 DATABASE_NAME = "chatbi_mvp"
 APP_USER = "chatbi_app"
+RELATIONSHIP_SCHEMA_VERSION = 1
+SEMANTIC_RELATIONSHIP_FIELDS = {
+    "relationship_id",
+    "source_table",
+    "source_columns",
+    "target_table",
+    "target_columns",
+    "cardinality",
+    "description",
+}
 EXPECTED_TABLES = (
     "dim_customers",
     "dim_products",
@@ -98,8 +108,8 @@ TABLE_DESCRIPTIONS = {
     "dim_customers": "客户主数据表，记录客户基本属性、类型、行业、国家和所属区域。",
     "dim_products": "产品主数据表，记录产品名称、产品线、类别、技术路线和成本字段。",
     "sales_orders": "销售订单表，记录订单标识、客户和产品关联、销售区域、日期、状态、数量、金额及币种。",
-    "exchange_rates": "汇率表，记录交易日期、币种及兑人民币汇率。",
-    "finance_expenses": "财务费用表，记录按日期和部门划分的各类费用。",
+    "exchange_rates": "汇率表，记录汇率日期、币种及兑人民币汇率。",
+    "finance_expenses": "期间费用表，记录按日期和部门划分的研发、销售、管理、财务、市场、物流和质保等费用。",
 }
 
 
@@ -122,10 +132,10 @@ def connection_config(env: dict[str, str]) -> dict[str, Any]:
     if not password:
         raise RuntimeError("POSTGRES_APP_PASSWORD is missing from .env")
     return {
-        "host": "127.0.0.1",
-        "port": 5433,
-        "dbname": DATABASE_NAME,
-        "user": APP_USER,
+        "host": env.get("POSTGRES_HOST", "127.0.0.1"),
+        "port": int(env.get("POSTGRES_PORT", "5432")),
+        "dbname": env.get("POSTGRES_DB", DATABASE_NAME),
+        "user": env.get("POSTGRES_APP_USER", APP_USER),
         "password": password,
         "connect_timeout": 10,
         "row_factory": dict_row,
@@ -190,6 +200,7 @@ def read_metadata(conn: psycopg.Connection[Any]) -> dict[str, Any]:
             """
             SELECT child_ns.nspname AS table_schema,
                    child.relname AS table_name,
+                   con.conname AS constraint_name,
                    child_col.attname AS column_name,
                    parent.relname AS referenced_table,
                    parent_col.attname AS referenced_column,
@@ -211,7 +222,7 @@ def read_metadata(conn: psycopg.Connection[Any]) -> dict[str, Any]:
             WHERE con.contype = 'f'
               AND child_ns.nspname = 'public'
               AND child.relname = ANY(%s)
-            ORDER BY child.relname, child_keys.ordinality
+            ORDER BY child.relname, con.conname, child_keys.ordinality
             """,
             (list(EXPECTED_TABLES),),
         )
@@ -254,6 +265,119 @@ def foreign_key_list(rows: list[dict[str, Any]]) -> list[tuple[str, str, str, st
         )
         for row in rows
     )
+
+
+def foreign_key_constraints(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """将 PostgreSQL FK 元数据按约束分组，保留未来复合 FK 的列顺序。"""
+
+    grouped: dict[tuple[str, str, str], list[tuple[int, str, str]]] = defaultdict(list)
+    for row in rows:
+        grouped[
+            (row["table_name"], row["constraint_name"], row["referenced_table"])
+        ].append(
+            (
+                int(row["ordinality"]),
+                row["column_name"],
+                row["referenced_column"],
+            )
+        )
+
+    constraints: list[dict[str, Any]] = []
+    for (table_name, _constraint_name, referenced_table), columns in grouped.items():
+        ordered = sorted(columns, key=lambda item: item[0])
+        constraints.append(
+            {
+                "table_name": table_name,
+                "column_names": [column for _position, column, _ in ordered],
+                "referenced_table": referenced_table,
+                "referenced_column_names": [
+                    column for _position, _source, column in ordered
+                ],
+            }
+        )
+    return sorted(
+        constraints,
+        key=lambda item: (
+            item["table_name"],
+            item["referenced_table"],
+            item["column_names"],
+        ),
+    )
+
+
+def load_semantic_relationships(path: Path) -> list[dict[str, Any]]:
+    """读取人工维护的语义关系；生成器不会用数据库元数据覆盖它们。"""
+
+    try:
+        resource = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            f"relationships.json cannot be loaded: {type(exc).__name__}"
+        ) from exc
+    if not isinstance(resource, dict):
+        raise RuntimeError("relationships.json must contain a JSON object")
+    if resource.get("schema_version") != RELATIONSHIP_SCHEMA_VERSION:
+        raise RuntimeError("relationships.json schema_version is unsupported")
+    semantic_relationships = resource.get("semantic_relationships")
+    if not isinstance(semantic_relationships, list):
+        raise RuntimeError(
+            "relationships.json must contain semantic_relationships for manual facts"
+        )
+    return semantic_relationships
+
+
+def validate_semantic_relationships(
+    semantic_relationships: Any,
+    catalog_fields: set[tuple[str, str]],
+) -> None:
+    if not isinstance(semantic_relationships, list):
+        raise RuntimeError("semantic_relationships must be a JSON array")
+
+    relationship_ids: set[str] = set()
+    for index, relationship in enumerate(semantic_relationships):
+        if not isinstance(relationship, dict):
+            raise RuntimeError(f"semantic relationship at index {index} must be an object")
+        if set(relationship) != SEMANTIC_RELATIONSHIP_FIELDS:
+            raise RuntimeError(
+                f"semantic relationship at index {index} has invalid fields"
+            )
+
+        relationship_id = relationship["relationship_id"]
+        if not isinstance(relationship_id, str) or not relationship_id:
+            raise RuntimeError(f"semantic relationship at index {index} needs an id")
+        if relationship_id in relationship_ids:
+            raise RuntimeError(f"duplicate semantic relationship_id: {relationship_id}")
+        relationship_ids.add(relationship_id)
+
+        source_table = relationship["source_table"]
+        target_table = relationship["target_table"]
+        source_columns = relationship["source_columns"]
+        target_columns = relationship["target_columns"]
+        if not isinstance(source_table, str) or not isinstance(target_table, str):
+            raise RuntimeError(f"semantic relationship {relationship_id} needs table names")
+        if (
+            not isinstance(source_columns, list)
+            or not isinstance(target_columns, list)
+            or not source_columns
+            or len(source_columns) != len(target_columns)
+            or not all(isinstance(value, str) and value for value in source_columns)
+            or not all(isinstance(value, str) and value for value in target_columns)
+        ):
+            raise RuntimeError(
+                f"semantic relationship {relationship_id} needs aligned column arrays"
+            )
+        if any((source_table, column) not in catalog_fields for column in source_columns):
+            raise RuntimeError(
+                f"semantic relationship {relationship_id} has an unknown source column"
+            )
+        if any((target_table, column) not in catalog_fields for column in target_columns):
+            raise RuntimeError(
+                f"semantic relationship {relationship_id} has an unknown target column"
+            )
+        if not isinstance(relationship["cardinality"], str) or not relationship["cardinality"]:
+            raise RuntimeError(f"semantic relationship {relationship_id} needs cardinality")
+        if not isinstance(relationship["description"], str) or not relationship["description"]:
+            raise RuntimeError(f"semantic relationship {relationship_id} needs description")
 
 
 def format_postgres_type(row: dict[str, Any]) -> str:
@@ -358,7 +482,10 @@ def render_schema(metadata: dict[str, Any]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def build_json_catalog(metadata: dict[str, Any]) -> tuple[list[dict[str, str]], list[dict[str, str]], dict[str, list[dict[str, Any]]]]:
+def build_json_catalog(
+    metadata: dict[str, Any],
+    semantic_relationships: list[dict[str, Any]],
+) -> tuple[list[dict[str, str]], list[dict[str, str]], dict[str, Any]]:
     columns_by_table: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in metadata["columns"]:
         columns_by_table[row["table_name"]].append(row)
@@ -378,22 +505,23 @@ def build_json_catalog(metadata: dict[str, Any]) -> tuple[list[dict[str, str]], 
         for table in EXPECTED_TABLES
         for row in columns_by_table[table]
     ]
-    relationships = {
+    relationships: dict[str, Any] = {
+        "schema_version": RELATIONSHIP_SCHEMA_VERSION,
         "primary_keys": [
             {"table_name": table, "column_names": list(primary_keys[table])}
             for table in EXPECTED_TABLES
         ],
-        "foreign_keys": [
-            {
-                "table_name": table,
-                "column_name": column,
-                "referenced_table": referenced_table,
-                "referenced_column": referenced_column,
-            }
-            for table, column, referenced_table, referenced_column in foreign_key_list(
-                metadata["foreign_keys"]
-            )
+        "unique_constraints": [
+            {"table_name": table, "column_names": list(columns)}
+            for table, columns in unique_constraints(metadata["key_constraints"])
         ],
+        "foreign_keys": [
+            *foreign_key_constraints(metadata["foreign_keys"]),
+        ],
+        "semantic_relationships": sorted(
+            semantic_relationships,
+            key=lambda item: str(item.get("relationship_id", "")),
+        ),
     }
     return tables, columns, relationships
 
@@ -402,8 +530,20 @@ def validate_json_catalog(
     metadata: dict[str, Any],
     tables: list[dict[str, str]],
     columns: list[dict[str, str]],
-    relationships: dict[str, list[dict[str, Any]]],
+    relationships: dict[str, Any],
 ) -> None:
+    expected_resource_keys = {
+        "schema_version",
+        "primary_keys",
+        "unique_constraints",
+        "foreign_keys",
+        "semantic_relationships",
+    }
+    if set(relationships) != expected_resource_keys:
+        raise RuntimeError("relationships.json has an invalid top-level schema")
+    if relationships["schema_version"] != RELATIONSHIP_SCHEMA_VERSION:
+        raise RuntimeError("relationships.json schema_version does not match the generator")
+
     actual_fields = {
         (row["table_name"], row["column_name"])
         for row in metadata["columns"]
@@ -429,17 +569,21 @@ def validate_json_catalog(
     ]
     if relationships["primary_keys"] != expected_primary_keys:
         raise RuntimeError("relationships.json primary_keys do not match PostgreSQL")
-    expected_foreign_keys = [
-        {
-            "table_name": table,
-            "column_name": column,
-            "referenced_table": referenced_table,
-            "referenced_column": referenced_column,
-        }
-        for table, column, referenced_table, referenced_column in sorted(EXPECTED_FOREIGN_KEYS)
+    expected_unique_constraints = [
+        {"table_name": table, "column_names": list(columns)}
+        for table, columns in unique_constraints(metadata["key_constraints"])
     ]
+    if relationships["unique_constraints"] != expected_unique_constraints:
+        raise RuntimeError("relationships.json unique_constraints do not match PostgreSQL")
+
+    expected_foreign_keys = foreign_key_constraints(metadata["foreign_keys"])
     if relationships["foreign_keys"] != expected_foreign_keys:
         raise RuntimeError("relationships.json foreign_keys do not match PostgreSQL")
+
+    validate_semantic_relationships(
+        relationships["semantic_relationships"],
+        catalog_fields,
+    )
 
 
 def write_json(path: Path, value: Any) -> None:
@@ -452,12 +596,16 @@ def write_json(path: Path, value: Any) -> None:
 
 def main() -> int:
     try:
+        semantic_relationships = load_semantic_relationships(RELATIONSHIPS_OUTPUT_PATH)
         env = load_env(ROOT / ".env")
         with psycopg.connect(**connection_config(env)) as conn:
             metadata = read_metadata(conn)
         validate_metadata(metadata)
         content = render_schema(metadata)
-        tables, columns, relationships = build_json_catalog(metadata)
+        tables, columns, relationships = build_json_catalog(
+            metadata,
+            semantic_relationships,
+        )
         validate_json_catalog(metadata, tables, columns, relationships)
         OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
         OUTPUT_PATH.write_text(content, encoding="utf-8", newline="\n")
@@ -466,10 +614,14 @@ def main() -> int:
         write_json(RELATIONSHIPS_OUTPUT_PATH, relationships)
         print("table_count = 5")
         print("column_count = 40")
-        print("relationship_count = 2")
         print("tables = " + ", ".join(EXPECTED_TABLES))
         print("primary_key_count = 5")
+        print("unique_constraint_count = 1")
         print("foreign_key_count = 2")
+        print(
+            "semantic_relationship_count = "
+            + str(len(relationships["semantic_relationships"]))
+        )
         print("unique = sales_orders.order_no")
         print(f"output = {OUTPUT_PATH}")
         print("validation_result = PASS")

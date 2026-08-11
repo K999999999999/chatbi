@@ -335,11 +335,13 @@ def main() -> int:
     parser.add_argument("--database", default=DEFAULT_DATABASE)
     args = parser.parse_args()
 
-    if args.database == "chatbi":
-        raise SystemExit("拒绝将课程基线写入当前 chatbi；请使用独立数据库 chatbi_mvp。")
+    if args.database != DEFAULT_DATABASE:
+        raise SystemExit(
+            f"拒绝写入数据库 {args.database!r}；课程基线只允许使用独立数据库 {DEFAULT_DATABASE!r}。"
+        )
 
     env = load_env(args.env_file)
-    admin_database = env.get("POSTGRES_DB", "postgres")
+    admin_database = "postgres"
     admin_config = connection_config(env, admin_database)
     target_config = connection_config(env, args.database)
 
@@ -359,4 +361,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

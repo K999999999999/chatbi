@@ -836,7 +836,7 @@ TypeSpec Source Contract（TypeSpec 源契约）完整定义：
 长期保持：
 
 ```
-SPEC.md
+Platform Integration SPEC.md
         ↓
 Integration Semantics
 （集成语义事实源）
@@ -856,7 +856,7 @@ Generated Interchange Artifact
 （生成的接口交换产物）
 ```
 
-本 `SPEC.md` 不重复维护：
+本 `Platform Integration SPEC.md` 不重复维护：
 
 - Endpoint 的精确结构
 - HTTP Method
