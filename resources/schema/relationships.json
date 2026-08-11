@@ -1,49 +1,53 @@
 {
-  "primary_keys": [
-    {
-      "table_name": "dim_customers",
-      "column_names": [
-        "customer_id"
-      ]
-    },
-    {
-      "table_name": "dim_products",
-      "column_names": [
-        "product_id"
-      ]
-    },
-    {
-      "table_name": "sales_orders",
-      "column_names": [
-        "order_id"
-      ]
-    },
-    {
-      "table_name": "exchange_rates",
-      "column_names": [
-        "rate_date",
-        "currency"
-      ]
-    },
-    {
-      "table_name": "finance_expenses",
-      "column_names": [
-        "expense_id"
-      ]
-    }
-  ],
-  "foreign_keys": [
-    {
-      "table_name": "sales_orders",
-      "column_name": "customer_id",
-      "referenced_table": "dim_customers",
-      "referenced_column": "customer_id"
-    },
-    {
-      "table_name": "sales_orders",
-      "column_name": "product_id",
-      "referenced_table": "dim_products",
-      "referenced_column": "product_id"
-    }
-  ]
+  "relationships": {
+    "sales_orders": [
+      {
+        "target": "dim_customers",
+        "fk_col": "customer_id",
+        "pk_col": "customer_id",
+        "join_type": "JOIN"
+      },
+      {
+        "target": "dim_products",
+        "fk_col": "product_id",
+        "pk_col": "product_id",
+        "join_type": "JOIN"
+      },
+      {
+        "target": "exchange_rates",
+        "fk_col": "order_date, currency",
+        "pk_col": "rate_date, currency",
+        "join_type": "LEFT JOIN"
+      }
+    ],
+
+    "dim_customers": [
+      {
+        "target": "sales_orders",
+        "fk_col": "customer_id",
+        "pk_col": "customer_id",
+        "join_type": "LEFT JOIN"
+      }
+    ],
+
+    "dim_products": [
+      {
+        "target": "sales_orders",
+        "fk_col": "product_id",
+        "pk_col": "product_id",
+        "join_type": "LEFT JOIN"
+      }
+    ],
+
+    "exchange_rates": [
+      {
+        "target": "sales_orders",
+        "fk_col": "rate_date, currency",
+        "pk_col": "order_date, currency",
+        "join_type": "LEFT JOIN"
+      }
+    ],
+
+    "finance_expenses": []
+  }
 }

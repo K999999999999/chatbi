@@ -1,0 +1,484 @@
+openapi: 3.2.0
+info:
+  title: ChatBI Platform API
+  description: |-
+    ChatBI 对 Enterprise AI Platform（企业 AI 平台）
+    提供的正式公共 API。
+
+    ChatBI 作为 Domain AI Engine（领域 AI 引擎），
+    负责 Natural Language Query（自然语言查询）
+    和 Business Analysis（经营分析）等领域能力。
+  version: '2026-08-12'
+tags: []
+paths:
+  /runs:
+    post:
+      operationId: Runs_create
+      description: |-
+        创建并执行一次 Blocking Run（阻塞执行实例）。
+
+        请求保持连接，
+        直到得到最终 Business Outcome（业务结果）
+        或 System Error（系统错误）。
+      parameters:
+        - $ref: '#/components/parameters/ApiVersionParameter'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunResponse'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Access is unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Access is forbidden.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Service unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '504':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunRequest'
+  /runs/stream:
+    post:
+      operationId: Runs_stream
+      description: |-
+        创建并执行一次 SSE Streaming Run（SSE 流式执行实例）。
+
+        成功建立连接后，
+        Server 通过 text/event-stream
+        持续返回 RunStreamEvents。
+      parameters:
+        - $ref: '#/components/parameters/ApiVersionParameter'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            text/event-stream:
+              itemSchema:
+                type: object
+                properties:
+                  event:
+                    type: string
+                  data:
+                    type: string
+                required:
+                  - event
+                oneOf:
+                  - properties:
+                      data:
+                        contentMediaType: application/json
+                        contentSchema:
+                          $ref: '#/components/schemas/RunStartedEvent'
+                      event:
+                        const: started
+                  - properties:
+                      data:
+                        contentMediaType: application/json
+                        contentSchema:
+                          $ref: '#/components/schemas/RunDeltaEvent'
+                      event:
+                        const: delta
+                  - properties:
+                      data:
+                        contentMediaType: application/json
+                  - properties:
+                      data:
+                        contentMediaType: application/json
+        '400':
+          description: The server could not understand the request due to invalid syntax.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Access is unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Access is forbidden.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Service unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '504':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunRequest'
+security:
+  - BearerAuth: []
+components:
+  parameters:
+    ApiVersionParameter:
+      name: api-version
+      in: query
+      required: true
+      description: |-
+        调用方希望使用的 ChatBI API Version（接口版本）。
+
+        例如：
+        2026-08-12
+      schema:
+        type: string
+      explode: false
+  schemas:
+    AnalysisResult:
+      type: object
+      required:
+        - resultRef
+        - content
+        - evidence
+      properties:
+        resultRef:
+          $ref: '#/components/schemas/ResultReference'
+          description: 分析结果稳定引用。
+        content:
+          type: string
+          description: 基于可信业务数据形成的分析内容。
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceReference'
+          description: 支撑分析结论的 Evidence（证据）。
+      description: |-
+        Business Analysis（经营分析）
+        成功后的业务结果。
+    Clarification:
+      type: object
+      required:
+        - question
+      properties:
+        question:
+          type: string
+          description: ChatBI 需要用户补充回答的问题。
+        options:
+          type: array
+          items:
+            type: string
+          description: |-
+            如果存在明确候选项，
+            可以由 Platform 展示给用户。
+      description: 当前输入不足以确定唯一业务语义。
+    ConversationContext:
+      type: object
+      properties:
+        conversationId:
+          $ref: '#/components/schemas/ConversationId'
+          description: Platform 管理的产品会话标识。
+        messageId:
+          $ref: '#/components/schemas/MessageId'
+          description: 当前 Platform Message（消息）标识。
+        stateRef:
+          $ref: '#/components/schemas/StateReference'
+          description: |-
+            上一次 ChatBI 返回的
+            Domain State（领域状态）引用。
+      description: Platform Product Conversation（产品会话）上下文。
+    ConversationId:
+      type: string
+      description: Product Conversation（产品会话）标识。
+    ErrorCode:
+      type: string
+      enum:
+        - invalid_request
+        - unauthenticated
+        - forbidden
+        - timeout
+        - dependency_unavailable
+        - internal_error
+      description: System Error（系统错误）分类。
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+        - retryable
+      properties:
+        code:
+          $ref: '#/components/schemas/ErrorCode'
+          description: 稳定错误编码。
+        message:
+          type: string
+          description: 面向调用方的错误说明。
+        runId:
+          $ref: '#/components/schemas/RunId'
+          description: |-
+            如果已经创建 Run，
+            返回对应 Run Id。
+        retryable:
+          type: boolean
+          description: 当前请求是否可以安全重试。
+      description: ChatBI Platform API 标准系统错误。
+    EvidenceReference:
+      type: object
+      required:
+        - reference
+      properties:
+        reference:
+          type: string
+          description: Evidence 的稳定引用。
+        label:
+          type: string
+          description: 面向展示的可选说明。
+      description: |-
+        指向可信结果或分析依据的
+        Evidence（证据）引用。
+    MessageId:
+      type: string
+      description: Platform Message（平台消息）标识。
+    PrincipalContext:
+      type: object
+      required:
+        - subjectId
+      properties:
+        subjectId:
+          $ref: '#/components/schemas/PrincipalId'
+          description: 当前用户或调用主体的唯一标识。
+        tenantId:
+          $ref: '#/components/schemas/TenantId'
+          description: 所属企业或租户。
+        roles:
+          type: array
+          items:
+            type: string
+          description: Platform 提供的角色信息。
+        attributes:
+          type: object
+          unevaluatedProperties: {}
+          description: |-
+            Platform 提供的其他身份属性。
+
+            可以作为 Domain Authorization（领域授权）输入，
+            但不能直接代表最终 Data Scope（数据范围）。
+      description: |-
+        Platform Authentication（平台认证）后
+        传递给 ChatBI 的主体上下文。
+
+        这些信息只是 Domain Authorization（领域授权）的输入，
+        不直接代表最终业务数据权限。
+    PrincipalId:
+      type: string
+      description: |-
+        Enterprise AI Platform（企业 AI 平台）
+        认证后的用户主体标识。
+    QueryColumn:
+      type: object
+      required:
+        - name
+        - type
+      properties:
+        name:
+          type: string
+          description: 字段名称。
+        type:
+          type: string
+          description: 字段的数据类型描述。
+      description: 查询结果字段定义。
+    QueryResult:
+      type: object
+      required:
+        - resultRef
+        - columns
+        - rows
+        - rowCount
+      properties:
+        resultRef:
+          $ref: '#/components/schemas/ResultReference'
+          description: 查询结果稳定引用。
+        columns:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueryColumn'
+          description: 查询结果字段。
+        rows:
+          type: array
+          items:
+            type: object
+            unevaluatedProperties: {}
+          description: |-
+            查询结果数据行。
+
+            不同业务查询具有不同字段结构，
+            因此保持动态对象结构。
+        rowCount:
+          type: integer
+          format: int32
+          description: 返回的数据行数。
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceReference'
+          description: 支撑结果的 Evidence（证据）。
+      description: |-
+        Natural Language Query（自然语言查询）
+        成功后的业务结果。
+    ResultReference:
+      type: string
+      description: ChatBI 业务结果的稳定引用。
+    RunDeltaEvent:
+      type: object
+      required:
+        - runId
+        - delta
+      properties:
+        runId:
+          $ref: '#/components/schemas/RunId'
+          description: 当前 Run 标识。
+        delta:
+          type: string
+          description: 当前新增的展示内容。
+      description: |-
+        Run 执行期间允许实时展示的增量内容。
+
+        这里只允许发送已经允许对外展示的内容，
+        不得发送未经权限或安全校验的数据。
+    RunId:
+      type: string
+      description: 一次 ChatBI Run（执行实例）的唯一标识。
+    RunOutcome:
+      type: object
+      oneOf:
+        - $ref: '#/components/schemas/QueryResult'
+        - $ref: '#/components/schemas/AnalysisResult'
+        - $ref: '#/components/schemas/Clarification'
+        - $ref: '#/components/schemas/UnsupportedRequest'
+      discriminator:
+        propertyName: kind
+        mapping:
+          query_result: '#/components/schemas/QueryResult'
+          analysis_result: '#/components/schemas/AnalysisResult'
+          clarification: '#/components/schemas/Clarification'
+          unsupported_request: '#/components/schemas/UnsupportedRequest'
+      description: |-
+        一次 Run 的正常 Business Outcome（业务结果）。
+
+        使用 kind 区分具体结果类型。
+    RunRequest:
+      type: object
+      required:
+        - input
+        - principal
+      properties:
+        input:
+          type: string
+          description: 用户当前提交给 ChatBI 的自然语言输入。
+        principal:
+          $ref: '#/components/schemas/PrincipalContext'
+          description: |-
+            Platform 已确认的主体上下文。
+
+            ChatBI 仍需根据领域规则执行
+            Domain Authorization（领域授权）。
+        conversation:
+          $ref: '#/components/schemas/ConversationContext'
+          description: 连续业务任务需要的会话上下文。
+      description: 启动一次 ChatBI Run（执行实例）所需输入。
+    RunResponse:
+      type: object
+      required:
+        - runId
+        - outcome
+      properties:
+        runId:
+          $ref: '#/components/schemas/RunId'
+          description: 当前 Run 标识。
+        outcome:
+          $ref: '#/components/schemas/RunOutcome'
+          description: 当前 Run 的业务结果。
+        stateRef:
+          $ref: '#/components/schemas/StateReference'
+          description: |-
+            最新 Domain State（领域状态）引用。
+
+            Platform 可以保存并在后续请求中原样回传。
+      description: 一次 ChatBI Run（执行实例）的最终正常响应。
+    RunStartedEvent:
+      type: object
+      required:
+        - runId
+      properties:
+        runId:
+          $ref: '#/components/schemas/RunId'
+          description: 当前 Run 标识。
+      description: |-
+        SSE 连接建立后，
+        ChatBI 首先返回当前 Run 的标识。
+    StateReference:
+      type: string
+      description: |-
+        ChatBI Domain State（领域状态）的不透明引用。
+
+        Platform 可以保存并回传该值，
+        但不得解释其内部含义。
+    TenantId:
+      type: string
+      description: 企业租户标识。
+    UnsupportedRequest:
+      type: object
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          description: 当前请求无法处理的业务原因。
+      description: |-
+        请求超出 ChatBI 当前支持的
+        Product / Domain（产品 / 领域）范围。
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: Bearer
