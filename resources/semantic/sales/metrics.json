@@ -8,31 +8,40 @@
       "销售量",
       "卖出数量"
     ],
-    "business_definition": "已完成销售订单的商品销售数量合计",
-    "formula": "SUM(sales_orders.quantity)",
+    "business_definition": "已完成销售订单明细的销售数量合计。",
+    "expression": "SUM(fct_sales_order_line.quantity)",
     "filters": [
-      "sales_orders.order_status = 'completed'"
+      "fct_sales_order_line.order_status = 'completed'"
     ],
     "depends_on": [],
-    "time_column": "sales_orders.order_date",
-    "unit": "件"
+    "default_time_dimension": "completion_date",
+    "unit": "统一可聚合销售数量单位",
+    "source_table": "fct_sales_order_line",
+    "source_columns": [
+      "quantity"
+    ]
   },
   {
     "metric_code": "sales_revenue",
     "metric_name": "销售额",
     "metric_type": "atomic",
     "aliases": [
-      "销售收入",
-      "营收"
+      "销售净额",
+      "净销售额",
+      "销售金额"
     ],
-    "business_definition": "已完成销售订单的不含税收入，按订单日期对应汇率统一折算为人民币",
-    "formula": "SUM(sales_orders.net_amount * exchange_rates.rate_to_cny)",
+    "business_definition": "已完成销售的不含税净销售额，使用销售完成时已经冻结的人民币分析金额。",
+    "expression": "SUM(fct_sales_order_line.net_sales_amount_cny)",
     "filters": [
-      "sales_orders.order_status = 'completed'"
+      "fct_sales_order_line.order_status = 'completed'"
     ],
     "depends_on": [],
-    "time_column": "sales_orders.order_date",
-    "unit": "CNY"
+    "default_time_dimension": "completion_date",
+    "unit": "CNY",
+    "source_table": "fct_sales_order_line",
+    "source_columns": [
+      "net_sales_amount_cny"
+    ]
   },
   {
     "metric_code": "sales_cost",
@@ -42,14 +51,18 @@
       "销售商品成本",
       "销售产品成本"
     ],
-    "business_definition": "已完成销售订单对应产品的标准成本乘以销售数量；当前课程基线下标准成本按人民币口径使用",
-    "formula": "SUM(dim_products.standard_cost * sales_orders.quantity)",
+    "business_definition": "已完成销售对应的历史冻结销售成本。",
+    "expression": "SUM(fct_sales_order_line.sales_cost_amount_cny)",
     "filters": [
-      "sales_orders.order_status = 'completed'"
+      "fct_sales_order_line.order_status = 'completed'"
     ],
     "depends_on": [],
-    "time_column": "sales_orders.order_date",
-    "unit": "CNY"
+    "default_time_dimension": "completion_date",
+    "unit": "CNY",
+    "source_table": "fct_sales_order_line",
+    "source_columns": [
+      "sales_cost_amount_cny"
+    ]
   },
   {
     "metric_code": "gross_profit",
@@ -59,14 +72,16 @@
       "销售毛利",
       "毛利润"
     ],
-    "business_definition": "销售额扣除销售成本后的利润",
-    "formula": "sales_revenue - sales_cost",
-    "filters": [],
+    "business_definition": "销售额减销售成本。",
+    "expression": "sales_revenue - sales_cost",
+    "filters": [
+      "fct_sales_order_line.order_status = 'completed'"
+    ],
     "depends_on": [
       "sales_revenue",
       "sales_cost"
     ],
-    "time_column": "sales_orders.order_date",
+    "default_time_dimension": "completion_date",
     "unit": "CNY"
   },
   {
@@ -76,14 +91,17 @@
     "aliases": [
       "销售毛利率"
     ],
-    "business_definition": "毛利占销售额的比例；销售额为零时该指标不计算",
-    "formula": "gross_profit / sales_revenue",
-    "filters": [],
+    "business_definition": "毛利占销售额的比例；销售额为零时结果为 NULL，表示不可计算。",
+    "expression": "gross_profit / sales_revenue",
+    "filters": [
+      "fct_sales_order_line.order_status = 'completed'"
+    ],
     "depends_on": [
       "gross_profit",
       "sales_revenue"
     ],
-    "time_column": "sales_orders.order_date",
-    "unit": "percent"
+    "default_time_dimension": "completion_date",
+    "unit": "percent",
+    "null_if": "sales_revenue = 0"
   }
 ]

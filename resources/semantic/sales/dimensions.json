@@ -1,0 +1,188 @@
+[
+  {
+    "dimension_code": "completion_date",
+    "dimension_name": "销售完成日期",
+    "aliases": [
+      "完成日期",
+      "销售完成时间"
+    ],
+    "business_definition": "销售事实形成有效完成状态的业务日期；未指定其他时间语义时，作为 Sales Domain V1 的默认业务时间。",
+    "dimension_type": "time",
+    "source_table": "dim_date",
+    "source_column": "full_date",
+    "date_role": "completion",
+    "date_dimension_table": "dim_date",
+    "date_key_column": "date_key",
+    "is_default_business_time": true
+  },
+  {
+    "dimension_code": "order_date",
+    "dimension_name": "订单日期",
+    "aliases": [
+      "下单日期",
+      "订单创建日期"
+    ],
+    "business_definition": "销售订单创建或下单发生的业务日期；作为独立时间语义使用，不与销售完成日期静默混用。",
+    "dimension_type": "time",
+    "source_table": "dim_date",
+    "source_column": "full_date",
+    "date_role": "order",
+    "date_dimension_table": "dim_date",
+    "date_key_column": "date_key",
+    "is_default_business_time": false
+  },
+  {
+    "dimension_code": "confirmation_date",
+    "dimension_name": "订单确认日期",
+    "aliases": [
+      "确认日期",
+      "订单确认时间"
+    ],
+    "business_definition": "销售订单确认发生的业务日期；作为独立时间语义使用，不与销售完成日期静默混用。",
+    "dimension_type": "time",
+    "source_table": "dim_date",
+    "source_column": "full_date",
+    "date_role": "confirmation",
+    "date_dimension_table": "dim_date",
+    "date_key_column": "date_key",
+    "is_default_business_time": false
+  },
+  {
+    "dimension_code": "customer",
+    "dimension_name": "客户",
+    "aliases": [
+      "客户名称",
+      "客户主体"
+    ],
+    "business_definition": "参与销售交易的客户业务主体。",
+    "dimension_type": "customer",
+    "source_table": "dim_customer",
+    "source_column": "customer_name"
+  },
+  {
+    "dimension_code": "customer_type",
+    "dimension_name": "客户类型",
+    "aliases": [
+      "客户类别"
+    ],
+    "business_definition": "客户业务主体的分类。",
+    "dimension_type": "customer",
+    "source_table": "dim_customer",
+    "source_column": "customer_type"
+  },
+  {
+    "dimension_code": "industry",
+    "dimension_name": "行业",
+    "aliases": [
+      "所属行业",
+      "客户行业"
+    ],
+    "business_definition": "客户业务主体所属的行业分类。",
+    "dimension_type": "customer",
+    "source_table": "dim_customer",
+    "source_column": "industry"
+  },
+  {
+    "dimension_code": "country",
+    "dimension_name": "国家",
+    "aliases": [
+      "客户国家",
+      "所属国家"
+    ],
+    "business_definition": "客户业务主体所属国家。",
+    "dimension_type": "customer",
+    "source_table": "dim_customer",
+    "source_column": "country"
+  },
+  {
+    "dimension_code": "customer_region",
+    "dimension_name": "客户区域",
+    "aliases": [
+      "客户所属区域",
+      "客户所在区域"
+    ],
+    "business_definition": "客户主体所属区域，不表示销售交易或销售组织所属区域。",
+    "dimension_type": "customer",
+    "source_table": "dim_customer",
+    "source_column": "customer_region"
+  },
+  {
+    "dimension_code": "product",
+    "dimension_name": "产品",
+    "aliases": [
+      "产品名称"
+    ],
+    "business_definition": "销售订单明细对应的产品业务对象。",
+    "dimension_type": "product",
+    "source_table": "dim_product",
+    "source_column": "product_name"
+  },
+  {
+    "dimension_code": "product_line",
+    "dimension_name": "产品线",
+    "aliases": [
+      "产品系列"
+    ],
+    "business_definition": "产品所属的产品线属性；V1 将其作为独立可分析属性，不强制建立产品层级。",
+    "dimension_type": "product",
+    "source_table": "dim_product",
+    "source_column": "product_line"
+  },
+  {
+    "dimension_code": "product_category",
+    "dimension_name": "产品类别",
+    "aliases": [
+      "产品分类"
+    ],
+    "business_definition": "产品所属的产品类别属性；V1 将其作为独立可分析属性，不强制建立产品层级。",
+    "dimension_type": "product",
+    "source_table": "dim_product",
+    "source_column": "product_category"
+  },
+  {
+    "dimension_code": "technology_route",
+    "dimension_name": "技术路线",
+    "aliases": [
+      "技术路径"
+    ],
+    "business_definition": "产品采用的技术路线属性；V1 将其作为独立可分析属性，不强制建立产品层级。",
+    "dimension_type": "product",
+    "source_table": "dim_product",
+    "source_column": "technology_route"
+  },
+  {
+    "dimension_code": "sales_region",
+    "dimension_name": "销售区域",
+    "aliases": [
+      "销售地区",
+      "销售组织区域"
+    ],
+    "business_definition": "销售交易或销售组织所属区域，不表示客户主体所属区域。",
+    "dimension_type": "region",
+    "source_table": "dim_sales_region",
+    "source_column": "sales_region_name"
+  },
+  {
+    "dimension_code": "transaction_currency",
+    "dimension_name": "交易币种",
+    "aliases": [
+      "币种",
+      "交易货币"
+    ],
+    "business_definition": "销售事实发生时使用的交易币种；金额指标统一使用冻结的 CNY 分析金额。",
+    "dimension_type": "currency",
+    "source_table": "dim_currency",
+    "source_column": "currency_code"
+  },
+  {
+    "dimension_code": "order_no",
+    "dimension_name": "订单号",
+    "aliases": [
+      "销售订单号"
+    ],
+    "business_definition": "销售订单的业务订单号；V1 将其作为订单退化维度，不建立独立订单维度。",
+    "dimension_type": "degenerate",
+    "source_table": "fct_sales_order_line",
+    "source_column": "order_no"
+  }
+]
