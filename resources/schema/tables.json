@@ -1,22 +1,44 @@
 [
   {
-    "table_name": "dim_customers",
-    "description": "客户主数据表，记录客户基本属性、类型、行业、国家和所属区域。"
+    "schema_name": "mart_sales",
+    "table_name": "dim_currency",
+    "table_type": "BASE TABLE",
+    "description": null
   },
   {
-    "table_name": "dim_products",
-    "description": "产品主数据表，记录产品名称、产品线、类别、技术路线和成本字段。"
+    "schema_name": "mart_sales",
+    "table_name": "dim_customer",
+    "table_type": "BASE TABLE",
+    "description": null
   },
   {
-    "table_name": "sales_orders",
-    "description": "销售订单表，记录订单标识、客户和产品关联、销售区域、日期、状态、数量、金额及币种。"
+    "schema_name": "mart_sales",
+    "table_name": "dim_date",
+    "table_type": "BASE TABLE",
+    "description": null
   },
   {
-    "table_name": "exchange_rates",
-    "description": "汇率表，记录汇率日期、币种及兑人民币汇率。"
+    "schema_name": "mart_sales",
+    "table_name": "dim_product",
+    "table_type": "BASE TABLE",
+    "description": null
   },
   {
-    "table_name": "finance_expenses",
-    "description": "期间费用表，记录按日期和部门划分的研发、销售、管理、财务、市场、物流和质保等费用。"
+    "schema_name": "mart_sales",
+    "table_name": "dim_sales_region",
+    "table_type": "BASE TABLE",
+    "description": null
+  },
+  {
+    "schema_name": "mart_sales",
+    "table_name": "fct_exchange_rate_daily",
+    "table_type": "BASE TABLE",
+    "description": null
+  },
+  {
+    "schema_name": "mart_sales",
+    "table_name": "fct_sales_order_line",
+    "table_type": "BASE TABLE",
+    "description": null
   }
 ]

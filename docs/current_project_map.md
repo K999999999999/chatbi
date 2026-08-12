@@ -1,14 +1,14 @@
 # Current Project Specification Map（当前项目规格地图）
 
-> 审计日期：2026-08-12
+> 审计日期：2026-08-13
 >
 > 审计范围：`E:/Kaifa/project 2026/chatbi-engine`
 >
-> 本文描述 Current State（当前真实状态），不是 Target Architecture（目标架构）；本轮 Foundation Cleanup（基础规范化）后仍以实际代码、资源和验证结果为准。
+> 本文描述 Current State（当前真实状态），不是 Target Architecture（目标架构）；本轮 Repository Cleanup（仓库整理）与 Sales Mart Metadata Rebuild（销售数据集市元数据重建）后仍以实际代码、资源和验证结果为准。
 
 ## 1. Project Overview（项目概览）
 
-ChatBI 当前是一个以 Course Baseline V1（课程基线 V1）、Sales Mart V1（销售数据集市第一版）及其可重复 Demo Data（演示数据）、Schema/Metric Catalog（结构/指标目录）、本地 BGE-M3 Embedding（向量模型）和 Qdrant 离线索引为主的项目。
+ChatBI 当前是一个以 Course Baseline V1（课程基线 V1，旧基线）、当前 Sales Mart V1（销售数据集市第一版）及其可重复 Demo Data（演示数据）、Schema/Metric Catalog（结构/指标目录）、本地 BGE-M3 Embedding（向量模型）和 Qdrant 离线索引为主的项目。当前 `resources/schema/` 的结构 Metadata（元数据）指向 PostgreSQL `mart_sales`；Course Baseline Metadata（课程基线元数据）已属于 Superseded/Legacy（替代/遗留）资产。
 
 当前仓库没有发现 HTTP/API（接口）、UI（用户界面）、Application（应用层）、Domain（领域层）、LLM Client（大语言模型客户端）、SQL Generator（SQL 生成器）或 SQL Guard（SQL 安全防护）实现。现有运行入口主要是数据库初始化/生成/校验、Schema/Metric Offline Indexing（离线索引）和 TypeSpec Contract（接口类型规范契约）编译。
 
@@ -73,11 +73,12 @@ chatbi-engine/
 │   ├── schema/
 │   │   ├── tables.json                    表目录
 │   │   ├── columns.json                   字段目录
-│   │   ├── relationships.json             关系目录
-│   │   └── course_schema.txt              可读 Schema 文本
+│   │   └── relationships.json             PostgreSQL mart_sales 物理关系目录
 │   └── semantic/sales/
 │       └── metrics.json                   销售指标目录
 ├── scripts/                               数据库/加载器/索引验证脚本
+│   ├── metadata/
+│   │   └── export_schema.py                mart_sales 结构元数据导出
 │   ├── course_baseline/
 │   │   ├── init_database.py                Course Baseline 初始化/验证
 │   │   ├── generate_demo_data.py           Course Baseline 大数据生成
@@ -91,6 +92,8 @@ chatbi-engine/
 │       ├── build_metric_index.py           Metric 离线索引构建
 │       └── test_bge_m3.py                  BGE-M3 模型冒烟测试
 ├── tests/
+│   ├── metadata/
+│   │   └── test_schema_metadata.py         PostgreSQL 结构元数据测试
 │   └── sales_mart/
 │       ├── test_schema.py                  Sales Mart Schema 测试
 │       └── test_seed.py                    Demo Data Seed 测试
@@ -150,7 +153,9 @@ chatbi-engine/
 | `scripts/course_baseline/init_database.py` | Offline/Database CLI（离线数据库命令行） | 使用 migrator 配置创建 `chatbi_mvp`、执行课程 SQL、读取元数据、输出行数/约束/5 类课程验证。可能执行建库、建表和写入。 |
 | `tests/sales_mart/test_schema.py` | Database Test（数据库测试） | 重复执行 Sales Mart DDL，验证 7 张表、PK/FK、SCD2、Completed 完整性、状态/汇率/粒度约束；测试业务行全部事务回滚。 |
 | `scripts/course_baseline/generate_demo_data.py` | Offline/Data Generation（离线数据生成） | 使用 seed、日期和数量参数生成确定性大数据；只允许目标数据库 `chatbi_mvp`，对 5 张表执行清空、批量写入、质量和业务场景校验。 |
-| `scripts/course_baseline/generate_schema.py` | Offline/Metadata Generation（离线元数据生成） | 使用 `chatbi_app` 从 PostgreSQL 元数据读取表、字段、PK/FK/UNIQUE，生成 `course_schema.txt`、`tables.json`、`columns.json`、`relationships.json`。 |
+| `scripts/metadata/export_schema.py` | Offline/Metadata Export（离线元数据导出） | 一次只读连接扫描 PostgreSQL `mart_sales`，构造 Canonical Schema Model（统一结构模型），再投影当前 7 张表的 `tables.json`、`columns.json`、物理 `relationships.json`。 |
+| `tests/metadata/test_schema_metadata.py` | Metadata Test（元数据测试） | 直接读取 PostgreSQL 系统元数据核对当前三份 JSON 的表、字段、类型、可空性、PK/UNIQUE/FK、角色日期 FK、SCD2 物理对象和重复导出稳定性。 |
+| `scripts/course_baseline/generate_schema.py` | Legacy Offline/Metadata Generation（遗留离线元数据生成） | 仅属于旧 Course Baseline；仍保留原代码，不作为当前 Sales Mart Metadata 的生成器，也不作为当前 `resources/schema/` 事实源。 |
 
 ### 4.3 检索源码与索引脚本
 
@@ -173,11 +178,13 @@ chatbi-engine/
 | 入口 | 调用链 | 当前性质 |
 |---|---|---|
 | `scripts/course_baseline/init_database.py` | `.env` → psycopg → `chatbi_mvp` → 课程建表/小数据/验证 | 离线数据库维护入口 |
+| `scripts/metadata/export_schema.py` | `.env` → 一次 psycopg 只读连接 → `mart_sales` 系统元数据 → Canonical Schema Model → 三份 JSON | 当前 Sales Mart Schema Metadata 导出入口 |
+| `tests/metadata/test_schema_metadata.py` | PostgreSQL 只读元数据核对 → 三份 JSON、约束、稳定性 | 当前 Sales Mart Schema Metadata 验证入口 |
 | `tests/sales_mart/test_schema.py` | `.env` → psycopg → `mart_sales` DDL → 15 项 PostgreSQL Schema Test（结构测试） | Sales Mart V1 Schema 验证入口 |
 | `scripts/sales_mart/seed.py` | 参数/`.env` → 确定性生成 → `mart_sales` Transaction（事务）→ 业务验证/指标报告 | Sales Mart V1 Demo Data 入口 |
 | `tests/sales_mart/test_seed.py` | 纯生成测试 + PostgreSQL reset/reseed 集成测试 | Demo Data 回归入口 |
 | `scripts/course_baseline/generate_demo_data.py` | 参数/`.env` → psycopg → 5 表清空与批量写入 → 质量/场景检查 | 离线数据生成入口 |
-| `scripts/course_baseline/generate_schema.py` | PostgreSQL 元数据 → Schema 文本/JSON 目录 | 离线结构生成入口 |
+| `scripts/course_baseline/generate_schema.py` | 旧 Course Baseline PostgreSQL 元数据 → 旧 Schema 文本/JSON 目录 | 遗留结构生成入口，不参与当前 Sales Mart Metadata |
 | `scripts/course_baseline/validate_schema_loaders.py` | JSON → Table/Column Loader → Document 数量/样例 | 离线测试入口 |
 | `scripts/retrieval/test_bge_m3.py` | 本地模型目录 → FlagEmbedding → Dense/Sparse 检查 | 离线模型测试入口 |
 | `scripts/retrieval/build_schema_index.py` | Schema Loader → BGE-M3 → Qdrant → smoke query（冒烟查询） | 离线索引入口 |
@@ -204,7 +211,7 @@ chatbi-engine/
 
 | 服务 | 容器名 | 镜像 | 端口 | 持久化 | 当前状态 |
 |---|---|---|---|---|---|
-| PostgreSQL | `chatbi-engine-postgres` | `postgres:16-alpine` | 宿主 `5433` → 容器 `5432` | `./data/postgres` | Schema 生成器使用 `chatbi_app` 验证通过；Docker 容器进程状态未通过 Docker API 确认 |
+| PostgreSQL | `chatbi-engine-postgres` | `postgres:16-alpine` | 宿主 `5433` → 容器 `5432` | `./data/postgres` | 旧 Course Baseline 生成器使用 `chatbi_app`；当前 Sales Mart Metadata Exporter 使用本地 `.env` 的只读元数据查询配置；Docker 容器进程状态未通过 Docker API 确认 |
 | Qdrant | `chatbi-engine-qdrant` | `qdrant/qdrant` | `6333` REST、`6334` gRPC | `./data/qdrant` | `/healthz`、Schema/Metric 索引和重复构建验证通过；Docker 容器进程状态未通过 Docker API 确认 |
 
 ### Environment（环境变量）
@@ -326,12 +333,15 @@ RAG_CONTEXT_MAX_CHARACTERS
 
 ### Schema Metadata（结构元数据）
 
-- `resources/schema/course_schema.txt`：可读表/字段/约束文本。
-- `resources/schema/tables.json`：5 个表对象。
-- `resources/schema/columns.json`：40 个字段对象。
-- `resources/schema/relationships.json`：保存 `schema_version=1`、PK、UNIQUE、FK 和单独的 `semantic_relationships`；物理部分来自 PostgreSQL 元数据，人工语义部分由资源文件维护并由生成器保留。
+- 当前物理结构事实源是 PostgreSQL `mart_sales`，不是 DOMAIN_SPEC（领域规格）、ANALYTICAL_MODEL（分析模型）或旧 Course Baseline 资源。
+- `resources/schema/tables.json`：从 PostgreSQL COMMENT（注释）和表目录导出的 7 个 `mart_sales` 表对象。
+- `resources/schema/columns.json`：从 PostgreSQL 实际字段元数据导出的 69 个字段对象，保留真实 `data_type`、可空性、默认值和字段注释。
+- `resources/schema/relationships.json`：`schema_version=1` 的物理关系目录，包含 7 个 PK、7 个 UNIQUE、9 个 FK 和 2 个独立唯一索引；不包含 `semantic_relationships`。
+- `scripts/metadata/export_schema.py`：一次 PostgreSQL 只读连接 → Canonical Schema Model（统一结构模型）→ 三份 JSON 投影；只执行元数据 `SELECT`。
+- `tests/metadata/test_schema_metadata.py`：对 PostgreSQL 实际结构、当前三份 JSON 和重复导出内容哈希执行确定性验证。
+- `resources/schema/course_schema.txt`：已从活动资源中删除；它属于旧 Course Baseline，可由遗留生成器重新产生，但不是当前 Sales Mart Metadata。
 
-`scripts/course_baseline/generate_schema.py` 会校验物理约束与当前 PostgreSQL 元数据一致，并拒绝缺少或格式错误的人工语义关系；`scripts/course_baseline/validate_schema_relationships.py` 提供不依赖数据库的确定性事实校验。
+`scripts/course_baseline/generate_schema.py` 与 `scripts/course_baseline/validate_schema_relationships.py` 仍只服务旧 Course Baseline；本次没有修改它们，也没有让它们生成当前 Sales Mart Metadata。
 
 ## 9. AI / LLM Assets（AI/大模型资产）
 
@@ -343,24 +353,22 @@ RAG_CONTEXT_MAX_CHARACTERS
 
 ## 10. Semantic & RAG Assets（语义与检索增强资产）
 
-当前存在三类离线目录和索引：
+当前存在 Sales Mart 物理 Metadata（结构元数据）和既有离线目录/索引；本次只重建前者，没有重建 Retrieval（检索）、BGE-M3 或 Qdrant：
 
 ```text
-resources/schema/tables.json
-resources/schema/columns.json
+PostgreSQL mart_sales
+        ↓
+scripts/metadata/export_schema.py
+        ↓
+tables.json / columns.json / relationships.json
+
+既有 Retrieval Loader / BGE-M3 / Qdrant 资产（本次未重建）
 resources/semantic/sales/metrics.json
-        ↓
-Loader → LangChain Document
-        ↓
-BGE_M3Encoder
-        ↓
-QdrantStore / SchemaIndexer
-        ↓
-schema_tables / schema_columns / metric_catalog
 ```
 
 - `metrics.json` 明确是 5 个销售指标的机器可读指标目录；`MetricLoader` 把每条指标转换为一个 Document。
-- `relationships.json` 是关系资源，但当前没有 Loader、Graph Builder（关系图构建器）或 Join Resolver（关联解析器）。
+- 当前 `relationships.json` 只记录 PostgreSQL Physical Relationship Catalog（物理关系目录），没有 `semantic_relationships`；当前没有 Loader、Graph Builder（关系图构建器）或 Join Resolver（关联解析器）。
+- 既有 `table_loader.py` / `column_loader.py` 和 Qdrant 持久化索引没有随本次 Metadata 重建；旧 Loader 对 `description` 的非空字符串契约与当前 PostgreSQL 无 COMMENT 时导出的 `null` 仍需后续单独设计。
 - Qdrant 适配器支持 named Dense/Sparse vectors（命名稠密/稀疏向量）；Schema 索引使用 UUID5 确定性 Point ID。
 - `data/qdrant/collections/` 存在 `schema_tables`、`schema_columns`、`metric_catalog` 三个持久化目录；本次通过服务验证 Point 数量分别为 5、40、5，并验证重复构建。
 - 没有 Hybrid Search（混合检索）、RRF（倒数排名融合）、Reranker（重排器）、在线 Retriever（检索器）或 LangChain Qdrant 集成。
@@ -450,7 +458,7 @@ TypeSpec 是正式 API Contract Source of Truth（接口契约事实源），Ope
 
 ## 14. Tests & Evaluation（测试与评估）
 
-当前存在 `tests/sales_mart/` 目录，但未发现统一测试框架配置或持续集成测试；其中包含 Sales Mart Schema Test（数据集市结构测试）和 Demo Data Seed Test（演示数据种子测试）脚本。
+当前存在 `tests/metadata/` 和 `tests/sales_mart/` 目录，但未发现统一测试框架配置或持续集成测试；前者包含当前 Sales Mart Schema Metadata Test（结构元数据测试），后者包含 Sales Mart Schema Test（数据集市结构测试）和 Demo Data Seed Test（演示数据种子测试）。
 
 当前实际验证资产：
 
@@ -460,6 +468,7 @@ TypeSpec 是正式 API Contract Source of Truth（接口契约事实源），Ope
 | `004_validate_large_data.sql` | 大数据质量、年度/季度/区域/费用场景 | Business Acceptance（业务验收脚本） |
 | `scripts/course_baseline/init_database.py` | 建库后行数、PK/FK/UNIQUE、课程 SQL | Integration-like CLI（集成式命令行校验） |
 | `tests/sales_mart/test_schema.py` | `mart_sales` 7 表、PK/FK、SCD2、事实约束和成功写入；测试业务行回滚 | Database Schema Test（数据库结构测试） |
+| `tests/metadata/test_schema_metadata.py` | PostgreSQL `mart_sales` 7 表、69 字段、真实类型/可空性、PK/UNIQUE/FK、角色日期 FK、SCD2 物理对象和重复导出哈希 | Schema Metadata Test（结构元数据测试） |
 | `tests/sales_mart/test_seed.py` | 固定 seed、规模、SCD2、状态、reset/reseed、指标与 public 边界；留下最后一次有效 Demo Data | Database Seed Test（数据库种子测试） |
 | `scripts/course_baseline/validate_schema_loaders.py` | 5 个表 Document、40 个字段 Document | Loader Smoke Test（加载器冒烟测试） |
 | `scripts/retrieval/test_bge_m3.py` | 本地模型、Dense、Sparse | Embedding Smoke Test（向量冒烟测试） |
@@ -475,7 +484,7 @@ TypeSpec 是正式 API Contract Source of Truth（接口契约事实源），Ope
 - 没有 Dockerfile、Kubernetes、Helm、CI/CD 或部署脚本。
 - `data/postgres/` 是 PostgreSQL 数据目录，存在 `PG_VERSION`、`postmaster.pid` 等 PGDATA 文件；文件存在不能证明服务当前运行。
 - `data/qdrant/` 有 Qdrant 持久化结构和三个 Collection 目录。
-- 本轮 Qdrant `/healthz`、Schema/Metric 重复索引构建和 PostgreSQL Schema 生成均已通过验证。
+- 本轮 Schema Metadata 导出与重复内容哈希、Sales Mart Metadata Test 已通过；没有重建或修改 Qdrant、BGE-M3 或 Retrieval 索引。
 - Docker 容器生命周期状态未独立审计；不能仅凭持久化目录判断容器当前运行状态。
 
 ## 16. Documentation Map（文档地图）
@@ -506,15 +515,15 @@ TypeSpec 是正式 API Contract Source of Truth（接口契约事实源），Ope
 |---|---|---|---|
 | Course Baseline PostgreSQL | Exists | `database/course_baseline/`、`scripts/course_baseline/init_database.py` | 五表 SQL、生成器、校验脚本存在；Schema 元数据生成已验证，当前行数未作为本轮事实。 |
 | Sales Mart V1 PostgreSQL | Exists | `database/sales_mart/001_create_schema.sql`、`scripts/sales_mart/seed.py`、`tests/sales_mart/test_schema.py` | `mart_sales` 七表、SCD2、销售事实约束和必要索引已实现；15 项结构测试通过，Demo Data 已按 seed=42 加载并通过业务校验。 |
-| Schema Catalog | Exists | `resources/schema/*`、`scripts/course_baseline/generate_schema.py` | 表、字段、可读 Schema 和关系资源存在。 |
+| Schema Catalog | Exists | `resources/schema/{tables,columns,relationships}.json`、`scripts/metadata/export_schema.py` | 当前三份资源是 PostgreSQL `mart_sales` 的 7 表/69 字段/物理约束投影；Course Baseline Metadata 已是遗留资产。 |
 | Metric Catalog | Exists | `resources/semantic/sales/metrics.json`、`metric_loader.py` | 5 个指标和 Loader 存在。 |
-| Table/Column Loader | Exists | `table_loader.py`、`column_loader.py` | Document 加载契约和 5/40 数量校验存在。 |
+| Table/Column Loader | Partial | `table_loader.py`、`column_loader.py` | 旧 Document 加载契约和 5/40 数量校验存在；当前 Metadata 已切换为 `mart_sales`，且无 COMMENT 时描述为 `null`，本次未修改或重建 Loader。 |
 | BGE-M3 本地 Embedding | Exists | `models/bge-m3/`、`bge_m3.py` | 本地模型资产和 Dense/Sparse 适配器存在；本次未重新推理。 |
 | Qdrant 离线索引 | Exists | `qdrant_store.py`、`schema_indexer.py`、`data/qdrant/` | 三个 Collection、Point 数量、向量查询和重复构建已验证。 |
 | Offline Indexing | Exists | `scripts/retrieval/build_schema_index.py`、`scripts/retrieval/build_metric_index.py` | Schema/Metric 离线写入和校验入口存在。 |
 | Table Retrieval | Partial | `QdrantStore.query_dense/query_sparse` | 底层查询原语存在；没有 query-facing Retriever 和结果契约。 |
 | Metric Retrieval | Partial | `metric_catalog` 构建脚本 | 指标索引存在；在线指标检索不存在。 |
-| Schema Linking | Partial | Schema 资源/索引、`relationships.json` | 目录和索引基础存在；没有 Anchor、字段匹配、图搜索或 Join Resolver。 |
+| Schema Linking | Partial | Schema 资源/索引、`relationships.json` | 当前物理目录存在；没有 Anchor、字段匹配、图搜索或 Join Resolver；Retrieval 资源未在本次重建。 |
 | Natural Language Query | Architecture Only（仅有架构） | `docs/Technical Design/Natural Language Query/ARCHITECTURE.md` | 功能架构存在；没有用户问题入口和查询编排。 |
 | SQL Generation | Not Found | 未发现 | 没有 LLM Client、Prompt Builder 或 SQL Generator。 |
 | SQL AST Validation | Not Found | 未发现 | 没有 SQL AST（抽象语法树）校验模块。 |
@@ -540,7 +549,7 @@ TypeSpec 是正式 API Contract Source of Truth（接口契约事实源），Ope
 - 指标机器目录：`resources/semantic/sales/metrics.json`；`MetricLoader` 将其作为唯一输入并校验结构。
 - 课程基线物理数据库结构：`database/course_baseline/001_create_tables.sql` 与 PostgreSQL 实际元数据读取逻辑共同出现。
 - Sales Mart V1 物理数据库结构：`database/sales_mart/001_create_schema.sql`；`tests/sales_mart/test_schema.py` 是其可重复数据库结构验证入口。
-- Schema 目录：`resources/schema/*`；表、字段和物理约束由 PostgreSQL 元数据生成，`relationships.json` 的语义关系区由人工事实维护。
+- Schema Metadata（结构元数据）目录：`resources/schema/tables.json`、`columns.json`、`relationships.json`；三份资源由 `scripts/metadata/export_schema.py` 从 PostgreSQL `mart_sales` 一次提取、多份投影，`relationships.json` 只保存物理约束和独立唯一索引。
 - 系统架构：`docs/Technical Design/ARCHITECTURE.md`。
 - 架构决策：`docs/Technical Design/ARCHITECTURE_DECISIONS.md`。
 - 工程方法：`docs/Technical Design/ENGINEERING.md`。
@@ -556,10 +565,9 @@ TypeSpec 是正式 API Contract Source of Truth（接口契约事实源），Ope
 
 已发现的派生或运行时产物：
 
-- `resources/schema/course_schema.txt`
 - `resources/schema/tables.json`
 - `resources/schema/columns.json`
-- `resources/schema/relationships.json`（物理约束由 PostgreSQL 生成；`semantic_relationships` 由资源文件维护并由生成器保留）
+- `resources/schema/relationships.json`（PostgreSQL `mart_sales` 物理约束；不包含 `semantic_relationships`）
 - `docs/Technical Design/Platform Integration/generated/openapi.2026-08-12.yaml`
 - `data/qdrant/collections/*` 向量索引持久化目录
 - `scripts/**/__pycache__/`、`tests/**/__pycache__/`、`src/**/__pycache__/`
@@ -570,19 +578,19 @@ TypeSpec 是正式 API Contract Source of Truth（接口契约事实源），Ope
 
 ## 20. Uncertainties（未确认项）
 
-1. Docker 容器生命周期状态未独立确认；本轮 Qdrant `/healthz`、重复索引构建和 PostgreSQL Schema 生成验证通过。
+1. Docker 容器生命周期状态未独立确认；本轮只对 PostgreSQL `mart_sales` Schema Metadata 执行了只读导出与验证，没有重建 Qdrant 或 Retrieval 索引。
 2. 当前 `data/postgres` 中存在 PGDATA 和 `postmaster.pid`，但不能据此判断 PostgreSQL 进程正在运行。
 3. `chatbi_app` Schema 生成连接和只读权限静态检查已通过；实际业务行数和容器生命周期状态未作为独立审计对象。
 4. Qdrant 三个 Collection 的 Point 数量和代表性向量查询已验证；完整服务端配置和持久化一致性未独立审计。
 5. `uv.lock` 已锁定 117 个包，`.venv` 已由 `uv sync` 安装；锁定解析依赖网络源，具体供应商包版本随锁文件固定。
 6. `.env` 中的 `LLM_*`、`RAG_*`、Qdrant API Key 等配置名存在，但没有对应代码消费者的确认依据。
-7. `resources/schema/relationships.json` 已明确区分 PostgreSQL 物理约束与人工语义关系；当前没有在线 Relationship Graph（关系图）或 Join Resolver（连接解析器）实现。
+7. 当前 `resources/schema/relationships.json` 只包含 PostgreSQL `mart_sales` 物理 PK/UNIQUE/FK 和独立唯一索引；没有在线 Relationship Graph（关系图）或 Join Resolver（连接解析器）实现。旧 Retrieval Loader 与新 `description=null` 约定的兼容性留待后续单独设计。
 8. TypeSpec/OpenAPI 生成物存在 Model Terminal Event payload 的已记录保真度限制；下游是否依赖完整的 Terminal Event Schema 未确认。
 9. `.jbeval/datasets/` 为空，未发现可复现的 Retrieval/SQL/LLM Evaluation Dataset（评估数据集）。
 
 ## Audit Summary（审计总结）
 
 - 当前项目主要由 Course Baseline 与 Sales Mart V1 PostgreSQL 脚本、Schema/Metric 资源、本地 BGE-M3 + Qdrant 离线索引、TypeSpec/OpenAPI 平台契约和说明文档组成。
-- 当前已经具备课程数据库基线初始化/生成/校验、Sales Mart V1 七表结构测试、只读权限脚本、Schema/Metric Document Loader、Dense/Sparse 离线向量索引、Qdrant 持久化目录和 OpenAPI 3.2 契约生成能力。
+- 当前已经具备课程数据库基线初始化/生成/校验、Sales Mart V1 七表结构测试、Sales Mart 当前 Schema Metadata 导出/验证、只读权限脚本、既有 Schema/Metric Document Loader、Dense/Sparse 离线向量索引、Qdrant 持久化目录和 OpenAPI 3.2 契约生成能力；本次没有重建后四项 Retrieval/Embedding 资产。
 - 当前明显缺少在线 API、用户问题入口、在线 Table/Column/Metric Retrieval、Schema Linking、Join Resolver、LLM 调用、SQL 生成、SQL Guard、在线只读执行、结果格式化、标准测试/评估、CI/CD 和完整部署体系。
-- 无法确认的重点是容器/数据库/Qdrant 当前运行状态与实际数据、Python 依赖的真实安装来源、关系目录的权威格式、部分文档路径一致性以及下游是否依赖完整 Terminal Event Schema。
+- 无法确认的重点是容器/数据库/Qdrant 当前运行状态与实际数据、Python 依赖的真实安装来源、旧 Retrieval Loader 对当前 Metadata Contract 的后续适配方式、部分文档路径一致性以及下游是否依赖完整 Terminal Event Schema。
