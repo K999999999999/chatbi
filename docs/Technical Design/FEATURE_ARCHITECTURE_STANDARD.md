@@ -1,51 +1,41 @@
-# ChatBI Feature Architecture Standard（功能架构设计标准）
+# ChatBI Feature Architecture Standard
 
-> **Status（状态）**：Engineering Baseline（工程基线）  
-> **Scope（范围）**：ChatBI 所有 Feature（功能）的功能架构设计  
-> **Engineering Reference（工程依据）**：`ENGINEERING.md`  
-> **System Architecture Reference（系统架构依据）**：`ARCHITECTURE.md`  
-> **Module Standard Reference（模块标准依据）**：`MODULE_CONTRACT_STANDARD.md`
+# ChatBI 功能架构设计标准
 
----
+> **Status（状态）：** Engineering Baseline（工程基线）
+> **Scope（范围）：** ChatBI 所有 Feature（功能）的 Feature Architecture（功能架构）设计
+> **Engineering Reference（工程依据）：** `ENGINEERING.md`
+> **System Architecture Reference（系统架构依据）：** `ARCHITECTURE.md`
+> **Feature Spec Standard Reference（功能规格标准依据）：** `FEATURE_SPEC_STANDARD.md`
+> **Module Standard Reference（模块标准依据）：** `MODULE_CONTRACT_STANDARD.md`
 
 # 1. Purpose（目的）
 
-本文档定义 ChatBI 的统一 Feature Architecture Standard（功能架构设计标准）。
+本文档定义 ChatBI 统一的 Feature Architecture Standard（功能架构设计标准）。
 
-回答：
+Feature Architecture（功能架构）回答：
 
-> 一个 Feature（功能）在进入 Feature Spec（功能规格）和 Module Spec（模块规格）之前，应该设计到什么程度？
+> **一个 Feature（功能）由什么组成，以及这些部分如何协作。**
 
-Feature Architecture 的目标是建立：
+目标是形成 Feature（功能）的稳定结构地图，使后续：
 
-> **Feature 的完整结构地图。**
+- Feature Spec（功能规格）；
+- Module Spec（模块规格）；
+- Test / Evaluation（测试 / 评估）；
+- Implementation（实现）
 
-使开发者能够明确：
+能够在明确边界下继续展开。
 
-- Feature 为什么存在
-- Feature 从哪里开始、在哪里结束
-- Feature 由哪些主要 Module（模块）组成
-- 每个 Module 负责什么
-- Module 之间如何协作
-- Feature 的主要运行链路是什么
-- Feature 依赖哪些外部能力
-- 哪些内容明确不属于当前 Feature
+核心原则：
 
-原则：
-
-> **Feature Architecture defines the structure of a feature, not the implementation of its modules.**
-
-即：
-
-> **功能架构定义功能结构，不定义模块实现。**
-
----
+> **Architecture defines structure, not implementation.**
+> **架构定义结构，不定义实现。**
 
 # 2. Design Position（设计位置）
 
-ChatBI 的设计层级为：
+ChatBI 设计层级：
 
-```text
+```
 Product Requirement
 （产品需求）
         ↓
@@ -74,85 +64,445 @@ Implementation
 （实现）
 ```
 
-Feature Architecture 位于：
+Feature Architecture（功能架构）位于：
 
-> **系统架构与详细功能规格之间。**
+> **System Architecture（系统架构）之后，Feature Spec（功能规格）和 Module Spec（模块规格）之前。**
 
-它负责把 System Capability（系统能力）进一步拆解为可以协作的 Feature Modules（功能模块）。
+它负责把系统级 Capability（能力）拆解为：
 
----
+> **职责清晰、可以协作的 Feature Module（功能模块）。**
 
-# 3. Core Question（核心问题）
+# 3. Required Architecture Content（必须定义的架构内容）
 
-Feature Architecture 必须能够回答：
+每个正式 Feature Architecture（功能架构）必须至少定义以下七项。
 
-```text
-这个 Feature 为什么存在？
-        ↓
-它负责什么？
-        ↓
-它从哪里开始？
-        ↓
-它到哪里结束？
-        ↓
-需要哪些主要 Module？
-        ↓
-每个 Module 负责什么？
-        ↓
-Module 怎么协作？
-        ↓
-依赖哪些外部能力？
+```
+1. Feature Responsibility
+   （功能职责）
+
+2. Feature Boundary
+   （功能边界）
+
+3. Module Map
+   （模块地图）
+
+4. Module Responsibility
+   （模块职责）
+
+5. Major Input / Output
+   （主要输入 / 输出）
+
+6. Module Collaboration
+   （模块协作）
+
+7. External Capability Boundary
+   （外部能力边界）
 ```
 
-Feature Architecture 不回答：
+如果这七项无法明确：
 
-```text
-具体字段是什么？
-类型是什么？
-Class 怎么写？
-Function 怎么写？
-Prompt 怎么写？
-算法怎么实现？
-SDK 怎么调用？
+> Feature Architecture（功能架构）不得进入 Freeze（冻结）。
+
+# 4. Feature Responsibility（功能职责）
+
+必须明确：
+
+- Feature（功能）解决什么业务问题；
+- Feature（功能）提供什么核心业务能力；
+- Feature（功能）最终产生什么类型的业务结果；
+- Feature（功能）明确不负责什么。
+
+原则：
+
+> **One Feature owns one coherent business capability.**
+> **一个 Feature（功能）承担一组完整且高度相关的业务能力。**
+
+不得因为技术实现方便，把其他 Feature（功能）的职责合并进来。
+
+# 5. Feature Boundary（功能边界）
+
+Feature Boundary（功能边界）必须明确：
+
+### Entry Boundary（入口边界）
+
+Feature（功能）从什么概念级输入开始。
+
+### Exit Boundary（出口边界）
+
+Feature（功能）最终产生什么类型的结果。
+
+### Out of Scope（范围外）
+
+哪些能力明确不属于当前 Feature（功能）。
+
+Feature Architecture（功能架构）只定义：
+
+> **边界和概念级结果。**
+
+不定义具体：
+
+- API Field（接口字段）；
+- Typed Schema（类型化结构）；
+- HTTP Status（超文本传输协议状态码）；
+- UI Model（界面模型）。
+
+# 6. Module Map（模块地图）
+
+Feature Architecture（功能架构）必须识别完成该 Feature（功能）所需要的主要 Logical Module（逻辑模块）。
+
+Module（模块）首先是：
+
+> **Responsibility Boundary（职责边界）。**
+
+不是：
+
+- Python Package（Python 包）；
+- File（文件）；
+- Class（类）；
+- Function（函数）；
+- Service Instance（服务实例）。
+
+模块拆分原则：
+
+> **Split by responsibility, not by code size.**
+> **按职责拆模块，不按代码长度拆模块。**
+
+只有存在独立责任时才建立 Module（模块）。
+
+不得因为：
+
+> “以后可能有用”
+
+提前增加 Module（模块）。
+
+# 7. Module Responsibility（模块职责）
+
+Feature Architecture（功能架构）中，每个 Module（模块）只需要定义：
+
+```
+Module Name
+（模块名称）
+
+Responsibility
+（职责）
+
+Major Input
+（主要输入）
+
+Major Output
+（主要输出）
 ```
 
----
+必要时增加：
 
-# 4. Standard Feature Architecture（标准功能架构）
+```
+Not Responsible For
+（明确不负责）
+```
 
-每个 Feature Architecture 至少定义以下七部分：
+此阶段不定义：
 
-```text
+- Typed Schema（类型化结构）；
+- Required / Optional Field（必需 / 可选字段）；
+- Preconditions（前置条件）；
+- Failure Contract（失败契约）；
+- Validation Rule（校验规则）；
+- Test Case（测试用例）。
+
+这些属于 Module Spec（模块规格）。
+
+# 8. Major Input / Output（主要输入 / 输出）
+
+Feature Architecture（功能架构）描述 Module（模块）之间传递的：
+
+> **Conceptual Data Object（概念数据对象）。**
+
+例如：
+
+```
+Semantic Query Intent
+（语义查询意图）
+
+Resolved Schema Context
+（已解析结构上下文）
+
+Resolved Metric Context
+（已解析指标上下文）
+
+Generation Context
+（生成上下文）
+
+Candidate SQL
+（候选 SQL）
+
+Query Result
+（查询结果）
+```
+
+此阶段回答：
+
+> **传递什么信息。**
+
+不回答：
+
+> **对象内部有哪些具体字段。**
+
+原则：
+
+> **Architecture defines information flow; contracts define data shape.**
+> **架构定义信息流，契约定义数据结构。**
+
+# 9. Module Collaboration（模块协作）
+
+Feature Architecture（功能架构）必须明确主要 Module（模块）之间：
+
+- Processing Order（处理顺序）；
+- Dependency Order（依赖顺序）；
+- Branch（分支）；
+- Merge（汇合）；
+- Logical Parallelism（逻辑并行）；
+- 主要信息传递；
+- 禁止的直接依赖。
+
+模块之间必须通过：
+
+> **Explicit Information Boundary（明确的信息边界）**
+
+协作。
+
+禁止依赖：
+
+- Hidden Global State（隐藏全局状态）；
+- Implicit Shared State（隐式共享状态）；
+- 未声明的数据；
+- 其他 Module（模块）的内部实现细节。
+
+# 10. Main Processing Flow（主要处理链路）
+
+每个复杂 Feature（功能）应提供一条主要处理链路。
+
+例如概念上：
+
+```
+Input
+（输入）
+   ↓
+Module A
+（模块 A）
+   ↓
+Module B
+（模块 B）
+   ↓
+Module C
+（模块 C）
+   ↓
+Result
+（结果）
+```
+
+如果存在逻辑并行：
+
+```
+             ┌→ Module B（模块 B）
+Module A ────┤
+             └→ Module C（模块 C）
+                    ↓
+                  Merge
+                 （汇合）
+```
+
+Feature Architecture（功能架构）表达的是：
+
+> **逻辑协作关系。**
+
+不承诺具体：
+
+- Thread（线程）；
+- Process（进程）；
+- Async Task（异步任务）；
+- LangGraph Node（LangGraph 节点）。
+
+# 11. External Capability Boundary（外部能力边界）
+
+Feature Architecture（功能架构）必须声明需要哪些 External Capability（外部能力）。
+
+例如：
+
+- Model Capability（模型能力）；
+- Semantic Retrieval Capability（语义检索能力）；
+- Database Query Capability（数据库查询能力）；
+- Authorization Capability（权限能力）；
+- State Capability（状态能力）；
+- Semantic Resource Capability（语义资源能力）。
+
+Feature Architecture（功能架构）优先依赖：
+
+> **Capability（能力）**
+
+而不是：
+
+> **Vendor / Framework（供应商 / 框架）。**
+
+例如应写：
+
+```
+Semantic Retrieval Capability
+（语义检索能力）
+```
+
+而不是直接要求：
+
+```
+Qdrant
+BGE-M3
+```
+
+原则：
+
+> **Depend on capability before choosing implementation.**
+> **先确定需要什么能力，再决定如何实现。**
+
+# 12. Optional Architecture Content（可选架构内容）
+
+只有确实影响 Feature Structure（功能结构）时，才增加以下内容。
+
+### Branch / Merge（分支 / 汇合）
+
+存在重要业务分支或结果汇合时定义。
+
+### Online / Offline Boundary（在线 / 离线边界）
+
+Feature（功能）同时存在 Online Runtime（在线运行）与 Offline Preparation（离线准备）时定义。
+
+必须区分：
+
+- Source of Truth（事实源）；
+- Derived Asset（派生资产）。
+
+### Cross-Cutting Constraints（横切约束）
+
+只有直接影响 Feature Structure（功能结构）时才记录：
+
+- Authorization（权限）；
+- State（状态）；
+- Security（安全）；
+- Evidence（证据）；
+- Observability（可观测）；
+- Audit（审计）。
+
+不得重新定义已有系统级规则。
+
+### Failure / Clarification Boundary（失败 / 澄清边界）
+
+只定义主要责任边界。
+
+不定义详细 Error Code（错误码）、Exception（异常）或 Retry（重试）。
+
+### Architecture Invariants（架构不变量）
+
+只记录少量长期必须保持的结构规则。
+
+# 13. Clarification Boundary（澄清边界）
+
+Clarification（澄清）属于：
+
+> **Feature Outcome（功能结果）。**
+
+只有：
+
+> **用户业务意图本身缺失或存在歧义**
+
+时，才允许进入 Clarification（澄清）。
+
+一旦业务意图已经完整：
+
+> 后续 Module（模块）内部的 Schema Resolution Failure（结构解析失败）、Metric Resolution Failure（指标解析失败）、Relationship Failure（关系失败）等，不得重新要求用户解决系统内部问题。
+
+原则：
+
+> **User clarifies business intent; system resolves internal structure.**
+> **用户澄清业务意图，系统解决内部结构。**
+
+# 14. Failure Boundary（失败边界）
+
+Feature Architecture（功能架构）可以识别主要 Failure Boundary（失败边界），例如：
+
+- Semantic Resolution Failure（语义解析失败）；
+- Schema Resolution Failure（结构解析失败）；
+- Metric Resolution Failure（指标解析失败）；
+- Dependency Failure（依赖失败）；
+- Execution Failure（执行失败）。
+
+但不定义：
+
+- Error Code（错误码）；
+- Exception Class（异常类）；
+- Retry Count（重试次数）；
+- HTTP Status（超文本传输协议状态码）；
+- 详细 Failure Object（失败对象）。
+
+原则：
+
+> **架构只定义失败发生在哪个职责边界，以及失败不能被当作成功继续传播。**
+
+# 15. Online / Offline Boundary（在线 / 离线边界）
+
+如果 Feature（功能）同时存在 Online Runtime（在线运行）和 Offline Preparation（离线准备），必须明确：
+
+```
+Authoritative Source
+（权威来源）
+        ↓
+Offline Preparation
+（离线准备）
+        ↓
+Derived Runtime Asset
+（派生运行资产）
+        ↓
+Online Runtime
+（在线运行）
+```
+
+必须明确：
+
+> Derived Asset（派生资产）是否只是 Source of Truth（事实源）的 Materialized Copy（物化副本）。
+
+不得让：
+
+- Vector Index（向量索引）；
+- Cache（缓存）；
+- Generated Artifact（生成产物）
+
+在架构中错误取代 Authoritative Source（权威来源）。
+
+# 16. Detail Boundary（设计深度边界）
+
+Feature Architecture（功能架构）可以定义：
+
+```
 Feature Responsibility
 （功能职责）
-        ↓
+
 Feature Boundary
 （功能边界）
-        ↓
+
 Module Map
 （模块地图）
-        ↓
+
 Module Responsibility
 （模块职责）
-        ↓
+
 Major Input / Output
 （主要输入 / 输出）
-        ↓
-Module Collaboration
-（模块协作）
-        ↓
-External Capability Boundary
-（外部能力边界）
-```
 
-必要时可以增加：
-
-```text
-Main Flow
-（主流程）
+Processing Order
+（处理顺序）
 
 Branch / Merge
 （分支 / 汇合）
+
+External Capability
+（外部能力）
 
 Online / Offline Boundary
 （在线 / 离线边界）
@@ -161,977 +511,328 @@ Cross-Cutting Constraint
 （横切约束）
 ```
 
-但不得因为增加章节而进入 Module Spec 或 Implementation 级别。
+Feature Architecture（功能架构）不得进入：
 
----
-
-# 5. Feature Responsibility（功能职责）
-
-Feature Responsibility 定义：
-
-> **这个 Feature 为什么存在。**
-
-必须明确：
-
-- Feature 解决什么业务问题
-- Feature 提供什么核心能力
-- Feature 最终产生什么类型的业务结果
-- Feature 明确不负责什么
-
-原则：
-
-> **One feature owns one coherent business capability.**
-
-即：
-
-> **一个 Feature 承担一组完整且高度相关的业务能力。**
-
-Feature 不应因为技术实现方便而承担其他 Feature 的职责。
-
----
-
-# 6. Feature Boundary（功能边界）
-
-Feature Boundary 定义：
-
-> **这个 Feature 从哪里开始，到哪里结束。**
-
-必须说明：
-
-### Entry Boundary（入口边界）
-
-Feature 接收什么概念级输入。
-
-例如只需要描述：
-
-```text
-Natural Language Query Request
 ```
-
-而不是立即定义具体字段。
-
----
-
-### Exit Boundary（出口边界）
-
-Feature 最终产生什么类型的结果。
-
-例如：
-
-```text
-Query Result
-Clarification
-Unsupported
-Failure
-```
-
-这里只定义结果类型和边界。
-
-具体 Result Schema（结果结构）由 Feature Spec / Contract 定义。
-
----
-
-### Out of Scope（不负责范围）
-
-明确哪些能力：
-
-> **不是当前 Feature 的责任。**
-
-避免 Feature Boundary 随实现不断扩张。
-
----
-
-# 7. Module Map（模块地图）
-
-Feature Architecture 必须识别完成该 Feature 所需要的主要 Module。
-
-Module Map 回答：
-
-> **这个功能由哪些主要责任单元组成？**
-
-例如概念结构：
-
-```text
-Feature
-│
-├── Module A
-├── Module B
-├── Module C
-└── Module D
-```
-
-此阶段识别的是：
-
-> **Logical Module（逻辑模块）。**
-
-不是：
-
-- Python Package
-- 文件
-- Class
-- Function
-- Service Instance
-
-原则：
-
-> **Architecture modules are responsibility boundaries before they are code boundaries.**
-
-即：
-
-> **架构中的模块首先是职责边界，然后才可能成为代码边界。**
-
----
-
-# 8. Module Identification Rule（模块识别规则）
-
-只有存在清晰独立责任时，才识别为 Module。
-
-适合作为独立 Module 的能力通常满足至少一个条件：
-
-- 拥有明确独立责任
-- 拥有独立输入与输出概念
-- 可以独立 Test / Evaluation
-- 可以被替换而不改变整个 Feature
-- 依赖独立的 Domain / Infrastructure Capability
-- 内部复杂度值得建立清晰边界
-
-不要因为：
-
-> “以后可能有用”
-
-提前拆 Module。
-
-也不要因为：
-
-> “现在代码很短”
-
-把不同责任强行放进一个 Module。
-
-原则：
-
-> **Split by responsibility, not by code size.**
-
-即：
-
-> **按职责拆模块，不按代码长度拆模块。**
-
----
-
-# 9. Module Responsibility（模块职责）
-
-Feature Architecture 中，每个 Module 只需要定义：
-
-```text
-Module Name
-        ↓
-Responsibility
-        ↓
-Major Input
-        ↓
-Major Output
-```
-
-必要时增加：
-
-```text
-Not Responsible For
-```
-
-Module Responsibility 应能够用一句话说明：
-
-> **这个 Module 负责解决什么问题。**
-
-此阶段不定义详细：
-
-- Typed Schema
-- Required / Optional Field
-- Preconditions
-- Postconditions
-- Failure Code
-- Validation Rule
-- Test Case
-
-这些属于：
-
-> `MODULE_CONTRACT_STANDARD.md`
-
-约束的 Module Spec 阶段。
-
----
-
-# 10. Major Input / Output（主要输入 / 输出）
-
-Feature Architecture 应描述 Module 之间传递的：
-
-> **Conceptual Data Object（概念数据对象）。**
-
-例如：
-
-```text
-Semantic Query Intent
-Resolved Schema Context
-Resolved Metric Context
-Generation Context
-Candidate SQL
-Query Result
-```
-
-此阶段回答：
-
-> **传递的是什么信息。**
-
-不回答：
-
-> **这个对象里面具体有多少字段。**
-
-因此可以写：
-
-```text
-Query Semantic Parser
-        ↓
-SemanticQueryIntent
-```
-
-但不需要在 Feature Architecture 中展开：
-
-```text
-metric_mentions: list[str]
-time_range: ...
-filters: ...
-```
-
-具体结构属于 Module Contract。
-
-原则：
-
-> **Architecture defines information flow; contracts define data shape.**
-
-即：
-
-> **架构定义信息如何流动，契约定义信息具体长什么样。**
-
----
-
-# 11. Main Processing Flow（主要处理链路）
-
-Feature Architecture 必须描述 Feature 的主要运行链路。
-
-例如：
-
-```text
-Input
-        ↓
-Module A
-        ↓
-Module B
-        ↓
-Module C
-        ↓
-Result
-```
-
-如果存在独立能力，可以表达：
-
-```text
-             ┌→ Module B
-Module A ────┤
-             └→ Module C
-                   ↓
-                 Merge
-```
-
-Main Flow 用于说明：
-
-- Processing Order（处理顺序）
-- Dependency Order（依赖顺序）
-- Parallel Capability（可并行能力）
-- Branch（分支）
-- Merge（汇合）
-
-但：
-
-> Feature Architecture 描述逻辑协作关系，不承诺具体并发实现。
-
-例如架构上两项能力独立：
-
-```text
-A
-├→ B
-└→ C
-```
-
-不代表实现必须创建两个线程或两个进程。
-
----
-
-# 12. Module Collaboration（模块协作）
-
-Module Collaboration 定义：
-
-> **模块为什么以及如何连接。**
-
-必须明确：
-
-- 上游 Module 产出什么概念结果
-- 下游 Module 为什么需要该结果
-- 哪些 Module 相互独立
-- 哪些 Module 必须先后执行
-- 哪些结果需要汇合
-- 哪些 Module 之间禁止直接依赖
-
-原则：
-
-> **Modules collaborate through explicit information boundaries.**
-
-即：
-
-> **模块通过明确的信息边界协作。**
-
-禁止依赖：
-
-- 隐藏全局变量
-- 隐式共享状态
-- 未声明的内部数据
-- 上一个 Module 的内部实现细节
-
----
-
-# 13. Branch and Decision Boundary（分支与决策边界）
-
-如果 Feature 存在重要业务分支，应在 Feature Architecture 中表达。
-
-例如：
-
-```text
-Processing
-        ↓
-Decision
-   ┌────┴────┐
-   ↓         ↓
-Path A     Path B
-```
-
-Feature Architecture 只定义：
-
-> **为什么存在这个分支以及分支的业务意义。**
-
-不定义：
-
-- if / else 代码
-- LangGraph Node
-- Condition Function
-- Prompt 分类实现
-- Threshold 具体数值
-
-这些属于后续设计和实现。
-
----
-
-# 14. Clarification Boundary（澄清边界）
-
-Clarification（澄清）属于：
-
-> **Feature Outcome（功能结果）。**
-
-Feature Architecture 可以表达：
-
-```text
-Semantic Understanding
-        ↓
-Missing / Ambiguous Business Intent
-        ↓
-Clarification
-```
-
-但不在此阶段定义：
-
-- Clarification Schema
-- 问句模板
-- 提示词
-- Failure Code
-- UI 表现形式
-
-原则：
-
-> **User clarification exists only for unresolved user intent.**
-
-即：
-
-> **只有用户业务意图本身不完整或存在歧义时，才进入用户澄清。**
-
-一旦用户业务意图已经被确认完整：
-
-> 后续模块内部解析问题不应重新要求用户解决系统内部问题。
-
-应进入 Failure / Unsupported / Bad Case 流程。
-
----
-
-# 15. Failure Boundary（失败边界）
-
-Feature Architecture 可以识别主要 Failure Boundary（失败边界）。
-
-例如：
-
-```text
-Semantic Resolution Failure
-
-Schema Resolution Failure
-
-Metric Resolution Failure
-
-External Dependency Failure
-
-Execution Failure
-```
-
-但 Feature Architecture 不定义：
-
-- Error Code
-- Exception Class
-- Retry Count
-- HTTP Status
-- 详细错误对象
-
-这些属于 Feature Spec、Module Spec 或 Integration Contract。
-
-Feature Architecture 只需要说明：
-
-> **失败可能发生在哪个责任边界，以及失败不能被错误地当作成功继续传播。**
-
----
-
-# 16. External Capability Boundary（外部能力边界）
-
-Feature Architecture 必须识别当前 Feature 需要哪些外部 Capability（能力）。
-
-例如概念上：
-
-```text
-Model Capability
-Retrieval Capability
-Schema Catalog
-Metric Catalog
-Relationship Catalog
-Database Query Capability
-State Capability
-```
-
-Feature Architecture 描述的是：
-
-> **需要什么能力。**
-
-不直接规定：
-
-```text
-DeepSeek
-OpenAI
-LangChain
-Qdrant
-BGE-M3
-psycopg
-Redis
-```
-
-具体技术由相应 Feature / Module / Infrastructure 决策确定。
-
-原则：
-
-> **Depend on capability before choosing implementation.**
-
-即：
-
-> **先确定需要什么能力，再选择怎么实现。**
-
----
-
-# 17. Infrastructure Growth Rule（基础设施生长规则）
-
-Feature Architecture 可以暴露 Infrastructure Requirement（基础设施需求），但不提前建设完整基础设施。
-
-演进顺序：
-
-```text
-Feature Architecture
-        ↓
-Module Requirement
-        ↓
-Required Capability
-        ↓
-Module Contract
-        ↓
-Port / Adapter
-        ↓
-Infrastructure Implementation
-```
-
-原则：
-
-> **Infrastructure grows from real feature requirements.**
-
-即：
-
-> **基础设施从真实功能需求中生长。**
-
-禁止：
-
-```text
-先设计大量通用基础设施
-        ↓
-再寻找 Feature 使用方式
-```
-
----
-
-# 18. Online / Offline Boundary（在线 / 离线边界）
-
-如果 Feature 同时依赖 Runtime Capability（运行时能力）和 Offline Preparation（离线准备），Feature Architecture 应明确两者边界。
-
-例如：
-
-```text
-Offline
-───────
-Resource
-↓
-Index Build
-↓
-Derived Index
-
-
-Online
-──────
-Request
-↓
-Retrieval
-↓
-Feature Processing
-```
-
-必须明确：
-
-> Offline Artifact（离线产物）是 Derived Data（派生数据）还是 Source of Truth（事实源）。
-
-避免运行时系统把索引、缓存或生成产物错误地当作业务事实来源。
-
----
-
-# 19. Cross-Cutting Constraints（横切约束）
-
-如果以下能力会直接影响 Feature Architecture，可以在架构级说明其边界：
-
-- Authorization（授权）
-- State（状态）
-- Evidence（证据）
-- Security（安全）
-- Observability（可观测）
-- Audit（审计）
-
-Feature Architecture 只说明：
-
-> **它们在哪些关键边界影响 Feature。**
-
-不重新定义系统级规则。
-
-系统级事实仍由：
-
-```text
-ARCHITECTURE.md
-Platform Integration Spec
-Business Domain Spec
-```
-
-负责。
-
----
-
-# 20. Feature Architecture vs Feature Spec（功能架构与功能规格）
-
-两者必须明确区分。
-
-## Feature Architecture
-
-回答：
-
-> **这个功能由什么组成，以及这些部分怎样协作。**
-
-主要关注：
-
-```text
-Boundary
-Modules
-Responsibilities
-Flow
-Collaboration
-External Capabilities
-```
-
----
-
-## Feature Spec
-
-回答：
-
-> **这个功能对外到底必须做到什么。**
-
-主要关注：
-
-```text
-Input
-Output
-Business Outcome
-Clarification
-Unsupported
-Failure
-State
-Authorization
-Evidence
-Acceptance Criteria
-```
-
-原则：
-
-> **Architecture defines structure; Spec defines behavior and acceptance.**
-
-即：
-
-> **架构定义结构，规格定义行为和验收。**
-
----
-
-# 21. Feature Architecture vs Module Spec（功能架构与模块规格）
-
-Feature Architecture 只需要知道：
-
-```text
-Module A
-        ↓
-Responsible for X
-        ↓
-Produces Y
-```
-
-Module Spec 才继续展开：
-
-```text
-Responsibility
-Input Contract
-Typed Schema
-Preconditions
-Processing Responsibilities
-Output Contract
-Postconditions / Invariants
-Failure Contract
-Dependencies
-Test / Evaluation
-```
-
-原则：
-
-> **Feature Architecture discovers modules; Module Spec constructs modules.**
-
-即：
-
-> **功能架构识别模块，模块规格施工模块。**
-
----
-
-# 22. Detail Boundary（设计深度边界）
-
-Feature Architecture 可以定义：
-
-```text
-Feature Responsibility
-
-Feature Boundary
-
-Module Name
-
-Module Responsibility
-
-Major Input
-
-Major Output
-
-Processing Order
-
-Branch / Merge
-
-External Capability
-
-Online / Offline Boundary
-```
-
-Feature Architecture 不进入：
-
-```text
-Typed Schema 具体字段
+Typed Schema Fields
+（类型化结构具体字段）
 
 Pydantic Model
+（Pydantic 数据模型）
 
-Enum 具体值
+Enum Value
+（枚举具体值）
 
-Required / Optional 字段
+Required / Optional Field
+（必需 / 可选字段）
 
 Class
+（类）
 
 Function
+（函数）
 
 File Structure
+（文件结构）
 
 Prompt
+（提示词）
 
 SQL Algorithm
+（SQL 算法）
 
 Retrieval Algorithm
+（检索算法）
 
 Top-K
+（前 K 个）
 
 Threshold
+（阈值）
 
 Retry Count
+（重试次数）
 
-SDK
+SDK API
+（软件开发工具包接口）
 
 Framework API
+（框架接口）
 
 Exception Class
+（异常类）
 
-具体 Test Case
+Concrete Test Case
+（具体测试用例）
 ```
 
-一旦讨论开始进入这些内容：
+出现以上内容时：
 
-> **停止继续下钻，记录为后续 Feature Spec / Module Spec / Implementation Decision。**
+> **停止在 Feature Architecture（功能架构）继续下钻。**
 
----
+将内容移动到正确层级：
 
-# 23. Architecture Completeness Check（架构完整性检查）
+- Feature Spec（功能规格）；
+- Module Spec（模块规格）；
+- Test / Evaluation（测试 / 评估）；
+- Implementation（实现）。
 
-Feature Architecture 在冻结之前，应确认：
+# 17. Architecture Completeness Check（架构完整性检查）
 
-### Responsibility
+Feature Architecture（功能架构）进入 Freeze（冻结）前，只检查以下核心项目。
 
-Feature 职责是否明确？
+### Responsibility（职责）
 
-### Boundary
+Feature（功能）负责什么、不负责什么是否明确？
 
-入口、出口和 Out of Scope 是否明确？
+### Boundary（边界）
 
-### Module Map
+Entry（入口）、Exit（出口）和 Out of Scope（范围外）是否明确？
 
-完成 Feature 所需要的主要 Module 是否已经识别？
+### Module Map（模块地图）
 
-### Responsibility Separation
+主要 Module（模块）是否已经识别？
 
-Module 之间是否存在职责重复或职责空洞？
+### Responsibility Separation（职责分离）
 
-### Information Flow
+Module（模块）之间是否存在明显职责重复或职责空洞？
 
-主要输入输出和信息流是否完整？
+### Information Flow（信息流）
 
-### Collaboration
+主要 Input / Output（输入 / 输出）是否明确？
 
-顺序、分支、并行、汇合关系是否明确？
+### Collaboration（协作）
 
-### External Capability
+主要顺序、分支、并行和汇合是否明确？
 
-需要的外部能力是否已经识别？
+### External Capability（外部能力）
 
-### Architecture Alignment
+需要的外部 Capability（能力）是否明确？
 
-是否符合系统分层与 Dependency Rule（依赖规则）？
+### Architecture Alignment（架构一致性）
 
-如果以上问题均能够清晰回答：
+是否符合 System Architecture（系统架构）和 Dependency Rule（依赖规则）？
 
-> Feature Architecture 可以进入 Freeze（冻结）。
+以上均明确时：
 
----
+> Feature Architecture（功能架构）可以 Freeze（冻结）。
 
-# 24. Architecture Freeze Rule（功能架构冻结规则）
+# 18. Freeze Rule（冻结规则）
 
-Feature Architecture Freeze（功能架构冻结）意味着：
+Feature Architecture Freeze（功能架构冻结）表示：
 
-> **Feature 的主要结构已经足够稳定，可以进入 Feature Spec 与 Module Spec。**
+> **Feature（功能）的责任边界、主要模块和协作关系已经形成稳定设计基线。**
 
-Freeze 不意味着：
+Freeze（冻结）不表示：
 
-- Module 已实现
-- 数据结构已经最终定义
-- 算法已经确定
-- 技术栈已经全部选择
-- 后续永远不能修改
+- Module（模块）已经实现；
+- Typed Contract（类型化契约）已经最终完成；
+- 算法已经确定；
+- 技术栈已经全部选择；
+- 后续永远不能修改。
 
-Freeze 表示：
+后续 Module Spec（模块规格）发现局部问题：
 
-> **当前 Feature 的责任边界、主要模块和协作方式已经形成稳定基线。**
+> 优先在 Module（模块）内部解决。
 
-后续如果 Module Spec 发现局部实现问题：
+只有发现以下问题时才返回修改 Feature Architecture（功能架构）：
 
-> 优先在 Module 内解决。
+- Feature Boundary（功能边界）错误；
+- Module Responsibility（模块职责）错误；
+- Module Map（模块地图）错误；
+- Main Flow（主流程）错误；
+- Module Collaboration（模块协作关系）错误。
 
-只有当发现：
+# 19. Change Rule（变更规则）
 
-- Feature Boundary 错误
-- Module Responsibility 错误
-- 主要协作关系错误
-- Feature Main Flow 本身错误
+发生设计变化时，修改事实所属的最高正确层级。
 
-才返回修改 Feature Architecture。
-
----
-
-# 25. Feature Architecture Template（功能架构模板）
-
-所有正式 Feature `ARCHITECTURE.md` 推荐采用以下结构：
-
-```markdown
-# <Feature Name> Architecture
-
-## 1. Purpose
-这个 Feature 为什么存在。
-
-## 2. Responsibility
-负责什么。
-明确不负责什么。
-
-## 3. Feature Boundary
-入口。
-出口。
-Out of Scope。
-
-## 4. Module Map
-主要 Module。
-整体模块关系图。
-
-## 5. Module Responsibilities
-每个 Module：
-- Responsibility
-- Major Input
-- Major Output
-- Not Responsible For（必要时）
-
-## 6. Main Processing Flow
-Feature 主链路。
-顺序。
-分支。
-并行。
-汇合。
-
-## 7. Module Collaboration
-Module 之间如何协作。
-主要信息如何传递。
-
-## 8. External Capability Boundary
-依赖哪些外部 Capability。
-不绑定具体供应商实现。
-
-## 9. Online / Offline Boundary
-如存在离线准备和在线运行，明确两者边界。
-
-## 10. Cross-Cutting Constraints
-只记录真正影响 Feature Architecture 的授权、状态、安全等系统约束。
-
-## 11. Failure / Clarification Boundary
-说明主要责任边界。
-不定义详细 Failure Contract。
-
-## 12. Architecture Invariants
-该 Feature 长期必须保持的关键结构规则。
-
-## 13. Out of Scope
-明确当前版本不处理的能力。
-
-## 14. Open Questions
-尚未冻结、需要后续决定的问题。
 ```
-
-Feature 可以根据实际复杂度减少不必要章节。
-
-不得为了满足模板而制造没有实际意义的内容。
-
----
-
-# 26. Documentation Rule（文档规则）
-
-Feature Architecture 文件统一放在对应 Feature 目录。
-
-例如：
-
-```text
-Technical Design/
-└── <Feature Name>/
-    ├── ARCHITECTURE.md
-    ├── SPEC.md
-    └── Modules/
-```
-
-其中：
-
-```text
-ARCHITECTURE.md
-→ Feature Structure（功能结构）
-
-SPEC.md
-→ Feature Contract / Acceptance（功能契约 / 验收）
-
-Modules/
-→ Module Specs（模块规格）
-```
-
-不同文档不得重复维护同一层级事实。
-
----
-
-# 27. Change Rule（变更规则）
-
-设计变化首先判断影响层级：
-
-```text
-Business Meaning changed?
+Business Meaning Changed?
+（业务含义变化？）
         ↓ Yes
 Business Domain
+（业务领域）
 
-System Boundary changed?
+
+System Boundary Changed?
+（系统边界变化？）
         ↓ Yes
 System Architecture
+（系统架构）
 
-Feature Structure changed?
+
+Feature Structure Changed?
+（功能结构变化？）
         ↓ Yes
 Feature Architecture
+（功能架构）
 
-Feature Behavior / Acceptance changed?
+
+Feature Behavior Changed?
+（功能行为变化？）
         ↓ Yes
 Feature Spec
+（功能规格）
 
-Module Contract changed?
+
+Module Contract Changed?
+（模块契约变化？）
         ↓ Yes
 Module Spec
+（模块规格）
 
-Implementation only?
+
+Implementation Only?
+（只是实现变化？）
         ↓
 Code / Test / Evaluation
+（代码 / 测试 / 评估）
 ```
 
 原则：
 
 > **修改事实所属的最高正确层级。**
 
-不得因为实现细节变化就修改 Feature Architecture。
+不得因为 Implementation Detail（实现细节）变化就修改 Feature Architecture（功能架构）。
 
----
+# 20. Documentation Rule（文档规则）
 
-# 28. Feature Architecture Baseline（功能架构基线）
+正式 Feature（功能）推荐目录：
 
-ChatBI 所有 Feature Architecture 长期遵循：
+```
+Technical Design/
+└── <Feature Name>/
+    │
+    ├── ARCHITECTURE.md
+    │   （功能架构）
+    │
+    ├── FEATURE_SPEC.md
+    │   （功能规格）
+    │
+    ├── ACCEPTANCE_AND_EVALUATION.md
+    │   （验收与评估，如需要）
+    │
+    └── Modules/
+        （模块规格）
+```
+
+职责：
+
+```
+ARCHITECTURE.md
+→ Feature Structure
+  （功能结构）
+
+FEATURE_SPEC.md
+→ Feature Behavior / Rules
+  （功能行为 / 规则）
+
+ACCEPTANCE_AND_EVALUATION.md
+→ Verification / Acceptance
+  （验证 / 验收）
+
+Modules/
+→ Module Contract
+  （模块契约）
+```
+
+原则：
+
+> **同一个设计事实只在最高正确层级维护一次。**
+
+不得在多个文档重复维护同一事实。
+
+# 21. Standard Feature Architecture Template（标准功能架构模板）
+
+正式 Feature `ARCHITECTURE.md（功能架构）` 推荐使用以下模板。
+
+```
+# <Feature Name> Architecture
+# <功能名称> 功能架构
+
+> Status（状态）
+> Version（版本）
+> System Architecture Reference（系统架构引用）
+
+## 1. Purpose（目的）
+这个 Feature（功能）为什么存在。
+
+## 2. Responsibility（职责）
+负责什么。
+明确不负责什么。
+
+## 3. Feature Boundary（功能边界）
+Entry Boundary（入口边界）。
+Exit Boundary（出口边界）。
+Out of Scope（范围外）。
+
+## 4. Module Map（模块地图）
+主要 Module（模块）。
+整体关系图。
+
+## 5. Module Responsibilities（模块职责）
+每个 Module（模块）：
+- Responsibility（职责）
+- Major Input（主要输入）
+- Major Output（主要输出）
+- Not Responsible For（不负责，可选）
+
+## 6. Main Processing Flow（主要处理链路）
+主要顺序。
+分支。
+逻辑并行。
+汇合。
+
+## 7. Module Collaboration（模块协作）
+主要信息如何传递。
+模块之间主要依赖关系。
+禁止的直接依赖。
+
+## 8. External Capability Boundary（外部能力边界）
+依赖哪些 Capability（能力）。
+不绑定具体 Vendor / Framework（供应商 / 框架）。
+
+## 9. Online / Offline Boundary（在线 / 离线边界）
+仅在存在离线准备时定义。
+明确 Source of Truth（事实源）与 Derived Asset（派生资产）。
+
+## 10. Cross-Cutting Constraints（横切约束）
+只记录真正影响架构的：
+Authorization（权限）、
+State（状态）、
+Security（安全）等。
+
+## 11. Failure / Clarification Boundary（失败 / 澄清边界）
+定义主要责任边界。
+不定义详细 Failure Contract（失败契约）。
+
+## 12. Architecture Invariants（架构不变量）
+少量长期必须保持的结构规则。
+
+## 13. Open Questions（开放问题）
+只记录尚未冻结且真正影响架构的问题。
+```
+
+不适用章节：
+
+> **可以删除。**
+
+不得为了 Template（模板）完整而制造无意义内容。
+
+# 22. Standard Baseline（标准基线）
+
+所有 ChatBI Feature Architecture（功能架构）长期遵循：
 
 > **Business Capability First（业务能力优先）。**
 
 > **Clear Feature Boundary（功能边界清晰）。**
 
-> **Module by Responsibility（按职责识别模块）。**
+> **Module by Responsibility（按职责拆模块）。**
 
-> **Architecture Before Contract Detail（先架构，后详细契约）。**
+> **Architecture Defines Structure（架构定义结构）。**
+
+> **Contract Defines Data Shape（契约定义数据结构）。**
 
 > **Explicit Information Flow（信息流明确）。**
 
@@ -1139,7 +840,7 @@ ChatBI 所有 Feature Architecture 长期遵循：
 
 > **Depend on Capability, Not Vendor（依赖能力，不依赖供应商）。**
 
-> **Infrastructure Grows from Feature Needs（基础设施从功能需求生长）。**
+> **Infrastructure Grows from Real Feature Needs（基础设施从真实功能需求中生长）。**
 
 > **Do Not Overdesign（不过度设计）。**
 
@@ -1147,4 +848,4 @@ ChatBI 所有 Feature Architecture 长期遵循：
 
 最终原则：
 
-> **先把整个 Feature 的模块地图和协作关系理清，再逐个模块进入规格与实现。**
+> **先把 Feature（功能）的责任边界、模块地图和协作关系设计清楚，再进入 Feature Spec（功能规格）、Module Spec（模块规格）和 Implementation（实现）。**
