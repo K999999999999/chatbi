@@ -1,4 +1,3 @@
-```
 # ChatBI Architecture（系统架构）
 
 > **Status（状态）**：Design Baseline（设计基线）  
@@ -8,11 +7,14 @@
 
 ---
 
-# 1. 文档目的
+# 1. Purpose（文档目的）
 
-本文档定义 ChatBI 的稳定系统架构：
+本文档定义 ChatBI 的稳定 System Architecture（系统架构）。
+
+主要定义：
 
 - System Positioning（系统定位）
+- System Boundary（系统边界）
 - Responsibility Boundary（责任边界）
 - Capability Boundary（能力边界）
 - Integration Boundary（集成边界）
@@ -21,21 +23,54 @@
 - Code Organization（代码组织）
 - Architecture Invariants（架构不变量）
 
-本文档只描述系统级稳定边界。
+本文档回答：
 
-以下内容不在 Architecture（架构）中展开：
+> ChatBI 是什么？
+
+> ChatBI 负责什么？
+
+> ChatBI 不负责什么？
+
+> ChatBI 内部如何分层？
+
+> 各层之间允许如何依赖？
+
+本文档不展开：
 
 - Platform API（平台接口）字段和协议
 - Feature Pipeline（功能流程）
 - Module（模块）内部设计
 - Class / Function（类 / 函数）
 - Prompt（提示词）
-- Retrieval / RAG（检索 / 检索增强）
+- Retrieval / RAG（检索 / 检索增强）算法
 - SQL 生成算法
 - LangGraph（图工作流）节点
-- 具体模型、数据库、向量库和部署产品
+- 具体模型供应商
+- 具体数据库产品
+- 具体向量数据库产品
+- Feature（功能）内部技术实现
 
-这些内容由后续 Platform Integration（平台集成）、Feature Spec（功能规格）、Module Spec（模块规格）和 Implementation（实现）定义。
+这些内容分别由：
+
+- Platform Integration Spec（平台集成规格）
+- Feature Architecture（功能架构）
+- Feature Spec（功能规格）
+- Module Spec（模块规格）
+- Implementation（实现）
+
+负责定义。
+
+工程开发方法由：
+
+`ENGINEERING.md`
+
+定义。
+
+重要架构决策及其理由由：
+
+`ARCHITECTURE_DECISIONS.md`
+
+记录。
 
 ---
 
@@ -47,7 +82,7 @@ ChatBI 定位为：
 
 用于承载企业经营数据场景中的领域 AI 能力。
 
-当前一级产品能力：
+当前一级业务能力：
 
 ```text
 ChatBI
@@ -55,32 +90,39 @@ ChatBI
 └── Business Analysis（经营分析）
 ```
 
-核心职责：
+ChatBI 的核心职责：
 
 > 将自然语言经营问题转换为可信、可追溯的数据结果，并基于可信数据完成经营分析。
 
-ChatBI 不定位为完整 Enterprise AI Platform（企业 AI 平台）。
+ChatBI 不定位为：
 
-整体关系：
+> Enterprise AI Platform（企业 AI 平台）
 
+---
+
+## 2.1 System Context Diagram（系统上下文图）
+
+```mermaid
+flowchart TB
+
+    Platform["Enterprise AI Platform<br/>企业 AI 平台"]
+
+    ChatBI["ChatBI Domain AI Engine<br/>ChatBI 领域 AI 引擎"]
+
+    Data["Certified Business Data<br/>认证业务数据"]
+
+    Platform -->|"Integration Contract<br/>集成契约"| ChatBI
+
+    ChatBI -->|"Trusted Data Access<br/>可信数据访问"| Data
 ```
-Enterprise AI Platform
-        │
-        │ Integration Contract
-        ▼
-ChatBI Domain AI Engine
-        │
-        ▼
-Certified Business Data
-```
 
-责任原则：
+稳定责任原则：
 
-> Platform（平台）负责企业通用能力。
+> **Platform（平台）负责企业通用能力。**
 
-> ChatBI 负责领域能力和领域正确性。
+> **ChatBI 负责领域能力和领域正确性。**
 
-------
+---
 
 # 3. System Form（系统形态）
 
@@ -88,24 +130,32 @@ ChatBI 当前采用：
 
 > **Modular Monolith（模块化单体）**
 
-保持：
+系统保持：
 
-```
+```text
 Single Repository（单代码仓库）
+
 +
+
 Single Application（单应用）
+
 +
+
 Single Deployment Unit（单部署单元）
+
 +
+
 Clear Internal Boundaries（清晰内部边界）
 ```
 
-当前不提前拆分 Microservice（微服务）。
+当前不提前拆分：
 
-只有出现真实需求时才重新评估服务拆分，例如：
+> Microservice（微服务）
 
-- 独立部署
-- 独立扩缩容
+服务拆分只有在出现真实需求时重新评估，例如：
+
+- 独立部署需求
+- 独立扩缩容需求
 - 独立团队边界
 - 独立故障隔离
 - 明确性能瓶颈
@@ -115,52 +165,73 @@ Clear Internal Boundaries（清晰内部边界）
 
 > **先建立清晰模块边界，再根据真实需求决定是否服务化。**
 
-------
+---
 
 # 4. Responsibility Boundary（责任边界）
 
-整体责任：
+系统责任边界：
 
-```
+```text
 Enterprise AI Platform
-        │
-        │ 通用平台能力
-        ▼
+        ↓
+Generic Platform Capabilities
+（通用平台能力）
+        ↓
 Integration Boundary
-        │
-        │ 领域能力
-        ▼
-ChatBI
+（集成边界）
+        ↓
+ChatBI Domain AI Engine
+        ↓
+Domain Capabilities
+（领域能力）
 ```
+
+---
 
 ## 4.1 Platform Owned（平台负责）
 
-Enterprise AI Platform（企业 AI 平台）或企业基础设施负责：
+Enterprise AI Platform（企业 AI 平台）或企业基础设施负责通用平台能力。
 
 ### Identity（身份）
 
+包括：
+
 - Authentication（身份认证）
 - 用户登录
-- 用户与组织目录
+- 用户目录
+- 组织目录
 - SSO（单点登录）
 - Platform Permission（平台权限）
 
+---
+
 ### Product Conversation（产品会话）
 
+包括：
+
 - Chat UI（聊天界面）
-- Conversation（会话）
+- Conversation（产品会话）
 - Message History（消息历史）
 - 产品级会话生命周期
 
+---
+
 ### Model Platform（模型平台）
+
+包括：
 
 - Model Gateway（模型网关）
 - 模型供应商接入
 - API Key / Secret（密钥）
 - 模型路由
-- 配额和成本治理
+- 模型配额
+- 成本治理
+
+---
 
 ### Platform Governance（平台治理）
+
+包括：
 
 - API Gateway（接口网关）
 - Rate Limit（限流）
@@ -170,55 +241,96 @@ Enterprise AI Platform（企业 AI 平台）或企业基础设施负责：
 - Scaling（扩缩容）
 - High Availability（高可用）
 - Secret Management（密钥管理）
-- Backup / Disaster Recovery（备份 / 灾难恢复）
+- Backup（备份）
+- Disaster Recovery（灾难恢复）
 - CI/CD（持续集成 / 持续交付）
 
-以上能力不属于 ChatBI Core（ChatBI 核心）。
+以上能力不属于：
 
-------
+> ChatBI Core（ChatBI 核心）
+
+---
 
 # 5. ChatBI Owned（ChatBI 负责）
 
 ChatBI 负责：
 
-```
-ChatBI
-│
-├── Natural Language Query
-│   （自然语言查询）
-│
-├── Business Analysis
-│   （经营分析）
-│
-└── Shared Domain Capabilities
-    （共享领域能力）
+- Natural Language Query（自然语言查询）
+- Business Analysis（经营分析）
+- Shared Domain Capabilities（共享领域能力）
+
+---
+
+## 5.1 Capability Map（能力地图）
+
+```mermaid
+flowchart TB
+
+    ChatBI["ChatBI Domain AI Engine<br/>领域 AI 引擎"]
+
+    NLQ["Natural Language Query<br/>自然语言查询"]
+
+    BA["Business Analysis<br/>经营分析"]
+
+    Shared["Shared Domain Capabilities<br/>共享领域能力"]
+
+    Semantics["Business Semantics<br/>业务语义"]
+
+    Auth["Domain Authorization<br/>领域授权"]
+
+    Safety["Query Safety<br/>查询安全"]
+
+    State["Domain State<br/>领域状态"]
+
+    Result["Result / Evidence<br/>结果 / 证据"]
+
+    Evaluation["Evaluation<br/>评估"]
+
+    ChatBI --> NLQ
+    ChatBI --> BA
+    ChatBI --> Shared
+
+    Shared --> Semantics
+    Shared --> Auth
+    Shared --> Safety
+    Shared --> State
+    Shared --> Result
+    Shared --> Evaluation
 ```
 
-## 5.1 Natural Language Query（自然语言查询）
+---
+
+## 5.2 Natural Language Query（自然语言查询）
 
 职责：
 
 > 将自然语言经营问题转换为可信、可追溯的数据查询结果。
 
-Architecture 只定义该能力存在以及它的责任边界。
+系统架构只定义该能力存在以及它的责任边界。
 
-具体：
+该 Feature（功能）可能涉及：
 
+- Query Understanding（查询理解）
 - Semantic Resolution（语义解析）
 - Schema Linking（结构关联）
 - Metric Retrieval（指标检索）
 - Join Reasoning（关联推理）
 - SQL Generation（SQL 生成）
 - SQL Validation（SQL 校验）
+- Query Safety（查询安全）
 - Query Execution（查询执行）
 - Clarification（澄清）
 - Result Construction（结果构造）
 
-由对应 Feature Spec（功能规格）定义。
+具体执行链路由：
 
-------
+`Technical Design/Natural Language Query/`
 
-## 5.2 Business Analysis（经营分析）
+中的 Feature Architecture（功能架构）与 Feature Spec（功能规格）定义。
+
+---
+
+## 5.3 Business Analysis（经营分析）
 
 职责：
 
@@ -235,7 +347,7 @@ Architecture 只定义该能力存在以及它的责任边界。
 
 稳定关系：
 
-```
+```text
 Trusted Business Data
         ↓
 Business Analysis
@@ -243,15 +355,17 @@ Business Analysis
 Analysis Result
 ```
 
-Business Analysis 不建立一套绕过 Trusted Query（可信查询）的独立数据访问链。
+Business Analysis（经营分析）不得建立绕过 Trusted Query（可信查询）的独立数据访问链。
 
 原则：
 
 > **Trusted Data Before Analysis（可信数据先于分析）。**
 
-------
+---
 
 # 6. Shared Domain Capabilities（共享领域能力）
+
+---
 
 ## 6.1 Business Semantics（业务语义）
 
@@ -264,52 +378,62 @@ Business Analysis 不建立一套绕过 Trusted Query（可信查询）的独立
 - Business Rule（业务规则）
 - Business Meaning（业务含义）
 
-业务事实由 Business Domain（业务领域）定义。
+业务事实由：
 
-必须保持：
+> Business Domain（业务领域）
 
-```
+定义。
+
+稳定关系：
+
+```text
 Business Meaning
+（业务含义）
         ↓
 Stable
+（稳定）
 
 Technical Mapping
+（技术映射）
         ↓
 Replaceable
+（可替换）
 ```
 
-数据库字段、模型输出和检索结果不能反向决定业务事实。
+数据库字段、模型输出和检索结果不得反向决定业务事实。
 
-------
+---
 
 ## 6.2 Domain Authorization（领域授权）
 
 必须区分：
 
-```
+```text
 Authentication
 （你是谁）
 
-        ≠
+≠
 
 Domain Authorization
 （你能访问什么业务数据）
 ```
 
-Platform 负责身份认证。
+Platform（平台）负责：
+
+> Authentication（身份认证）
 
 ChatBI 根据领域规则决定：
 
-- 可访问的 Business Domain
-- 可访问的 Metric
-- 可访问的 Dimension
+- 可访问的 Business Domain（业务领域）
+- 可访问的 Metric（指标）
+- 可访问的 Dimension（维度）
 - Data Scope（数据范围）
 - Detail Access（明细权限）
 - Sensitive Data Access（敏感数据权限）
 
 流程：
 
-```
+```text
 Platform Authentication
         ↓
 Principal
@@ -319,25 +443,32 @@ ChatBI Domain Authorization
 Authorized Data Scope
 ```
 
-Platform Role（平台角色）可以作为授权输入，但不能直接等同于最终 Data Scope。
+Platform Role（平台角色）可以作为授权输入。
 
-------
+但：
+
+> Platform Role ≠ Final Data Scope
+
+---
 
 ## 6.3 Query Safety（查询安全）
 
-LLM（大语言模型）可以提出候选结果，但不能最终决定：
+LLM（大语言模型）可以提出候选结果。
 
-- 权限
-- Data Scope
-- Query Safety
+但 LLM 不能最终决定：
+
+- Domain Authorization（领域授权）
+- Data Scope（数据范围）
+- Query Safety（查询安全）
 - 最终数据执行边界
 
-必须保持：
+稳定关系：
 
-```
+```text
 Model Candidate
         ↓
 Deterministic Validation
+（确定性校验）
         ↓
 Allowed / Rejected
 ```
@@ -346,43 +477,55 @@ Allowed / Rejected
 
 > **Model proposes, program decides.**
 
-------
+---
 
 ## 6.4 Domain State（领域状态）
 
 必须区分：
 
-```
+```text
 Product Conversation
 （产品会话）
 
-        ≠
+≠
 
 Domain State
 （领域状态）
 ```
 
-Platform 负责完整产品会话。
+Platform（平台）负责：
 
-ChatBI 负责完成业务任务所需的领域状态，例如：
+- Conversation（会话）
+- Message History（消息历史）
+- 产品级会话生命周期
+
+ChatBI 负责完成业务任务所需要的领域状态。
+
+例如：
 
 - 上一轮成功查询语义
-- 上一轮结果引用
+- 上一轮查询结果引用
 - Pending Clarification（待澄清状态）
 - 当前分析状态
 - 当前业务上下文
 
-具体保存哪些状态由 Feature Spec 决定。
+具体保存什么状态：
 
-Architecture 不提前规定具体 State Store（状态存储）产品。
+> 由 Feature Spec（功能规格）决定。
 
-------
+系统架构不绑定具体：
+
+> State Store（状态存储）
+
+产品。
+
+---
 
 ## 6.5 Result / Evidence（结果 / 证据）
 
 稳定关系：
 
-```
+```text
 Natural Language Query
         ↓
 Query Result
@@ -398,17 +541,17 @@ ChatBI 负责：
 
 - 结果业务含义
 - 结果正确性
-- 数据范围
+- 数据访问范围
 - 必要追溯信息
-- Evidence（证据）关联
+- Evidence（证据）关系
 
-Platform 负责：
+Platform（平台）负责：
 
 - 展示
 - UI 交互
 - 产品级消息呈现
 
-------
+---
 
 ## 6.6 Evaluation（评估）
 
@@ -422,23 +565,33 @@ ChatBI 负责：
 
 必须区分：
 
+```text
+Observability
+（可观测性）
+
+=
+系统运行得怎么样
 ```
-Observability（可观测性）
-= 系统运行得怎么样
 
-Evaluation（评估）
-= 业务结果做得对不对
+和：
+
+```text
+Evaluation
+（评估）
+
+=
+业务结果做得对不对
 ```
 
-平台可观测能力不能替代 ChatBI 的业务评估。
+平台 Observability（可观测性）不能替代 ChatBI 的业务 Evaluation（评估）。
 
-------
+---
 
 # 7. Integration Boundary（集成边界）
 
 正常情况下：
 
-```
+```text
 Enterprise AI Platform
         ↓
 ChatBI Public Contract
@@ -448,9 +601,9 @@ ChatBI Interfaces
 ChatBI Core
 ```
 
-如果 Platform 与 ChatBI 存在真实协议或语义差异：
+如果外部 Platform（平台）与 ChatBI 存在真实语义或协议差异：
 
-```
+```text
 External Platform
         ↓
 Adapter / Anti-Corruption Layer
@@ -465,61 +618,51 @@ ChatBI Core
 
 > **Contract Alignment First（优先契约统一）。**
 
-> **Adapter When Required（真实存在差异时才使用适配器）。**
+> **Adapter When Required（必要时才使用适配器）。**
 
 Platform Adapter（平台适配器）不是固定架构层。
 
-------
+---
 
 # 8. External Capability Boundaries（外部能力边界）
 
-ChatBI Core 通过稳定 Port / Contract（端口 / 契约）使用外部能力。
+ChatBI Core 通过稳定：
 
-主要边界：
+> Port / Contract（端口 / 契约）
 
-```
-Platform Integration
-Model
-Business Data
-State
-Telemetry
-Audit
-Runtime
-```
+使用外部能力。
+
+主要外部能力包括：
+
+- Platform Integration（平台集成）
+- Model（模型）
+- Business Data（业务数据）
+- Retrieval（检索）
+- State（状态）
+- Telemetry（遥测）
+- Audit（审计）
+- Runtime（运行环境）
+
+---
 
 ## 8.1 Platform Integration（平台集成）
 
-Platform ↔ ChatBI 的语义和正式 API Contract（接口契约）由：
+Platform ↔ ChatBI 的正式集成语义与 API Contract（接口契约）由：
 
-```
+```text
 Technical Design/
 └── Platform Integration/
-    ├── SPEC.md
-    └── openapi.yaml
 ```
 
-维护。
+负责。
 
-`SPEC.md` 定义：
+System Architecture（系统架构）只定义：
 
-- Platform / ChatBI 责任语义
-- Authentication / Authorization 边界
-- Conversation / Domain State 边界
-- Run / Result 等集成语义
-- Adapter 使用原则
+> Platform 与 ChatBI 存在稳定 Integration Boundary（集成边界）。
 
-`openapi.yaml` 定义：
+不定义接口字段。
 
-- Endpoint（端点）
-- HTTP Method（请求方法）
-- Authentication Scheme（认证结构）
-- Header / Parameter（请求头 / 参数）
-- Request / Response Schema（请求 / 响应结构）
-- Error Schema（错误结构）
-- Streaming（流式接口）
-- API Version（接口版本）
-
-------
+---
 
 ## 8.2 Model Boundary（模型边界）
 
@@ -528,18 +671,57 @@ ChatBI Core 不直接绑定：
 - OpenAI
 - DeepSeek
 - Qwen
-- 某个 Model Gateway
-- 某个供应商 SDK
+- 某个 Model Gateway（模型网关）
+- 某个模型供应商 SDK
 
-具体模型接入由 Infrastructure（基础设施层）实现。
+具体模型接入由：
 
-------
+> Infrastructure（基础设施层）
 
-## 8.3 Business Data Boundary（业务数据边界）
+实现。
 
-ChatBI 通过稳定 Data Access Contract（数据访问契约）访问：
+---
 
-> **Certified Business Data（认证业务数据）**
+## 8.3 Retrieval Boundary（检索边界）
+
+业务逻辑不得直接绑定：
+
+- 某个 Embedding Model（向量模型）
+- 某个 Vector Database（向量数据库）
+- 某个 Retrieval Framework（检索框架）
+
+具体 Retrieval（检索）技术由：
+
+> Infrastructure（基础设施层）
+
+实现。
+
+业务事实与技术索引必须保持分离：
+
+```text
+Business Source of Truth
+（业务事实源）
+        ↓
+Stable
+
+Retrieval Index
+（检索索引）
+        ↓
+Derived / Replaceable
+（派生 / 可替换）
+```
+
+---
+
+## 8.4 Business Data Boundary（业务数据边界）
+
+ChatBI 通过稳定：
+
+> Data Access Contract（数据访问契约）
+
+访问：
+
+> Certified Business Data（认证业务数据）
 
 ChatBI 不负责：
 
@@ -548,11 +730,13 @@ ChatBI 不负责：
 - 原始数据加工
 - 企业数据调度平台
 
-ChatBI 负责按照 Domain（领域）规则正确使用业务数据。
+ChatBI 负责：
 
-------
+> 按照 Domain（领域）规则正确、安全地使用业务数据。
 
-## 8.4 State / Telemetry / Audit / Runtime
+---
+
+## 8.5 State / Telemetry / Audit / Runtime
 
 ChatBI 只定义自身需要的能力和语义。
 
@@ -567,43 +751,58 @@ ChatBI 只定义自身需要的能力和语义。
 
 ChatBI Core 不依赖具体产品。
 
-------
+---
 
 # 9. Technical Layering（技术分层）
 
 ChatBI 内部采用：
 
+- Interfaces（接口层）
+- Application（应用层）
+- Domain（领域层）
+- Infrastructure（基础设施层）
+- Bootstrap（装配层）
+
+---
+
+## 9.1 Technical Layer Diagram（技术分层图）
+
+```mermaid
+flowchart TB
+
+    Interfaces["Interfaces<br/>接口层"]
+
+    Application["Application<br/>应用层"]
+
+    Domain["Domain<br/>领域层"]
+
+    Ports["Ports / Contracts<br/>端口 / 契约"]
+
+    Infrastructure["Infrastructure<br/>基础设施层"]
+
+    Bootstrap["Bootstrap<br/>装配层"]
+
+    Interfaces --> Application
+    Application --> Domain
+
+    Application --> Ports
+    Infrastructure -. "implements 实现" .-> Ports
+
+    Bootstrap -. "assembles 装配" .-> Interfaces
+    Bootstrap -. "assembles 装配" .-> Application
+    Bootstrap -. "assembles 装配" .-> Infrastructure
 ```
-Interfaces
-（接口层）
-        ↓
-Application
-（应用层）
-        ↓
-Domain
-（领域层）
 
-Application
-        ↓
-Ports / Contracts
-        ↑
-Infrastructure
-（基础设施层）
+---
 
-Bootstrap
-（装配层）
-        ↓
-Assembly
-```
-
-## 9.1 Interfaces（接口层）
+## 9.2 Interfaces（接口层）
 
 负责：
 
 - 接收外部请求
-- 协议转换
+- Protocol Translation（协议转换）
 - 基础输入校验
-- 调用 Application
+- 调用 Application（应用层）
 - 返回外部响应
 
 不负责：
@@ -611,39 +810,41 @@ Assembly
 - 核心业务规则
 - 完整 Feature Workflow（功能流程）
 
-------
+---
 
-## 9.2 Application（应用层）
+## 9.3 Application（应用层）
 
 负责：
 
 - Use Case（用例）
 - Feature Workflow（功能流程）
 - Orchestration（编排）
-- 分支和状态流转
-- 调用 Domain
-- 调用外部 Port / Contract
+- 分支
+- 状态流转
+- 调用 Domain（领域层）
+- 调用外部 Port / Contract（端口 / 契约）
 
-Application 描述：
+Application 回答：
 
-> 完成一个 Feature 需要哪些能力。
+> 完成一个 Feature（功能）需要哪些能力？
 
-不描述：
+Application 不回答：
 
-> 某个供应商具体如何实现这些能力。
+> 某个供应商具体如何实现这些能力？
 
-------
+---
 
-## 9.3 Domain（领域层）
+## 9.4 Domain（领域层）
 
 负责：
 
-- Business Object
-- Metric / Dimension
-- Business Rule
-- Domain Authorization
-- Domain State Semantics
-- Result Semantics
+- Business Object（业务对象）
+- Metric（指标）
+- Dimension（维度）
+- Business Rule（业务规则）
+- Domain Authorization（领域授权）
+- Domain State Semantics（领域状态语义）
+- Result Semantics（结果语义）
 - 稳定领域模型
 
 Domain 不依赖：
@@ -657,32 +858,32 @@ Domain 不依赖：
 - Platform SDK
 - 具体供应商
 
-------
+---
 
-## 9.4 Infrastructure（基础设施层）
+## 9.5 Infrastructure（基础设施层）
 
-负责技术实现，例如：
+负责具体技术能力实现，例如：
 
-- Model Adapter
-- Retrieval Adapter
-- Business Data Adapter
-- State Adapter
-- Database Access
-- Telemetry
-- Audit
-- Platform Adapter（可选）
+- Model Adapter（模型适配器）
+- Retrieval Adapter（检索适配器）
+- Business Data Adapter（业务数据适配器）
+- State Adapter（状态适配器）
+- Database Access（数据库访问）
+- Telemetry（遥测）
+- Audit（审计）
+- Platform Adapter（平台适配器，可选）
 
-Infrastructure：
+原则：
 
-> 实现技术能力。
+> Infrastructure 实现技术能力。
 
-Infrastructure：
+但：
 
-> 不定义业务事实。
+> Infrastructure 不定义业务事实。
 
-------
+---
 
-## 9.5 Bootstrap（装配层）
+## 9.6 Bootstrap（装配层）
 
 负责：
 
@@ -693,13 +894,13 @@ Infrastructure：
 
 Bootstrap 不承载业务逻辑。
 
-------
+---
 
 # 10. Dependency Rules（依赖规则）
 
-稳定方向：
+稳定依赖：
 
-```
+```text
 Interfaces
         ↓
 Application
@@ -709,10 +910,10 @@ Domain
 
 外部能力：
 
-```
+```text
 Application
         ↓
-Port / Contract
+Ports / Contracts
         ↑
 Infrastructure
 ```
@@ -728,14 +929,15 @@ Infrastructure
 7. Infrastructure 不定义业务指标和业务规则。
 8. Bootstrap 只负责装配。
 9. Platform 私有对象不得穿透系统边界进入 ChatBI Core。
+10. Feature 内部实现不得破坏系统级依赖方向。
 
-------
+---
 
 # 11. Code Organization（代码组织）
 
-运行代码保持：
+运行代码顶层结构保持：
 
-```
+```text
 src/
 └── chatbi/
     ├── interfaces/
@@ -745,14 +947,17 @@ src/
     └── bootstrap/
 
 resources/
+
 tests/
+
 evaluation/
+
 scripts/
 ```
 
 职责：
 
-```
+```text
 interfaces/
 → 外部入口
 
@@ -766,204 +971,96 @@ infrastructure/
 → 外部技术实现
 
 bootstrap/
-→ 配置和装配
+→ 配置与装配
 ```
 
-具体 Feature Package（功能包）、Module（模块）、File（文件）、Class（类）和 Function（函数）不由 Architecture 提前规定。
+系统级 Architecture（架构）不提前规定：
 
-------
+- Feature Package（功能包）
+- Module（模块）
+- File（文件）
+- Class（类）
+- Function（函数）
 
-# 12. Documentation Organization（文档组织）
+这些由下级设计逐步确定。
 
-设计文档采用：
+---
 
-```
-docs/
-│
-├── Business/
-│   ├── PRODUCT.md
-│   └── SALES_DOMAIN.md
-│
-├── Technical Design/
-│   │
-│   ├── ARCHITECTURE.md
-│   │
-│   ├── Platform Integration/
-│   │   ├── SPEC.md
-│   │   └── openapi.yaml
-│   │
-│   ├── Natural Language Query/
-│   │   ├── SPEC.md
-│   │   ├── Module 01 - ...
-│   │   ├── Module 02 - ...
-│   │   └── ...
-│   │
-│   └── Business Analysis/
-│       ├── SPEC.md
-│       ├── Module 01 - ...
-│       └── ...
-│
-└── current_system_alignment.md
-```
+# 12. Architecture Invariants（架构不变量）
 
-职责：
+以下规则长期保持。
 
-### `Business/PRODUCT.md`
+---
 
-定义：
+## 12.1 Business First（业务优先）
 
-> 产品需要什么。
+技术服务于业务。
 
-### `Business/SALES_DOMAIN.md`
+不得因为某个框架或产品改变业务目标。
 
-定义：
+---
 
-> 业务到底是什么意思。
+## 12.2 Domain Owns Business Truth（领域拥有业务事实）
 
-### `Technical Design/ARCHITECTURE.md`
+业务含义由 Domain（领域）定义。
 
-定义：
+数据库、模型、向量库和检索结果不得反向定义业务事实。
 
-> 系统责任、边界、分层和依赖关系。
+---
 
-### `Technical Design/Platform Integration/SPEC.md`
+## 12.3 Authentication ≠ Domain Authorization
 
-定义：
+Authentication（身份认证）
 
-> Platform 与 ChatBI 的集成语义。
+不等于：
 
-### `Technical Design/Platform Integration/openapi.yaml`
+Domain Authorization（领域授权）。
 
-定义：
+---
 
-> Platform ↔ ChatBI 的正式机器可读 API Contract。
+## 12.4 Product Conversation ≠ Domain State
 
-### Feature `SPEC.md`
+Product Conversation（产品会话）
 
-定义：
+不等于：
 
-> 一个完整 Feature 如何工作，以及 Feature 的输入、输出、状态和错误契约。
+Domain State（领域状态）。
 
-### Module 文档
+---
 
-一份 Module 文档同时定义：
+## 12.5 Model Proposes, Program Decides
 
-- Responsibility（职责）
-- Boundary（边界）
-- Input Contract（输入契约）
-- Output Contract（输出契约）
-- Failure Contract（失败契约）
-- Processing Rules（处理规则）
-- Test Cases（测试用例）
+LLM（大语言模型）提出候选。
 
-不再为每个 Module 重复创建多份文档。
+确定性程序负责最终业务和安全裁决。
 
-------
+---
 
-# 13. Design and Development Flow（设计与开发流程）
+## 12.6 Trusted Data Before Analysis
 
-完整层级：
+Business Analysis（经营分析）
 
-```
-Product Requirement
-        ↓
-Business Domain
-        ↓
-Architecture
-        ↓
-Platform Integration Spec + API Contract
-        ↓
-Feature Spec + Feature Contract
-        ↓
-Module Spec + Module Contract
-        ↓
-Test
-        ↓
-Implementation
-        ↓
-Integration Test
-        ↓
-Evaluation
-        ↓
-CI/CD
-        ↓
-Production
-```
+必须建立在：
 
-确定性模块采用：
+Trusted Business Data（可信业务数据）
 
-> **TDD（测试驱动开发）**
+之上。
 
-```
-Contract
-    ↓
-Test
-    ↓
-Red
-    ↓
-Implementation
-    ↓
-Green
-    ↓
-Refactor
-```
+---
 
-LLM / RAG 等非确定性能力采用：
+## 12.7 Contract Alignment First
 
-```
-Spec
-    ↓
-Contract
-    ↓
-Evaluation Dataset
-    ↓
-Implementation
-    ↓
-Evaluation
-```
+优先统一 Contract（契约）。
 
-最终统一经过：
+只有存在真实边界差异时，才增加：
 
-- Integration Test（集成测试）
-- End-to-End Evaluation（端到端评估）
+Adapter / Anti-Corruption Layer（适配器 / 防腐层）。
 
-------
+---
 
-# 14. Architecture Invariants（架构不变量）
+## 12.8 Stable Core, Replaceable Edge（稳定核心，可替换边缘）
 
-长期保持以下规则：
-
-### 14.1 Business First（业务优先）
-
-技术服务于业务，不因某个框架或产品改变业务目标。
-
-### 14.2 Domain Owns Business Truth（领域拥有业务事实）
-
-业务含义由 Domain 定义，数据库和模型不能反向定义业务事实。
-
-### 14.3 Authentication ≠ Domain Authorization
-
-身份认证不等于业务数据授权。
-
-### 14.4 Product Conversation ≠ Domain State
-
-产品聊天记录不等于 ChatBI 领域状态。
-
-### 14.5 Model Proposes, Program Decides
-
-模型提出候选，确定性程序完成最终业务和安全裁决。
-
-### 14.6 Trusted Data Before Analysis
-
-经营分析必须建立在可信查询结果上。
-
-### 14.7 Contract Alignment First
-
-优先统一契约；只有存在真实边界差异时才增加 Adapter / Anti-Corruption Layer（适配器 / 防腐层）。
-
-### 14.8 Stable Core, Replaceable Edge
-
-```
+```text
 Replace Platform
 → Keep ChatBI Core
 
@@ -980,83 +1077,127 @@ Replace State Store
 → Keep Domain State Semantics
 ```
 
-### 14.9 Do Not Overbuild（不过度建设）
+---
 
-Architecture 定义边界，不代表当前阶段必须把所有基础设施立即实现。
+## 12.9 Do Not Overbuild（不过度建设）
+
+Architecture（架构）定义系统边界。
+
+不代表当前阶段必须一次性实现所有基础设施。
 
 没有真实需求时，不提前建设：
 
-- Microservice
-- 大量空 Interface
-- 大量空 Adapter
-- Plugin Framework
-- Distributed Runtime
-- Enterprise IAM
-- Complex State Platform
+- Microservice（微服务）
+- 大量空 Interface（接口）
+- 大量空 Adapter（适配器）
+- Plugin Framework（插件框架）
+- Distributed Runtime（分布式运行时）
+- Enterprise IAM（企业身份管理）
+- Complex State Platform（复杂状态平台）
 
-------
+---
 
-# 15. Architecture Change Rule（架构变更规则）
+# 13. Architecture Change Rule（架构变更规则）
 
-只有以下内容发生变化时，才需要评估修改 `ARCHITECTURE.md`：
+以下变化需要重新评估本文件：
 
 - System Positioning（系统定位）
-- Platform / ChatBI Responsibility Boundary
-- 一级 Business Capability
-- Technical Layering
-- Dependency Direction
-- 顶层 Code Organization
-- Integration Boundary
-- Architecture Invariant
+- Platform / ChatBI Responsibility Boundary（责任边界）
+- 一级 Business Capability（业务能力）
+- Technical Layering（技术分层）
+- Dependency Direction（依赖方向）
+- 顶层 Code Organization（代码组织）
+- Integration Boundary（集成边界）
+- Architecture Invariant（架构不变量）
 
-以下变化通常不修改 Architecture：
+以下变化通常不修改本文件：
 
-- 新增指标
-- 新增维度
-- 修改 Prompt
-- 修改 Retrieval
+- 新增 Metric（指标）
+- 新增 Dimension（维度）
+- 修改 Prompt（提示词）
+- 修改 Retrieval（检索）
 - 更换模型
 - 更换数据库
-- 调整 Feature Pipeline
-- 新增 Module
-- 修改 Module Algorithm
-- 修复 Bad Case
+- 调整 Feature Pipeline（功能流程）
+- 新增 Module（模块）
+- 修改 Module Algorithm（模块算法）
+- 修复 Bad Case（错误案例）
 - 新增测试
 
 前提：
 
-> 这些变化仍然遵守当前 Architecture 定义的边界。
+> 所有变化仍遵守当前 Architecture（架构）定义的边界。
 
-------
+---
 
-# 16. Architecture Baseline（架构基线）
+# 14. Related Documents（相关文档）
 
-系统：
+系统架构：
 
-```
-Enterprise AI Platform
-        ↓
-Integration Contract
-        ↓
-ChatBI Domain AI Engine
-        │
-        ├── Natural Language Query
-        ├── Business Analysis
-        │
-        └── Shared Domain Capabilities
-            ├── Business Semantics
-            ├── Domain Authorization
-            ├── Query Safety
-            ├── Domain State
-            ├── Result / Evidence
-            └── Evaluation
-        ↓
-Certified Business Data
+```text
+ARCHITECTURE.md
 ```
 
-技术：
+回答：
 
+> 系统是什么、如何组织。
+
+工程方法：
+
+```text
+ENGINEERING.md
 ```
+
+回答：
+
+> 系统应该如何设计、开发、测试和演进。
+
+架构决策：
+
+```text
+ARCHITECTURE_DECISIONS.md
+```
+
+回答：
+
+> 为什么采用当前这些关键架构决定。
+
+Feature（功能）与 Module（模块）详细设计继续向下展开。
+
+---
+
+# 15. Architecture Baseline（架构基线）
+
+当前系统基线：
+
+```text
+Domain AI Engine
+（领域 AI 引擎）
+
++
+
+Modular Monolith
+（模块化单体）
+
++
+
+Natural Language Query
+（自然语言查询）
+
++
+
+Business Analysis
+（经营分析）
+
++
+
+Shared Domain Capabilities
+（共享领域能力）
+```
+
+技术基线：
+
+```text
 Interfaces
         ↓
 Application
@@ -1070,40 +1211,17 @@ Ports / Contracts
 Infrastructure
 
 Bootstrap
-        ↓
-Assembly
+→ Assembly
 ```
 
-设计：
+核心原则：
 
-```
-Business
-        ↓
-Architecture
-        ↓
-Integration Contract
-        ↓
-Feature Contract
-        ↓
-Module Contract
-        ↓
-Test
-        ↓
-Implementation
-```
+> **Business First（业务优先）。**
 
-最终原则：
-
-> **上层定义目标和语义，边界定义契约，下层在契约内设计和实现。**
-
-> **架构倒推，契约先定，测试先行，实施顺推。**
-
-> **Business First, Boundary Aware.**
+> **Domain Owns Business Truth（领域拥有业务事实）。**
 
 > **Model proposes, program decides.**
 
-> **Stable Core, Replaceable Edge.**
->
-> ```
-> 
-> ```
+> **Trusted Data Before Analysis（可信数据先于分析）。**
+
+> **Stable Core, Replaceable Edge（稳定核心，可替换边缘）。**
