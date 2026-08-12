@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 RELATIONSHIPS_PATH = ROOT / "resources" / "schema" / "relationships.json"
 TABLES_PATH = ROOT / "resources" / "schema" / "tables.json"
 COLUMNS_PATH = ROOT / "resources" / "schema" / "columns.json"

@@ -78,8 +78,22 @@ chatbi-engine/
 │   └── semantic/sales/
 │       └── metrics.json                   销售指标目录
 ├── scripts/                               数据库/加载器/索引验证脚本
-│   ├── seed_sales_mart.py                  Sales Mart Demo Data 生成/加载/验证
-│   └── test_sales_mart_seed.py             Demo Data 确定性/集成测试
+│   ├── course_baseline/
+│   │   ├── init_database.py                Course Baseline 初始化/验证
+│   │   ├── generate_demo_data.py           Course Baseline 大数据生成
+│   │   ├── generate_schema.py              Course Baseline Schema 生成
+│   │   ├── validate_schema_loaders.py     Schema Loader 校验
+│   │   └── validate_schema_relationships.py 关系资源校验
+│   ├── sales_mart/
+│   │   └── seed.py                         Sales Mart Demo Data 生成/加载/验证
+│   └── retrieval/
+│       ├── build_schema_index.py           Schema 离线索引构建
+│       ├── build_metric_index.py           Metric 离线索引构建
+│       └── test_bge_m3.py                  BGE-M3 模型冒烟测试
+├── tests/
+│   └── sales_mart/
+│       ├── test_schema.py                  Sales Mart Schema 测试
+│       └── test_seed.py                    Demo Data Seed 测试
 ├── src/
 │   ├── application/                       空目录，未发现源码
 │   ├── bootstrap/                         空目录，未发现源码
@@ -94,7 +108,7 @@ chatbi-engine/
 └── pyproject.toml                         Python/uv 项目元数据
 ```
 
-未发现：`README.md`、`CHANGELOG.md`、`requirements.txt`、`Dockerfile`、`compose.yaml`、`tests/`、`evaluation/`、`infra/`、`.github/`、Kubernetes/Helm（编排/部署配置）、`prompts/`、`migrations/`。
+未发现：`README.md`、`CHANGELOG.md`、`requirements.txt`、`Dockerfile`、`compose.yaml`、`evaluation/`、`infra/`、`.github/`、Kubernetes/Helm（编排/部署配置）、`prompts/`、`migrations/`。
 
 ## 3. Architecture Inventory（架构资产清单）
 
@@ -127,16 +141,16 @@ chatbi-engine/
 |---|---|---|
 | `database/course_baseline/001_create_tables.sql` | Database（数据库） | 删除并重建 `public` 下 5 张课程表。包含 5 个主键、2 个外键、`sales_orders.order_no` 唯一约束和汇率复合主键。 |
 | `database/sales_mart/001_create_schema.sql` | Database（数据库） | 幂等创建 `mart_sales` Schema（模式）及 7 张 Sales Mart V1 表，包含 SCD2、事实完整性、PK/FK、唯一约束和 V1 索引；不修改 `public`。 |
-| `scripts/seed_sales_mart.py` | Database/Data Seed（数据库/数据种子） | 使用固定 seed 生成并加载 2024-01-01 至 2025-12-31 的 Sales Mart Demo Data，支持 `--reset`，自动输出行数/状态/币种/指标并验证业务不变量。 |
-| `scripts/test_sales_mart_seed.py` | Database Test（数据库测试） | 验证固定 seed、规模、SCD2、状态事实、reset + reseed 和 PostgreSQL 业务校验；保留最后一次有效 Demo Data。 |
+| `scripts/sales_mart/seed.py` | Database/Data Seed（数据库/数据种子） | 使用固定 seed 生成并加载 2024-01-01 至 2025-12-31 的 Sales Mart Demo Data，支持 `--reset`，自动输出行数/状态/币种/指标并验证业务不变量。 |
+| `tests/sales_mart/test_seed.py` | Database Test（数据库测试） | 验证固定 seed、规模、SCD2、状态事实、reset + reseed 和 PostgreSQL 业务校验；保留最后一次有效 Demo Data。 |
 | `002_seed_course_data.sql` | Database/Seed（数据库/种子） | 写入人工可读的小规模课程数据。 |
 | `003_validate_course_data.sql` | Database/Test（数据库/校验） | 校验表集合、孤儿记录、汇率、金额、数量、日期、费用等结构/数据条件，并执行课程查询。 |
 | `004_validate_large_data.sql` | Database/Evaluation（数据库/评估） | 校验大数据行数、质量检查、年度/季度/区域/费用等业务场景。 |
 | `database/grants.sql` | Security/Database（权限/数据库） | 创建或更新 `chatbi_app`，设置 `NOSUPERUSER/NOCREATEDB/NOCREATEROLE/NOBYPASSRLS`，只授予 5 张表 `SELECT`。 |
-| `scripts/init_course_database.py` | Offline/Database CLI（离线数据库命令行） | 使用 migrator 配置创建 `chatbi_mvp`、执行课程 SQL、读取元数据、输出行数/约束/5 类课程验证。可能执行建库、建表和写入。 |
-| `scripts/test_sales_mart_schema.py` | Database Test（数据库测试） | 重复执行 Sales Mart DDL，验证 7 张表、PK/FK、SCD2、Completed 完整性、状态/汇率/粒度约束；测试业务行全部事务回滚。 |
-| `scripts/generate_course_demo_data.py` | Offline/Data Generation（离线数据生成） | 使用 seed、日期和数量参数生成确定性大数据；只允许目标数据库 `chatbi_mvp`，对 5 张表执行清空、批量写入、质量和业务场景校验。 |
-| `scripts/generate_course_schema.py` | Offline/Metadata Generation（离线元数据生成） | 使用 `chatbi_app` 从 PostgreSQL 元数据读取表、字段、PK/FK/UNIQUE，生成 `course_schema.txt`、`tables.json`、`columns.json`、`relationships.json`。 |
+| `scripts/course_baseline/init_database.py` | Offline/Database CLI（离线数据库命令行） | 使用 migrator 配置创建 `chatbi_mvp`、执行课程 SQL、读取元数据、输出行数/约束/5 类课程验证。可能执行建库、建表和写入。 |
+| `tests/sales_mart/test_schema.py` | Database Test（数据库测试） | 重复执行 Sales Mart DDL，验证 7 张表、PK/FK、SCD2、Completed 完整性、状态/汇率/粒度约束；测试业务行全部事务回滚。 |
+| `scripts/course_baseline/generate_demo_data.py` | Offline/Data Generation（离线数据生成） | 使用 seed、日期和数量参数生成确定性大数据；只允许目标数据库 `chatbi_mvp`，对 5 张表执行清空、批量写入、质量和业务场景校验。 |
+| `scripts/course_baseline/generate_schema.py` | Offline/Metadata Generation（离线元数据生成） | 使用 `chatbi_app` 从 PostgreSQL 元数据读取表、字段、PK/FK/UNIQUE，生成 `course_schema.txt`、`tables.json`、`columns.json`、`relationships.json`。 |
 
 ### 4.3 检索源码与索引脚本
 
@@ -148,26 +162,26 @@ chatbi-engine/
 | `src/infrastructure/retrieval/bge_m3.py` | Infrastructure/Offline | 通过原生 FlagEmbedding `BGEM3FlagModel` 从本地目录生成 1024 维 Dense（稠密）和 Sparse（稀疏）向量；设置离线加载。 |
 | `src/infrastructure/retrieval/qdrant_store.py` | Infrastructure/Offline | 通过原生 `qdrant-client` 创建/校验 Collection（集合）、Upsert（写入）、计数、按 ID 读取和 Dense/Sparse 查询。 |
 | `src/infrastructure/retrieval/schema_indexer.py` | Infrastructure/Offline | 将 Document 编码为 Qdrant Point（数据点），使用 UUID5 确定性 ID，写入 `schema_tables`、`schema_columns` 或指定指标 Collection。 |
-| `scripts/validate_schema_loaders.py` | Test/CLI（测试/命令行） | 验证表 Document 数量 5、字段 Document 数量 40、指标 Document 数量 5，并打印样例。 |
-| `scripts/validate_schema_relationships.py` | Test/CLI（测试/命令行） | 不依赖数据库验证关系资源版本、PK/UNIQUE/FK 和人工语义关系。 |
-| `scripts/test_bge_m3.py` | Test/Offline | 从本地模型目录验证模型加载、Dense/Sparse 输出；不打印完整向量。 |
-| `scripts/build_schema_index.py` | Offline Indexing（离线索引） | Table/Column JSON → Loader → BGE-M3 → Qdrant；验证 5/40 文档、Point、payload、查询和可选重复构建。 |
-| `scripts/build_metric_index.py` | Offline Indexing | Metric JSON → MetricLoader → 复用 BGE-M3/Qdrant/SchemaIndexer → `metric_catalog`；验证 payload、向量、确定性 ID 和可选重复构建。 |
+| `scripts/course_baseline/validate_schema_loaders.py` | Test/CLI（测试/命令行） | 验证表 Document 数量 5、字段 Document 数量 40、指标 Document 数量 5，并打印样例。 |
+| `scripts/course_baseline/validate_schema_relationships.py` | Test/CLI（测试/命令行） | 不依赖数据库验证关系资源版本、PK/UNIQUE/FK 和人工语义关系。 |
+| `scripts/retrieval/test_bge_m3.py` | Test/Offline | 从本地模型目录验证模型加载、Dense/Sparse 输出；不打印完整向量。 |
+| `scripts/retrieval/build_schema_index.py` | Offline Indexing（离线索引） | Table/Column JSON → Loader → BGE-M3 → Qdrant；验证 5/40 文档、Point、payload、查询和可选重复构建。 |
+| `scripts/retrieval/build_metric_index.py` | Offline Indexing | Metric JSON → MetricLoader → 复用 BGE-M3/Qdrant/SchemaIndexer → `metric_catalog`；验证 payload、向量、确定性 ID 和可选重复构建。 |
 
 ## 5. Entry Points（系统入口）
 
 | 入口 | 调用链 | 当前性质 |
 |---|---|---|
-| `scripts/init_course_database.py` | `.env` → psycopg → `chatbi_mvp` → 课程建表/小数据/验证 | 离线数据库维护入口 |
-| `scripts/test_sales_mart_schema.py` | `.env` → psycopg → `mart_sales` DDL → 15 项 PostgreSQL Schema Test（结构测试） | Sales Mart V1 Schema 验证入口 |
-| `scripts/seed_sales_mart.py` | 参数/`.env` → 确定性生成 → `mart_sales` Transaction（事务）→ 业务验证/指标报告 | Sales Mart V1 Demo Data 入口 |
-| `scripts/test_sales_mart_seed.py` | 纯生成测试 + PostgreSQL reset/reseed 集成测试 | Demo Data 回归入口 |
-| `scripts/generate_course_demo_data.py` | 参数/`.env` → psycopg → 5 表清空与批量写入 → 质量/场景检查 | 离线数据生成入口 |
-| `scripts/generate_course_schema.py` | PostgreSQL 元数据 → Schema 文本/JSON 目录 | 离线结构生成入口 |
-| `scripts/validate_schema_loaders.py` | JSON → Table/Column Loader → Document 数量/样例 | 离线测试入口 |
-| `scripts/test_bge_m3.py` | 本地模型目录 → FlagEmbedding → Dense/Sparse 检查 | 离线模型测试入口 |
-| `scripts/build_schema_index.py` | Schema Loader → BGE-M3 → Qdrant → smoke query（冒烟查询） | 离线索引入口 |
-| `scripts/build_metric_index.py` | MetricLoader → BGE-M3 → Qdrant → payload/vector 校验 | 离线指标索引入口 |
+| `scripts/course_baseline/init_database.py` | `.env` → psycopg → `chatbi_mvp` → 课程建表/小数据/验证 | 离线数据库维护入口 |
+| `tests/sales_mart/test_schema.py` | `.env` → psycopg → `mart_sales` DDL → 15 项 PostgreSQL Schema Test（结构测试） | Sales Mart V1 Schema 验证入口 |
+| `scripts/sales_mart/seed.py` | 参数/`.env` → 确定性生成 → `mart_sales` Transaction（事务）→ 业务验证/指标报告 | Sales Mart V1 Demo Data 入口 |
+| `tests/sales_mart/test_seed.py` | 纯生成测试 + PostgreSQL reset/reseed 集成测试 | Demo Data 回归入口 |
+| `scripts/course_baseline/generate_demo_data.py` | 参数/`.env` → psycopg → 5 表清空与批量写入 → 质量/场景检查 | 离线数据生成入口 |
+| `scripts/course_baseline/generate_schema.py` | PostgreSQL 元数据 → Schema 文本/JSON 目录 | 离线结构生成入口 |
+| `scripts/course_baseline/validate_schema_loaders.py` | JSON → Table/Column Loader → Document 数量/样例 | 离线测试入口 |
+| `scripts/retrieval/test_bge_m3.py` | 本地模型目录 → FlagEmbedding → Dense/Sparse 检查 | 离线模型测试入口 |
+| `scripts/retrieval/build_schema_index.py` | Schema Loader → BGE-M3 → Qdrant → smoke query（冒烟查询） | 离线索引入口 |
+| `scripts/retrieval/build_metric_index.py` | MetricLoader → BGE-M3 → Qdrant → payload/vector 校验 | 离线指标索引入口 |
 | `npm run compile`（工作目录为 Platform Integration） | TypeSpec → Compiler（编译器）→ OpenAPI 3.2 YAML | 契约生成入口 |
 | API/CLI/UI/Worker | 未发现实现 | Not Found（未发现） |
 | Docker Compose | 配置了 PostgreSQL/Qdrant 服务，但本次运行状态未确认 | 容器配置入口，不是业务 API 入口 |
@@ -247,7 +261,7 @@ RAG_CONTEXT_MAX_CHARACTERS
 
 ### 物理数据库基线
 
-`database/course_baseline/001_create_tables.sql` 定义且 `init_course_database.py` 期望严格存在以下 5 张表：
+`database/course_baseline/001_create_tables.sql` 定义且 `scripts/course_baseline/init_database.py` 期望严格存在以下 5 张表：
 
 - `dim_customers`
 - `dim_products`
@@ -287,13 +301,13 @@ RAG_CONTEXT_MAX_CHARACTERS
 - `fct_exchange_rate_daily`
 - `fct_sales_order_line`
 
-该 DDL（数据定义语言）已在配置的 `chatbi_mvp` PostgreSQL 数据库中重复执行验证；`scripts/test_sales_mart_schema.py` 的 15 项自动化测试全部通过，测试业务行在事务结束时回滚。随后由 Demo Data Seed（演示数据种子）加载器写入可重复数据；`public` Schema 仍为原有 5 张表。
+该 DDL（数据定义语言）已在配置的 `chatbi_mvp` PostgreSQL 数据库中重复执行验证；`tests/sales_mart/test_schema.py` 的 15 项自动化测试全部通过，测试业务行在事务结束时回滚。随后由 Demo Data Seed（演示数据种子）加载器写入可重复数据；`public` Schema 仍为原有 5 张表。
 
 模型边界：`fct_sales_order_line` 一行对应一条订单明细；Customer/Product 使用 SCD Type 2（第二型缓慢变化维度）；默认业务时间和 FX Date（汇率日期）均为 Completion Date（完成日期）；销售事实冻结 CNY（人民币）销售额、汇率和成本；Gross Profit / Gross Margin（毛利 / 毛利率）不物理存储；Return Fact（退货事实）未建设。
 
 ### Sales Mart V1 Demo Data
 
-`scripts/seed_sales_mart.py --reset --seed 42` 已实际加载并验证一套可重复 Demo Data：
+`scripts/sales_mart/seed.py --reset --seed 42` 已实际加载并验证一套可重复 Demo Data：
 
 - 200 个客户业务键、224 行 Customer SCD2 版本；
 - 80 个产品业务键、90 行 Product SCD2 版本；
@@ -304,7 +318,7 @@ RAG_CONTEXT_MAX_CHARACTERS
 
 当前已验证 Demo Data 指标：Completed Sales Quantity（已完成销量）`81,818.419360`，Sales Revenue CNY（人民币销售额）`1,285,634,448.378276`，Sales Cost CNY（人民币销售成本）`943,197,788.784322`，Gross Profit（毛利）`342,436,659.593954`，Gross Margin（毛利率）约 `26.64%`。2025 年完成销售额高于 2024 年；存在 49 条负毛利明细和 143 条低毛利明细，用于后续分析验证。
 
-`seed_sales_mart.py` 使用单事务加载；失败自动回滚。`--reset` 只清理 `mart_sales` 业务数据，不执行 `DROP`，不修改 `public`。当前 `public` 五张旧基线表行数仍为 `dim_customers=500`、`dim_products=150`、`sales_orders=30,000`、`exchange_rates=3,288`、`finance_expenses=216`。
+`scripts/sales_mart/seed.py` 使用单事务加载；失败自动回滚。`--reset` 只清理 `mart_sales` 业务数据，不执行 `DROP`，不修改 `public`。当前 `public` 五张旧基线表行数仍为 `dim_customers=500`、`dim_products=150`、`sales_orders=30,000`、`exchange_rates=3,288`、`finance_expenses=216`。
 
 ### 权限脚本
 
@@ -317,13 +331,13 @@ RAG_CONTEXT_MAX_CHARACTERS
 - `resources/schema/columns.json`：40 个字段对象。
 - `resources/schema/relationships.json`：保存 `schema_version=1`、PK、UNIQUE、FK 和单独的 `semantic_relationships`；物理部分来自 PostgreSQL 元数据，人工语义部分由资源文件维护并由生成器保留。
 
-`generate_course_schema.py` 会校验物理约束与当前 PostgreSQL 元数据一致，并拒绝缺少或格式错误的人工语义关系；`scripts/validate_schema_relationships.py` 提供不依赖数据库的确定性事实校验。
+`scripts/course_baseline/generate_schema.py` 会校验物理约束与当前 PostgreSQL 元数据一致，并拒绝缺少或格式错误的人工语义关系；`scripts/course_baseline/validate_schema_relationships.py` 提供不依赖数据库的确定性事实校验。
 
 ## 9. AI / LLM Assets（AI/大模型资产）
 
 - 本地 `models/bge-m3/` 目录存在完整模型文件，包括 PyTorch（深度学习框架）模型、Tokenizer（分词器）和 Sparse/Dense 相关文件。
 - `BGE_M3Encoder` 固定 Dense 维度为 1024，使用 `local_files_only=True` 和离线环境变量；一次编码返回 Dense 与 Sparse。
-- `scripts/test_bge_m3.py` 是模型加载和向量输出测试入口。
+- `scripts/retrieval/test_bge_m3.py` 是模型加载和向量输出测试入口。
 - `.env` 存在 `LLM_*` 配置名，但源码未发现 LLM Client、模型调用、Prompt Builder（提示词构建）或 SQL 生成消费者。
 - 未发现 Prompt 文件、系统提示词资源、LLM Evaluation（大模型评估）数据或模型网关实现。
 
@@ -436,7 +450,7 @@ TypeSpec 是正式 API Contract Source of Truth（接口契约事实源），Ope
 
 ## 14. Tests & Evaluation（测试与评估）
 
-未发现标准 `tests/` 目录、统一测试框架配置或持续集成测试；当前新增了 Sales Mart Schema Test（数据集市结构测试）和 Demo Data Seed Test（演示数据种子测试）脚本。
+当前存在 `tests/sales_mart/` 目录，但未发现统一测试框架配置或持续集成测试；其中包含 Sales Mart Schema Test（数据集市结构测试）和 Demo Data Seed Test（演示数据种子测试）脚本。
 
 当前实际验证资产：
 
@@ -444,13 +458,13 @@ TypeSpec 是正式 API Contract Source of Truth（接口契约事实源），Ope
 |---|---|---|
 | `003_validate_course_data.sql` | 五表结构、约束、课程查询和基础数据条件 | Database Validation（数据库校验） |
 | `004_validate_large_data.sql` | 大数据质量、年度/季度/区域/费用场景 | Business Acceptance（业务验收脚本） |
-| `scripts/init_course_database.py` | 建库后行数、PK/FK/UNIQUE、课程 SQL | Integration-like CLI（集成式命令行校验） |
-| `scripts/test_sales_mart_schema.py` | `mart_sales` 7 表、PK/FK、SCD2、事实约束和成功写入；测试业务行回滚 | Database Schema Test（数据库结构测试） |
-| `scripts/test_sales_mart_seed.py` | 固定 seed、规模、SCD2、状态、reset/reseed、指标与 public 边界；留下最后一次有效 Demo Data | Database Seed Test（数据库种子测试） |
-| `scripts/validate_schema_loaders.py` | 5 个表 Document、40 个字段 Document | Loader Smoke Test（加载器冒烟测试） |
-| `scripts/test_bge_m3.py` | 本地模型、Dense、Sparse | Embedding Smoke Test（向量冒烟测试） |
-| `scripts/build_schema_index.py` | Schema Point、payload、Dense/Sparse 查询和可选幂等性 | Offline Index Validation（离线索引校验） |
-| `scripts/build_metric_index.py` | Metric Point、完整 metadata、确定性 ID和可选幂等性 | Offline Index Validation |
+| `scripts/course_baseline/init_database.py` | 建库后行数、PK/FK/UNIQUE、课程 SQL | Integration-like CLI（集成式命令行校验） |
+| `tests/sales_mart/test_schema.py` | `mart_sales` 7 表、PK/FK、SCD2、事实约束和成功写入；测试业务行回滚 | Database Schema Test（数据库结构测试） |
+| `tests/sales_mart/test_seed.py` | 固定 seed、规模、SCD2、状态、reset/reseed、指标与 public 边界；留下最后一次有效 Demo Data | Database Seed Test（数据库种子测试） |
+| `scripts/course_baseline/validate_schema_loaders.py` | 5 个表 Document、40 个字段 Document | Loader Smoke Test（加载器冒烟测试） |
+| `scripts/retrieval/test_bge_m3.py` | 本地模型、Dense、Sparse | Embedding Smoke Test（向量冒烟测试） |
+| `scripts/retrieval/build_schema_index.py` | Schema Point、payload、Dense/Sparse 查询和可选幂等性 | Offline Index Validation（离线索引校验） |
+| `scripts/retrieval/build_metric_index.py` | Metric Point、完整 metadata、确定性 ID和可选幂等性 | Offline Index Validation |
 | `.jbeval/datasets/` | 目录存在但当前为空 | Evaluation Dataset（评估数据集）未发现 |
 
 除上述数据库结构/种子测试脚本外，仍未发现统一 Unit Test（单元测试）/Contract Test（契约测试）框架、Retrieval Evaluation（检索评估）、SQL Evaluation（SQL 评估）、End-to-End Evaluation（端到端评估）或 Bad Case Replay（失败案例回放）资产。
@@ -490,14 +504,14 @@ TypeSpec 是正式 API Contract Source of Truth（接口契约事实源），Ope
 
 | 能力 | 状态 | 主要文件 | 当前事实 |
 |---|---|---|---|
-| Course Baseline PostgreSQL | Exists | `database/course_baseline/`、`scripts/init_course_database.py` | 五表 SQL、生成器、校验脚本存在；Schema 元数据生成已验证，当前行数未作为本轮事实。 |
-| Sales Mart V1 PostgreSQL | Exists | `database/sales_mart/001_create_schema.sql`、`scripts/seed_sales_mart.py`、`scripts/test_sales_mart_schema.py` | `mart_sales` 七表、SCD2、销售事实约束和必要索引已实现；15 项结构测试通过，Demo Data 已按 seed=42 加载并通过业务校验。 |
-| Schema Catalog | Exists | `resources/schema/*`、`generate_course_schema.py` | 表、字段、可读 Schema 和关系资源存在。 |
+| Course Baseline PostgreSQL | Exists | `database/course_baseline/`、`scripts/course_baseline/init_database.py` | 五表 SQL、生成器、校验脚本存在；Schema 元数据生成已验证，当前行数未作为本轮事实。 |
+| Sales Mart V1 PostgreSQL | Exists | `database/sales_mart/001_create_schema.sql`、`scripts/sales_mart/seed.py`、`tests/sales_mart/test_schema.py` | `mart_sales` 七表、SCD2、销售事实约束和必要索引已实现；15 项结构测试通过，Demo Data 已按 seed=42 加载并通过业务校验。 |
+| Schema Catalog | Exists | `resources/schema/*`、`scripts/course_baseline/generate_schema.py` | 表、字段、可读 Schema 和关系资源存在。 |
 | Metric Catalog | Exists | `resources/semantic/sales/metrics.json`、`metric_loader.py` | 5 个指标和 Loader 存在。 |
 | Table/Column Loader | Exists | `table_loader.py`、`column_loader.py` | Document 加载契约和 5/40 数量校验存在。 |
 | BGE-M3 本地 Embedding | Exists | `models/bge-m3/`、`bge_m3.py` | 本地模型资产和 Dense/Sparse 适配器存在；本次未重新推理。 |
 | Qdrant 离线索引 | Exists | `qdrant_store.py`、`schema_indexer.py`、`data/qdrant/` | 三个 Collection、Point 数量、向量查询和重复构建已验证。 |
-| Offline Indexing | Exists | `build_schema_index.py`、`build_metric_index.py` | Schema/Metric 离线写入和校验入口存在。 |
+| Offline Indexing | Exists | `scripts/retrieval/build_schema_index.py`、`scripts/retrieval/build_metric_index.py` | Schema/Metric 离线写入和校验入口存在。 |
 | Table Retrieval | Partial | `QdrantStore.query_dense/query_sparse` | 底层查询原语存在；没有 query-facing Retriever 和结果契约。 |
 | Metric Retrieval | Partial | `metric_catalog` 构建脚本 | 指标索引存在；在线指标检索不存在。 |
 | Schema Linking | Partial | Schema 资源/索引、`relationships.json` | 目录和索引基础存在；没有 Anchor、字段匹配、图搜索或 Join Resolver。 |
@@ -525,7 +539,7 @@ TypeSpec 是正式 API Contract Source of Truth（接口契约事实源），Ope
 - 销售业务事实、规则和业务意义：`docs/Business/Business Domain.md`；文档自身将 `SALES_DOMAIN.md` 作为命名示例，但该文件未发现。
 - 指标机器目录：`resources/semantic/sales/metrics.json`；`MetricLoader` 将其作为唯一输入并校验结构。
 - 课程基线物理数据库结构：`database/course_baseline/001_create_tables.sql` 与 PostgreSQL 实际元数据读取逻辑共同出现。
-- Sales Mart V1 物理数据库结构：`database/sales_mart/001_create_schema.sql`；`scripts/test_sales_mart_schema.py` 是其可重复数据库结构验证入口。
+- Sales Mart V1 物理数据库结构：`database/sales_mart/001_create_schema.sql`；`tests/sales_mart/test_schema.py` 是其可重复数据库结构验证入口。
 - Schema 目录：`resources/schema/*`；表、字段和物理约束由 PostgreSQL 元数据生成，`relationships.json` 的语义关系区由人工事实维护。
 - 系统架构：`docs/Technical Design/ARCHITECTURE.md`。
 - 架构决策：`docs/Technical Design/ARCHITECTURE_DECISIONS.md`。
@@ -548,7 +562,7 @@ TypeSpec 是正式 API Contract Source of Truth（接口契约事实源），Ope
 - `resources/schema/relationships.json`（物理约束由 PostgreSQL 生成；`semantic_relationships` 由资源文件维护并由生成器保留）
 - `docs/Technical Design/Platform Integration/generated/openapi.2026-08-12.yaml`
 - `data/qdrant/collections/*` 向量索引持久化目录
-- `scripts/__pycache__/`、`src/**/__pycache__/`
+- `scripts/**/__pycache__/`、`tests/**/__pycache__/`、`src/**/__pycache__/`
 - `.uv-cache/`、`.model-cache/`、`models/bge-m3/.cache/`
 - Platform Integration `node_modules/`
 

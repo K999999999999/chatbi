@@ -10,13 +10,18 @@
 from __future__ import annotations
 
 import hashlib
+import sys
 import unittest
 from pathlib import Path
 from typing import Any
 
 import psycopg
 
-from scripts.seed_sales_mart import (
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.sales_mart.seed import (
     DATABASE_NAME,
     END_DATE,
     START_DATE,
@@ -28,9 +33,6 @@ from scripts.seed_sales_mart import (
     reset_mart_sales,
     validate_report,
 )
-
-
-ROOT = Path(__file__).resolve().parents[1]
 
 
 class SalesMartSeedTest(unittest.TestCase):

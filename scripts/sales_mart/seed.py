@@ -30,7 +30,7 @@ from typing import Any, Iterable, Sequence
 import psycopg
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 DDL_PATH = ROOT / "database" / "sales_mart" / "001_create_schema.sql"
 SCHEMA = "mart_sales"
 DATABASE_NAME = "chatbi_mvp"

@@ -23,7 +23,7 @@ import psycopg
 from psycopg import sql
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 SQL_DIR = ROOT / "database" / "course_baseline"
 DEFAULT_DATABASE = "chatbi_mvp"
 EXPECTED_TABLES = {

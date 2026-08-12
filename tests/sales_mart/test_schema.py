@@ -21,7 +21,7 @@ from typing import Any, Callable
 import psycopg
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 DDL_PATH = ROOT / "database" / "sales_mart" / "001_create_schema.sql"
 SCHEMA = "mart_sales"
 TEST_SOURCE_SYSTEM = "sales_mart_schema_test"

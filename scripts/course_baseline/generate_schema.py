@@ -12,7 +12,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 OUTPUT_PATH = ROOT / "resources" / "schema" / "course_schema.txt"
 TABLES_OUTPUT_PATH = ROOT / "resources" / "schema" / "tables.json"
 COLUMNS_OUTPUT_PATH = ROOT / "resources" / "schema" / "columns.json"

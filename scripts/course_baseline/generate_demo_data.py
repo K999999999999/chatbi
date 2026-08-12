@@ -20,11 +20,11 @@ from typing import Any, Iterable
 
 import psycopg
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.init_course_database import (  # noqa: E402
+from scripts.course_baseline.init_database import (  # noqa: E402
     EXPECTED_COLUMNS,
     EXPECTED_TABLES,
     connection_config,
