@@ -13,7 +13,7 @@
 
 ## 1. Responsibility（职责）
 
-本 Module 负责将每一个 `RetrievalRecord` 转换为一个可被后续 `Retrieval Index Capability` 消费的 `RetrievalRepresentation`（检索表示），并形成 `EmbeddedRetrievalRecords`（带检索表示的检索记录集合）。
+本 Module 负责将每一个 `RetrievalRecord` 转换为满足 `RetrievalRepresentation` Contract（检索表示契约）的 `RetrievalRepresentation`（检索表示），并形成 `EmbeddedRetrievalRecords`（带检索表示的检索记录集合）。该输出作为后续 Retrieval Index Building（检索索引构建）的 Contract Input（契约输入）；本 Module 不通过运行时调用下游 Capability（能力）确认可消费性。
 
 本 Module 必须保证：
 
@@ -59,7 +59,7 @@
 2. 所有 Record 的 `record_type`、`semantic_payload`、`physical_mapping_reference` 和 `source_trace` 已完整。
 3. `BuildContext` 的四个字段完整，且 `build_mode=FULL_REBUILD`。
 4. 输入 Record 不包含 Relationship，不包含未知对象类型，也不依赖隐藏全局状态。
-5. `Embedding Capability` 可以在给定 `RepresentationVersion` 下处理四类 Record 的检索内容。
+5. `Embedding Capability` 可以在给定 `RepresentationVersion` 下处理四类 Record 的检索内容，并且其返回结果必须满足 `RetrievalRepresentationValue` Contract。
 
 ---
 
@@ -70,7 +70,7 @@
 1. 对 `RetrievalRecords.records` 中每一条 Record 单独请求一个 `RetrievalRepresentation`。
 2. 保留 Record 的 `LogicalRecordIdentity`、`SourceObjectIdentity`、`SourceTrace`、`SemanticPayload`、`PhysicalMappingReference` 和 `retrieval_content`；表示生成过程不得写回或重写这些字段。
 3. 将 `representation_version` 与每个 Representation 绑定，并确保同一批次中版本一致。
-4. 验证 `Embedding Capability` 返回的 Representation Value 非空、可被 `Retrieval Index Capability` 消费，并与输入 Record Identity 关联。
+4. 验证 `Embedding Capability` 返回的 Representation Value 合法、非空、满足 `RetrievalRepresentationValue` Contract、与输入 Record Identity 一一关联，并使用当前 `RepresentationVersion`。
 5. 在单个 Record 失败、Capability 返回非法结果或版本不兼容时，停止当前完整构建；不得返回混有未表示 Record 的部分集合。
 6. 在相同 Source Projection、Build Configuration 和 Representation Version 下，保持语义可重复；不要求任何基础设施内部二进制表示逐字节相同。
 7. 不依据表示结果反向修改 Source Object、Metric Formula、Dimension Meaning、Physical Mapping 或 Relationship。
@@ -83,11 +83,11 @@
 
 `RetrievalRepresentationValue` 是由 `Embedding Capability` 提供的逻辑 Typed Value（类型化逻辑值）：
 
-- 必须是非空且通过 Capability Contract 的可消费表示；
+- 必须合法、非空并满足当前 `RetrievalRepresentationValue` Contract；
 - 不是自由 `dict`、自由 JSON 或隐式字段集合；
 - 内部形式、变体和存储表达不在本 Module Spec 冻结；
 - 不得携带或改写 Business Truth；
-- 必须能在同一 `RepresentationVersion` 下被 `Retrieval Index Capability` 识别和消费。
+- 必须能在同一 `RepresentationVersion` 下作为后续 Retrieval Index Building 的 Contract Input；该要求通过本 Module 的类型、字段、非空和版本约束表达，不通过运行时调用下游 Capability 确认。
 
 该抽象边界用于保留 Dense / Sparse / Hybrid 等技术决定的延后空间，不代表允许未定义的任意数据。
 
@@ -98,7 +98,7 @@
 | `record_identity` | `LogicalRecordIdentity` | Yes | 该表示对应的 Retrieval Record | 必须与输入 Record 完全一致 |
 | `source_trace` | `SourceTrace` | Yes | 表示所依据的源追踪 | 必须与输入 Record 的 `source_trace` 一致；不得丢失 |
 | `representation_version` | `RepresentationVersion` | Yes | 表示契约版本 | 必须等于 `BuildContext.representation_version` |
-| `value` | `RetrievalRepresentationValue` | Yes | 后续 Index Building 可消费的检索表示 | 非空；必须通过 Capability Contract |
+| `value` | `RetrievalRepresentationValue` | Yes | 后续 Index Building 可消费的检索表示 | 非空；必须满足 `RetrievalRepresentationValue` Contract |
 
 ### 5.3 `EmbeddedRetrievalRecord`（带表示的检索记录）
 
@@ -127,7 +127,7 @@
 2. 每个 Representation 的 `record_identity` 与其 Record 一致，且 `source_trace` 未丢失。
 3. Record 的 Semantic Payload、Physical Mapping Reference、Business Meaning 和 Source Trace 在嵌入前后保持一致。
 4. 所有 Representation 使用同一个 `RepresentationVersion` 和同一个 `BuildContext`。
-5. Representation 可以被后续 Retrieval Index Building 作为逻辑输入消费。
+5. Representation 满足后续 Retrieval Index Building 的逻辑输入契约。
 6. Relationship 不会因为表示生成而成为 Retrieval Record 或 Index Entry。
 7. 相同 Contract Input、Build Configuration 和 Representation Version 应产生语义等价的表示集合。
 8. 任一 Record 无法生成合法 Representation 时，整个 Module 失败，不返回部分成功集合。
@@ -144,7 +144,7 @@
 
 ### `DEPENDENCY_FAILURE`（依赖失败）
 
-用于：`Embedding Capability` 不可用、超出其 Contract、返回空值、返回无法被 Index Capability 消费的结果，或无法证明返回值属于请求的 Representation Version。
+用于：`Embedding Capability` 不可用、超出其 Contract、返回空值、违反 `RetrievalRepresentationValue` Contract，或无法证明返回值属于请求的 Representation Version。
 
 ### `UNSUPPORTED`（不支持）
 
@@ -164,7 +164,7 @@
 
 - `RetrievalRecords` Contract：由 Retrieval Projection 提供；
 - `Embedding Capability`（检索表示能力）：把 Record 转换为 `RetrievalRepresentationValue`；
-- `Retrieval Index Capability` 的逻辑消费契约：用于确认 Representation Value 可被后续 Index Building 消费。
+- `RetrievalRepresentation` / `EmbeddedRetrievalRecords` Contract：规定本 Module 的类型化输出，并作为后续 Retrieval Index Building 的输入契约。
 
 本 Module 只依赖 Capability / Contract，不绑定具体 Model Provider、Embedding Library、SDK、Framework、设备或运行平台。
 

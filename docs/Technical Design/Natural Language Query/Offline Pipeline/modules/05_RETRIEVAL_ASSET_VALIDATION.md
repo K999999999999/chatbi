@@ -29,7 +29,19 @@
 - Build Metadata Integrity（构建元数据完整性）；
 - Online Retrieval Consumability（在线检索可消费契约）。
 
-成功输出是激活边界唯一允许接受的逻辑资产结果。实际 Physical Activation（物理激活）的具体机制不在本 Module Spec 冻结，也不新增第六个 Core Module。
+本 Module 的职责终点是产生 `ValidatedRetrievalAssets`：将候选资产从 `BUILT_UNVALIDATED` 变为逻辑上的 `VALIDATED + ELIGIBLE`。这是 Validation（验证）成功后的输出，不代表已经完成 Physical Activation（物理激活）。
+
+### Validation Boundary（验证边界）
+
+本 Module 只负责：
+
+```text
+BUILT_UNVALIDATED
+        ↓
+VALIDATED + ELIGIBLE
+```
+
+`VALIDATED` 到 `ACTIVE` 的 Physical Activation 属于 Validation 成功后的 Feature / Application Orchestration Boundary（功能 / 应用编排边界）及其对应的 Capability（能力）。它不是本 Module 的内部 Processing Responsibility（处理职责），也不新增第六个 Core Module（核心模块）。
 
 本 Module 不负责：
 
@@ -63,7 +75,7 @@
 2. `validated_catalogs` 覆盖同一构建所依据的五类当前权威 Source Resource。
 3. `built_assets.build_metadata`、`index_metadata`、Entries 和 `validated_catalogs.source_descriptors` 可被显式比较。
 4. 输入中不存在需要通过猜测、补写或读取 Legacy Resource 才能验证的字段。
-5. `Retrieval Index Capability` 能够提供逻辑上的 Online Retrieval Consumability Contract 检查或确认；不要求本 Module 预先冻结具体物理存储机制。
+5. `Retrieval Index Capability` 能够提供 Built / Validated Retrieval Asset 的逻辑访问能力，并支持 Asset Validation 所需的 Online Retrieval Consumability Contract 检查或确认；该前置条件不要求本 Module 执行 Physical Activation，也不要求预先冻结具体物理存储机制。
 6. 本次验证针对 V1 Full Rebuild；增量、部分资产或多版本并行在线服务不属于当前输入。
 
 ---
@@ -84,7 +96,8 @@
 10. **Relationship Boundary**：确认 Relationship Catalog 在 `validated_catalogs` 中存在且合法，同时确认资产 Entries 中不存在 Relationship Record，Retrieval 没有创造 Join。
 11. **Online Retrieval Consumability**：确认输出包含 Online Retrieval 所需的完整 Record、Representation、Payload、Identity、Trace 和 Index Metadata；必要的 Capability Contract 检查失败时，不能输出 Validated Asset。
 12. 所有检查通过后，复制逻辑资产内容形成 `ValidatedRetrievalAssets`，只改变验证状态和验证标记，不修改业务内容。
-13. 验证失败时不激活新资产，并保持已有上一版有效资产不受影响。
+13. 本 Module 在产生 `ValidatedRetrievalAssets` 后结束；后续 `VALIDATED` 到 `ACTIVE` 的 Physical Activation 由 Feature / Application Orchestration Boundary 通过对应 Capability 负责。
+14. 验证失败时不改变 Activation State、不执行 Physical Activation，并保持已有上一版有效资产不受影响。
 
 ---
 
@@ -111,7 +124,7 @@
 
 - `entries`、Payload、Representation、Identity、Source Trace 和 Build Metadata 与 `BuiltRetrievalAssets` 保持语义等价；
 - 资产状态从 `BUILT_UNVALIDATED` 进入逻辑 `VALIDATED`；
-- 只有该输出可以被后续 Activation Capability 接受；
+- 只有该输出可以被后续 Activation Capability 接受；接受输出与执行 Physical Activation 属于 Feature / Application Orchestration Boundary，不属于本 Module 内部处理；
 - `Relationship Catalog` 仍由 `validated_catalogs` 独立维护，不被复制成 Retrieval Record。
 
 ### 5.3 Failure Output（失败输出）
@@ -149,7 +162,7 @@
 
 ### `DEPENDENCY_FAILURE`（依赖失败）
 
-用于：`Retrieval Index Capability` 无法确认逻辑资产可被 Online Retrieval 消费，或无法保持验证前后资产状态边界等情况。
+用于：`Retrieval Index Capability` 无法提供逻辑资产访问能力、无法支持 Online Retrieval Consumability Contract 检查，或无法提供后续 Activation 所需的 Capability Boundary 等情况；这不表示本 Module 负责执行 Activation。
 
 ### `UNSUPPORTED`（不支持）
 
@@ -171,7 +184,7 @@
 
 - `BuiltRetrievalAssets` Contract：由 Retrieval Index Building 提供；
 - `ValidatedCatalogs` Contract：由 Resource Loading & Validation 提供；
-- `Retrieval Index Capability`（检索索引能力）：确认经过验证的逻辑资产具备后续 Online Retrieval 消费条件，并承接后续激活边界；
+- `Retrieval Index Capability`（检索索引能力）：提供 Built / Validated Retrieval Asset 的逻辑访问能力，支持 Asset Validation 所需的可检查状态，并提供后续 Activation 所需的 Capability Boundary；它不使 Physical Activation 成为本 Module 的处理职责；
 - Feature Acceptance 中定义的 Hard Contract 与 Build Safety 规则。
 
 本 Module 不绑定具体存储、激活、发布、验证库、SDK、Framework 或 Deployment Platform。物理激活是 Capability Boundary，不新增独立 Core Module。
@@ -200,7 +213,7 @@
 
 ### Build-to-Retrieve Integration Evaluation（构建到检索集成评估）
 
-必须从正式 Schema Metadata 与 Semantic Resources 重新构建，经过本 Module 验证后激活，再由 Online Retrieval 返回预期 Candidate。该验证必须证明：
+必须从正式 Schema Metadata 与 Semantic Resources 重新构建，经过本 Module 验证后，由 Feature / Application Orchestration Boundary 通过对应 Capability 执行后续 Physical Activation，再由 Online Retrieval 返回预期 Candidate。该验证必须证明：
 
 - Online 消费的是本次通过验证的资产；
 - 资产删除派生结果后可以 Full Rebuild；

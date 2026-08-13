@@ -198,6 +198,23 @@ RelationshipResource = {
 
 `RelationshipEntry` 只能留在 `ValidatedCatalogs.relationships` 中供权威关系校验和后续 Schema Linking 使用；它永远不是 `SourceObject`、`RetrievalRecord` 或 `Index Entry`。
 
+#### `RelationshipIdentity`（关系标识）
+
+`RelationshipIdentity` 只用于在公共 Failure Contract（失败契约）中稳定定位 Relationship，不把 Relationship 变成 Source Object：
+
+| Field（字段） | Logical Type（逻辑类型） | Required（必需） | Semantic Meaning（语义） | Constraint（约束） |
+|---|---|---:|---|---|
+| `entity_type` | Enum | Yes | 关联实体的类型标记 | 固定为 `RELATIONSHIP` |
+| `relationship_key` | `string` | Yes | Relationship Catalog 中的稳定关系键 | 非空；必须能在对应 Relationship Catalog 内唯一定位 |
+
+`RelatedEntityIdentity`（关联实体标识）是公共 Failure Contract 使用的 Tagged Union（带类型标记联合结构）：
+
+```text
+RelatedEntityIdentity = SourceObjectIdentity | RelationshipIdentity
+```
+
+其中 `SourceObjectIdentity` 继续使用既有的 `object_type`、`source_resource_kind` 和 `object_key` 定位 Table、Column、Metric 或 Dimension；`RelationshipIdentity` 使用 `entity_type=RELATIONSHIP` 与 `relationship_key` 定位 Relationship。两种 Identity 只是失败定位的不同变体，Relationship 仍然不是 `SourceObject`、`RetrievalRecord` 或 `Index Entry`。
+
 `PhysicalObjectIdentity` 的逻辑字段为：
 
 | Field（字段） | Logical Type（逻辑类型） | Required（必需） | Constraint（约束） |
@@ -267,10 +284,18 @@ RelationshipResource = {
 | `failure_category` | Enum | Yes | `INVALID_INPUT`、`RESOLUTION_FAILURE`、`DEPENDENCY_FAILURE`、`UNSUPPORTED` 或 `INTERNAL_FAILURE` |
 | `failure_stage` | Enum | Yes | 固定为 `RESOURCE_LOADING_AND_VALIDATION` |
 | `reason` | `string` | Yes | 非空诊断原因；不得把失败描述为成功 |
-| `related_resource_kind` | `nullable enum` | Yes | 无法归属资源时为空 |
-| `related_object_identity` | `nullable SourceObjectIdentity` | Yes | 无法归属对象时为空 |
+| `related_resource_kind` | `nullable enum` | Yes | 失败关联的正式资源类别 | 可以是五类 Resource Catalog 之一；Relationship Failure 使用 `RELATIONSHIP_CATALOG`；无法归属资源时为空 |
+| `related_entity_identity` | `nullable RelatedEntityIdentity` | Yes | 失败关联的机器实体标识 | Source Object Failure 使用 `SourceObjectIdentity`；Relationship Failure 使用 `RelationshipIdentity`；无法归属具体实体时为空 |
 
-`reason` 只用于说明失败，不替代机器可判断的 `failure_category` 和关联标识。
+`related_entity_identity` 是独立于诊断文本的 Machine Identity（机器标识）：
+
+- Source Object Failure → `SourceObjectIdentity`；
+- Relationship Failure → `RelationshipIdentity`，至少可以通过 `relationship_key` 稳定定位；
+- 无法归属具体实体 → `null`。
+
+`reason` 只用于 Human Diagnostic Information（人类诊断信息），不替代机器可判断的 `failure_category`、`related_resource_kind` 或 `related_entity_identity`。
+
+因此，公共 Failure Contract 可以稳定表达：资源级失败使用 `related_resource_kind` 与空的 `related_entity_identity`；Source Object Failure 使用对应资源类别与 `SourceObjectIdentity`；Relationship Failure 使用 `related_resource_kind=RELATIONSHIP_CATALOG` 与 `RelationshipIdentity`；Dependency Failure 与 Internal Failure 使用对应的 `failure_category`，关联实体按是否可归属填写或为空。
 
 ---
 
