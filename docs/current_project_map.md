@@ -77,21 +77,16 @@ chatbi-engine/
 │   └── semantic/sales/
 │       ├── metrics.json                   Sales Semantic Layer V1 指标目录
 │       └── dimensions.json                Sales Semantic Layer V1 维度目录
-├── scripts/                               数据库/加载器/索引验证脚本
+├── scripts/                               数据库/元数据验证脚本
 │   ├── metadata/
 │   │   └── export_schema.py                mart_sales 结构元数据导出
 │   ├── course_baseline/
 │   │   ├── init_database.py                Course Baseline 初始化/验证
 │   │   ├── generate_demo_data.py           Course Baseline 大数据生成
 │   │   ├── generate_schema.py              Course Baseline Schema 生成
-│   │   ├── validate_schema_loaders.py     Schema Loader 校验
 │   │   └── validate_schema_relationships.py 关系资源校验
 │   ├── sales_mart/
 │   │   └── seed.py                         Sales Mart Demo Data 生成/加载/验证
-│   └── retrieval/
-│       ├── build_schema_index.py           Schema 离线索引构建
-│       ├── build_metric_index.py           Metric 离线索引构建
-│       └── test_bge_m3.py                  BGE-M3 模型冒烟测试
 ├── tests/
 │   ├── metadata/
 │   │   └── test_schema_metadata.py         PostgreSQL 结构元数据测试
@@ -124,7 +119,7 @@ chatbi-engine/
 | Architecture（架构） | `docs/Technical Design/ARCHITECTURE.md` | 设计基线，不等同于实现 |
 | Application（应用层） | `src/application/` 为空 | Not Found（未发现） |
 | Domain（领域层） | `src/domain/` 为空；业务事实主要在文档和资源中 | Not Found（未发现源码） |
-| Infrastructure（基础设施层） | `src/infrastructure/retrieval/` | 仅检索离线基础设施存在 |
+| Infrastructure（基础设施层） | `src/infrastructure/` | 旧 Retrieval 实现已移除，当前无源码 |
 | Interfaces（接口层） | `src/interfaces/` 为空 | Not Found（未发现） |
 | Bootstrap/Runtime（启动/运行时装配） | `src/bootstrap/` 为空；由脚本和 Docker Compose 分别启动 | Partial（部分存在） |
 | Platform Contract（平台契约） | TypeSpec 源文件和 OpenAPI 生成文件 | 契约存在，服务实现不存在 |
@@ -160,21 +155,11 @@ chatbi-engine/
 | `tests/metadata/test_schema_metadata.py` | Metadata Test（元数据测试） | 直接读取 PostgreSQL 系统元数据核对当前三份 JSON 的表、字段、类型、可空性、PK/UNIQUE/FK、角色日期 FK、SCD2 物理对象和重复导出稳定性。 |
 | `scripts/course_baseline/generate_schema.py` | Legacy Offline/Metadata Generation（遗留离线元数据生成） | 仅属于旧 Course Baseline；仍保留原代码，不作为当前 Sales Mart Metadata 的生成器，也不作为当前 `resources/schema/` 事实源。 |
 
-### 4.3 检索源码与索引脚本
+### 4.3 资源验证脚本
 
 | 文件 | 所属层 | 主要职责与上下游 |
 |---|---|---|
-| `src/infrastructure/retrieval/table_loader.py` | Infrastructure/Offline | 读取 `tables.json`，每个表生成一个 LangChain Document（文档对象）。 |
-| `src/infrastructure/retrieval/column_loader.py` | Infrastructure/Offline | 读取 `columns.json`，每个字段生成一个 Document。 |
-| `src/infrastructure/retrieval/metric_loader.py` | Infrastructure/Offline Legacy | 保留旧 `formula/time_column` 指标契约；当前 Sales Semantic Layer V1 使用 `expression/default_time_dimension`，该 Loader 待后续单独重构。 |
-| `src/infrastructure/retrieval/bge_m3.py` | Infrastructure/Offline | 通过原生 FlagEmbedding `BGEM3FlagModel` 从本地目录生成 1024 维 Dense（稠密）和 Sparse（稀疏）向量；设置离线加载。 |
-| `src/infrastructure/retrieval/qdrant_store.py` | Infrastructure/Offline | 通过原生 `qdrant-client` 创建/校验 Collection（集合）、Upsert（写入）、计数、按 ID 读取和 Dense/Sparse 查询。 |
-| `src/infrastructure/retrieval/schema_indexer.py` | Infrastructure/Offline | 将 Document 编码为 Qdrant Point（数据点），使用 UUID5 确定性 ID，写入 `schema_tables`、`schema_columns` 或指定指标 Collection。 |
-| `scripts/course_baseline/validate_schema_loaders.py` | Test/CLI（测试/命令行） | 验证表 Document 数量 5、字段 Document 数量 40、指标 Document 数量 5，并打印样例。 |
 | `scripts/course_baseline/validate_schema_relationships.py` | Test/CLI（测试/命令行） | 不依赖数据库验证关系资源版本、PK/UNIQUE/FK 和人工语义关系。 |
-| `scripts/retrieval/test_bge_m3.py` | Test/Offline | 从本地模型目录验证模型加载、Dense/Sparse 输出；不打印完整向量。 |
-| `scripts/retrieval/build_schema_index.py` | Offline Indexing Legacy | 旧 Schema Loader → BGE-M3 → Qdrant；既有离线资产保留，未随本次 Semantic Layer 重建。 |
-| `scripts/retrieval/build_metric_index.py` | Offline Indexing Legacy | 依赖旧 MetricLoader 契约；当前 V1 不重建 Metric Index，待后续离线链路重构。 |
 
 ## 5. Entry Points（系统入口）
 
@@ -188,10 +173,6 @@ chatbi-engine/
 | `tests/sales_mart/test_seed.py` | 纯生成测试 + PostgreSQL reset/reseed 集成测试 | Demo Data 回归入口 |
 | `scripts/course_baseline/generate_demo_data.py` | 参数/`.env` → psycopg → 5 表清空与批量写入 → 质量/场景检查 | 离线数据生成入口 |
 | `scripts/course_baseline/generate_schema.py` | 旧 Course Baseline PostgreSQL 元数据 → 旧 Schema 文本/JSON 目录 | 遗留结构生成入口，不参与当前 Sales Mart Metadata |
-| `scripts/course_baseline/validate_schema_loaders.py` | JSON → Legacy Table/Column Loader → Document 数量/样例 | 遗留离线测试入口，不证明当前 Semantic Layer V1 可加载 |
-| `scripts/retrieval/test_bge_m3.py` | 本地模型目录 → FlagEmbedding → Dense/Sparse 检查 | 离线模型测试入口 |
-| `scripts/retrieval/build_schema_index.py` | Legacy Schema Loader → BGE-M3 → Qdrant → smoke query（冒烟查询） | 遗留离线索引入口，本次未重建 |
-| `scripts/retrieval/build_metric_index.py` | Legacy MetricLoader → BGE-M3 → Qdrant → payload/vector 校验 | 遗留离线指标索引入口，本次未重建 |
 | `tests/semantic/test_sales_semantic_resources.py` | Semantic JSON → Contract Test → Schema Metadata mapping/dependency checks | 当前 Sales Semantic Layer V1 确定性验证入口 |
 | `npm run compile`（工作目录为 Platform Integration） | TypeSpec → Compiler（编译器）→ OpenAPI 3.2 YAML | 契约生成入口 |
 | API/CLI/UI/Worker | 未发现实现 | Not Found（未发现） |
@@ -250,18 +231,18 @@ QUERY_CONTEXT_MODE
 RAG_CONTEXT_MAX_CHARACTERS
 ```
 
-源码还读取 `BGE_MODEL_DIR`、`BGE_USE_FP16`，但当前 `.env` 键名扫描未发现这两个变量，代码使用默认值。`.env.example` 声明了它们、Qdrant 配置以及 PostgreSQL/Compose 所需变量；LLM/RAG 配置仍因没有代码消费者而未加入模板。
+`.env.example` 仍保留历史 BGE/Qdrant 参数模板；当前源码没有旧 Retrieval 实现的运行时消费者。LLM/RAG 配置仍因没有代码消费者而未加入模板。
 
 ## 7. External Dependencies（外部依赖）
 
 | 依赖 | 用途 | 配置来源 | 运行时要求/部署形态 |
 |---|---|---|---|
 | PostgreSQL | Course Baseline 数据库、元数据读取、数据生成和校验 | `.env`、`docker-compose.yml`、`database/`、`psycopg` 脚本 | Schema 元数据生成已通过；Docker 容器进程状态未通过 Docker API 确认 |
-| Qdrant | Dense/Sparse 向量集合和 Point 存储 | `.env`、`docker-compose.yml`、`QdrantStore` | `/healthz`、Schema/Metric 索引与重复构建验证已通过；Docker 容器进程状态未通过 Docker API 确认 |
-| BAAI/bge-m3 | 本地 Embedding（向量编码） | `.env.example`、`models/bge-m3`、`BGE_M3Encoder` | 离线索引/模型测试需要；本地模型目录存在 |
-| FlagEmbedding | 加载 `BGEM3FlagModel` 并输出 Dense/Sparse | `bge_m3.py`、`test_bge_m3.py` | Python 直接依赖，已在 `pyproject.toml` 声明 |
-| LangChain Core | 仅提供统一的 `Document` 类型 | 三个 Loader、Indexer | Python 直接依赖，已声明；未发现 LangChain Retriever 或 QdrantVectorStore 使用 |
-| qdrant-client | 原生 Qdrant 客户端 | `qdrant_store.py` | Python 直接依赖，已在 `pyproject.toml` 声明 |
+| Qdrant | 历史 Dense/Sparse 向量持久化资产与本地服务配置 | `.env`、`docker-compose.yml`、`data/qdrant/` | 资产与配置保留；旧索引代码已移除，本轮未修改 Docker 服务状态 |
+| BAAI/bge-m3 | 本地模型资产 | `.env.example`、`models/bge-m3` | 模型目录保留；旧 Embedding 适配器已移除，当前无代码消费者 |
+| FlagEmbedding | 历史 Embedding 依赖声明 | `pyproject.toml` | 仍在依赖文件中声明；当前无源码消费者 |
+| LangChain Core | 历史 `Document` 依赖声明 | `pyproject.toml` | 仍在依赖文件中声明；当前无源码消费者 |
+| qdrant-client | 历史 Qdrant 客户端依赖声明 | `pyproject.toml` | 仍在依赖文件中声明；当前无源码消费者 |
 | psycopg | PostgreSQL 连接和 SQL 执行 | 三个数据库脚本 | Python 直接依赖，已在 `pyproject.toml` 声明 |
 | TypeSpec | API Contract（API 契约）编译 | Platform Integration `package.json`/`package-lock.json` | Node 子项目依赖；本地 `node_modules` 存在 |
 | Docker | PostgreSQL/Qdrant 容器运行 | `docker-compose.yml` | 外部本机服务；本次 API 权限检查失败 |
@@ -350,8 +331,7 @@ RAG_CONTEXT_MAX_CHARACTERS
 ## 9. AI / LLM Assets（AI/大模型资产）
 
 - 本地 `models/bge-m3/` 目录存在完整模型文件，包括 PyTorch（深度学习框架）模型、Tokenizer（分词器）和 Sparse/Dense 相关文件。
-- `BGE_M3Encoder` 固定 Dense 维度为 1024，使用 `local_files_only=True` 和离线环境变量；一次编码返回 Dense 与 Sparse。
-- `scripts/retrieval/test_bge_m3.py` 是模型加载和向量输出测试入口。
+- `models/bge-m3/` 本地模型目录保留，但旧 `BGE-M3` 适配器和模型测试入口已移除。
 - `.env` 存在 `LLM_*` 配置名，但源码未发现 LLM Client、模型调用、Prompt Builder（提示词构建）或 SQL 生成消费者。
 - 未发现 Prompt 文件、系统提示词资源、LLM Evaluation（大模型评估）数据或模型网关实现。
 
@@ -370,14 +350,13 @@ resources/semantic/sales/
 ├── metrics.json
 └── dimensions.json
 
-既有 Retrieval Loader / BGE-M3 / Qdrant 资产（本次未重建）
+历史 BGE-M3 模型与 Qdrant 持久化资产（本次未删除）
 ```
 
 - `metrics.json` 与 `dimensions.json` 是当前 Sales Semantic Layer V1 的业务语义事实，分别定义 5 个核心指标和 15 个业务可查询维度；业务定义不写回 Schema Metadata。
 - 当前 `relationships.json` 只记录 PostgreSQL Physical Relationship Catalog（物理关系目录），没有 `semantic_relationships`；Dimension 只声明业务属性的 `source_table/source_column`，Join Path（连接路径）继续由该 FK 目录决定。
-- 既有 `metric_loader.py`、`table_loader.py` / `column_loader.py` 和 Qdrant 持久化索引未随本次 Semantic Layer 重建；其中旧 Loader 与当前 V1 Contract 不兼容，属于 Pending Offline Pipeline Refactor（待离线链路重构）。`description = null` 是当前 Schema Metadata 合法状态，本次未修改 PostgreSQL COMMENT 或 Metadata。
-- Qdrant 适配器支持 named Dense/Sparse vectors（命名稠密/稀疏向量）；Schema 索引使用 UUID5 确定性 Point ID。
-- `data/qdrant/collections/` 存在 `schema_tables`、`schema_columns`、`metric_catalog` 三个持久化目录；本次通过服务验证 Point 数量分别为 5、40、5，并验证重复构建。
+- 旧 Loader、Embedding 适配器和 Qdrant 索引构建代码已移除；历史 `data/qdrant/` 持久化目录未删除。`description = null` 是当前 Schema Metadata 合法状态，本次未修改 PostgreSQL COMMENT 或 Metadata。
+- `data/qdrant/collections/` 的历史持久化目录未作为当前 Offline Pipeline V1 的实现证明；本次未重建或修改其中内容。
 - 没有 Hybrid Search（混合检索）、RRF（倒数排名融合）、Reranker（重排器）、在线 Retriever（检索器）或 LangChain Qdrant 集成。
 
 ## 11. Online Pipeline（在线运行链路）
@@ -485,10 +464,6 @@ TypeSpec 是正式 API Contract Source of Truth（接口契约事实源），Ope
 | `tests/metadata/test_schema_metadata.py` | PostgreSQL `mart_sales` 7 表、69 字段、真实类型/可空性、PK/UNIQUE/FK、角色日期 FK、SCD2 物理对象和重复导出哈希 | Schema Metadata Test（结构元数据测试） |
 | `tests/semantic/test_sales_semantic_resources.py` | 5 个指标、15 个维度、依赖无环、当前物理映射、默认时间、完成过滤、业务边界和 FK 目录不重复 | Semantic Contract Test（语义契约测试） |
 | `tests/sales_mart/test_seed.py` | 固定 seed、规模、SCD2、状态、reset/reseed、指标与 public 边界；留下最后一次有效 Demo Data | Database Seed Test（数据库种子测试） |
-| `scripts/course_baseline/validate_schema_loaders.py` | 5 个表 Document、40 个字段 Document | Loader Smoke Test（加载器冒烟测试） |
-| `scripts/retrieval/test_bge_m3.py` | 本地模型、Dense、Sparse | Embedding Smoke Test（向量冒烟测试） |
-| `scripts/retrieval/build_schema_index.py` | Schema Point、payload、Dense/Sparse 查询和可选幂等性 | Offline Index Validation（离线索引校验） |
-| `scripts/retrieval/build_metric_index.py` | Metric Point、完整 metadata、确定性 ID和可选幂等性 | Offline Index Validation |
 | `.jbeval/datasets/` | 目录存在但当前为空 | Evaluation Dataset（评估数据集）未发现 |
 
 除上述数据库结构/种子测试脚本外，仍未发现统一 Unit Test（单元测试）/Contract Test（契约测试）框架、Retrieval Evaluation（检索评估）、SQL Evaluation（SQL 评估）、End-to-End Evaluation（端到端评估）或 Bad Case Replay（失败案例回放）资产。
@@ -532,13 +507,13 @@ TypeSpec 是正式 API Contract Source of Truth（接口契约事实源），Ope
 | Sales Mart V1 PostgreSQL | Exists | `database/sales_mart/001_create_schema.sql`、`scripts/sales_mart/seed.py`、`tests/sales_mart/test_schema.py` | `mart_sales` 七表、SCD2、销售事实约束和必要索引已实现；15 项结构测试通过，Demo Data 已按 seed=42 加载并通过业务校验。 |
 | Schema Catalog | Exists | `resources/schema/{tables,columns,relationships}.json`、`scripts/metadata/export_schema.py` | 当前三份资源是 PostgreSQL `mart_sales` 的 7 表/69 字段/物理约束投影；Course Baseline Metadata 已是遗留资产。 |
 | Sales Semantic Layer V1 | Exists | `resources/semantic/sales/{metrics,dimensions}.json`、`tests/semantic/test_sales_semantic_resources.py` | 5 个核心指标、15 个业务维度和物理映射/依赖契约存在；确定性契约测试通过。 |
-| Metric Loader | Partial / Legacy | `metric_loader.py` | 旧 Loader 仍要求 `formula/time_column`；当前 V1 使用 `expression/default_time_dimension`，离线适配待后续单独重构。 |
-| Table/Column Loader | Partial | `table_loader.py`、`column_loader.py` | 旧 Document 加载契约和 5/40 数量校验存在；当前 Metadata 已切换为 `mart_sales`，且无 COMMENT 时描述为 `null`，本次未修改或重建 Loader。 |
-| BGE-M3 本地 Embedding | Exists | `models/bge-m3/`、`bge_m3.py` | 本地模型资产和 Dense/Sparse 适配器存在；本次未重新推理。 |
-| Qdrant 离线索引 | Exists | `qdrant_store.py`、`schema_indexer.py`、`data/qdrant/` | 三个 Collection、Point 数量、向量查询和重复构建已验证。 |
-| Offline Indexing | Partial / Legacy | `scripts/retrieval/build_schema_index.py`、`scripts/retrieval/build_metric_index.py` | 旧 Schema/Metric 离线写入入口仍存在，但未按当前 Semantic Layer V1 重建；适配属于 Pending Offline Pipeline Refactor。 |
-| Table Retrieval | Partial | `QdrantStore.query_dense/query_sparse` | 底层查询原语存在；没有 query-facing Retriever 和结果契约。 |
-| Metric Retrieval | Partial / Legacy | `metric_catalog` 构建脚本、Qdrant 持久化目录 | 既有离线指标索引是旧资源派生产物；当前 V1 未声明在线指标检索已完成。 |
+| Metric Loader | Not Found | 未发现 | 旧 Loader 已移除；当前 Offline Pipeline V1 模块尚未实现。 |
+| Table/Column Loader | Not Found | 未发现 | 旧 Document 加载器已移除；当前 Offline Pipeline V1 模块尚未实现。 |
+| BGE-M3 本地 Embedding | Partial / Legacy | `models/bge-m3/` | 本地模型资产保留，但旧 Embedding 适配器已移除；当前无代码消费者。 |
+| Qdrant 离线索引 | Partial / Legacy | `data/qdrant/` | 历史持久化目录保留，但旧存储/索引代码已移除；不代表当前索引能力。 |
+| Offline Indexing | Not Found | 未发现 | 旧离线索引入口已移除；当前 Offline Pipeline V1 模块尚未实现。 |
+| Table Retrieval | Not Found | 未发现 | 没有当前在线 Retriever 或结果契约。 |
+| Metric Retrieval | Not Found | 未发现 | 没有当前在线 Retriever；历史持久化资产不代表检索能力。 |
 | Schema Linking | Partial | Schema 资源/索引、`relationships.json` | 当前物理目录存在；没有 Anchor、字段匹配、图搜索或 Join Resolver；Retrieval 资源未在本次重建。 |
 | Natural Language Query | Architecture Only（仅有架构） | `docs/Technical Design/Natural Language Query/ARCHITECTURE.md` | 功能架构存在；没有用户问题入口和查询编排。 |
 | SQL Generation | Not Found | 未发现 | 没有 LLM Client、Prompt Builder 或 SQL Generator。 |
