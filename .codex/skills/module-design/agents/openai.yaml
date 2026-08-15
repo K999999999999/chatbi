@@ -1,0 +1,4 @@
+interface:
+  display_name: "模块设计"
+  short_description: "基于 Module Spec 与真实仓库设计最小实现方案"
+  default_prompt: "使用 $module-design 为指定 Module 进行两阶段 Implementation Design，并在人工确认前暂停。"
