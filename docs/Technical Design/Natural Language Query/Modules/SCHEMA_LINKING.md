@@ -199,7 +199,7 @@ Authorization Context（权限上下文）必须在调用本模块前准备完�
 
 - Table / Dataset Identity（表 / 数据集身份）；
 - Column / Attribute Identity（字段 / 属性身份）；
-- Business Semantic Mapping（业务语义映射）；
+- Column Name + Description（字段名称与描述）；
 - 数据结构状态；
 - 当前结构是否允许参与业务查询。
 
@@ -272,9 +272,11 @@ Schema Grounding（结构语义映射）的目标不是立即决定最终结构�
 
 - Table Candidate（表候选）；
 - Column Candidate（字段候选）；
-- Dimension Candidate（维度候选）；
+- Field Matching Candidate（字段匹配候选，用于承载业务 Dimension Intent）；
 - Filter Attribute Candidate（筛选属性候选）；
 - Detail Attribute Candidate（明细属性候选）。
+
+Business Dimension（业务维度）仍然属于 Domain / Analytical Model（领域 / 分析模型）概念，但不再是独立的 Retrieval Candidate（检索候选）、Retrieval Record（检索记录）或维度目录对象。区域、产品线、客户类型、时间等意图通过 Column / Field Retrieval（列 / 字段检索）召回，再由 Field Matching（字段匹配）和确定性规则完成解析。
 
 概念链路：
 
@@ -371,21 +373,47 @@ Resolved Structure
 
 > 必须报告 Authorization Violation（权限违规）。
 
-# 4.5 Dimension Resolution（维度解析）
+# 4.5 Dimension-to-Field Resolution（维度到字段解析）
 
-负责将 Business Dimension Intent（业务维度意图）绑定到正式 Business Dimension（业务维度）及其数据结构。
+负责将 Business Dimension Intent（业务维度意图）绑定到 Column / Field Candidate（列 / 字段候选）及其正式物理字段。
+
+本节的 Resolved Dimension（已解析维度）是在线 Schema Linking（模式链接）输出，不是 Offline Retrieval Object（离线检索对象）。系统不得创建独立的维度检索候选、维度记录或维度目录；业务维度语义通过现有 Column Metadata（列元数据）的 name + description（名称 + 描述）承载。
 
 例如：
 
 ```
 区域
 ↓
-Business Dimension Identity
-（业务维度身份）
+Column / Field Candidate
+（列 / 字段候选）
 ↓
-Physical Binding
+customer_region
+↓
+mart_sales.dim_customer.customer_region
 （物理绑定）
 ```
+
+Sales Region（销售区域）与 Customer Region（客户区域）必须保持语义区分，不得仅因名称相似而合并；物理字段不是完整的 Business Dimension Identity（业务维度身份），其含义由 Domain / Analytical Model 与 Column Metadata 共同约束。
+
+Field Matching Vocabulary（字段匹配词汇）只作为本模块的业务匹配输入，不是新的机器可读资源、Retrieval Object（检索对象）或 Embedding（向量表示）。Column / Field Retrieval（列 / 字段检索）的检索文本仍只使用现有 Column name + description（字段名称 + 描述）；候选召回后再使用以下业务名称、别名和角色完成字段匹配：
+
+| Column Identity（列身份） | Business Name / Aliases（业务名称 / 别名） | Field Role / Boundary（字段角色 / 边界） |
+|---|---|---|
+| fct_sales_order_line.completion_date_key | 销售完成日期 / 完成日期、销售完成时间 | 完成日期角色；默认业务时间绑定到该实际 Column |
+| fct_sales_order_line.order_date_key | 订单日期 / 下单日期、订单创建日期 | 下单日期角色 |
+| fct_sales_order_line.confirmation_date_key | 订单确认日期 / 确认日期、订单确认时间 | 确认日期角色 |
+| dim_customer.customer_name | 客户 / 客户名称、客户主体 | 客户业务主体 |
+| dim_customer.customer_type | 客户类型 / 客户类别 | 客户主体类型 |
+| dim_customer.industry | 行业 / 所属行业、客户行业 | 客户主体所属行业 |
+| dim_customer.country | 国家 / 客户国家、所属国家 | 客户主体所属国家 |
+| dim_customer.customer_region | 客户区域 / 客户所属区域、客户所在区域 | 客户主体所属区域，不是销售区域 |
+| dim_product.product_name | 产品 / 产品名称 | 产品业务对象 |
+| dim_product.product_line | 产品线 / 产品系列 | 产品所属产品线 |
+| dim_product.product_category | 产品类别 / 产品分类 | 产品所属产品类别 |
+| dim_product.technology_route | 技术路线 / 技术路径 | 产品采用的技术路线 |
+| dim_sales_region.sales_region_name | 销售区域 / 销售地区、销售组织区域 | 销售交易或销售组织所属区域，不是客户区域 |
+| dim_currency.currency_code | 交易币种 / 币种、交易货币 | 销售事实发生时的交易币种 |
+| fct_sales_order_line.order_no | 订单号 / 销售订单号 | 销售订单业务编号，订单退化维度字段 |
 
 必须保持三个概念分离：
 
@@ -814,6 +842,8 @@ ResolvedSchemaContext
 
 表示已经成功绑定的 Business Dimension（业务维度）。
 
+这是在线 Schema Linking（模式链接）的解析输出，不是独立 Dimension Retrieval Asset（维度检索资产），也不对应独立的维度检索记录。
+
 概念结构：
 
 ```
@@ -1151,7 +1181,7 @@ Resolution / Failure
 
 用于：
 
-> 从 Schema Semantic Assets（结构语义资产）中召回候选结构。
+> 从 Table / Column / Metric Retrieval Assets（表 / 列 / 指标检索资产）中召回候选结构。
 
 当前 Infrastructure Implementation（基础设施实现）可以使用：
 
@@ -1171,21 +1201,20 @@ Resolution / Failure
 - Table Metadata（表元数据）；
 - Column Metadata（字段元数据）；
 - Dataset Identity（数据集身份）；
-- Business Semantic Mapping（业务语义映射）；
+- Column Name + Description（字段名称与描述）；
 - Schema Status（结构状态）。
 
 它是最终结构合法性的重要权威来源。
 
 # 10.3 Relationship Metadata Capability（关系元数据能力）
 
-负责提供正式：
+负责提供正式 Relationship Catalog（关系目录）：
 
-- Physical Relationship（物理关系）；
-- Semantic Relationship（语义关系）；
 - Relationship Identity（关系身份）；
+- Physical Relationship（物理关系）；
 - 合法连接方向和约束。
 
-所有 Join Resolution（连接解析）必须基于该能力。
+Join Resolver（连接解析器）基于经过校验的 Relationship Catalog 构建确定性内存 Relationship Graph（关系图），执行 BFS / Join Resolution（广度优先搜索 / 连接解析）。Relationship 不作为 Retrieval Record（检索记录），也不进入 Embedding（向量化）或 Vector Index（向量索引）；字段相似度不得创建或修改关系。
 
 # 10.4 Authorization Context（权限上下文）
 
@@ -1328,13 +1357,14 @@ Resolved Schema Context（已解析结构上下文）必须完整、合法。
 
 主要验证：
 
-### Dimension Mapping（维度映射）
+### Business Dimension to Column / Field Mapping（业务维度到列 / 字段映射）
 
 例如：
 
 ```
 区域
-→ 正确正式业务维度
+→ 正确 Column / Field Candidate（列 / 字段候选）
+→ 正确业务维度语义与物理字段绑定
 ```
 
 ### Time Structure Mapping（时间结构映射）

@@ -72,7 +72,7 @@ VALIDATED + ELIGIBLE
 进入本 Module 前必须满足：
 
 1. `built_assets` 已由 Retrieval Index Building 产生，且其状态为 `BUILT_UNVALIDATED`。
-2. `validated_catalogs` 覆盖同一构建所依据的五类当前权威 Source Resource。
+2. `validated_catalogs` 覆盖同一构建所依据的四份当前权威 Source Resource。
 3. `built_assets.build_metadata`、`index_metadata`、Entries 和 `validated_catalogs.source_descriptors` 可被显式比较。
 4. 输入中不存在需要通过猜测、补写或读取 Legacy Resource 才能验证的字段。
 5. `Retrieval Index Capability` 能够提供 Built / Validated Retrieval Asset 的逻辑访问能力，并支持 Asset Validation 所需的 Online Retrieval Consumability Contract 检查或确认；该前置条件不要求本 Module 执行 Physical Activation，也不要求预先冻结具体物理存储机制。
@@ -85,13 +85,13 @@ VALIDATED + ELIGIBLE
 本 Module 必须按以下顺序完成硬契约验证：
 
 1. **Source / Build Metadata Alignment**：比较 `source_descriptors`、Source Version、Source Fingerprint、Build Identity、Build Configuration Identity、Representation Version 和 Asset Identity；发现不一致即失败。
-2. **Record Coverage**：将 `validated_catalogs` 中四类当前可检索 Source Object 与资产 Entries 对齐，要求覆盖 100%。
+2. **Record Coverage**：将 `validated_catalogs` 中三类当前可检索 Source Object 与资产 Entries 对齐，要求覆盖 100%。
 3. **One Object, One Logical Record**：验证每个 Source Object 恰好对应一个 Logical Record，且没有由重复构建产生的逻辑重复。
 4. **Identity Integrity**：验证 `record_type`、`logical_record_identity`、`source_object_identity`、Entry 归属和 `asset_identity` 一致。
-5. **Payload Integrity**：逐条比较 Entry 中的 Semantic Payload 与对应权威 Source Object，确认 Metric Formula、Dimension Meaning、Filter Rule、Time Definition、物理字段信息和其他正式语义没有被改变。
+5. **Payload Integrity**：逐条比较 Entry 中的 Semantic Payload 与对应权威 Source Object，确认 Metric Formula、Column / Field Meaning、Filter Rule、Time Definition、物理字段信息和其他正式语义没有被改变。
 6. **Physical Mapping Integrity**：确认 `PhysicalMappingReference` 的所有目标仍存在且与当前权威映射一致；不得出现静默替换。
 7. **Representation Integrity**：确认每个 Record 都有合法 Representation，Representation Identity、Source Trace 和 `RepresentationVersion` 与 Build Metadata 一致。
-8. **Index Completeness**：确认四类 Record 均存在，Entry Count、Record Type Coverage 和 Index Metadata 一致，不能以部分构建报告完整成功。
+8. **Index Completeness**：确认三类 Record 均存在，Entry Count、Record Type Coverage 和 Index Metadata 一致，不能以部分构建报告完整成功。
 9. **Source Trace**：确认每个 Entry 能追踪到当前正式 Source Resource；`Traceability Coverage = 100%`。
 10. **Relationship Boundary**：确认 Relationship Catalog 在 `validated_catalogs` 中存在且合法，同时确认资产 Entries 中不存在 Relationship Record，Retrieval 没有创造 Join。
 11. **Online Retrieval Consumability**：确认输出包含 Online Retrieval 所需的完整 Record、Representation、Payload、Identity、Trace 和 Index Metadata；必要的 Capability Contract 检查失败时，不能输出 Validated Asset。
@@ -115,7 +115,7 @@ VALIDATED + ELIGIBLE
 | Field（字段） | Logical Type（逻辑类型） | Required（必需） | Semantic Meaning（语义） | Constraint（约束） |
 |---|---|---:|---|---|
 | `asset_identity` | `AssetIdentity` | Yes | 已验证资产集合身份 | 与输入 `built_assets` 一致 |
-| `entries` | `list[EmbeddedRetrievalRecord]` | Yes | 可供 Online Retrieval 消费的完整逻辑 Entry | 与输入资产语义等价；四类完整；无 Relationship |
+| `entries` | `list[EmbeddedRetrievalRecord]` | Yes | 可供 Online Retrieval 消费的完整逻辑 Entry | 与输入资产语义等价；三类完整；无 Relationship |
 | `index_metadata` | `IndexMetadata` | Yes | 已验证逻辑检索空间描述 | `asset_state=VALIDATED`；计数和类型覆盖正确 |
 | `build_metadata` | `BuildMetadata` | Yes | 已验证构建来源与条件 | 与输入及 `validated_catalogs` 一致 |
 | `validation_metadata` | `ValidationMetadata` | Yes | 资产通过硬契约并具备激活资格 | 只有全部验证通过才可存在 |
@@ -139,7 +139,7 @@ VALIDATED + ELIGIBLE
 
 1. Hard Contract Gate 全部通过；所有确定性硬契约为 100% Pass。
 2. Record Coverage、Traceability Coverage、Identity Integrity 和 Payload Integrity 均为 100%。
-3. 每个正式 Table、Column、Metric、Dimension 恰好对应一个逻辑 Record；不存在逻辑重复或虚构对象。
+3. 每个正式 Table、Column、Metric 恰好对应一个逻辑 Record；不存在逻辑重复或虚构对象。
 4. 每个 Representation 与 Record Identity、Source Trace、Representation Version 保持完整关联。
 5. `IndexMetadata`、`BuildMetadata`、`AssetIdentity` 与实际资产内容一致。
 6. Relationship Catalog 保持权威且独立；资产中不存在 Relationship Retrieval Record，也不由 Retrieval 裁决 Join。
@@ -209,7 +209,7 @@ VALIDATED + ELIGIBLE
 
 ### Retrieval Evaluation（检索评估）
 
-本 Module 不以结构验证代替语义检索质量验证。Validated Asset 必须进入 Feature-Level Retrieval Evaluation，按 Table、Column、Metric、Dimension 分别观察 Recall@K 与 MRR，并纳入 Canonical Name、Alias、Natural Language、Similar Object 和 Similar Metric 场景；具体数据集与 Release Threshold 由 Acceptance Baseline 管理。
+本 Module 不以结构验证代替语义检索质量验证。Validated Asset 必须进入 Feature-Level Retrieval Evaluation，按 Table、Column、Metric 分别观察 Recall@K 与 MRR；业务 Dimension 场景通过 Column / Field Retrieval 评估，并纳入 Canonical Name、Alias、Natural Language、Similar Object 和 Similar Metric 场景；具体数据集与 Release Threshold 由 Acceptance Baseline 管理。
 
 ### Build-to-Retrieve Integration Evaluation（构建到检索集成评估）
 

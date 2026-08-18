@@ -866,25 +866,30 @@ V1 不建设：
 
 # 26. Downstream Semantic Contract（下游语义契约）
 
-完成 Physical Schema（物理模型）和数据加工后：
+完成 Physical Schema（物理模型）和数据加工后，Semantic Layer（语义层）使用四类机器可读资产：
 
-Semantic Layer（语义层）至少建立：
+- `tables.json`：Table Metadata（表元数据）与 Table Retrieval（表检索）；
+- `columns.json`：Column Metadata（字段元数据）与 Column / Field Retrieval（字段检索）；
+- `metrics.json`：Metric Catalog（指标目录）与 Metric Retrieval（指标检索）；
+- `relationships.json`：Relationship Metadata（关系元数据）与确定性 Relationship Catalog → Graph → Join Resolution（关系目录 → 关系图 → 连接解析）。
 
-- Metric Catalog（指标目录）；
-- Dimension Metadata（维度元数据）；
-- Relationship Metadata（关系元数据）；
-- Business Alias（业务别名）；
-- Authorization Metadata（授权元数据）。
+Customer、Product、Time、Region 等 Dimension（维度）继续由本 Analytical Model 和上游 DOMAIN_SPEC 定义；不建立独立 Dimension Metadata、Dimension Catalog、`dimensions.json` 或 Dimension Retrieval。维度语义通过现有 Column Metadata 的名称与描述供 Schema Linking（结构关联）执行 Field Matching（字段匹配）。
+
+Metric Alias（指标别名）继续保留在 metrics.json。业务 Dimension 的中文名称、别名和字段角色由 Schema Linking 的 Field Matching 处理；Table / Column Retrieval 仍只使用现有 Column name + description，不新增独立 Alias Resource（别名资源）或 Retrieval Object（检索对象）。Authorization Metadata（授权元数据）属于独立的访问控制边界，不属于 Offline Retrieval Asset（离线检索资产）。
+
+Relationship 不进入 Retrieval Record、Embedding 或 Vector Index，只作为确定性 Relationship Catalog → Relationship Graph → Join Resolution 的输入。
+
+`metrics.json` 只能表达本 DOMAIN_SPEC 与本 Analytical Model 已冻结的指标定义、公式、依赖、过滤、时间和物理映射，不得自行扩展业务口径。
 
 核心指标映射目标：
 
 | Metric（指标）          | Analytical Fact（分析事实） |
 | ----------------------- | --------------------------- |
-| Sales Quantity（销量）  | Quantity                    |
-| Sales Revenue（销售额） | Net Sales Amount CNY        |
-| Sales Cost（销售成本）  | Sales Cost Amount CNY       |
-| Gross Profit（毛利）    | Revenue - Cost              |
-| Gross Margin（毛利率）  | Gross Profit / Revenue      |
+| Sales Quantity（销量）  | `fct_sales_order_line.quantity` |
+| Sales Revenue（销售额） | `fct_sales_order_line.net_sales_amount_cny` |
+| Sales Cost（销售成本）  | `fct_sales_order_line.sales_cost_amount_cny` |
+| Gross Profit（毛利）    | Sales Revenue - Sales Cost |
+| Gross Margin（毛利率）  | Gross Profit / Sales Revenue |
 
 所有普通销售指标默认：
 

@@ -24,7 +24,7 @@
 
 本 Module 不负责：
 
-- 定义 Business Truth、Metric Definition 或 Dimension Meaning；
+- 定义 Business Truth、Metric Definition 或 Column / Field Meaning；
 - 修改 Retrieval Record；
 - 决定 Dense / Sparse / Hybrid 等表示类别；
 - 决定 Embedding Model、维度、Tokenizer、设备或批量参数；
@@ -39,8 +39,8 @@
 
 本 Module 的输入就是 `02_RETRIEVAL_PROJECTION.md` 输出的 `RetrievalRecords`，不再包裹另一层隐式请求对象。它必须包含：
 
-- `records`：四类完整 Retrieval Record；
-- `source_descriptors`：五类源资源描述；
+- `records`：三类完整 Retrieval Record；
+- `source_descriptors`：四份源资源描述；
 - `build_context`：本次完整构建的身份与条件。
 
 每条 Record 必须已有 Source Trace 和 Physical Mapping Reference。
@@ -59,7 +59,7 @@
 2. 所有 Record 的 `record_type`、`semantic_payload`、`physical_mapping_reference` 和 `source_trace` 已完整。
 3. `BuildContext` 的四个字段完整，且 `build_mode=FULL_REBUILD`。
 4. 输入 Record 不包含 Relationship，不包含未知对象类型，也不依赖隐藏全局状态。
-5. `Embedding Capability` 可以在给定 `RepresentationVersion` 下处理四类 Record 的检索内容，并且其返回结果必须满足 `RetrievalRepresentationValue` Contract。
+5. `Embedding Capability` 可以在给定 `RepresentationVersion` 下处理三类 Record 的检索内容，并且其返回结果必须满足 `RetrievalRepresentationValue` Contract。
 
 ---
 
@@ -73,7 +73,7 @@
 4. 验证 `Embedding Capability` 返回的 Representation Value 合法、非空、满足 `RetrievalRepresentationValue` Contract、与输入 Record Identity 一一关联，并使用当前 `RepresentationVersion`。
 5. 在单个 Record 失败、Capability 返回非法结果或版本不兼容时，停止当前完整构建；不得返回混有未表示 Record 的部分集合。
 6. 在相同 Source Projection、Build Configuration 和 Representation Version 下，保持语义可重复；不要求任何基础设施内部二进制表示逐字节相同。
-7. 不依据表示结果反向修改 Source Object、Metric Formula、Dimension Meaning、Physical Mapping 或 Relationship。
+7. 不依据表示结果反向修改 Source Object、Metric Formula、Column / Field Meaning、Physical Mapping 或 Relationship。
 
 ---
 
@@ -112,7 +112,7 @@
 | Field（字段） | Logical Type（逻辑类型） | Required（必需） | Constraint（约束） |
 |---|---|---:|---|
 | `records` | `list[EmbeddedRetrievalRecord]` | Yes | 数量与输入 `RetrievalRecords.records` 完全一致；不允许缺失或重复 |
-| `source_descriptors` | `list[SourceResourceDescriptor]` | Yes | 原样保留五类源资源描述，包括 Relationship Catalog 描述 |
+| `source_descriptors` | `list[SourceResourceDescriptor]` | Yes | 原样保留四份源资源描述，包括 Relationship Catalog 描述 |
 | `build_context` | `BuildContext` | Yes | 原样保留本次表示生成的构建上下文 |
 
 `EmbeddedRetrievalRecords` 是 Retrieval Index Building 的完整逻辑输入，不需要下游读取隐藏状态或回查上游临时变量。
@@ -186,7 +186,7 @@
 
 ### Retrieval Evaluation（检索评估）
 
-Representation 的业务价值必须通过 Feature-Level Retrieval Evaluation 验证：四类 Record 均需观察 Candidate Retrieval Quality、Recall@K 和 MRR。测试 Representation Value 本身“存在”不能替代“正确候选能够被召回”的评估；具体阈值由 Acceptance Baseline 管理。
+Representation 的业务价值必须通过 Feature-Level Retrieval Evaluation 验证：三类 Record 均需观察 Candidate Retrieval Quality、Recall@K 和 MRR。业务 Dimension 场景通过 Column / Field Retrieval 评估，不形成独立维度检索记录。测试 Representation Value 本身“存在”不能替代“正确候选能够被召回”的评估；具体阈值由 Acceptance Baseline 管理。
 
 ### Build-to-Retrieve Integration Evaluation（构建到检索集成评估）
 

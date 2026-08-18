@@ -22,36 +22,6 @@ EXPECTED_METRIC_CODES = {
     "gross_profit",
     "gross_margin",
 }
-EXPECTED_DIMENSION_CODES = {
-    "completion_date",
-    "order_date",
-    "confirmation_date",
-    "customer",
-    "customer_type",
-    "industry",
-    "country",
-    "customer_region",
-    "product",
-    "product_line",
-    "product_category",
-    "technology_route",
-    "sales_region",
-    "transaction_currency",
-    "order_no",
-}
-TECHNICAL_DIMENSION_FIELDS = {
-    "sales_order_line_key",
-    "customer_key",
-    "product_key",
-    "sales_region_key",
-    "currency_key",
-    "valid_from",
-    "valid_to",
-    "is_current",
-    "source_system",
-    "source_updated_at",
-    "loaded_at",
-}
 LEGACY_TABLE_NAMES = {
     "sales_orders",
     "dim_customers",
@@ -59,16 +29,6 @@ LEGACY_TABLE_NAMES = {
     "exchange_rates",
     "finance_expenses",
 }
-FORBIDDEN_SEMANTIC_KEYS = {
-    "join",
-    "joins",
-    "join_path",
-    "join_paths",
-    "foreign_keys",
-    "relationships",
-}
-
-
 class SalesSemanticResourcesTest(unittest.TestCase):
     """Sales Semantic Layer 只依赖当前 mart_sales Schema Metadata。"""
 
@@ -77,7 +37,6 @@ class SalesSemanticResourcesTest(unittest.TestCase):
         cls.resource_dir = ROOT / "resources" / "semantic" / "sales"
         cls.schema_dir = ROOT / "resources" / "schema"
         cls.metrics = cls._read_json("metrics.json")
-        cls.dimensions = cls._read_json("dimensions.json")
         cls.tables = cls._read_schema_json("tables.json")
         cls.columns = cls._read_schema_json("columns.json")
         cls.relationships = cls._read_schema_json("relationships.json")
@@ -92,7 +51,7 @@ class SalesSemanticResourcesTest(unittest.TestCase):
 
     def test_resources_are_json_arrays(self) -> None:
         self.assertIsInstance(self.metrics, list)
-        self.assertIsInstance(self.dimensions, list)
+        self.assertFalse((self.resource_dir / "dimensions.json").exists())
 
     def test_metric_contract_and_frozen_physical_mappings(self) -> None:
         required_fields = {
@@ -189,84 +148,33 @@ class SalesSemanticResourcesTest(unittest.TestCase):
         for metric_code in by_code:
             visit(metric_code)
 
-    def test_dimension_contract_and_physical_mappings(self) -> None:
-        required_fields = {
-            "dimension_code",
-            "dimension_name",
-            "aliases",
-            "business_definition",
-            "dimension_type",
-            "source_table",
-            "source_column",
-        }
-        self.assertEqual(
-            EXPECTED_DIMENSION_CODES,
-            {dimension["dimension_code"] for dimension in self.dimensions},
-        )
-        self.assertEqual(len(self.dimensions), len(EXPECTED_DIMENSION_CODES))
-        self.assertEqual(
-            len(EXPECTED_DIMENSION_CODES),
-            len({dimension["dimension_code"] for dimension in self.dimensions}),
-        )
-
-        table_names = {table["table_name"] for table in self.tables}
-        column_names = {
-            (column["table_name"], column["column_name"])
+    def test_business_dimension_fields_use_column_metadata(self) -> None:
+        columns = {
+            (column["table_name"], column["column_name"]): column
             for column in self.columns
         }
-        for dimension in self.dimensions:
-            self.assertTrue(required_fields.issubset(dimension))
-            self.assertIn(dimension["source_table"], table_names)
-            self.assertIn(
-                (dimension["source_table"], dimension["source_column"]),
-                column_names,
-            )
-
-        time_dimensions = {
-            dimension["dimension_code"]: dimension
-            for dimension in self.dimensions
-            if dimension["dimension_type"] == "time"
-        }
-        self.assertEqual(
-            {"completion_date", "order_date", "confirmation_date"},
-            set(time_dimensions),
+        required_fields = (
+            ("dim_customer", "customer_region"),
+            ("dim_customer", "customer_type"),
+            ("dim_product", "product_line"),
+            ("dim_sales_region", "sales_region_name"),
+            ("fct_sales_order_line", "completion_date_key"),
         )
-        self.assertEqual(
-            {"completion_date"},
-            {
-                code
-                for code, dimension in time_dimensions.items()
-                if dimension["is_default_business_time"]
-            },
+        for identity in required_fields:
+            self.assertTrue(columns[identity]["column_name"])
+            self.assertTrue(columns[identity]["description"])
+
+        self.assertNotEqual(
+            columns[("dim_customer", "customer_region")]["description"],
+            columns[("dim_sales_region", "sales_region_name")]["description"],
         )
-        for dimension in time_dimensions.values():
-            self.assertEqual("dim_date", dimension["date_dimension_table"])
-            self.assertEqual("date_key", dimension["date_key_column"])
-            self.assertEqual("full_date", dimension["source_column"])
-
-    def test_business_boundaries_are_not_ambiguous_or_technical(self) -> None:
-        by_code = {dimension["dimension_code"]: dimension for dimension in self.dimensions}
-        customer_region_aliases = set(by_code["customer_region"]["aliases"])
-        sales_region_aliases = set(by_code["sales_region"]["aliases"])
-        self.assertTrue(customer_region_aliases.isdisjoint(sales_region_aliases))
-        self.assertNotIn("区域", customer_region_aliases | sales_region_aliases)
-
-        exposed_fields = {
-            value
-            for dimension in self.dimensions
-            for value in (dimension["dimension_code"], dimension["source_column"])
-        }
-        self.assertTrue(TECHNICAL_DIMENSION_FIELDS.isdisjoint(exposed_fields))
-        self.assertNotIn("hierarchy", " ".join(self._strings(self.dimensions)).lower())
 
     def test_physical_relationships_are_not_duplicated_in_semantic_resources(self) -> None:
         self.assertIn("foreign_keys", self.relationships)
         self.assertNotIn("semantic_relationships", self.relationships)
-        for dimension in self.dimensions:
-            self.assertTrue(FORBIDDEN_SEMANTIC_KEYS.isdisjoint(dimension))
 
     def test_legacy_tables_returns_and_expenses_are_absent(self) -> None:
-        semantic_text = " ".join(self._strings(self.metrics + self.dimensions))
+        semantic_text = " ".join(self._strings(self.metrics))
         for table_name in LEGACY_TABLE_NAMES:
             self.assertNotIn(table_name, semantic_text)
         for forbidden_term in ("return", "expense", "退货", "费用"):

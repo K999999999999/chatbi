@@ -624,13 +624,20 @@ Sales Analytical Model（销售分析模型）必须能够表达：
 
 # 13. Semantic Layer Contract（语义层要求）
 
-完成 Analytical Data Model（分析数据模型）后，下游 Semantic Layer（语义层）至少应建立：
+完成 Analytical Data Model（分析数据模型）后，下游 Semantic Layer（语义层）使用四类机器可读资产：
 
-- Metric Catalog（指标目录）；
-- Dimension Metadata（维度元数据）；
-- Relationship Metadata（关系元数据）；
-- Business Alias（业务别名）；
-- Authorization Metadata（授权元数据）。
+- `tables.json`：Table Metadata（表元数据）与 Table Retrieval（表检索）；
+- `columns.json`：Column Metadata（字段元数据）与 Column / Field Retrieval（字段检索）；
+- `metrics.json`：Metric Catalog（指标目录）与 Metric Retrieval（指标检索）；
+- `relationships.json`：Relationship Metadata（关系元数据）与确定性 Relationship Catalog → Graph → Join Resolution（关系目录 → 关系图 → 连接解析）。
+
+Customer、Product、Time、Region 等 Dimension（维度）仍然属于业务语义定义，继续由本 Domain Specification 和 Analytical Model 表达；它们不要求独立的 Dimension Metadata、Dimension Catalog、`dimensions.json` 或 Dimension Retrieval。维度业务语义在 Schema Linking（结构关联）中通过现有 Column Metadata 的名称与描述参与 Field Matching（字段匹配）。
+
+Metric Alias（指标别名）继续保留在 metrics.json。Customer、Product、Time、Region 等业务维度的中文名称、别名和字段角色由 Schema Linking 的 Field Matching 处理；Table / Column Retrieval 仍只使用现有 Column name + description，不新增独立 Alias Resource（别名资源）或 Retrieval Object（检索对象）。Authorization Metadata（授权元数据）属于正交的访问控制边界，不属于 Offline Retrieval Asset（离线检索资产）。
+
+Metric Catalog 必须是本 Domain Specification 与 Analytical Model 的机器可读下游表达，不得自行定义新的指标口径、公式、过滤规则或时间语义。
+
+Relationship 不进入 Retrieval Record（检索记录）、Embedding（向量表示）或 Vector Index（向量索引）；它只用于确定性 Join Graph（连接图）与 Join Resolution（连接解析）。
 
 关系必须保持：
 
@@ -648,7 +655,7 @@ ChatBI Runtime
 
 Metric Catalog：
 
-> 是领域指标的机器可读表达。
+> 是领域指标的机器可读表达，且必须可追溯到本 Domain Specification 与 Analytical Model。
 
 Database Metadata：
 

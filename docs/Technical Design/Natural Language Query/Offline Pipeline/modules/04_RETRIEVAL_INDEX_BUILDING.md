@@ -46,8 +46,8 @@ V1 采用 Full Rebuild（全量重建）：每次构建都形成当前权威输�
 
 | Field（字段） | Logical Type（逻辑类型） | Required（必需） | Constraint（约束） |
 |---|---|---:|---|
-| `records` | `list[EmbeddedRetrievalRecord]` | Yes | 覆盖四类 Record；每个 Record 有且只有一个合法 Representation |
-| `source_descriptors` | `list[SourceResourceDescriptor]` | Yes | 恰好五类当前源资源描述；包括 Relationship Catalog |
+| `records` | `list[EmbeddedRetrievalRecord]` | Yes | 覆盖三类 Record；每个 Record 有且只有一个合法 Representation |
+| `source_descriptors` | `list[SourceResourceDescriptor]` | Yes | 恰好四份当前源资源描述；包括 Relationship Catalog |
 | `build_context` | `BuildContext` | Yes | `build_mode=FULL_REBUILD`；同批次一致 |
 
 ### 2.1 `BuildIdentity` 等逻辑类型
@@ -82,7 +82,7 @@ V1 采用 Full Rebuild（全量重建）：每次构建都形成当前权威输�
 
 1. 对每个 `EmbeddedRetrievalRecord` 建立一个且只有一个逻辑 Index Entry。
 2. 保持 Embedded Record 中的 Record、Representation、Payload、Identity、Physical Mapping Reference 和 Source Trace 的完整关联。
-3. 将 Table、Column、Metric、Dimension 四类 Entry 纳入统一逻辑 Retrieval Space；不要求也不暗示某一种物理存储组织。
+3. 将 Table、Column、Metric 三类 Entry 纳入统一逻辑 Retrieval Space；不要求也不暗示某一种物理存储组织。
 4. 形成 `IndexMetadata` 与 `BuildMetadata`，记录本次资产的逻辑身份、输入来源、构建身份、配置身份和 Representation Version。
 5. 执行 Full Rebuild：当前输入中的所有 Record 必须进入候选资产；不得以已有索引内容补齐本次缺失输入，也不得只构建部分类型后报告完整成功。
 6. 通过 `Retrieval Index Capability` 保存或暂存候选资产时，保持候选状态为未验证；不得在 Validation 前使其成为有效在线资产。
@@ -112,7 +112,7 @@ V1 采用 Full Rebuild（全量重建）：每次构建都形成当前权威输�
 |---|---|---:|---|---|
 | `logical_index_identity` | `string` | Yes | 统一逻辑检索空间的身份 | 非空；不等于具体物理 Collection Name |
 | `asset_identity` | `AssetIdentity` | Yes | 所属完整资产集合身份 | 与外层资产一致 |
-| `indexed_record_types` | `list[enum]` | Yes | 已构建的 Record 类型集合 | 恰好包含 `TABLE`、`COLUMN`、`METRIC`、`DIMENSION` |
+| `indexed_record_types` | `list[enum]` | Yes | 已构建的 Record 类型集合 | 恰好包含 `TABLE`、`COLUMN`、`METRIC` |
 | `indexed_record_count` | `integer` | Yes | 已写入逻辑索引的 Record 数量 | 大于等于 0；必须等于 Entry 数量 |
 | `representation_version` | `RepresentationVersion` | Yes | 所有 Entry 使用的表示契约版本 | 批次内一致 |
 | `asset_state` | Enum | Yes | 当前资产能否进入验证/激活流程 | 输出固定为 `BUILT_UNVALIDATED` |
@@ -126,7 +126,7 @@ V1 采用 Full Rebuild（全量重建）：每次构建都形成当前权威输�
 | `build_configuration_identity` | `BuildConfigurationIdentity` | Yes | 本次构建条件身份 | 非空 |
 | `build_mode` | Enum | Yes | 本次构建模式 | 固定为 `FULL_REBUILD` |
 | `representation_version` | `RepresentationVersion` | Yes | 资产使用的表示版本 | 与 `IndexMetadata` 和所有 Representation 一致 |
-| `source_descriptors` | `list[SourceResourceDescriptor]` | Yes | 资产构建依据的五类源资源 | 恰好五类；每个指纹/版本来自输入，不得现场伪造 |
+| `source_descriptors` | `list[SourceResourceDescriptor]` | Yes | 资产构建依据的四份源资源 | 恰好四种；每个指纹/版本来自输入，不得现场伪造 |
 
 ### 5.5 `BuiltRetrievalAssets`（已构建检索资产）
 
@@ -147,7 +147,7 @@ V1 采用 Full Rebuild（全量重建）：每次构建都形成当前权威输�
 
 1. Entry Coverage 与输入 `EmbeddedRetrievalRecords` 完全一致；不存在丢失、重复或额外 Entry。
 2. 每个 Entry 保持 Record、Representation、Payload、Identity、Physical Mapping Reference 和 Source Trace 的完整关联。
-3. 四类 V1 Record 均可在 `indexed_record_types` 中识别；Relationship 不存在于 Entries。
+3. 三类 V1 Record 均可在 `indexed_record_types` 中识别；Relationship 不存在于 Entries。
 4. `indexed_record_count`、`asset_identity`、`representation_version` 和 `asset_state` 与实际 Entries 一致。
 5. `BuildMetadata` 能够追踪 Source Resource、Build Configuration 和 Representation Version。
 6. 资产是由当前输入完整重建的派生产物，不是新的 Business Source of Truth。
@@ -208,7 +208,7 @@ V1 采用 Full Rebuild（全量重建）：每次构建都形成当前权威输�
 必须证明：
 
 - Full Rebuild 不依赖已有 Index，并能从当前完整输入形成完整资产；
-- Entry Coverage、四类 Record Type 和 Entry Count 正确；
+- Entry Coverage、三类 Record Type 和 Entry Count 正确；
 - One Embedded Record → One Index Entry；
 - Record、Representation、Payload、Identity 和 Source Trace 完整关联且未被修改；
 - Relationship 不进入 Index；
@@ -219,7 +219,7 @@ V1 采用 Full Rebuild（全量重建）：每次构建都形成当前权威输�
 
 ### Retrieval Evaluation（检索评估）
 
-本 Module 不用“成功写入索引”替代 Retrieval Quality Evaluation。四类资产必须继续按 Acceptance Baseline 观察 Recall@K、MRR 和 Critical Bad Case；具体阈值由 Feature-Level Acceptance 管理。
+本 Module 不用“成功写入索引”替代 Retrieval Quality Evaluation。三类资产必须继续按 Acceptance Baseline 观察 Recall@K、MRR 和 Critical Bad Case；业务 Dimension 场景通过 Column / Field Retrieval 评估，不形成独立维度资产；具体阈值由 Feature-Level Acceptance 管理。
 
 ### Build-to-Retrieve Integration Evaluation（构建到检索集成评估）
 

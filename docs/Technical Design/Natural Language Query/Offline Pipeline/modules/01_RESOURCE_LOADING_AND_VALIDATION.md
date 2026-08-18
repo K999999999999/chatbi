@@ -13,10 +13,10 @@
 
 ## 1. Responsibility（职责）
 
-本 Module 负责把 Offline Pipeline V1 所需的五类 Authoritative Resource（权威资源）加载为可验证的逻辑输入，并在进入 Retrieval Projection（检索投影）前完成确定性校验：
+本 Module 负责把 Offline Pipeline V1 所需的四份 Authoritative Resource（权威资源）加载为可验证的逻辑输入，并在进入 Retrieval Projection（检索投影）前完成确定性校验：
 
 - Schema Metadata（结构元数据）：Table Catalog（表目录）、Column Catalog（字段目录）、Relationship Catalog（关系目录）；
-- Semantic Resources（语义资源）：Metric Catalog（指标目录）、Dimension Catalog（维度目录）；
+- Semantic Resources（语义资源）：Metric Catalog（指标目录）；
 - Resource Contract Validation（资源契约校验）；
 - Identity Validation（对象标识校验）；
 - Cross-Resource Reference Validation（跨资源引用校验）；
@@ -34,8 +34,8 @@
 - Retrieval Representation（检索表示）生成；
 - Retrieval Index（检索索引）构建、发布或激活；
 - Online Retrieval（在线检索）、Schema Linking（结构关联）或 Metric Resolution（指标解析）；
-- 自动补齐缺失的 Table、Column、Metric、Dimension 或 Relationship；
-- 修改 Metric Formula（指标公式）、Dimension Meaning（维度含义）或 Physical Mapping（物理映射）。
+- 自动补齐缺失的 Table、Column、Metric 或 Relationship；
+- 修改 Metric Formula（指标公式）、Column / Field Meaning（字段语义）或 Physical Mapping（物理映射）。
 
 ---
 
@@ -43,7 +43,7 @@
 
 ### 2.1 `AuthoritativeResourceSet`（权威资源集合）
 
-输入是由 `Resource Access Capability`（资源访问能力）提供的五类逻辑资源集合。外部序列化形式不属于本 Module Contract；进入本 Module 的数据必须能够映射为下列 Typed Contract（类型化契约）。
+输入是由 `Resource Access Capability`（资源访问能力）提供的四份逻辑资源集合。外部序列化形式不属于本 Module Contract；进入本 Module 的数据必须能够映射为下列 Typed Contract（类型化契约）。
 
 | Field（字段） | Logical Type（逻辑类型） | Required（必需） | Semantic Meaning（语义） | Constraint（约束） |
 |---|---|---:|---|---|
@@ -52,7 +52,6 @@
 | `columns` | `ColumnResource` | Yes | 当前构建使用的字段目录 | 恰好一个资源；对应 `COLUMN_CATALOG` |
 | `relationships` | `RelationshipResource` | Yes | 权威物理关系目录 | 恰好一个资源；对应 `RELATIONSHIP_CATALOG` |
 | `metrics` | `MetricResource` | Yes | 当前构建使用的指标目录 | 恰好一个资源；对应 `METRIC_CATALOG` |
-| `dimensions` | `DimensionResource` | Yes | 当前构建使用的维度目录 | 恰好一个资源；对应 `DIMENSION_CATALOG` |
 
 每个 `*Resource` 都包含：
 
@@ -76,7 +75,7 @@
 
 | Field（字段） | Logical Type（逻辑类型） | Required（必需） | Semantic Meaning（语义） | Constraint（约束） |
 |---|---|---:|---|---|
-| `resource_kind` | Enum | Yes | 资源的正式类别 | `TABLE_CATALOG`、`COLUMN_CATALOG`、`RELATIONSHIP_CATALOG`、`METRIC_CATALOG`、`DIMENSION_CATALOG` |
+| `resource_kind` | Enum | Yes | 资源的正式类别 | `TABLE_CATALOG`、`COLUMN_CATALOG`、`RELATIONSHIP_CATALOG`、`METRIC_CATALOG` |
 | `source_identity` | `string` | Yes | 该正式资源的稳定逻辑身份 | 非空；不是由本 Module 生成的物理存储名 |
 | `source_version` | `string` | Yes | 本次构建所依据的源版本 | 非空；版本表达方式不在本 Spec 冻结 |
 | `source_fingerprint` | `string` | Yes | 用于识别该源版本的稳定、可重复指纹 | 非空、可重复；算法不在本 Spec 冻结 |
@@ -97,20 +96,19 @@
 
 | Field（字段） | Logical Type（逻辑类型） | Required（必需） | Semantic Meaning（语义） |
 |---|---|---:|---|
-| `object_type` | Enum | Yes | `TABLE`、`COLUMN`、`METRIC` 或 `DIMENSION` |
-| `source_resource_kind` | Enum | Yes | 对象所属的四类可检索源资源之一；不得为 `RELATIONSHIP_CATALOG` |
+| `object_type` | Enum | Yes | `TABLE`、`COLUMN` 或 `METRIC` |
+| `source_resource_kind` | Enum | Yes | 对象所属的三类可检索源资源之一；不得为 `RELATIONSHIP_CATALOG` |
 | `object_key` | `string` | Yes | 在所属权威资源中唯一且稳定的对象键；键的具体格式不在本 Spec 冻结 |
 
-四类 Source Object 的结构均为：
+三类 Source Object 的结构均为：
 
 ```text
 TableSourceObject     = { identity: SourceObjectIdentity, payload: TablePayload }
 ColumnSourceObject    = { identity: SourceObjectIdentity, payload: ColumnPayload }
 MetricSourceObject    = { identity: SourceObjectIdentity, payload: MetricPayload }
-DimensionSourceObject = { identity: SourceObjectIdentity, payload: DimensionPayload }
 ```
 
-其中 `identity.object_type` 必须分别为 `TABLE`、`COLUMN`、`METRIC`、`DIMENSION`，`identity.source_resource_kind` 必须与对应 Catalog 一致。
+其中 `identity.object_type` 必须分别为 `TABLE`、`COLUMN`、`METRIC`，`identity.source_resource_kind` 必须与对应 Catalog 一致。
 
 #### `TablePayload`（表载荷）
 
@@ -150,28 +148,13 @@ DimensionSourceObject = { identity: SourceObjectIdentity, payload: DimensionPayl
 | `expression` | `string` | Yes | 正式计算表达；不得被投影或表示生成修改 |
 | `filters` | `list[string]` | Yes | 可以为空；保留正式过滤规则 |
 | `depends_on` | `list[string]` | Yes | 可以为空；每项必须引用存在的 Metric |
-| `default_time_dimension` | `string` | Yes | 正式时间口径；必须能通过语义资源规则校验 |
+| `default_time_column_identity` | `string` | Yes | 默认业务时间对应的 ColumnIdentity；必须引用当前 Column Catalog 中的真实字段 |
 | `unit` | `string` | Yes | 正式计量单位 |
 | `source_table` | `nullable string` | Yes | 直接物理映射的表；无直接表时必须由合法依赖映射支撑 |
 | `source_columns` | `list[string]` | Yes | 可以为空；非空时每项必须属于 `source_table` |
+| `null_if` | `nullable string` | No | 可选的正式空值条件；存在时原样保留，不由本 Module 自动补齐 |
 
-#### `DimensionPayload`（维度载荷）
-
-| Field（字段） | Logical Type（逻辑类型） | Required（必需） | Constraint（约束） |
-|---|---|---:|---|
-| `dimension_code` | `string` | Yes | 在 Dimension Catalog 内唯一 |
-| `dimension_name` | `string` | Yes | 正式维度名称 |
-| `aliases` | `list[string]` | Yes | 可以为空；每项非空且来自正式资源 |
-| `business_definition` | `string` | Yes | 正式业务定义；不得由本 Module 创造 |
-| `dimension_type` | `string` | Yes | 保留正式资源表达 |
-| `source_table` | `string` | Yes | 必须引用已存在的 Table |
-| `source_column` | `string` | Yes | 必须引用 `source_table` 中已存在的 Column |
-| `date_role` | `nullable string` | Yes | 可以为空；保留正式时间角色 |
-| `date_dimension_table` | `nullable string` | Yes | 可以为空；若存在必须引用已存在的 Table |
-| `date_key_column` | `nullable string` | Yes | 可以为空；若存在必须引用合法物理字段 |
-| `is_default_business_time` | `boolean` | Yes | 保留正式领域规则结果 |
-
-`SourceObjectPayload` 是以上四个变体的 tagged union（带类型标记联合结构）。它不是自由字段集合。后续 Module 必须按 `object_type` 使用对应变体。
+`SourceObjectPayload` 是以上三个变体的 tagged union（带类型标记联合结构）。它不是自由字段集合。后续 Module 必须按 `object_type` 使用对应变体。
 
 ### 2.5 `RelationshipEntry`（关系条目）
 
@@ -213,7 +196,7 @@ RelationshipResource = {
 RelatedEntityIdentity = SourceObjectIdentity | RelationshipIdentity
 ```
 
-其中 `SourceObjectIdentity` 继续使用既有的 `object_type`、`source_resource_kind` 和 `object_key` 定位 Table、Column、Metric 或 Dimension；`RelationshipIdentity` 使用 `entity_type=RELATIONSHIP` 与 `relationship_key` 定位 Relationship。两种 Identity 只是失败定位的不同变体，Relationship 仍然不是 `SourceObject`、`RetrievalRecord` 或 `Index Entry`。
+其中 `SourceObjectIdentity` 继续使用既有的 `object_type`、`source_resource_kind` 和 `object_key` 定位 Table、Column 或 Metric；`RelationshipIdentity` 使用 `entity_type=RELATIONSHIP` 与 `relationship_key` 定位 Relationship。两种 Identity 只是失败定位的不同变体，Relationship 仍然不是 `SourceObject`、`RetrievalRecord` 或 `Index Entry`。
 
 `PhysicalObjectIdentity` 的逻辑字段为：
 
@@ -230,10 +213,10 @@ RelatedEntityIdentity = SourceObjectIdentity | RelationshipIdentity
 
 进入本 Module 前必须满足：
 
-1. `Resource Access Capability` 可读取五类当前 Offline Pipeline V1 资源。
+1. `Resource Access Capability` 可读取四份当前 Offline Pipeline V1 资源。
 2. 输入已经能够映射到本节定义的 Typed Contract；缺字段、错误类型和无法解析的数据仍视为非法输入。
 3. 资源来源身份、源版本和源指纹可被获取；否则无法建立后续 `SourceTrace`，不得继续构建。
-4. 本次构建范围只包含 V1 支持的四类可检索对象以及一个权威 Relationship Catalog。
+4. 本次构建范围只包含 V1 支持的三类可检索对象以及一个权威 Relationship Catalog。
 5. 本 Module 不需要也不得依赖已有 Retrieval Index 或上一版派生资产才能成功。
 
 ---
@@ -242,10 +225,10 @@ RelatedEntityIdentity = SourceObjectIdentity | RelationshipIdentity
 
 本 Module 必须按以下规则处理：
 
-1. 确认五类资源各自独立存在，且没有用合并文件替代原始 Source Resource。
+1. 确认四份资源各自独立存在，且没有用合并文件替代原始 Source Resource。
 2. 严格验证每个 `SourceResourceDescriptor`：资源类别、来源身份、源版本、源指纹和 `authority_status` 均合法；发现 `LEGACY` 资源或 Current / Legacy 混用时失败。
-3. 验证四类可检索 Source Object 的类型与对象键唯一性；同一对象不能以不同键重复出现。
-4. 验证 Table / Column 的物理引用、Metric 的直接或依赖映射、Dimension 的物理映射均能解析到当前结构目录。
+3. 验证三类可检索 Source Object 的类型与对象键唯一性；同一对象不能以不同键重复出现。
+4. 验证 Table / Column 的物理引用和 Metric 的直接或依赖映射均能解析到当前结构目录。
 5. 验证 Metric `depends_on` 只引用存在的 Metric，并且依赖图不存在无法解析的引用。
 6. 验证 RelationshipEntry 的源端、目标端、列数量和引用对象均来自当前 Schema Metadata。
 7. 保留 Relationship Catalog 的独立边界；只验证其合法性，不把其转换为可检索 Source Object。
@@ -261,12 +244,11 @@ RelatedEntityIdentity = SourceObjectIdentity | RelationshipIdentity
 | Field（字段） | Logical Type（逻辑类型） | Required（必需） | Semantic Meaning（语义） | Constraint（约束） |
 |---|---|---:|---|---|
 | `build_context` | `BuildContext` | Yes | 本次构建的身份与构建条件 | 原样传递；不得由本 Module 修改 |
-| `source_descriptors` | `list[SourceResourceDescriptor]` | Yes | 本次验证实际依据的五类源资源描述 | 恰好包含五种 `resource_kind`；全部为 `CURRENT_AUTHORITATIVE` |
+| `source_descriptors` | `list[SourceResourceDescriptor]` | Yes | 本次验证实际依据的四份源资源描述 | 恰好包含四种 `resource_kind`；全部为 `CURRENT_AUTHORITATIVE` |
 | `tables` | `list[TableSourceObject]` | Yes | 已通过校验的表对象 | 对应当前 Table Catalog 的完整对象集合 |
 | `columns` | `list[ColumnSourceObject]` | Yes | 已通过校验的字段对象 | 对应当前 Column Catalog 的完整对象集合 |
 | `relationships` | `list[RelationshipEntry]` | Yes | 已通过校验的权威物理关系 | 保持独立；不成为 Retrieval Record |
 | `metrics` | `list[MetricSourceObject]` | Yes | 已通过校验的指标对象 | 对应当前 Metric Catalog 的完整对象集合 |
-| `dimensions` | `list[DimensionSourceObject]` | Yes | 已通过校验的维度对象 | 对应当前 Dimension Catalog 的完整对象集合 |
 
 `ValidatedCatalogs` 是 Module 间的逻辑数据对象：
 
@@ -284,7 +266,7 @@ RelatedEntityIdentity = SourceObjectIdentity | RelationshipIdentity
 | `failure_category` | Enum | Yes | `INVALID_INPUT`、`RESOLUTION_FAILURE`、`DEPENDENCY_FAILURE`、`UNSUPPORTED` 或 `INTERNAL_FAILURE` |
 | `failure_stage` | Enum | Yes | 固定为 `RESOURCE_LOADING_AND_VALIDATION` |
 | `reason` | `string` | Yes | 非空诊断原因；不得把失败描述为成功 |
-| `related_resource_kind` | `nullable enum` | Yes | 失败关联的正式资源类别 | 可以是五类 Resource Catalog 之一；Relationship Failure 使用 `RELATIONSHIP_CATALOG`；无法归属资源时为空 |
+| `related_resource_kind` | `nullable enum` | Yes | 失败关联的正式资源类别 | 可以是四类 Resource Catalog 之一；Relationship Failure 使用 `RELATIONSHIP_CATALOG`；无法归属资源时为空 |
 | `related_entity_identity` | `nullable RelatedEntityIdentity` | Yes | 失败关联的机器实体标识 | Source Object Failure 使用 `SourceObjectIdentity`；Relationship Failure 使用 `RelationshipIdentity`；无法归属具体实体时为空 |
 
 `related_entity_identity` 是独立于诊断文本的 Machine Identity（机器标识）：
@@ -303,13 +285,13 @@ RelatedEntityIdentity = SourceObjectIdentity | RelationshipIdentity
 
 只有以下条件全部成立时，才允许返回 `ValidatedCatalogs`：
 
-1. 五类独立 Source Resource 均已识别、读取和验证。
+1. 四份独立 Source Resource 均已识别、读取和验证。
 2. 所有输出对象的 Source Object Identity 在所属资源内唯一且稳定。
 3. 所有跨资源引用、Semantic → Physical Mapping、Metric Dependency 和 Relationship Reference 均已确定性验证。
 4. 输出中的对象集合与当前正式资源集合覆盖一致；不存在静默丢失、重复或新增对象。
 5. 所有输出资源都属于当前权威资源；不得包含 Legacy Resource。
 6. Relationship Catalog 仍是独立的权威物理关系目录，不形成 Retrieval Record。
-7. 任何业务定义、Metric Formula、Dimension Meaning 和 Physical Mapping 均与输入语义一致。
+7. 任何业务定义、Metric Formula、Column / Field Meaning 和 Physical Mapping 均与输入语义一致。
 8. `ValidatedCatalogs` 不取代任何上游 Business Source of Truth。
 9. 无法确认正确性时必须失败（Fail Closed）。
 
@@ -345,7 +327,7 @@ RelatedEntityIdentity = SourceObjectIdentity | RelationshipIdentity
 
 本 Module 只依赖：
 
-- `Resource Access Capability`（资源访问能力）：读取五类正式 Source Resource，并提供来源身份、版本、指纹和当前权威性信息。
+- `Resource Access Capability`（资源访问能力）：读取四份正式 Source Resource，并提供来源身份、版本、指纹和当前权威性信息。
 
 本 Module 通过 Capability / Contract 协作，不依赖：
 
@@ -361,12 +343,12 @@ RelatedEntityIdentity = SourceObjectIdentity | RelationshipIdentity
 本 Module 以确定性契约验证为主，必须证明：
 
 - 缺失、非法、重复或无法解析的资源会显式失败；
-- 五类资源均被验证，且 Current / Legacy 混用被拒绝；
+- 四份资源均被验证，且 Current / Legacy 混用被拒绝；
 - Object Identity 唯一性、跨资源引用、Semantic → Physical Mapping、Metric Dependency 和 Relationship Reference 均满足 Contract；
-- `ValidatedCatalogs` 的五类对象覆盖完整，Relationship Catalog 保持独立；
+- `ValidatedCatalogs` 的三类 Source Object 与独立 Relationship Catalog 覆盖完整；
 - 输出为明确 Typed Contract，不包含隐藏字段或未声明事实；
-- 不会创建不存在的 Table、Column、Metric、Dimension 或 Relationship；
-- 不会改变 Metric Formula、Dimension Meaning 或 Physical Mapping；
+- 不会创建不存在的 Table、Column、Metric 或 Relationship；
+- 不会改变 Metric Formula、Column / Field Meaning 或 Physical Mapping；
 - 失败不会产生部分成功的 `ValidatedCatalogs`。
 
 与 Feature Acceptance 的对齐：

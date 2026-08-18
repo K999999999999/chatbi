@@ -75,8 +75,7 @@ chatbi-engine/
 │   │   ├── columns.json                   字段目录
 │   │   └── relationships.json             PostgreSQL mart_sales 物理关系目录
 │   └── semantic/sales/
-│       ├── metrics.json                   Sales Semantic Layer V1 指标目录
-│       └── dimensions.json                Sales Semantic Layer V1 维度目录
+│       └── metrics.json                   Sales Semantic Layer V1 指标目录
 ├── scripts/                               数据库/元数据验证脚本
 │   ├── metadata/
 │   │   └── export_schema.py                mart_sales 结构元数据导出
@@ -324,6 +323,7 @@ RAG_CONTEXT_MAX_CHARACTERS
 - `resources/schema/relationships.json`：`schema_version=1` 的物理关系目录，包含 7 个 PK、7 个 UNIQUE、9 个 FK 和 2 个独立唯一索引；不包含 `semantic_relationships`。
 - `scripts/metadata/export_schema.py`：一次 PostgreSQL 只读连接 → Canonical Schema Model（统一结构模型）→ 三份 JSON 投影；只执行元数据 `SELECT`。
 - `tests/metadata/test_schema_metadata.py`：对 PostgreSQL 实际结构、当前三份 JSON 和重复导出内容哈希执行确定性验证。
+- 下游机器可读资源固定为 `tables.json`（Table Metadata / Table Retrieval）、`columns.json`（Column Metadata / Field Retrieval）、`metrics.json`（Metric Catalog / Metric Retrieval）和 `relationships.json`（Relationship Catalog / Join Graph）；不建立独立 `dimensions.json` 或 `field_semantics.json`。
 - `resources/schema/course_schema.txt`：已从活动资源中删除；它属于旧 Course Baseline，可由遗留生成器重新产生，但不是当前 Sales Mart Metadata。
 
 `scripts/course_baseline/generate_schema.py` 与 `scripts/course_baseline/validate_schema_relationships.py` 仍只服务旧 Course Baseline；本次没有修改它们，也没有让它们生成当前 Sales Mart Metadata。
@@ -347,15 +347,14 @@ scripts/metadata/export_schema.py
 tables.json / columns.json / relationships.json
 
 resources/semantic/sales/
-├── metrics.json
-└── dimensions.json
+└── metrics.json
 
 历史 BGE-M3 模型与 Qdrant 持久化资产（本次未删除）
 ```
 
-- `metrics.json` 与 `dimensions.json` 是当前 Sales Semantic Layer V1 的业务语义事实，分别定义 5 个核心指标和 15 个业务可查询维度；业务定义不写回 Schema Metadata。
-- 当前 `relationships.json` 只记录 PostgreSQL Physical Relationship Catalog（物理关系目录），没有 `semantic_relationships`；Dimension 只声明业务属性的 `source_table/source_column`，Join Path（连接路径）继续由该 FK 目录决定。
-- 旧 Loader、Embedding 适配器和 Qdrant 索引构建代码已移除；历史 `data/qdrant/` 持久化目录未删除。`description = null` 是当前 Schema Metadata 合法状态，本次未修改 PostgreSQL COMMENT 或 Metadata。
+- `metrics.json` 是当前 Sales Semantic Layer V1 的 Metric Catalog（指标目录），定义 5 个核心指标；Customer、Product、Time、Region 等业务 Dimension（维度）继续由 DOMAIN_SPEC / ANALYTICAL_MODEL 定义，并通过 Column / Field Matching（列 / 字段匹配）解析，不建立独立维度资源。
+- 当前 `relationships.json` 只记录 PostgreSQL Physical Relationship Catalog（物理关系目录），没有 `semantic_relationships`；它不进入 Retrieval Record（检索记录）、Embedding（向量化）或 Vector Index（向量索引）。确定性 Relationship Graph / Join Resolver（关系图 / 连接解析器）是后续在线能力的目标边界，当前仓库尚无运行时实现。
+- 旧 Loader、Embedding 适配器和 Qdrant 索引构建代码已移除；历史 `data/qdrant/` 持久化目录未删除。当前 Schema Metadata 的 7 张表、69 个字段均已从 PostgreSQL COMMENT 导出非空 description；本次未修改数据库或 `resources/schema/`。
 - `data/qdrant/collections/` 的历史持久化目录未作为当前 Offline Pipeline V1 的实现证明；本次未重建或修改其中内容。
 - 没有 Hybrid Search（混合检索）、RRF（倒数排名融合）、Reranker（重排器）、在线 Retriever（检索器）或 LangChain Qdrant 集成。
 
@@ -409,7 +408,7 @@ seed=42 + 日期/数量参数
 
 ```text
 DOMAIN_SPEC / ANALYTICAL_MODEL
-  → resources/semantic/sales/{metrics,dimensions}.json
+  → resources/semantic/sales/metrics.json
   → tests/semantic/test_sales_semantic_resources.py
   → mart_sales tables/columns/relationships mapping checks
 ```
@@ -506,7 +505,7 @@ TypeSpec 是正式 API Contract Source of Truth（接口契约事实源），Ope
 | Course Baseline PostgreSQL | Exists | `database/course_baseline/`、`scripts/course_baseline/init_database.py` | 五表 SQL、生成器、校验脚本存在；Schema 元数据生成已验证，当前行数未作为本轮事实。 |
 | Sales Mart V1 PostgreSQL | Exists | `database/sales_mart/001_create_schema.sql`、`scripts/sales_mart/seed.py`、`tests/sales_mart/test_schema.py` | `mart_sales` 七表、SCD2、销售事实约束和必要索引已实现；15 项结构测试通过，Demo Data 已按 seed=42 加载并通过业务校验。 |
 | Schema Catalog | Exists | `resources/schema/{tables,columns,relationships}.json`、`scripts/metadata/export_schema.py` | 当前三份资源是 PostgreSQL `mart_sales` 的 7 表/69 字段/物理约束投影；Course Baseline Metadata 已是遗留资产。 |
-| Sales Semantic Layer V1 | Exists | `resources/semantic/sales/{metrics,dimensions}.json`、`tests/semantic/test_sales_semantic_resources.py` | 5 个核心指标、15 个业务维度和物理映射/依赖契约存在；确定性契约测试通过。 |
+| Sales Semantic Layer V1 | Exists | `resources/semantic/sales/metrics.json`、`tests/semantic/test_sales_semantic_resources.py` | 5 个核心指标及其物理映射/依赖契约存在；业务 Dimension 保留在 Domain / Analytical Model，并通过 Column / Field Matching 解析；确定性契约测试通过。 |
 | Metric Loader | Not Found | 未发现 | 旧 Loader 已移除；当前 Offline Pipeline V1 模块尚未实现。 |
 | Table/Column Loader | Not Found | 未发现 | 旧 Document 加载器已移除；当前 Offline Pipeline V1 模块尚未实现。 |
 | BGE-M3 本地 Embedding | Partial / Legacy | `models/bge-m3/` | 本地模型资产保留，但旧 Embedding 适配器已移除；当前无代码消费者。 |
@@ -514,7 +513,7 @@ TypeSpec 是正式 API Contract Source of Truth（接口契约事实源），Ope
 | Offline Indexing | Not Found | 未发现 | 旧离线索引入口已移除；当前 Offline Pipeline V1 模块尚未实现。 |
 | Table Retrieval | Not Found | 未发现 | 没有当前在线 Retriever 或结果契约。 |
 | Metric Retrieval | Not Found | 未发现 | 没有当前在线 Retriever；历史持久化资产不代表检索能力。 |
-| Schema Linking | Partial | Schema 资源/索引、`relationships.json` | 当前物理目录存在；没有 Anchor、字段匹配、图搜索或 Join Resolver；Retrieval 资源未在本次重建。 |
+| Schema Linking | Partial | Schema 资源/索引、`relationships.json`、Offline Pipeline Contract | 当前物理目录和 Table / Column / Metric 资产契约存在；没有 Anchor、字段匹配、图搜索或 Join Resolver 运行时实现。 |
 | Natural Language Query | Architecture Only（仅有架构） | `docs/Technical Design/Natural Language Query/ARCHITECTURE.md` | 功能架构存在；没有用户问题入口和查询编排。 |
 | SQL Generation | Not Found | 未发现 | 没有 LLM Client、Prompt Builder 或 SQL Generator。 |
 | SQL AST Validation | Not Found | 未发现 | 没有 SQL AST（抽象语法树）校验模块。 |
@@ -537,7 +536,7 @@ TypeSpec 是正式 API Contract Source of Truth（接口契约事实源），Ope
 
 - 产品目标：`docs/Business/PRODUCT.md`。
 - 销售业务事实、规则和业务意义：`docs/Business/Business Domain.md`；文档自身将 `SALES_DOMAIN.md` 作为命名示例，但该文件未发现。
-- 当前销售语义事实：`resources/semantic/sales/metrics.json`、`dimensions.json`；`tests/semantic/test_sales_semantic_resources.py` 验证其当前 Contract。旧 `MetricLoader` 只代表遗留离线输入契约，不反向定义当前业务语义。
+- 当前销售语义事实：`resources/semantic/sales/metrics.json`；Customer、Product、Time、Region 等业务 Dimension 保留在 DOMAIN_SPEC / ANALYTICAL_MODEL，不建立独立 `dimensions.json`；`tests/semantic/test_sales_semantic_resources.py` 验证当前 Metric Contract 与 Column Metadata 映射。旧 `MetricLoader` 只代表遗留离线输入契约，不反向定义当前业务语义。
 - 课程基线物理数据库结构：`database/course_baseline/001_create_tables.sql` 与 PostgreSQL 实际元数据读取逻辑共同出现。
 - Sales Mart V1 物理数据库结构：`database/sales_mart/001_create_schema.sql`；`tests/sales_mart/test_schema.py` 是其可重复数据库结构验证入口。
 - Schema Metadata（结构元数据）目录：`resources/schema/tables.json`、`columns.json`、`relationships.json`；三份资源由 `scripts/metadata/export_schema.py` 从 PostgreSQL `mart_sales` 一次提取、多份投影，`relationships.json` 只保存物理约束和独立唯一索引。
@@ -575,7 +574,7 @@ TypeSpec 是正式 API Contract Source of Truth（接口契约事实源），Ope
 4. Qdrant 三个 Collection 的 Point 数量和代表性向量查询已验证；完整服务端配置和持久化一致性未独立审计。
 5. `uv.lock` 已锁定 117 个包，`.venv` 已由 `uv sync` 安装；锁定解析依赖网络源，具体供应商包版本随锁文件固定。
 6. `.env` 中的 `LLM_*`、`RAG_*`、Qdrant API Key 等配置名存在，但没有对应代码消费者的确认依据。
-7. 当前 `resources/schema/relationships.json` 只包含 PostgreSQL `mart_sales` 物理 PK/UNIQUE/FK 和独立唯一索引；没有在线 Relationship Graph（关系图）或 Join Resolver（连接解析器）实现。Sales Semantic Layer V1 不复制 FK 目录；旧 Retrieval Loader 与当前 `description=null` 及新 Semantic Contract 的兼容性留待后续单独设计。
+7. 当前 `resources/schema/relationships.json` 只包含 PostgreSQL `mart_sales` 物理 PK/UNIQUE/FK 和独立唯一索引；没有在线 Relationship Graph（关系图）或 Join Resolver（连接解析器）实现。Sales Semantic Layer V1 不复制 FK 目录；旧 Retrieval Loader 与当前 COMMENT-derived description 及新 Semantic Contract 的兼容性留待后续单独设计。
 8. TypeSpec/OpenAPI 生成物存在 Model Terminal Event payload 的已记录保真度限制；下游是否依赖完整的 Terminal Event Schema 未确认。
 9. `.jbeval/datasets/` 为空，未发现可复现的 Retrieval/SQL/LLM Evaluation Dataset（评估数据集）。
 
