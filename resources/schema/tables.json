@@ -3,42 +3,42 @@
     "schema_name": "mart_sales",
     "table_name": "dim_currency",
     "table_type": "BASE TABLE",
-    "description": null
+    "description": "交易币种及其名称、币种标识信息。"
   },
   {
     "schema_name": "mart_sales",
     "table_name": "dim_customer",
     "table_type": "BASE TABLE",
-    "description": null
+    "description": "客户业务主体及其属性历史版本数据。"
   },
   {
     "schema_name": "mart_sales",
     "table_name": "dim_date",
     "table_type": "BASE TABLE",
-    "description": null
+    "description": "按自然日记录的日期及其年、季度、月、日属性。"
   },
   {
     "schema_name": "mart_sales",
     "table_name": "dim_product",
     "table_type": "BASE TABLE",
-    "description": null
+    "description": "产品业务对象及其产品线、产品类别、技术路线和属性历史版本数据。"
   },
   {
     "schema_name": "mart_sales",
     "table_name": "dim_sales_region",
     "table_type": "BASE TABLE",
-    "description": null
+    "description": "销售区域的编码和名称数据。"
   },
   {
     "schema_name": "mart_sales",
     "table_name": "fct_exchange_rate_daily",
     "table_type": "BASE TABLE",
-    "description": null
+    "description": "按日期和交易币种记录的人民币汇率数据。"
   },
   {
     "schema_name": "mart_sales",
     "table_name": "fct_sales_order_line",
     "table_type": "BASE TABLE",
-    "description": null
+    "description": "销售订单明细粒度的交易事实数据，包含订单、客户、产品、区域、时间、状态、数量和金额字段。"
   }
 ]
