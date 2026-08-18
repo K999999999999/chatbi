@@ -104,7 +104,7 @@ class SalesSemanticResourcesTest(unittest.TestCase):
             "expression",
             "filters",
             "depends_on",
-            "default_time_dimension",
+            "default_time_column_identity",
             "unit",
         }
         self.assertEqual(
@@ -125,7 +125,11 @@ class SalesSemanticResourcesTest(unittest.TestCase):
         for metric in self.metrics:
             self.assertTrue(required_fields.issubset(metric))
             self.assertEqual(COMPLETED_FILTER, metric["filters"][0])
-            self.assertEqual("completion_date", metric["default_time_dimension"])
+            self.assertNotIn("default_time_dimension", metric)
+            self.assertEqual(
+                "mart_sales.fct_sales_order_line.completion_date_key",
+                metric["default_time_column_identity"],
+            )
             if metric["metric_type"] == "atomic":
                 self.assertIn(metric["source_table"], table_names)
                 for column in metric["source_columns"]:
@@ -157,6 +161,14 @@ class SalesSemanticResourcesTest(unittest.TestCase):
             by_code["gross_margin"]["expression"],
         )
         self.assertEqual("sales_revenue = 0", by_code["gross_margin"]["null_if"])
+        self.assertEqual(
+            {"gross_margin"},
+            {
+                metric["metric_code"]
+                for metric in self.metrics
+                if "null_if" in metric
+            },
+        )
 
     def test_metric_dependencies_have_no_cycle(self) -> None:
         by_code = {metric["metric_code"]: metric for metric in self.metrics}

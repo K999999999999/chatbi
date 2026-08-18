@@ -14,7 +14,7 @@
       "fct_sales_order_line.order_status = 'completed'"
     ],
     "depends_on": [],
-    "default_time_dimension": "completion_date",
+    "default_time_column_identity": "mart_sales.fct_sales_order_line.completion_date_key",
     "unit": "统一可聚合销售数量单位",
     "source_table": "fct_sales_order_line",
     "source_columns": [
@@ -36,7 +36,7 @@
       "fct_sales_order_line.order_status = 'completed'"
     ],
     "depends_on": [],
-    "default_time_dimension": "completion_date",
+    "default_time_column_identity": "mart_sales.fct_sales_order_line.completion_date_key",
     "unit": "CNY",
     "source_table": "fct_sales_order_line",
     "source_columns": [
@@ -57,7 +57,7 @@
       "fct_sales_order_line.order_status = 'completed'"
     ],
     "depends_on": [],
-    "default_time_dimension": "completion_date",
+    "default_time_column_identity": "mart_sales.fct_sales_order_line.completion_date_key",
     "unit": "CNY",
     "source_table": "fct_sales_order_line",
     "source_columns": [
@@ -81,7 +81,7 @@
       "sales_revenue",
       "sales_cost"
     ],
-    "default_time_dimension": "completion_date",
+    "default_time_column_identity": "mart_sales.fct_sales_order_line.completion_date_key",
     "unit": "CNY"
   },
   {
@@ -100,7 +100,7 @@
       "gross_profit",
       "sales_revenue"
     ],
-    "default_time_dimension": "completion_date",
+    "default_time_column_identity": "mart_sales.fct_sales_order_line.completion_date_key",
     "unit": "percent",
     "null_if": "sales_revenue = 0"
   }
