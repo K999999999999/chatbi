@@ -46,7 +46,7 @@ Offline Pipeline（离线链路）负责：
 - Evaluation Dataset
 - Class / Function / File Layout
 
-这些由后续 Feature Spec、Module Spec、Acceptance & Evaluation 和 Implementation 定义。
+这些由后续 Feature Spec、`PIPELINE_CONTRACT.md`、Acceptance & Evaluation 和 Implementation 定义。
 
 核心原则：
 
@@ -75,14 +75,14 @@ Validate
 Retrieval Projection
 （检索投影）
         ↓
-Embedding
-（向量化）
+Retrieval Representation Generation
+（检索表示生成）
         ↓
 Index Build
 （索引构建）
         ↓
-Asset Validation
-（资产验证）
+Post-build Validation / Online Ready Gate
+（构建后验证 / 在线就绪门禁）
         ↓
 Validated Retrieval Assets
 （已验证检索资产）
@@ -326,7 +326,7 @@ BFS / Join Resolution
 
 # 6. Module Map（模块地图）
 
-Offline Pipeline V1 包含五个核心 Logical Module（逻辑模块）：
+Offline Pipeline V1 包含四个核心 Logical Module（逻辑模块）：
 
 ```
 1. Resource Loading & Validation
@@ -335,14 +335,11 @@ Offline Pipeline V1 包含五个核心 Logical Module（逻辑模块）：
 2. Retrieval Projection
    （检索投影）
 
-3. Embedding Generation
-   （向量表示生成）
+3. Retrieval Representation Generation
+   （检索表示生成）
 
-4. Retrieval Index Building
-   （检索索引构建）
-
-5. Retrieval Asset Validation
-   （检索资产验证）
+4. Retrieval Asset Building
+   （检索资产构建）
 ```
 
 整体关系：
@@ -360,15 +357,15 @@ Retrieval Projection
           ↓
 Retrieval Records
           ↓
-Embedding Generation
+Retrieval Representation Generation
           ↓
-Embedded Retrieval Records
+Represented Retrieval Records
           ↓
-Retrieval Index Building
+Retrieval Asset Building
           ↓
 Built Retrieval Assets
           ↓
-Retrieval Asset Validation
+Post-build Validation / Online Ready Gate
           ↓
 Validated Retrieval Assets
 ```
@@ -377,13 +374,13 @@ Validated Retrieval Assets
 
 > **Responsibility Boundary（职责边界）。**
 
-M1～M5 只构建三类 Offline Retrieval Asset（离线检索资产）：
+M1～M4 只构建三类 Offline Retrieval Asset（离线检索资产）：
 
 ```text
 TABLE / COLUMN / METRIC
 ```
 
-`relationships.json` 由 M1 校验后继续作为独立 Relationship Catalog（关系目录）传递；它不进入 Retrieval Record、Embedding 或 Vector Index。后续 Online Join Resolver 使用已校验的 Relationship Catalog 构建确定性内存 Relationship Graph，并执行 BFS / Join Resolution。
+`relationships.json` 由 Resource Loading & Validation 校验后继续作为独立 Relationship Catalog（关系目录）传递；它不进入 Retrieval Record、Retrieval Representation 或 Vector Index。后续 Online Join Resolver 使用已校验的 Relationship Catalog 构建确定性内存 Relationship Graph，并执行 BFS / Join Resolution。
 
 不等同于具体 Python 文件、Class 或 Process。
 
@@ -479,13 +476,13 @@ TABLE / COLUMN / METRIC
 
 ------
 
-## 7.3 Embedding Generation（向量表示生成）
+## 7.3 Retrieval Representation Generation（检索表示生成）
 
 ### Responsibility
 
 负责：
 
-> 将 Retrieval Record 转换为可检索 Representation（表示）。
+> 为每条 Retrieval Record 生成满足当前检索表示契约的 Retrieval Representation（检索表示）。
 
 ### Major Input
 
@@ -493,7 +490,7 @@ TABLE / COLUMN / METRIC
 
 ### Major Output
 
-- Embedded Retrieval Records
+- Represented Retrieval Records
 
 ### Boundary
 
@@ -507,21 +504,21 @@ TABLE / COLUMN / METRIC
 - Schema Linking
 - Metric Resolution
 
-Dense / Sparse / Hybrid 属于后续规格和实现决策。
+具体 Representation 形式属于后续实现决策。
 
 ------
 
-## 7.4 Retrieval Index Building（检索索引构建）
+## 7.4 Retrieval Asset Building（检索资产构建）
 
 ### Responsibility
 
 负责：
 
-> 将 Retrieval Record、Retrieval Representation 和 Payload 构建为 Online Retrieval 可以消费的索引资产。
+> 通过 Full Rebuild 将 Retrieval Record、Retrieval Representation 和 Payload 构建为候选索引资产，并完成必要的构建后完整性验证。
 
 ### Major Input
 
-- Embedded Retrieval Records
+- Represented Retrieval Records
 
 ### Major Output
 
@@ -548,47 +545,9 @@ Unified Retrieval Index
 
 具体使用一个还是多个 Physical Collection：
 
-> 留给后续 Module Spec / Implementation 决定。
+> 留给后续 Implementation 决定。
 
-------
-
-## 7.5 Retrieval Asset Validation（检索资产验证）
-
-### Responsibility
-
-负责：
-
-> 在资产进入 Online Runtime 前验证构建结果是否完整、可追踪、可消费。
-
-### Major Input
-
-- Built Retrieval Assets
-- Validated Catalogs
-
-### Major Output
-
-成功：
-
-- Validated Retrieval Assets
-
-失败：
-
-- Offline Build Failure
-
-### Boundary
-
-验证：
-
-- Source / Asset 对齐
-- Record 完整性
-- Payload 完整性
-- Index 完整性
-- Source Trace
-- 基础 Retrieval 可用性
-
-详细 Evaluation Metric、Dataset 和 Threshold：
-
-> 由 Acceptance & Evaluation 定义。
+构建成功只产生候选 `Built Retrieval Assets`。Post-build Validation / Online Ready Gate 不是 Core Module，其验收规则由 Acceptance & Evaluation 定义。
 
 ------
 
@@ -612,15 +571,15 @@ Retrieval Projection
 │ Metric Records          │
 └─────────────────────────┘
         ↓
-Embedding Generation
+Retrieval Representation Generation
         ↓
-Embedded Retrieval Records
+Represented Retrieval Records
         ↓
-Retrieval Index Building
+Retrieval Asset Building
         ↓
 Built Retrieval Assets
         ↓
-Retrieval Asset Validation
+Post-build Validation / Online Ready Gate
         ↓
 Validated Retrieval Assets
 ```
@@ -630,7 +589,7 @@ Validated Retrieval Assets
 ```
 Authoritative Relationship Catalog
         ↓
-M1 Validation
+Resource Loading & Validation
         ↓
 Online Join Resolver
         ↓
@@ -652,9 +611,11 @@ Validated Catalogs
         ↓
 Retrieval Records
         ↓
-Embedded Retrieval Records
+Represented Retrieval Records
         ↓
 Built Retrieval Assets
+        ↓
+Post-build Validation / Online Ready Gate
         ↓
 Validated Retrieval Assets
 ```
@@ -762,7 +723,7 @@ Offline Pipeline 依赖三个外部 Capability（能力）。
 - Schema Metadata
 - Semantic Resources
 
-## Embedding Capability（向量化能力）
+## Retrieval Representation Capability（检索表示能力）
 
 将 Retrieval Record 转换为 Retrieval Representation。
 
@@ -849,7 +810,7 @@ Offline Pipeline V1 必须保持：
 这些分别进入：
 
 - Feature Spec
-- Module Spec
+- Pipeline Contract
 - Acceptance & Evaluation
 - Implementation
 
@@ -864,7 +825,7 @@ Freeze（冻结）前确认：
 - [x] Source 与 Derived Asset 边界明确
 - [x] Source Resource 保持分离
 - [x] Retrieval Record 独立投影
-- [x] 五个核心 Module 职责明确
+- [x] 四个核心 Module 职责明确
 - [x] Main Flow 完整
 - [x] Relationship Authority 明确
 - [x] Online / Offline Boundary 明确

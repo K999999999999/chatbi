@@ -149,7 +149,7 @@ Retrieval Representation
         ↓
 Retrieval Index
         ↓
-Asset Validation
+Post-build Validation / Online Ready Gate
         ↓
 Activate
         ↓
@@ -160,7 +160,7 @@ Expected Candidate
 
 最终验证的不是：
 
-> Embedding 是否成功生成。
+> Retrieval Representation 是否成功生成。
 
 也不是：
 
@@ -303,7 +303,7 @@ V1：
 必须验证：
 
 - Relationship Catalog 正常存在；
-- Relationship Catalog 已通过 M1 校验；
+- Relationship Catalog 已通过 Resource Loading & Validation 校验；
 - Relationship 可以被 Online Schema Linking 消费；
 - Join Resolver 可以基于该 Catalog 构建确定性内存 Relationship Graph，并执行 BFS / Join Resolution；
 - Vector Index 中不存在 Relationship Retrieval Record；

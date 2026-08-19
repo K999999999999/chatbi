@@ -38,11 +38,11 @@ Validate
         ↓
 Retrieval Projection
         ↓
-Embedding
+Retrieval Representation Generation
         ↓
 Index Build
         ↓
-Asset Validation
+Post-build Validation / Online Ready Gate
         ↓
 Validated Retrieval Assets
 ```
@@ -156,7 +156,7 @@ All Resources
 
 > 不要求不同 Source Resource 合并存储。
 
-具体字段由 Retrieval Projection Module Spec（检索投影模块规格）定义。
+模块职责和模块间边界由 `PIPELINE_CONTRACT.md` 定义；具体字段留给 Implementation。
 
 ------
 
@@ -170,7 +170,7 @@ V1：
 
 > V1 不将 Relationship 作为 Retrieval Record（检索记录）或向量检索对象。
 
-M1 负责校验 `relationships.json`；后续 Join Resolver 使用已校验的 Relationship Catalog 构建确定性内存 Relationship Graph，并执行 BFS / Join Resolution。该过程不向量化 Relationship，也不创建 Relationship Retrieval Record。
+Resource Loading & Validation 负责校验 `relationships.json`；后续 Join Resolver 使用已校验的 Relationship Catalog 构建确定性内存 Relationship Graph，并执行 BFS / Join Resolution。该过程不将 Relationship 转换为 Retrieval Representation，也不创建 Relationship Retrieval Record。
 
 正确流程：
 
@@ -246,13 +246,13 @@ Retrieval Projection 可以：
 
 ------
 
-# 9. Embedding Rule（向量化规则）
+# 9. Retrieval Representation Rule（检索表示规则）
 
 每个 Retrieval Record：
 
 > 独立生成 Retrieval Representation（检索表示）。
 
-Embedding Generation 不得改变：
+Retrieval Representation Generation 不得改变：
 
 - Source Identity；
 - Business Definition；
@@ -268,13 +268,13 @@ Hybrid
 Embedding Model
 ```
 
-由后续 Module Spec / Implementation 决定。
+由后续 Implementation 决定。
 
 Feature Contract 只要求：
 
 > 每类 Retrieval Record 必须通过明确、稳定、可重复的 Retrieval Representation Contract（检索表示契约）生成检索表示。
 >
-> 不同 Record Type 是否共享同一 Representation Strategy，由 Module Spec 定义。
+> 不同 Record Type 是否共享同一 Representation Strategy，由后续 Implementation 决定。
 
 ------
 
@@ -313,7 +313,7 @@ V1 不在 Feature Spec 强制：
 - 一个 Physical Collection；
 - 多个 Physical Collection。
 
-具体 Physical Collection Strategy（物理集合策略）由 Retrieval Index Building Module Spec 决定。
+具体 Physical Collection Strategy（物理集合策略）由后续 Implementation 决定。
 
 ------
 
@@ -375,7 +375,7 @@ Immediately Serve
 
 > 失败的新 Build 不得使上一版有效资产自动失效。
 
-具体 Atomic Publish（原子发布）实现由 Module Spec / Implementation 决定。
+具体 Atomic Publish（原子发布）实现由后续 Implementation 决定。
 
 ------
 
@@ -395,7 +395,7 @@ Retrieval Representation Version
 
 具体 Fingerprint（指纹）、Version Field（版本字段）和 ID Algorithm（标识算法）：
 
-> 由 Module Spec 定义。
+> 由后续 Implementation 定义。
 
 在相同：
 
@@ -422,9 +422,9 @@ Relevant Build Configuration
 - Cross-Resource Reference 非法；
 - Semantic → Physical Mapping 不存在；
 - Retrieval Projection 失败；
-- Embedding 失败且无法完成完整资产；
+- Retrieval Representation Generation 失败且无法完成完整资产；
 - Index Build 不完整；
-- Asset Validation 未通过；
+- Post-build Validation / Online Ready Gate 未通过；
 - Source Trace 无法建立；
 - 发现无法接受的 Legacy / Current 混用。
 
@@ -516,9 +516,9 @@ V1 正式支持：
 - Metric Retrieval Record；
 - Source Validation；
 - Retrieval Projection；
-- Embedding Generation；
+- Retrieval Representation Generation；
 - Full Index Build；
-- Asset Validation；
+- Post-build Validation / Online Ready Gate；
 - Full Rebuild；
 - Source Trace；
 - Build / Serve Separation。
@@ -580,7 +580,7 @@ Offline Pipeline V1 完成必须满足：
 - Retrieval Representation 可以完整生成；
 - Retrieval Index 可以完整重建；
 - Relationship 未被错误向量化裁决；
-- Asset Validation 通过；
+- Post-build Validation / Online Ready Gate 通过；
 - Full Rebuild 可重复执行；
 - Build Failure 不产生有效资产；
 - Online Runtime 可以消费最终 Validated Retrieval Assets；
