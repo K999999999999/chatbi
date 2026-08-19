@@ -5,9 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from src.poc.context import ContextBuilder
 from src.poc.executor import QueryExecutionError, QueryExecutor, QueryResult
-from src.poc.sql_generator import SqlGenerationError, SqlGenerator
+from src.poc.llm_client import LlmClient, SqlGenerationError
+from src.poc.prompt_builder import PromptBuilder
+from src.poc.query_parser import QueryParser
 from src.poc.sql_guard import SqlGuard, SqlValidationError
 
 
@@ -38,33 +39,34 @@ class PocResponse:
 
 
 class PocQueryPipeline:
-    """question -> context -> candidate SQL -> Guard -> read-only result。"""
+    """question -> parse -> Prompt -> LLM SQL -> Guard -> read-only result。"""
 
     def __init__(
         self,
-        context_builder: ContextBuilder,
-        sql_generator: SqlGenerator,
+        query_parser: QueryParser,
+        prompt_builder: PromptBuilder,
+        llm_client: LlmClient,
         sql_guard: SqlGuard,
         executor: QueryExecutor,
     ) -> None:
-        self.context_builder = context_builder
-        self.sql_generator = sql_generator
+        self.query_parser = query_parser
+        self.prompt_builder = prompt_builder
+        self.llm_client = llm_client
         self.sql_guard = sql_guard
         self.executor = executor
 
     def run(self, question: str) -> PocResponse:
         normalized = question.strip()
-        if not normalized:
-            return PocResponse(
-                success=False,
-                question=question,
-                error_code="empty_question",
-                error="用户问题不能为空",
-            )
+        generated_sql: str | None = None
 
         try:
-            context = self.context_builder.build(normalized)
-            generated_sql = self.sql_generator.generate(context)
+            parsed = self.query_parser.parse(normalized)
+            context = self.prompt_builder.build(parsed.question)
+            system_message, user_prompt = context.render_messages()
+            generated_sql = self.llm_client.generate_sql(
+                system_message,
+                user_prompt,
+            )
             validated = self.sql_guard.validate(generated_sql)
             result = self.executor.execute(validated)
         except (ValueError, SqlGenerationError, SqlValidationError) as exc:
@@ -78,7 +80,7 @@ class PocQueryPipeline:
             return PocResponse(
                 success=False,
                 question=normalized,
-                sql=generated_sql if "generated_sql" in locals() else None,
+                sql=generated_sql,
                 error_code="query_execution_failed",
                 error=str(exc),
             )
@@ -86,7 +88,7 @@ class PocQueryPipeline:
         return PocResponse(
             success=True,
             question=normalized,
-            metric_codes=(context.metric.metric_code,),
+            metric_codes=context.metric_codes,
             sql=validated.sql,
             columns=result.columns,
             rows=result.rows,
