@@ -1,5 +1,9 @@
-"""Offline Pipeline resource validation, projection, and representation generation."""
+"""Offline Pipeline resource validation, projection, representation, and asset building."""
 
+import copy
+import json
+import math
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -8,9 +12,19 @@ from langchain_core.documents import Document
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
 from src.infrastructure.offline_pipeline import (
+    DENSE_DIMENSION,
+    DENSE_VECTOR_NAME,
     ResourceReadError,
+    SPARSE_VECTOR_NAME,
+    build_qdrant_point,
+    count_qdrant_points,
+    create_candidate_collection,
+    create_qdrant_client,
+    delete_qdrant_collection,
     encode_bge_m3,
     read_json_file,
+    scroll_qdrant_points,
+    upsert_qdrant_points,
 )
 
 
@@ -25,6 +39,10 @@ class M1ValidationError(ValueError):
 
 class M3GenerationError(ValueError):
     """Raised when complete retrieval representations cannot be generated."""
+
+
+class M4BuildError(ValueError):
+    """Raised when a complete candidate Retrieval Asset cannot be built."""
 
 
 class _ResourceModel(BaseModel):
@@ -122,6 +140,23 @@ class RepresentedRetrievalRecord:
     document: Document
     dense: tuple[float, ...]
     sparse: dict[int, float]
+
+
+@dataclass(frozen=True)
+class BuiltRetrievalAssets:
+    """References and counts for the three validated candidate collections."""
+
+    build_token: str
+    table_collection: str
+    column_collection: str
+    metric_collection: str
+    table_count: int
+    column_count: int
+    metric_count: int
+
+    @property
+    def total_count(self) -> int:
+        return self.table_count + self.column_count + self.metric_count
 
 
 def load_validated_catalogs(
@@ -292,6 +327,307 @@ def generate_retrieval_representations(
         raise M3GenerationError(
             "M3 representation generation failed; no partial output is available"
         ) from exc
+
+
+POINT_ID_NAMESPACE = uuid.UUID("8df2a9b2-0b1c-5f3d-9a3c-7d5e2e1f4b68")
+_COLLECTION_PREFIX_BY_RECORD_TYPE = {
+    "TABLE": "table_retrieval",
+    "COLUMN": "column_retrieval",
+    "METRIC": "metric_retrieval",
+}
+
+
+def point_id_for_document(document: Document) -> str:
+    """Derive a stable UUID5 from an explicitly ordered identity list."""
+
+    if not isinstance(document, Document) or not isinstance(document.metadata, dict):
+        raise M4BuildError("Point ID input must be a Document with metadata")
+
+    record_type = document.metadata.get("record_type")
+    if record_type == "TABLE":
+        identity_parts = [
+            "TABLE",
+            _required_identity_value(document.metadata, "schema_name"),
+            _required_identity_value(document.metadata, "table_name"),
+        ]
+    elif record_type == "COLUMN":
+        identity_parts = [
+            "COLUMN",
+            _required_identity_value(document.metadata, "schema_name"),
+            _required_identity_value(document.metadata, "table_name"),
+            _required_identity_value(document.metadata, "column_name"),
+        ]
+    elif record_type == "METRIC":
+        identity_parts = [
+            "METRIC",
+            _required_identity_value(document.metadata, "metric_code"),
+        ]
+    else:
+        raise M4BuildError(f"Unsupported retrieval record_type: {record_type}")
+
+    canonical_name = json.dumps(
+        identity_parts,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    return str(uuid.uuid5(POINT_ID_NAMESPACE, canonical_name))
+
+
+def build_retrieval_assets(
+    records: list[RepresentedRetrievalRecord],
+    *,
+    qdrant_url: str = "http://127.0.0.1:6333",
+    timeout: int = 20,
+    build_token: str | None = None,
+) -> BuiltRetrievalAssets:
+    """Build and validate three isolated candidate collections in one execution."""
+
+    created_collections: list[str] = []
+    client = None
+    try:
+        grouped_records = _validate_m4_input(records)
+        normalized_build_token = _normalize_build_token(build_token)
+        collection_names = {
+            record_type: _candidate_collection_name(
+                record_type, normalized_build_token
+            )
+            for record_type in _COLLECTION_PREFIX_BY_RECORD_TYPE
+        }
+        points_by_type = {
+            record_type: [
+                build_qdrant_point(
+                    point_id,
+                    dense=record.dense,
+                    sparse=record.sparse,
+                    payload=_payload_for_document(record.document),
+                )
+                for point_id, record in grouped_records[record_type]
+            ]
+            for record_type in _COLLECTION_PREFIX_BY_RECORD_TYPE
+        }
+
+        client = create_qdrant_client(qdrant_url, timeout=timeout)
+        for record_type in _COLLECTION_PREFIX_BY_RECORD_TYPE:
+            collection_name = collection_names[record_type]
+            create_candidate_collection(client, collection_name)
+            created_collections.append(collection_name)
+
+        for record_type in _COLLECTION_PREFIX_BY_RECORD_TYPE:
+            upsert_qdrant_points(
+                client,
+                collection_names[record_type],
+                points_by_type[record_type],
+            )
+
+        for record_type in _COLLECTION_PREFIX_BY_RECORD_TYPE:
+            _validate_candidate_collection(
+                client,
+                collection_names[record_type],
+                record_type,
+                grouped_records[record_type],
+            )
+
+        return BuiltRetrievalAssets(
+            build_token=normalized_build_token,
+            table_collection=collection_names["TABLE"],
+            column_collection=collection_names["COLUMN"],
+            metric_collection=collection_names["METRIC"],
+            table_count=len(grouped_records["TABLE"]),
+            column_count=len(grouped_records["COLUMN"]),
+            metric_count=len(grouped_records["METRIC"]),
+        )
+    except M4BuildError:
+        _cleanup_candidate_collections(client, created_collections)
+        raise
+    except Exception as exc:
+        _cleanup_candidate_collections(client, created_collections)
+        raise M4BuildError(
+            "M4 Retrieval Asset build failed; no partial output is available"
+        ) from exc
+
+
+def _validate_m4_input(
+    records: list[RepresentedRetrievalRecord],
+) -> dict[str, list[tuple[str, RepresentedRetrievalRecord]]]:
+    if not isinstance(records, list) or not records:
+        raise M4BuildError("M4 input must be a non-empty list of representations")
+
+    grouped: dict[str, list[tuple[str, RepresentedRetrievalRecord]]] = {
+        "TABLE": [],
+        "COLUMN": [],
+        "METRIC": [],
+    }
+    point_ids: set[str] = set()
+    for record in records:
+        if not isinstance(record, RepresentedRetrievalRecord):
+            raise M4BuildError("M4 input contains an invalid represented record")
+        document = record.document
+        if not isinstance(document, Document):
+            raise M4BuildError("M4 input contains a non-Document record")
+        if not isinstance(document.page_content, str) or not document.page_content.strip():
+            raise M4BuildError("M4 input contains empty page_content")
+        if not isinstance(document.metadata, dict):
+            raise M4BuildError("M4 input Document metadata must be a mapping")
+        record_type = document.metadata.get("record_type")
+        if record_type not in grouped:
+            raise M4BuildError(f"Unsupported retrieval record_type: {record_type}")
+        source_path = document.metadata.get("source_path")
+        if not isinstance(source_path, str) or not source_path.strip():
+            raise M4BuildError("M4 input metadata.source_path is required")
+        if type(record.dense) is not tuple or len(record.dense) != DENSE_DIMENSION:
+            raise M4BuildError("M4 Dense representation must be a 1024-value tuple")
+        if any(type(value) is not float or not math.isfinite(value) for value in record.dense):
+            raise M4BuildError("M4 Dense values must be finite Python floats")
+        if type(record.sparse) is not dict or not record.sparse:
+            raise M4BuildError("M4 Sparse representation must be a non-empty dict")
+        if any(
+            type(index) is not int or index < 0
+            for index in record.sparse
+        ):
+            raise M4BuildError("M4 Sparse indexes must be non-negative Python integers")
+        if any(
+            type(weight) is not float or not math.isfinite(weight)
+            for weight in record.sparse.values()
+        ):
+            raise M4BuildError("M4 Sparse values must be finite Python floats")
+
+        point_id = point_id_for_document(document)
+        if point_id in point_ids:
+            raise M4BuildError(f"Duplicate Point ID: {point_id}")
+        point_ids.add(point_id)
+        grouped[record_type].append((point_id, record))
+
+    return grouped
+
+
+def _validate_candidate_collection(
+    client: object,
+    collection_name: str,
+    record_type: str,
+    expected_records: list[tuple[str, RepresentedRetrievalRecord]],
+) -> None:
+    if not client.collection_exists(collection_name):
+        raise M4BuildError(f"Candidate collection does not exist: {collection_name}")
+
+    expected_by_id = {point_id: record for point_id, record in expected_records}
+    expected_count = len(expected_records)
+    stored_count = count_qdrant_points(client, collection_name)
+    if stored_count != expected_count:
+        raise M4BuildError(
+            f"Stored Point count mismatch for {collection_name}: "
+            f"expected {expected_count}, got {stored_count}"
+        )
+
+    stored_points = scroll_qdrant_points(client, collection_name)
+    if len(stored_points) != expected_count:
+        raise M4BuildError(
+            f"Scrolled Point count mismatch for {collection_name}: "
+            f"expected {expected_count}, got {len(stored_points)}"
+        )
+
+    seen_ids: set[str] = set()
+    for point in stored_points:
+        point_id = str(point.id)
+        if point_id in seen_ids:
+            raise M4BuildError(f"Duplicate stored Point ID: {point_id}")
+        seen_ids.add(point_id)
+        if point_id not in expected_by_id:
+            raise M4BuildError(f"Unexpected stored Point ID: {point_id}")
+
+        vectors = getattr(point, "vector", None)
+        if not isinstance(vectors, dict) or set(vectors) != {
+            DENSE_VECTOR_NAME,
+            SPARSE_VECTOR_NAME,
+        }:
+            raise M4BuildError(f"Invalid named vectors for Point: {point_id}")
+        dense = vectors.get(DENSE_VECTOR_NAME)
+        if not isinstance(dense, (list, tuple)) or len(dense) != DENSE_DIMENSION:
+            raise M4BuildError(f"Invalid Dense vector for Point: {point_id}")
+        if any(
+            not isinstance(value, (int, float))
+            or isinstance(value, bool)
+            or not math.isfinite(float(value))
+            for value in dense
+        ):
+            raise M4BuildError(f"Dense vector contains invalid values: {point_id}")
+
+        sparse = vectors.get(SPARSE_VECTOR_NAME)
+        indices = getattr(sparse, "indices", None)
+        values = getattr(sparse, "values", None)
+        if not isinstance(indices, list) or not isinstance(values, list):
+            raise M4BuildError(f"Invalid Sparse vector for Point: {point_id}")
+        if not indices or len(indices) != len(values):
+            raise M4BuildError(f"Sparse indexes and values are invalid: {point_id}")
+        if any(type(index) is not int or index < 0 for index in indices):
+            raise M4BuildError(f"Sparse indexes are invalid: {point_id}")
+        if len(set(indices)) != len(indices):
+            raise M4BuildError(f"Sparse indexes are duplicated: {point_id}")
+        if any(
+            not isinstance(value, (int, float))
+            or isinstance(value, bool)
+            or not math.isfinite(float(value))
+            for value in values
+        ):
+            raise M4BuildError(f"Sparse values are invalid: {point_id}")
+
+        payload = getattr(point, "payload", None)
+        if not isinstance(payload, dict):
+            raise M4BuildError(f"Payload is missing: {point_id}")
+        page_content = payload.get("page_content")
+        metadata = payload.get("metadata")
+        if not isinstance(page_content, str) or not page_content.strip():
+            raise M4BuildError(f"Payload page_content is missing: {point_id}")
+        if not isinstance(metadata, dict):
+            raise M4BuildError(f"Payload metadata is missing: {point_id}")
+        if metadata.get("record_type") != record_type:
+            raise M4BuildError(f"Payload record_type is incorrectly routed: {point_id}")
+        source_path = metadata.get("source_path")
+        if not isinstance(source_path, str) or not source_path.strip():
+            raise M4BuildError(f"Payload source_path is missing: {point_id}")
+        if DENSE_VECTOR_NAME in payload or SPARSE_VECTOR_NAME in payload:
+            raise M4BuildError(f"Payload must not duplicate vectors: {point_id}")
+
+    if seen_ids != set(expected_by_id):
+        raise M4BuildError(f"Stored Point identities mismatch: {collection_name}")
+
+
+def _payload_for_document(document: Document) -> dict[str, object]:
+    return {
+        "page_content": document.page_content,
+        "metadata": copy.deepcopy(document.metadata),
+    }
+
+
+def _candidate_collection_name(record_type: str, build_token: str) -> str:
+    return f"{_COLLECTION_PREFIX_BY_RECORD_TYPE[record_type]}__candidate_{build_token}"
+
+
+def _normalize_build_token(build_token: str | None) -> str:
+    token = uuid.uuid4().hex if build_token is None else build_token
+    if not isinstance(token, str) or not token:
+        raise M4BuildError("M4 build_token must be a non-empty string")
+    if any(character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for character in token):
+        raise M4BuildError("M4 build_token contains unsupported characters")
+    return token
+
+
+def _cleanup_candidate_collections(client: object, collection_names: list[str]) -> None:
+    if client is None:
+        return
+    for collection_name in collection_names:
+        try:
+            delete_qdrant_collection(client, collection_name)
+        except Exception:
+            # Preserve the original build failure and never report a partial success.
+            continue
+
+
+def _required_identity_value(metadata: dict, field_name: str) -> str:
+    value = metadata.get(field_name)
+    if not isinstance(value, str) or not value:
+        raise M4BuildError(f"Point identity field is missing: {field_name}")
+    return value
 
 
 def _validate_m3_input(documents: list[Document]) -> None:

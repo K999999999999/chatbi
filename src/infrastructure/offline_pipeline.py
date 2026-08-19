@@ -6,6 +6,19 @@ from pathlib import Path
 from typing import Any
 
 from FlagEmbedding import BGEM3FlagModel
+from qdrant_client import QdrantClient
+from qdrant_client.http.models import (
+    Distance,
+    PointStruct,
+    SparseVector,
+    SparseVectorParams,
+    VectorParams,
+)
+
+
+DENSE_VECTOR_NAME = "dense"
+SPARSE_VECTOR_NAME = "sparse"
+DENSE_DIMENSION = 1024
 
 
 class ResourceReadError(RuntimeError):
@@ -114,3 +127,96 @@ def _normalize_sparse_weights(raw_weights: object) -> dict[int, float]:
     if len(normalized) != len(raw_weights):
         raise ValueError("Sparse normalization changed the number of dimensions")
     return normalized
+
+
+def create_qdrant_client(
+    url: str = "http://127.0.0.1:6333",
+    *,
+    timeout: int = 20,
+) -> QdrantClient:
+    """Create the one V1 Qdrant client with the current local proxy bypass."""
+
+    return QdrantClient(
+        url=url,
+        timeout=timeout,
+        trust_env=False,
+        check_compatibility=False,
+    )
+
+
+def create_candidate_collection(client: QdrantClient, collection_name: str) -> None:
+    """Create one candidate collection with the shared V1 named-vector schema."""
+
+    client.create_collection(
+        collection_name=collection_name,
+        vectors_config={
+            DENSE_VECTOR_NAME: VectorParams(
+                size=DENSE_DIMENSION,
+                distance=Distance.COSINE,
+            )
+        },
+        sparse_vectors_config={SPARSE_VECTOR_NAME: SparseVectorParams()},
+    )
+
+
+def build_qdrant_point(
+    point_id: str,
+    *,
+    dense: tuple[float, ...],
+    sparse: dict[int, float],
+    payload: dict[str, Any],
+) -> PointStruct:
+    """Convert neutral M3 representations into one physical Qdrant point."""
+
+    sparse_items = sorted(sparse.items(), key=lambda item: item[0])
+    return PointStruct(
+        id=point_id,
+        vector={
+            DENSE_VECTOR_NAME: list(dense),
+            SPARSE_VECTOR_NAME: SparseVector(
+                indices=[index for index, _ in sparse_items],
+                values=[weight for _, weight in sparse_items],
+            ),
+        },
+        payload=payload,
+    )
+
+
+def upsert_qdrant_points(
+    client: QdrantClient,
+    collection_name: str,
+    points: list[PointStruct],
+) -> None:
+    """Write precomputed points without invoking any embedding provider."""
+
+    if points:
+        client.upsert(collection_name=collection_name, points=points, wait=True)
+
+
+def count_qdrant_points(client: QdrantClient, collection_name: str) -> int:
+    return int(client.count(collection_name=collection_name, exact=True).count)
+
+
+def scroll_qdrant_points(client: QdrantClient, collection_name: str) -> list[Any]:
+    """Read all points and explicitly request both vectors and payload."""
+
+    points: list[Any] = []
+    offset = None
+    while True:
+        batch, next_offset = client.scroll(
+            collection_name=collection_name,
+            offset=offset,
+            limit=256,
+            with_payload=True,
+            with_vectors=True,
+        )
+        points.extend(batch)
+        if next_offset is None:
+            return points
+        if next_offset == offset:
+            raise RuntimeError("Qdrant scroll offset did not advance")
+        offset = next_offset
+
+
+def delete_qdrant_collection(client: QdrantClient, collection_name: str) -> None:
+    client.delete_collection(collection_name=collection_name)

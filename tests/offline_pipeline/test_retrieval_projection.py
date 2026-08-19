@@ -275,8 +275,7 @@ class RetrievalProjectionTests(unittest.TestCase):
         )
 
     def test_projection_module_has_no_embedding_qdrant_or_network_dependency(self):
-        module_file = Path(inspect.getsourcefile(project_retrieval_records))
-        source = module_file.read_text(encoding="utf-8").lower()
+        source = inspect.getsource(project_retrieval_records).lower()
 
         for forbidden in ("flagembedding", "qdrant", "requests", "httpx", "urllib.request"):
             self.assertNotIn(forbidden, source)
