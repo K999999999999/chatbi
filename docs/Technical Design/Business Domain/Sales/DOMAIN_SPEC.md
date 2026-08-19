@@ -633,7 +633,7 @@ Sales Analytical Model（销售分析模型）必须能够表达：
 
 Customer、Product、Time、Region 等 Dimension（维度）仍然属于业务语义定义，继续由本 Domain Specification 和 Analytical Model 表达；它们不要求独立的 Dimension Metadata、Dimension Catalog、`dimensions.json` 或 Dimension Retrieval。维度业务语义在 Schema Linking（结构关联）中通过现有 Column Metadata 的名称与描述参与 Field Matching（字段匹配）。
 
-Metric Alias（指标别名）继续保留在 metrics.json。Customer、Product、Time、Region 等业务维度的中文名称、别名和字段角色由 Schema Linking 的 Field Matching 处理；Table / Column Retrieval 仍只使用现有 Column name + description，不新增独立 Alias Resource（别名资源）或 Retrieval Object（检索对象）。Authorization Metadata（授权元数据）属于正交的访问控制边界，不属于 Offline Retrieval Asset（离线检索资产）。
+Metric Alias（指标别名）继续保留在 metrics.json。V1 Column Field Matching（字段匹配）只依赖现有 Column Metadata 的 `column_name` 与 `description`；当前不声明独立 Column Alias（字段别名）、`semantic_role` 或 `time_role`。这些能力仅作为后续可选增强，不新增任何资源或 Retrieval Object（检索对象）。Authorization Metadata（授权元数据）属于正交的访问控制边界，不属于 Offline Retrieval Asset（离线检索资产）。
 
 Metric Catalog 必须是本 Domain Specification 与 Analytical Model 的机器可读下游表达，不得自行定义新的指标口径、公式、过滤规则或时间语义。
 

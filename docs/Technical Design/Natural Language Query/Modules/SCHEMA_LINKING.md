@@ -395,25 +395,12 @@ mart_sales.dim_customer.customer_region
 
 Sales Region（销售区域）与 Customer Region（客户区域）必须保持语义区分，不得仅因名称相似而合并；物理字段不是完整的 Business Dimension Identity（业务维度身份），其含义由 Domain / Analytical Model 与 Column Metadata 共同约束。
 
-Field Matching Vocabulary（字段匹配词汇）只作为本模块的业务匹配输入，不是新的机器可读资源、Retrieval Object（检索对象）或 Embedding（向量表示）。Column / Field Retrieval（列 / 字段检索）的检索文本仍只使用现有 Column name + description（字段名称 + 描述）；候选召回后再使用以下业务名称、别名和角色完成字段匹配：
+V1 Column Field Matching（字段匹配）只依赖现有 Column Metadata（字段元数据）中的：
 
-| Column Identity（列身份） | Business Name / Aliases（业务名称 / 别名） | Field Role / Boundary（字段角色 / 边界） |
-|---|---|---|
-| fct_sales_order_line.completion_date_key | 销售完成日期 / 完成日期、销售完成时间 | 完成日期角色；默认业务时间绑定到该实际 Column |
-| fct_sales_order_line.order_date_key | 订单日期 / 下单日期、订单创建日期 | 下单日期角色 |
-| fct_sales_order_line.confirmation_date_key | 订单确认日期 / 确认日期、订单确认时间 | 确认日期角色 |
-| dim_customer.customer_name | 客户 / 客户名称、客户主体 | 客户业务主体 |
-| dim_customer.customer_type | 客户类型 / 客户类别 | 客户主体类型 |
-| dim_customer.industry | 行业 / 所属行业、客户行业 | 客户主体所属行业 |
-| dim_customer.country | 国家 / 客户国家、所属国家 | 客户主体所属国家 |
-| dim_customer.customer_region | 客户区域 / 客户所属区域、客户所在区域 | 客户主体所属区域，不是销售区域 |
-| dim_product.product_name | 产品 / 产品名称 | 产品业务对象 |
-| dim_product.product_line | 产品线 / 产品系列 | 产品所属产品线 |
-| dim_product.product_category | 产品类别 / 产品分类 | 产品所属产品类别 |
-| dim_product.technology_route | 技术路线 / 技术路径 | 产品采用的技术路线 |
-| dim_sales_region.sales_region_name | 销售区域 / 销售地区、销售组织区域 | 销售交易或销售组织所属区域，不是客户区域 |
-| dim_currency.currency_code | 交易币种 / 币种、交易货币 | 销售事实发生时的交易币种 |
-| fct_sales_order_line.order_no | 订单号 / 销售订单号 | 销售订单业务编号，订单退化维度字段 |
+- `column_name`；
+- `description`。
+
+V1 不声明独立 Column Alias（字段别名）、`semantic_role` 或 `time_role`。这些能力仅作为后续可选增强，不新增任何资源、Retrieval Object（检索对象）或 Embedding（向量表示）。
 
 必须保持三个概念分离：
 

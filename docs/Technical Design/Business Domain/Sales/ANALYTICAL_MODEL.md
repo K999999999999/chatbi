@@ -875,7 +875,7 @@ V1 不建设：
 
 Customer、Product、Time、Region 等 Dimension（维度）继续由本 Analytical Model 和上游 DOMAIN_SPEC 定义；不建立独立 Dimension Metadata、Dimension Catalog、`dimensions.json` 或 Dimension Retrieval。维度语义通过现有 Column Metadata 的名称与描述供 Schema Linking（结构关联）执行 Field Matching（字段匹配）。
 
-Metric Alias（指标别名）继续保留在 metrics.json。业务 Dimension 的中文名称、别名和字段角色由 Schema Linking 的 Field Matching 处理；Table / Column Retrieval 仍只使用现有 Column name + description，不新增独立 Alias Resource（别名资源）或 Retrieval Object（检索对象）。Authorization Metadata（授权元数据）属于独立的访问控制边界，不属于 Offline Retrieval Asset（离线检索资产）。
+Metric Alias（指标别名）继续保留在 metrics.json。V1 Column Field Matching（字段匹配）只依赖现有 Column Metadata 的 `column_name` 与 `description`；当前不声明独立 Column Alias（字段别名）、`semantic_role` 或 `time_role`。这些能力仅作为后续可选增强，不新增任何资源或 Retrieval Object（检索对象）。Authorization Metadata（授权元数据）属于独立的访问控制边界，不属于 Offline Retrieval Asset（离线检索资产）。
 
 Relationship 不进入 Retrieval Record、Embedding 或 Vector Index，只作为确定性 Relationship Catalog → Relationship Graph → Join Resolution 的输入。
 
