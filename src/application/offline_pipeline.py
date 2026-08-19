@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import Literal
 
+from langchain_core.documents import Document
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
 from src.infrastructure.offline_pipeline import ResourceReadError, read_json_file
@@ -10,6 +11,7 @@ from src.infrastructure.offline_pipeline import ResourceReadError, read_json_fil
 
 TableIdentity = tuple[str, str]
 ColumnIdentity = tuple[str, str, str]
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 class M1ValidationError(ValueError):
@@ -138,6 +140,109 @@ def load_validated_catalogs(
         relationships_path=relationships_path,
         metrics_path=metrics_path,
     )
+
+
+def project_tables(catalogs: ValidatedCatalogs) -> list[Document]:
+    source_path = _stable_source_path(catalogs.tables_path)
+    documents: list[Document] = []
+    for table in catalogs.tables:
+        content = [f"table_name: {table.table_name}"]
+        if table.description:
+            content.append(f"description: {table.description}")
+        documents.append(
+            Document(
+                page_content="\n".join(content),
+                metadata={
+                    "record_type": "TABLE",
+                    "schema_name": table.schema_name,
+                    "table_name": table.table_name,
+                    "source_path": source_path,
+                },
+            )
+        )
+    return documents
+
+
+def project_columns(catalogs: ValidatedCatalogs) -> list[Document]:
+    source_path = _stable_source_path(catalogs.columns_path)
+    documents: list[Document] = []
+    for column in catalogs.columns:
+        content = [f"column_name: {column.column_name}"]
+        if column.description:
+            content.append(f"description: {column.description}")
+        documents.append(
+            Document(
+                page_content="\n".join(content),
+                metadata={
+                    "record_type": "COLUMN",
+                    "schema_name": column.schema_name,
+                    "table_name": column.table_name,
+                    "column_name": column.column_name,
+                    "source_path": source_path,
+                },
+            )
+        )
+    return documents
+
+
+def project_metrics(catalogs: ValidatedCatalogs) -> list[Document]:
+    source_path = _stable_source_path(catalogs.metrics_path)
+    documents: list[Document] = []
+    for metric in catalogs.metrics:
+        content = [
+            f"metric_code: {metric.metric_code}",
+            f"metric_name: {metric.metric_name}",
+        ]
+        if metric.aliases:
+            content.append(f"aliases: {'; '.join(metric.aliases)}")
+        content.extend(
+            [
+                f"business_definition: {metric.business_definition}",
+                f"expression: {metric.expression}",
+            ]
+        )
+        documents.append(
+            Document(
+                page_content="\n".join(content),
+                metadata={
+                    "record_type": "METRIC",
+                    "metric_code": metric.metric_code,
+                    "source_path": source_path,
+                    "metric_type": metric.metric_type,
+                    "filters": list(metric.filters),
+                    "depends_on": list(metric.depends_on),
+                    "default_time_column_identity": metric.default_time_column_identity,
+                    "unit": metric.unit,
+                    "source_table": metric.source_table,
+                    "source_columns": (
+                        list(metric.source_columns)
+                        if metric.source_columns is not None
+                        else None
+                    ),
+                    "null_if": metric.null_if,
+                },
+            )
+        )
+    return documents
+
+
+def project_retrieval_records(catalogs: ValidatedCatalogs) -> list[Document]:
+    """Project each supported source object into exactly one Document."""
+
+    return [
+        *project_tables(catalogs),
+        *project_columns(catalogs),
+        *project_metrics(catalogs),
+    ]
+
+
+def _stable_source_path(path: Path) -> str:
+    resolved_path = path.resolve()
+    try:
+        relative_path = resolved_path.relative_to(_PROJECT_ROOT)
+    except ValueError as exc:
+        raise ValueError(f"Source path is outside the project: {path}") from exc
+    return relative_path.as_posix()
 
 
 def _parse_list(raw: object, model_type: type[BaseModel], resource_name: str) -> list:
