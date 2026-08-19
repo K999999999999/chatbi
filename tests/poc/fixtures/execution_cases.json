@@ -1,0 +1,32 @@
+[
+  {
+    "id": "S01",
+    "question": "查询 2025 年的销售额",
+    "expected_sql": "SELECT SUM(f.net_sales_amount_cny) AS sales_revenue FROM mart_sales.fct_sales_order_line AS f JOIN mart_sales.dim_date AS d ON f.completion_date_key = d.date_key WHERE f.order_status = 'completed' AND d.full_date >= DATE '2025-01-01' AND d.full_date < DATE '2026-01-01'",
+    "description": "单指标 + 年份过滤"
+  },
+  {
+    "id": "S02",
+    "question": "查询 2025 年的销量",
+    "expected_sql": "SELECT SUM(f.quantity) AS sales_quantity FROM mart_sales.fct_sales_order_line AS f JOIN mart_sales.dim_date AS d ON f.completion_date_key = d.date_key WHERE f.order_status = 'completed' AND d.full_date >= DATE '2025-01-01' AND d.full_date < DATE '2026-01-01'",
+    "description": "数量指标 + 年份过滤"
+  },
+  {
+    "id": "M01",
+    "question": "查询 2025 年各产品线的销售额",
+    "expected_sql": "SELECT p.product_line AS product_line, SUM(f.net_sales_amount_cny) AS sales_revenue FROM mart_sales.fct_sales_order_line AS f JOIN mart_sales.dim_date AS d ON f.completion_date_key = d.date_key JOIN mart_sales.dim_product AS p ON f.product_key = p.product_key WHERE f.order_status = 'completed' AND d.full_date >= DATE '2025-01-01' AND d.full_date < DATE '2026-01-01' GROUP BY p.product_line ORDER BY p.product_line",
+    "description": "产品维度 + 收入聚合 + 年份过滤"
+  },
+  {
+    "id": "M02",
+    "question": "查询 2025 年各销售区域的毛利",
+    "expected_sql": "SELECT r.sales_region_name AS sales_region_name, SUM(f.net_sales_amount_cny) - SUM(f.sales_cost_amount_cny) AS gross_profit FROM mart_sales.fct_sales_order_line AS f JOIN mart_sales.dim_date AS d ON f.completion_date_key = d.date_key JOIN mart_sales.dim_sales_region AS r ON f.sales_region_key = r.sales_region_key WHERE f.order_status = 'completed' AND d.full_date >= DATE '2025-01-01' AND d.full_date < DATE '2026-01-01' GROUP BY r.sales_region_name ORDER BY r.sales_region_name",
+    "description": "销售区域维度 + 派生指标 + 年份过滤"
+  },
+  {
+    "id": "M03",
+    "question": "查询 2025 年各客户区域的毛利率",
+    "expected_sql": "SELECT c.customer_region AS customer_region, (SUM(f.net_sales_amount_cny) - SUM(f.sales_cost_amount_cny)) / NULLIF(SUM(f.net_sales_amount_cny), 0) AS gross_margin FROM mart_sales.fct_sales_order_line AS f JOIN mart_sales.dim_date AS d ON f.completion_date_key = d.date_key JOIN mart_sales.dim_customer AS c ON f.customer_key = c.customer_key WHERE f.order_status = 'completed' AND d.full_date >= DATE '2025-01-01' AND d.full_date < DATE '2026-01-01' GROUP BY c.customer_region ORDER BY c.customer_region",
+    "description": "客户区域维度 + 比率指标 + 年份过滤"
+  }
+]

@@ -43,6 +43,7 @@ OUTPUT_FILES = {
     "columns": "columns.json",
     "relationships": "relationships.json",
 }
+DEFAULT_OUTPUT_DIR = ROOT / "src" / "poc" / "structure" / "generated"
 
 
 class MetadataExportError(RuntimeError):
@@ -601,7 +602,7 @@ def write_outputs(outputs: dict[str, Any], output_dir: Path) -> None:
 
 def export_schema(
     env_file: Path = ROOT / ".env",
-    output_dir: Path = ROOT / "resources" / "schema",
+    output_dir: Path = DEFAULT_OUTPUT_DIR,
 ) -> CanonicalSchema:
     """连接一次 PostgreSQL，提取并写出当前 mart_sales Metadata。"""
 
@@ -625,7 +626,7 @@ def main() -> int:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=ROOT / "resources" / "schema",
+        default=DEFAULT_OUTPUT_DIR,
         help="directory for tables.json, columns.json, and relationships.json",
     )
     args = parser.parse_args()
