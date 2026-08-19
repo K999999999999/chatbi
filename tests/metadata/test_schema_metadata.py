@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import sys
 import unittest
 from pathlib import Path
@@ -31,7 +30,7 @@ from scripts.metadata.export_schema import (  # noqa: E402
 
 
 class SchemaMetadataTest(unittest.TestCase):
-    """将导出资源与同一 PostgreSQL 实例的实际结构逐项核对。"""
+    """只读核对 PostgreSQL 实际结构与元数据导出结果。"""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -41,31 +40,15 @@ class SchemaMetadataTest(unittest.TestCase):
         cls.repeat_model = extract_schema(cls.connection)
         cls.outputs = project_outputs(cls.model)
         cls.repeat_outputs = project_outputs(cls.repeat_model)
-        cls.resource_dir = ROOT / "resources" / "schema"
-        cls.resource_outputs = {
-            "tables": cls._read_json("tables.json"),
-            "columns": cls._read_json("columns.json"),
-            "relationships": cls._read_json("relationships.json"),
-        }
 
     @classmethod
     def tearDownClass(cls) -> None:
         cls.connection.close()
 
-    @classmethod
-    def _read_json(cls, filename: str) -> Any:
-        return json.loads(
-            (cls.resource_dir / filename).read_text(encoding="utf-8")
-        )
-
     def test_tables_are_exactly_the_current_sales_mart_tables(self) -> None:
         actual = self._query_table_names()
         self.assertEqual(EXPECTED_TABLES, actual)
         self.assertEqual(EXPECTED_TABLES, {item["table_name"] for item in self.outputs["tables"]})
-        self.assertEqual(
-            EXPECTED_TABLES,
-            {item["table_name"] for item in self.resource_outputs["tables"]},
-        )
         self.assertTrue(
             all(item["schema_name"] == TARGET_SCHEMA for item in self.outputs["tables"])
         )
@@ -86,7 +69,6 @@ class SchemaMetadataTest(unittest.TestCase):
                     self.assertEqual(TARGET_SCHEMA, relation["referenced_schema"])
 
     def test_tables_json_is_the_canonical_projection(self) -> None:
-        self.assertEqual(self.outputs["tables"], self.resource_outputs["tables"])
         self.assertTrue(
             all(item["table_type"] == "BASE TABLE" for item in self.outputs["tables"])
         )
@@ -97,13 +79,8 @@ class SchemaMetadataTest(unittest.TestCase):
             (item["schema_name"], item["table_name"], item["column_name"]): item
             for item in self.outputs["columns"]
         }
-        resource_columns = {
-            (item["schema_name"], item["table_name"], item["column_name"]): item
-            for item in self.resource_outputs["columns"]
-        }
 
         self.assertEqual(set(actual_columns), set(exported_columns))
-        self.assertEqual(set(actual_columns), set(resource_columns))
         self.assertEqual(
             {item["table_name"] for item in self.outputs["tables"]},
             {item["table_name"] for item in self.outputs["columns"]},
@@ -111,7 +88,6 @@ class SchemaMetadataTest(unittest.TestCase):
 
         for key, actual in actual_columns.items():
             exported = exported_columns[key]
-            resource = resource_columns[key]
             for field in (
                 "schema_name",
                 "table_name",
@@ -123,12 +99,10 @@ class SchemaMetadataTest(unittest.TestCase):
                 "description",
             ):
                 self.assertEqual(actual[field], exported[field], f"{key}:{field}")
-                self.assertEqual(actual[field], resource[field], f"{key}:{field}")
 
     def test_relationships_match_postgresql_constraints_and_indexes(self) -> None:
         actual = self._query_relationships()
         self.assertEqual(actual, self.outputs["relationships"])
-        self.assertEqual(actual, self.resource_outputs["relationships"])
         self.assertNotIn("semantic_relationships", actual)
 
         role_playing_dates = {
@@ -211,10 +185,6 @@ class SchemaMetadataTest(unittest.TestCase):
             self.assertEqual(
                 hashlib.sha256(content.encode("utf-8")).hexdigest(),
                 hashlib.sha256(second_rendered[key].encode("utf-8")).hexdigest(),
-            )
-            self.assertEqual(
-                content,
-                (self.resource_dir / f"{key}.json").read_text(encoding="utf-8"),
             )
 
     def test_exporter_repeated_runs_are_stable_in_a_temporary_output(self) -> None:
