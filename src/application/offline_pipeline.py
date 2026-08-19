@@ -1,12 +1,17 @@
-"""M1 resource parsing and deterministic cross-resource validation."""
+"""Offline Pipeline resource validation, projection, and representation generation."""
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 from langchain_core.documents import Document
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
-from src.infrastructure.offline_pipeline import ResourceReadError, read_json_file
+from src.infrastructure.offline_pipeline import (
+    ResourceReadError,
+    encode_bge_m3,
+    read_json_file,
+)
 
 
 TableIdentity = tuple[str, str]
@@ -16,6 +21,10 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 class M1ValidationError(ValueError):
     """Raised when the complete M1 input cannot be validated."""
+
+
+class M3GenerationError(ValueError):
+    """Raised when complete retrieval representations cannot be generated."""
 
 
 class _ResourceModel(BaseModel):
@@ -104,6 +113,15 @@ class ValidatedCatalogs(BaseModel):
     columns_path: Path
     relationships_path: Path
     metrics_path: Path
+
+
+@dataclass(frozen=True)
+class RepresentedRetrievalRecord:
+    """One M2 Document and its complete V1 Dense + Sparse representation."""
+
+    document: Document
+    dense: tuple[float, ...]
+    sparse: dict[int, float]
 
 
 def load_validated_catalogs(
@@ -234,6 +252,92 @@ def project_retrieval_records(catalogs: ValidatedCatalogs) -> list[Document]:
         *project_columns(catalogs),
         *project_metrics(catalogs),
     ]
+
+
+def generate_retrieval_representations(
+    documents: list[Document],
+    *,
+    model_path: Path,
+    device: str = "cpu",
+    batch_size: int | None = None,
+) -> list[RepresentedRetrievalRecord]:
+    """Generate one complete Dense + Sparse bundle for every M2 Document."""
+
+    try:
+        _validate_m3_input(documents)
+        texts = [document.page_content for document in documents]
+        dense_vectors, sparse_vectors = encode_bge_m3(
+            texts,
+            model_path=model_path,
+            device=device,
+            batch_size=batch_size,
+        )
+        _validate_m3_output(documents, dense_vectors, sparse_vectors)
+        return [
+            RepresentedRetrievalRecord(
+                document=document,
+                dense=dense,
+                sparse=sparse,
+            )
+            for document, dense, sparse in zip(
+                documents,
+                dense_vectors,
+                sparse_vectors,
+                strict=True,
+            )
+        ]
+    except M3GenerationError:
+        raise
+    except Exception as exc:
+        raise M3GenerationError(
+            "M3 representation generation failed; no partial output is available"
+        ) from exc
+
+
+def _validate_m3_input(documents: list[Document]) -> None:
+    if not isinstance(documents, list) or not documents:
+        raise M3GenerationError("M3 input must be a non-empty list of Documents")
+
+    allowed_record_types = {"TABLE", "COLUMN", "METRIC"}
+    for document in documents:
+        if not isinstance(document, Document):
+            raise M3GenerationError("M3 input contains a non-Document record")
+        if not isinstance(document.page_content, str) or not document.page_content.strip():
+            raise M3GenerationError("M3 input contains empty page_content")
+        if document.metadata.get("record_type") not in allowed_record_types:
+            raise M3GenerationError("M3 input contains an unsupported record_type")
+
+
+def _validate_m3_output(
+    documents: list[Document],
+    dense_vectors: object,
+    sparse_vectors: object,
+) -> None:
+    if not isinstance(dense_vectors, list) or not isinstance(sparse_vectors, list):
+        raise M3GenerationError("M3 output must contain Dense and Sparse lists")
+    if len(dense_vectors) != len(documents):
+        raise M3GenerationError("Dense output count does not match input count")
+    if len(sparse_vectors) != len(documents):
+        raise M3GenerationError("Sparse output count does not match input count")
+
+    dense_dimension: int | None = None
+    for dense in dense_vectors:
+        if not isinstance(dense, tuple) or not dense:
+            raise M3GenerationError("M3 output contains a missing Dense vector")
+        if not all(type(value) is float for value in dense):
+            raise M3GenerationError("M3 Dense values must be Python floats")
+        if dense_dimension is None:
+            dense_dimension = len(dense)
+        elif len(dense) != dense_dimension:
+            raise M3GenerationError("M3 Dense dimensions are inconsistent")
+
+    for sparse in sparse_vectors:
+        if not isinstance(sparse, dict) or not sparse:
+            raise M3GenerationError("M3 output contains missing Sparse weights")
+        if not all(type(index) is int for index in sparse):
+            raise M3GenerationError("M3 Sparse indexes must be Python integers")
+        if not all(type(weight) is float for weight in sparse.values()):
+            raise M3GenerationError("M3 Sparse weights must be Python floats")
 
 
 def _stable_source_path(path: Path) -> str:
