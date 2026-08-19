@@ -312,9 +312,18 @@ def _detect_date_filter(question: str) -> list[str] | None:
         return None
 
     year = int(year_match.group(1))
-    quarter_match = re.search(r"(?:第\s*)?([1-4])\s*季度|Q([1-4])", question, re.IGNORECASE)
+    quarter_match = re.search(
+        r"(?:第\s*)?([1-4一二三四])\s*季度|Q([1-4])",
+        question,
+        re.IGNORECASE,
+    )
     if quarter_match:
-        quarter = int(quarter_match.group(1) or quarter_match.group(2))
+        quarter_token = quarter_match.group(1) or quarter_match.group(2)
+        quarter = (
+            int(quarter_token)
+            if quarter_token.isdigit()
+            else {"一": 1, "二": 2, "三": 3, "四": 4}[quarter_token]
+        )
         start_month = (quarter - 1) * 3 + 1
         start = date(year, start_month, 1)
         end = date(year + 1, 1, 1) if quarter == 4 else date(year, start_month + 3, 1)

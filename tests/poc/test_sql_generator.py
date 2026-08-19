@@ -47,6 +47,12 @@ class RuleBasedSqlGeneratorTest(unittest.TestCase):
         with self.assertRaisesRegex(SqlGenerationError, "明确年份"):
             self.generator.generate(context)
 
+    def test_chinese_quarter_is_converted_to_explicit_date_bounds(self) -> None:
+        context = self.builder.build("查询 2025 年第一季度的销售成本")
+        sql = self.generator.generate(context)
+        self.assertIn("d.full_date >= DATE '2025-01-01'", sql)
+        self.assertIn("d.full_date < DATE '2025-04-01'", sql)
+
 
 if __name__ == "__main__":
     unittest.main()

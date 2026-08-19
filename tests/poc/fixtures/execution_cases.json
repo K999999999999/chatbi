@@ -12,6 +12,18 @@
     "description": "数量指标 + 年份过滤"
   },
   {
+    "id": "S03",
+    "question": "查询 2025 年每月的销售额",
+    "expected_sql": "SELECT d.year AS year, d.month AS month, SUM(f.net_sales_amount_cny) AS sales_revenue FROM mart_sales.fct_sales_order_line AS f JOIN mart_sales.dim_date AS d ON f.completion_date_key = d.date_key WHERE f.order_status = 'completed' AND d.full_date >= DATE '2025-01-01' AND d.full_date < DATE '2026-01-01' GROUP BY d.year, d.month ORDER BY d.year, d.month",
+    "description": "单指标 + 月度分组 + 年份过滤"
+  },
+  {
+    "id": "S04",
+    "question": "查询 2025 年第一季度的销售成本",
+    "expected_sql": "SELECT SUM(f.sales_cost_amount_cny) AS sales_cost FROM mart_sales.fct_sales_order_line AS f JOIN mart_sales.dim_date AS d ON f.completion_date_key = d.date_key WHERE f.order_status = 'completed' AND d.full_date >= DATE '2025-01-01' AND d.full_date < DATE '2025-04-01'",
+    "description": "单指标 + 季度过滤"
+  },
+  {
     "id": "M01",
     "question": "查询 2025 年各产品线的销售额",
     "expected_sql": "SELECT p.product_line AS product_line, SUM(f.net_sales_amount_cny) AS sales_revenue FROM mart_sales.fct_sales_order_line AS f JOIN mart_sales.dim_date AS d ON f.completion_date_key = d.date_key JOIN mart_sales.dim_product AS p ON f.product_key = p.product_key WHERE f.order_status = 'completed' AND d.full_date >= DATE '2025-01-01' AND d.full_date < DATE '2026-01-01' GROUP BY p.product_line ORDER BY p.product_line",
