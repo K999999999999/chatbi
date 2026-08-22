@@ -3,14 +3,14 @@
 from pathlib import Path
 import unittest
 
-from src.poc.executor import QueryResult
-from src.poc.llm_client import SqlGenerationError
-from src.poc.pipeline import PocQueryPipeline
-from src.poc.prompt_builder import PromptBuilder
-from src.poc.query_parser import QueryParser
-from src.poc.semantic import MetricCatalog
-from src.poc.sql_guard import SqlGuard
-from src.poc.structure import StructureCatalog
+from src.executor import QueryResult
+from src.llm_client import SqlGenerationError
+from src.pipeline import PocQueryPipeline
+from src.prompt_builder import PromptBuilder
+from src.query_parser import QueryParser
+from src.semantic import MetricCatalog
+from src.sql_guard import SqlGuard
+from src.structure import StructureCatalog
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -45,10 +45,10 @@ class PipelineTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         structure = StructureCatalog.from_directory(
-            ROOT / "src" / "poc" / "structure" / "generated"
+            ROOT / "src" / "structure" / "generated"
         )
         metrics = MetricCatalog.from_file(
-            ROOT / "src" / "poc" / "semantic" / "metrics.json"
+            ROOT / "src" / "semantic" / "metrics.json"
         )
         metrics.validate_against_structure(structure)
         cls.llm = _FakeLlmClient(

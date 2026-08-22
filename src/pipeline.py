@@ -5,11 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from src.poc.executor import QueryExecutionError, QueryExecutor, QueryResult
-from src.poc.llm_client import LlmClient, SqlGenerationError
-from src.poc.prompt_builder import PromptBuilder
-from src.poc.query_parser import QueryParser
-from src.poc.sql_guard import SqlGuard, SqlValidationError
+from src.executor import QueryExecutionError, QueryExecutor, QueryResult
+from src.llm_client import LlmClient, SqlGenerationError
+from src.prompt_builder import PromptBuilder
+from src.query_parser import QueryParser
+from src.sql_guard import SqlGuard, SqlValidationError
 
 
 @dataclass(frozen=True)

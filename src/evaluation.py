@@ -5,7 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any, Iterable
 
-from src.poc.executor import QueryResult
+from src.executor import QueryResult
 
 
 def results_equivalent(

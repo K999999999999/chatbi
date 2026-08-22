@@ -6,19 +6,19 @@ import argparse
 import json
 from pathlib import Path
 
-from src.poc.executor import QueryExecutionError, QueryExecutor
-from src.poc.llm_client import OpenAICompatibleLlmClient, SqlGenerationError
-from src.poc.pipeline import PocQueryPipeline, PocResponse
-from src.poc.prompt_builder import PromptBuilder
-from src.poc.query_parser import QueryParser
-from src.poc.semantic import MetricCatalog
-from src.poc.sql_guard import SqlGuard
-from src.poc.structure import StructureCatalog
+from src.executor import QueryExecutionError, QueryExecutor
+from src.llm_client import OpenAICompatibleLlmClient, SqlGenerationError
+from src.pipeline import PocQueryPipeline, PocResponse
+from src.prompt_builder import PromptBuilder
+from src.query_parser import QueryParser
+from src.semantic import MetricCatalog
+from src.sql_guard import SqlGuard
+from src.structure import StructureCatalog
 
 
-ROOT = Path(__file__).resolve().parents[2]
-STRUCTURE_DIR = ROOT / "src" / "poc" / "structure" / "generated"
-METRICS_FILE = ROOT / "src" / "poc" / "semantic" / "metrics.json"
+ROOT = Path(__file__).resolve().parents[1]
+STRUCTURE_DIR = ROOT / "src" / "structure" / "generated"
+METRICS_FILE = ROOT / "src" / "semantic" / "metrics.json"
 
 
 def build_pipeline() -> PocQueryPipeline:

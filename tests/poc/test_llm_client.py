@@ -5,8 +5,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 import unittest
 
-from src.poc.config import LlmConfig
-from src.poc.llm_client import OpenAICompatibleLlmClient, SqlGenerationError
+from src.config import LlmConfig
+from src.llm_client import OpenAICompatibleLlmClient, SqlGenerationError
 
 
 class _FakeCompletions:

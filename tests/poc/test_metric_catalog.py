@@ -3,8 +3,8 @@
 from pathlib import Path
 import unittest
 
-from src.poc.semantic import MetricCatalog
-from src.poc.structure import StructureCatalog
+from src.semantic import MetricCatalog
+from src.structure import StructureCatalog
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -14,10 +14,10 @@ class MetricCatalogTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.structure = StructureCatalog.from_directory(
-            ROOT / "src" / "poc" / "structure" / "generated"
+            ROOT / "src" / "structure" / "generated"
         )
         cls.catalog = MetricCatalog.from_file(
-            ROOT / "src" / "poc" / "semantic" / "metrics.json"
+            ROOT / "src" / "semantic" / "metrics.json"
         )
         cls.catalog.validate_against_structure(cls.structure)
 

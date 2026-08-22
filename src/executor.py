@@ -9,7 +9,7 @@ from typing import Any, Callable
 import psycopg
 
 from scripts.metadata.export_schema import load_env
-from src.poc.sql_guard import ValidatedSql
+from src.sql_guard import ValidatedSql
 
 
 class QueryExecutionError(RuntimeError):

@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from src.poc.structure import StructureCatalog
+from src.structure import StructureCatalog
 
 
 class SqlValidationError(ValueError):

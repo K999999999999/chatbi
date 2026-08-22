@@ -3,9 +3,9 @@
 from pathlib import Path
 import unittest
 
-from src.poc.prompt_builder import PromptBuilder
-from src.poc.semantic import MetricCatalog
-from src.poc.structure import StructureCatalog
+from src.prompt_builder import PromptBuilder
+from src.semantic import MetricCatalog
+from src.structure import StructureCatalog
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -15,10 +15,10 @@ class ContextTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         structure = StructureCatalog.from_directory(
-            ROOT / "src" / "poc" / "structure" / "generated"
+            ROOT / "src" / "structure" / "generated"
         )
         metrics = MetricCatalog.from_file(
-            ROOT / "src" / "poc" / "semantic" / "metrics.json"
+            ROOT / "src" / "semantic" / "metrics.json"
         )
         metrics.validate_against_structure(structure)
         cls.builder = PromptBuilder(structure, metrics)

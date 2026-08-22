@@ -8,7 +8,7 @@ from typing import Any, Protocol
 
 from openai import OpenAI
 
-from src.poc.config import LlmConfig
+from src.config import LlmConfig
 
 
 class SqlGenerationError(RuntimeError):

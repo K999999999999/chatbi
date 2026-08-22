@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from src.poc.structure import StructureCatalog
+from src.structure import StructureCatalog
 
 
 class MetricCatalogError(ValueError):

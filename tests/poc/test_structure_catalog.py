@@ -3,7 +3,7 @@
 from pathlib import Path
 import unittest
 
-from src.poc.structure import StructureCatalog
+from src.structure import StructureCatalog
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -13,7 +13,7 @@ class StructureCatalogTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.catalog = StructureCatalog.from_directory(
-            ROOT / "src" / "poc" / "structure" / "generated"
+            ROOT / "src" / "structure" / "generated"
         )
 
     def test_current_mart_sales_snapshot_is_loaded(self) -> None:

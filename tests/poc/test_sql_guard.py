@@ -3,8 +3,8 @@
 from pathlib import Path
 import unittest
 
-from src.poc.sql_guard import SqlGuard, SqlValidationError
-from src.poc.structure import StructureCatalog
+from src.sql_guard import SqlGuard, SqlValidationError
+from src.structure import StructureCatalog
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -14,7 +14,7 @@ class SqlGuardTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         structure = StructureCatalog.from_directory(
-            ROOT / "src" / "poc" / "structure" / "generated"
+            ROOT / "src" / "structure" / "generated"
         )
         cls.guard = SqlGuard(structure)
 

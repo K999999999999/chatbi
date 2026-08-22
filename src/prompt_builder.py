@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.poc.semantic import MetricCatalog
-from src.poc.structure import StructureCatalog
+from src.semantic import MetricCatalog
+from src.structure import StructureCatalog
 
 
 BUSINESS_RULES = """【关键业务规则】
