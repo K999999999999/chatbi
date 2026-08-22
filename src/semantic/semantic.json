@@ -1,0 +1,275 @@
+{
+  "semantic_version": 1,
+  "schema_name": "mart_sales",
+  "status": "draft_pending_business_confirmation",
+  "description": "ChatBI 最小语义层：只保存当前 Sales Mart 的业务指标、维度映射和已确认的计算规则。",
+  "source_of_truth": {
+    "physical_structure": "src/structure/generated",
+    "business_semantics": "本文件由业务人员确认后生效"
+  },
+  "fact_grain": {
+    "schema_name": "mart_sales",
+    "table_name": "fct_sales_order_line",
+    "description": "一行代表一条销售订单明细。订单级数量必须按 order_id 去重，金额指标按明细金额汇总。"
+  },
+  "business_rules": [
+    {
+      "rule_id": "BR-001",
+      "name": "已完成数据口径",
+      "statement": "销售额、成本、毛利和毛利率默认只统计 order_status = completed 的订单明细。",
+      "sql_condition": "f.order_status = 'completed'",
+      "applies_to": [
+        "net_sales_cny",
+        "sales_cost_cny",
+        "gross_profit_cny",
+        "gross_margin"
+      ]
+    },
+    {
+      "rule_id": "BR-002",
+      "name": "订单数量去重",
+      "statement": "订单数量按订单业务标识 order_id 去重，不按订单明细行数计算。",
+      "sql_expression": "COUNT(DISTINCT f.order_id)",
+      "applies_to": [
+        "completed_order_count"
+      ]
+    },
+    {
+      "rule_id": "BR-003",
+      "name": "人民币金额字段",
+      "statement": "人民币销售额和成本直接使用事实表已冻结的 CNY 金额字段，不重新连接汇率表计算。",
+      "columns": [
+        "fct_sales_order_line.net_sales_amount_cny",
+        "fct_sales_order_line.sales_cost_amount_cny"
+      ],
+      "applies_to": [
+        "net_sales_cny",
+        "sales_cost_cny",
+        "gross_profit_cny",
+        "gross_margin"
+      ]
+    }
+  ],
+  "dimensions": [
+    {
+      "dimension_id": "product_line",
+      "name": "产品线",
+      "aliases": [
+        "产品线",
+        "业务产品线"
+      ],
+      "schema_name": "mart_sales",
+      "table_name": "dim_product",
+      "column_name": "product_line",
+      "join_from": {
+        "table_name": "fct_sales_order_line",
+        "column_name": "product_key"
+      },
+      "join_to": {
+        "table_name": "dim_product",
+        "column_name": "product_key"
+      }
+    },
+    {
+      "dimension_id": "sales_region_name",
+      "name": "销售区域",
+      "aliases": [
+        "销售区域",
+        "区域"
+      ],
+      "schema_name": "mart_sales",
+      "table_name": "dim_sales_region",
+      "column_name": "sales_region_name",
+      "join_from": {
+        "table_name": "fct_sales_order_line",
+        "column_name": "sales_region_key"
+      },
+      "join_to": {
+        "table_name": "dim_sales_region",
+        "column_name": "sales_region_key"
+      }
+    },
+    {
+      "dimension_id": "customer_type",
+      "name": "客户类型",
+      "aliases": [
+        "客户类型",
+        "客户类别"
+      ],
+      "schema_name": "mart_sales",
+      "table_name": "dim_customer",
+      "column_name": "customer_type",
+      "join_from": {
+        "table_name": "fct_sales_order_line",
+        "column_name": "customer_key"
+      },
+      "join_to": {
+        "table_name": "dim_customer",
+        "column_name": "customer_key"
+      }
+    },
+    {
+      "dimension_id": "customer_region",
+      "name": "客户区域",
+      "aliases": [
+        "客户区域",
+        "客户所属区域"
+      ],
+      "schema_name": "mart_sales",
+      "table_name": "dim_customer",
+      "column_name": "customer_region",
+      "join_from": {
+        "table_name": "fct_sales_order_line",
+        "column_name": "customer_key"
+      },
+      "join_to": {
+        "table_name": "dim_customer",
+        "column_name": "customer_key"
+      }
+    }
+  ],
+  "metrics": [
+    {
+      "metric_id": "completed_order_count",
+      "name": "已完成订单数",
+      "aliases": [
+        "已完成订单数量",
+        "完成订单数"
+      ],
+      "definition": "已完成状态下按订单业务标识去重后的订单数量。",
+      "formula_sql": "COUNT(DISTINCT f.order_id)",
+      "data_source": {
+        "schema_name": "mart_sales",
+        "table_name": "fct_sales_order_line",
+        "column_name": "order_id"
+      },
+      "required_filters": [
+        {
+          "schema_name": "mart_sales",
+          "table_name": "fct_sales_order_line",
+          "column_name": "order_status",
+          "operator": "=",
+          "value": "completed"
+        }
+      ]
+    },
+    {
+      "metric_id": "net_sales_cny",
+      "name": "人民币净销售额",
+      "aliases": [
+        "销售额",
+        "人民币销售额",
+        "净销售额",
+        "营收"
+      ],
+      "definition": "已完成订单明细的人民币净销售金额之和。",
+      "formula_sql": "SUM(f.net_sales_amount_cny)",
+      "data_source": {
+        "schema_name": "mart_sales",
+        "table_name": "fct_sales_order_line",
+        "column_name": "net_sales_amount_cny"
+      },
+      "required_filters": [
+        {
+          "schema_name": "mart_sales",
+          "table_name": "fct_sales_order_line",
+          "column_name": "order_status",
+          "operator": "=",
+          "value": "completed"
+        }
+      ]
+    },
+    {
+      "metric_id": "sales_cost_cny",
+      "name": "人民币销售成本",
+      "aliases": [
+        "销售成本",
+        "成本",
+        "人民币成本"
+      ],
+      "definition": "已完成订单明细的人民币销售成本金额之和。",
+      "formula_sql": "SUM(f.sales_cost_amount_cny)",
+      "data_source": {
+        "schema_name": "mart_sales",
+        "table_name": "fct_sales_order_line",
+        "column_name": "sales_cost_amount_cny"
+      },
+      "required_filters": [
+        {
+          "schema_name": "mart_sales",
+          "table_name": "fct_sales_order_line",
+          "column_name": "order_status",
+          "operator": "=",
+          "value": "completed"
+        }
+      ]
+    },
+    {
+      "metric_id": "gross_profit_cny",
+      "name": "人民币毛利",
+      "aliases": [
+        "毛利",
+        "人民币毛利润"
+      ],
+      "definition": "人民币净销售额减人民币销售成本。",
+      "formula_sql": "SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny)",
+      "depends_on": [
+        "net_sales_cny",
+        "sales_cost_cny"
+      ],
+      "data_source": {
+        "schema_name": "mart_sales",
+        "table_name": "fct_sales_order_line",
+        "column_name": "net_sales_amount_cny"
+      },
+      "required_filters": [
+        {
+          "schema_name": "mart_sales",
+          "table_name": "fct_sales_order_line",
+          "column_name": "order_status",
+          "operator": "=",
+          "value": "completed"
+        }
+      ]
+    },
+    {
+      "metric_id": "gross_margin",
+      "name": "毛利率",
+      "aliases": [
+        "毛利率",
+        "毛利润率"
+      ],
+      "definition": "人民币毛利除以人民币净销售额；销售额为零时返回 NULL。",
+      "formula_sql": "SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) / NULLIF(SUM(f.net_sales_amount_cny), 0)",
+      "depends_on": [
+        "gross_profit_cny",
+        "net_sales_cny"
+      ],
+      "data_source": {
+        "schema_name": "mart_sales",
+        "table_name": "fct_sales_order_line",
+        "column_name": "net_sales_amount_cny"
+      },
+      "required_filters": [
+        {
+          "schema_name": "mart_sales",
+          "table_name": "fct_sales_order_line",
+          "column_name": "order_status",
+          "operator": "=",
+          "value": "completed"
+        }
+      ]
+    }
+  ],
+  "time_semantics": {
+    "status": "pending_confirmation",
+    "question": "用户说“某段时间的销售额”时，业务上应按下单日期、确认日期还是完成日期统计？",
+    "current_evaluation_mapping": {
+      "fact_table": "fct_sales_order_line",
+      "fact_date_key_column": "completion_date_key",
+      "date_table": "dim_date",
+      "date_column": "full_date"
+    },
+    "reason": "已完成事实的 completion_date_key 在数据库约束中要求非空；本文件仍不把这个推断当作最终业务确认。"
+  }
+}

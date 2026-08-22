@@ -43,7 +43,7 @@ OUTPUT_FILES = {
     "columns": "columns.json",
     "relationships": "relationships.json",
 }
-DEFAULT_OUTPUT_DIR = ROOT / "src" / "poc" / "structure" / "generated"
+DEFAULT_OUTPUT_DIR = ROOT / "src" / "structure" / "generated"
 
 
 class MetadataExportError(RuntimeError):
