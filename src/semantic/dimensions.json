@@ -1,0 +1,46 @@
+[
+  {
+    "name": "产品线",
+    "aliases": [
+      "产品线",
+      "业务产品线"
+    ],
+    "definition": "产品所属的业务产品线。",
+    "data_source": "mart_sales.dim_product.product_line",
+    "join_condition": "mart_sales.fct_sales_order_line.product_key = mart_sales.dim_product.product_key",
+    "values_source": "src/structure/generated/column_values.json"
+  },
+  {
+    "name": "销售区域",
+    "aliases": [
+      "销售区域",
+      "区域"
+    ],
+    "definition": "销售订单所属的销售区域名称。",
+    "data_source": "mart_sales.dim_sales_region.sales_region_name",
+    "join_condition": "mart_sales.fct_sales_order_line.sales_region_key = mart_sales.dim_sales_region.sales_region_key",
+    "values_source": "src/structure/generated/column_values.json"
+  },
+  {
+    "name": "客户类型",
+    "aliases": [
+      "客户类型",
+      "客户类别"
+    ],
+    "definition": "客户业务主体的类型分类。",
+    "data_source": "mart_sales.dim_customer.customer_type",
+    "join_condition": "mart_sales.fct_sales_order_line.customer_key = mart_sales.dim_customer.customer_key",
+    "values_source": "src/structure/generated/column_values.json"
+  },
+  {
+    "name": "客户区域",
+    "aliases": [
+      "客户区域",
+      "客户所属区域"
+    ],
+    "definition": "客户业务主体所属区域。",
+    "data_source": "mart_sales.dim_customer.customer_region",
+    "join_condition": "mart_sales.fct_sales_order_line.customer_key = mart_sales.dim_customer.customer_key",
+    "values_source": "src/structure/generated/column_values.json"
+  }
+]

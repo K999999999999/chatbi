@@ -529,49 +529,55 @@ def project_columns(model: CanonicalSchema) -> list[dict[str, Any]]:
     ]
 
 
-def project_relationships(model: CanonicalSchema) -> dict[str, Any]:
-    """将统一模型投影为物理 relationships.json，不写入语义关系。"""
+def project_relationships(model: CanonicalSchema) -> list[dict[str, Any]]:
+    """将统一模型投影为可直接切片的独立关系记录。"""
 
-    return {
-        "schema_version": 1,
-        "primary_keys": [
-            {
-                "schema_name": item.schema_name,
-                "table_name": item.table_name,
-                "column_names": list(item.column_names),
-            }
-            for item in model.primary_keys
-        ],
-        "unique_constraints": [
-            {
-                "schema_name": item.schema_name,
-                "table_name": item.table_name,
-                "column_names": list(item.column_names),
-            }
-            for item in model.unique_constraints
-        ],
-        "foreign_keys": [
-            {
-                "schema_name": item.schema_name,
-                "table_name": item.table_name,
-                "column_names": list(item.column_names),
-                "referenced_schema": item.referenced_schema,
-                "referenced_table": item.referenced_table,
-                "referenced_column_names": list(item.referenced_column_names),
-            }
-            for item in model.foreign_keys
-        ],
-        "unique_indexes": [
-            {
-                "schema_name": item.schema_name,
-                "table_name": item.table_name,
-                "index_name": item.index_name,
-                "column_names": list(item.column_names),
-                "predicate": item.predicate,
-            }
-            for item in model.unique_indexes
-        ],
-    }
+    records: list[dict[str, Any]] = []
+    records.extend(
+        {
+            "relationship_type": "primary_key",
+            "schema_name": item.schema_name,
+            "table_name": item.table_name,
+            "column_names": list(item.column_names),
+            "constraint_name": item.constraint_name,
+        }
+        for item in model.primary_keys
+    )
+    records.extend(
+        {
+            "relationship_type": "unique_constraint",
+            "schema_name": item.schema_name,
+            "table_name": item.table_name,
+            "column_names": list(item.column_names),
+            "constraint_name": item.constraint_name,
+        }
+        for item in model.unique_constraints
+    )
+    records.extend(
+        {
+            "relationship_type": "foreign_key",
+            "schema_name": item.schema_name,
+            "table_name": item.table_name,
+            "column_names": list(item.column_names),
+            "referenced_schema": item.referenced_schema,
+            "referenced_table": item.referenced_table,
+            "referenced_column_names": list(item.referenced_column_names),
+            "constraint_name": item.constraint_name,
+        }
+        for item in model.foreign_keys
+    )
+    records.extend(
+        {
+            "relationship_type": "unique_index",
+            "schema_name": item.schema_name,
+            "table_name": item.table_name,
+            "index_name": item.index_name,
+            "column_names": list(item.column_names),
+            "predicate": item.predicate,
+        }
+        for item in model.unique_indexes
+    )
+    return records
 
 
 def project_outputs(model: CanonicalSchema) -> dict[str, Any]:
