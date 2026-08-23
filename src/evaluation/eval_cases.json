@@ -10,25 +10,25 @@
   {
     "id": "M01",
     "schema_name": "mart_sales",
-    "category": "metric_by_dimension",
+    "category": "medium",
     "question": "按产品线统计已完成订单的人民币销售额。",
-    "description": "销售额指标按产品线分组。",
+    "description": "两表 Join、维度分组、销售额聚合和状态过滤。",
     "expected_sql": "SELECT p.product_line,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nJOIN mart_sales.dim_product AS p\n  ON p.product_key = f.product_key\nWHERE f.order_status = 'completed'\nGROUP BY p.product_line\nORDER BY p.product_line;"
   },
   {
     "id": "M02",
     "schema_name": "mart_sales",
-    "category": "metric_by_dimension",
+    "category": "medium",
     "question": "按销售区域统计已完成订单数量。",
-    "description": "订单数量按 order_id 去重后按销售区域分组。",
+    "description": "两表 Join、维度分组、订单去重和状态过滤。",
     "expected_sql": "SELECT r.sales_region_name,\n       COUNT(DISTINCT f.order_id) AS completed_order_count\nFROM mart_sales.fct_sales_order_line AS f\nJOIN mart_sales.dim_sales_region AS r\n  ON r.sales_region_key = f.sales_region_key\nWHERE f.order_status = 'completed'\nGROUP BY r.sales_region_name\nORDER BY r.sales_region_name;"
   },
   {
     "id": "T01",
     "schema_name": "mart_sales",
-    "category": "time_filter",
+    "category": "medium",
     "question": "2025 年第一季度已完成订单的人民币销售额是多少？",
-    "description": "本用例暂按 completion_date_key 过滤，仅用于评估；业务时间口径尚未确认。",
+    "description": "两表 Join、时间过滤和销售额聚合；当前时间字段仅为评估假设。",
     "expected_sql": "SELECT d.year,\n       d.quarter,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nJOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\nGROUP BY d.year, d.quarter\nORDER BY d.year, d.quarter;"
   },
   {
