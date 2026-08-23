@@ -14,8 +14,8 @@
     "filters": [
       "f.order_status = 'completed'"
     ],
-    "notes": "订单数量按 order_id 去重，不按订单明细行数计算。时间字段尚未确认，涉及时间范围时不得自行选择日期字段。",
-    "time_field": null
+    "notes": "订单数量按 order_id 去重，不按订单明细行数计算。时间范围按完成日期统计，使用 completion_date_key 关联 dim_date.full_date。",
+    "time_field": "fct_sales_order_line.completion_date_key -> dim_date.full_date"
   },
   {
     "name": "人民币净销售额",
@@ -34,8 +34,8 @@
     "filters": [
       "f.order_status = 'completed'"
     ],
-    "notes": "直接使用事实表已冻结的人民币净销售金额，不重新连接汇率表计算。时间字段尚未确认，涉及时间范围时不得自行选择日期字段。",
-    "time_field": null
+    "notes": "直接使用事实表已冻结的人民币净销售金额，不重新连接汇率表计算。时间范围按完成日期统计，使用 completion_date_key 关联 dim_date.full_date。",
+    "time_field": "fct_sales_order_line.completion_date_key -> dim_date.full_date"
   },
   {
     "name": "人民币销售成本",
@@ -53,8 +53,8 @@
     "filters": [
       "f.order_status = 'completed'"
     ],
-    "notes": "直接使用事实表已冻结的人民币销售成本金额。时间字段尚未确认，涉及时间范围时不得自行选择日期字段。",
-    "time_field": null
+    "notes": "直接使用事实表已冻结的人民币销售成本金额。时间范围按完成日期统计，使用 completion_date_key 关联 dim_date.full_date。",
+    "time_field": "fct_sales_order_line.completion_date_key -> dim_date.full_date"
   },
   {
     "name": "人民币毛利",
@@ -74,8 +74,8 @@
     "filters": [
       "f.order_status = 'completed'"
     ],
-    "notes": "毛利由人民币净销售额减人民币销售成本得到。时间字段尚未确认，涉及时间范围时不得自行选择日期字段。",
-    "time_field": null
+    "notes": "毛利由人民币净销售额减人民币销售成本得到。时间范围按完成日期统计，使用 completion_date_key 关联 dim_date.full_date。",
+    "time_field": "fct_sales_order_line.completion_date_key -> dim_date.full_date"
   },
   {
     "name": "毛利率",
@@ -95,7 +95,7 @@
     "filters": [
       "f.order_status = 'completed'"
     ],
-    "notes": "毛利率使用同一过滤范围内的毛利除以净销售额，并做除零保护。时间字段尚未确认，涉及时间范围时不得自行选择日期字段。",
-    "time_field": null
+    "notes": "毛利率使用同一过滤范围内的毛利除以净销售额，并做除零保护。时间范围按完成日期统计，使用 completion_date_key 关联 dim_date.full_date。",
+    "time_field": "fct_sales_order_line.completion_date_key -> dim_date.full_date"
   }
 ]

@@ -116,7 +116,7 @@
     "schema_name": "mart_sales",
     "category": "medium",
     "question": "2025 年第一季度已完成订单的人民币销售额是多少？",
-    "description": "两表 Join、时间过滤和销售额聚合；当前时间字段仅为评估假设。",
+    "description": "两表 Join、时间过滤和销售额聚合；按 completion_date_key 关联 dim_date.full_date，按完成日期统计。",
     "expected_sql": "SELECT d.year,\n       d.quarter,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nJOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\nGROUP BY d.year, d.quarter\nORDER BY d.year, d.quarter;"
   },
   {
@@ -132,7 +132,7 @@
     "schema_name": "mart_sales",
     "category": "complex",
     "question": "2025 年第一季度按产品线统计已完成订单的人民币销售额。",
-    "description": "事实表、日期维度和产品维度三表 Join，带时间过滤和分组聚合；时间字段仅为评估假设。",
+    "description": "事实表、日期维度和产品维度三表 Join，带时间过滤和分组聚合；按 completion_date_key 关联 dim_date.full_date，按完成日期统计。",
     "expected_sql": "SELECT p.product_line,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nJOIN mart_sales.dim_product AS p\n  ON p.product_key = f.product_key\nJOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\nGROUP BY p.product_line\nORDER BY p.product_line;"
   },
   {
@@ -140,7 +140,7 @@
     "schema_name": "mart_sales",
     "category": "complex",
     "question": "2025 年第一季度按销售区域统计已完成订单的毛利和毛利率。",
-    "description": "事实表、日期维度和区域维度三表 Join，带时间过滤、派生指标和除零保护；时间字段仅为评估假设。",
+    "description": "事实表、日期维度和区域维度三表 Join，带时间过滤、派生指标和除零保护；按 completion_date_key 关联 dim_date.full_date，按完成日期统计。",
     "expected_sql": "SELECT r.sales_region_name,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) AS gross_profit_cny,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny)\n         / NULLIF(SUM(f.net_sales_amount_cny), 0) AS gross_margin\nFROM mart_sales.fct_sales_order_line AS f\nJOIN mart_sales.dim_sales_region AS r\n  ON r.sales_region_key = f.sales_region_key\nJOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\nGROUP BY r.sales_region_name\nORDER BY r.sales_region_name;"
   },
   {
