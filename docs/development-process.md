@@ -66,15 +66,15 @@
 | Online Query Module Spec（在线查询模块规格） | 已完成 | `docs/specs/online-query.md` |
 | Implementation Design（实现设计） | 已完成 | `docs/designs/online-query.md` |
 | Design Review（设计审查） | 已完成 | `docs/designs/online-query.md` 中的设计检查结果 |
-| Task Split（任务拆分） | 当前阶段 | 将实现设计拆成可独立开发和验证的任务 |
-| Implementation（编码实现） | 未开始 | 当前还没有 Online Query 正式代码 |
+| Task Split（任务拆分） | 已完成 | `docs/designs/online-query.md` 中的开发任务清单 |
+| Implementation（编码实现） | 当前阶段 | 准备开始 T1 Contract 与 Context |
 | Test / Evaluation（测试与评估） | 未开始 | 已有 20 条标准测试数据，但在线链路尚未实现 |
 | Code Review（代码审查） | 未开始 | 等待实现和验证 |
 | Integration / Release（集成与发布） | 未开始 | 不属于当前 POC（概念验证）阶段 |
 
 当前下一步：
 
-> 把 Online Query 实现拆成少量可独立验证的开发任务，先明确第一个任务的目标、范围和完成标准。
+> 开始 T1 Contract 与 Context；完成测试和独立提交后直接进入 T2，不再重复确认任务设计。
 
 ## 维护规则
 

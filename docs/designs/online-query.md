@@ -88,15 +88,21 @@ QueryRequest
 
 真实模型的 20 条标准测试属于 AI Evaluation（AI 评测），后续通过同一个 `OnlineQueryService` 执行，不复制另一条查询链路。
 
-## 后续任务顺序
+## 开发任务清单
 
-1. 核心 Contract 和上下文加载。
-2. Prompt 与 LangChain LLM Adapter（适配器）。
-3. SQL Guard。
-4. PostgreSQL 执行。
-5. Service 链路组装、完整测试和真实闭环验证。
+一次性拆分全部任务，整体确认后按顺序连续开发，不再逐个确认设计。
 
-每一步完成后单独验证，再进入下一步。API、Gateway、RAG、Evaluation 批处理和生产运维不属于本轮实现。
+| Task | 目标 | 完成标准 | 依赖 |
+|---|---|---|---|
+| T1 Contract 与 Context | 加入必要依赖，建立核心类型并加载五个静态 JSON | 正常数据生成缓存上下文；缺失、损坏或空数据受控失败；确定性测试通过 | 无 |
+| T2 Prompt 与 LLM | 组装完整 Prompt，并用 LangChain 直接生成 SQL 或 `CANNOT_ANSWER` | 30 秒超时、无自动重试、空响应和调用异常可控；Adapter 测试通过 | T1 |
+| T3 SQL Guard | 用 SQLGlot 校验单条只读 PostgreSQL SQL | 合法查询通过；危险语句、越权 Schema、未知表字段和多语句全部拒绝；安全测试通过 | T1 |
+| T4 Database | 用 psycopg 和 `chatbi_app` 执行只读查询 | 10 秒超时、空结果、读取 101 行和返回 100 行行为正确；数据库测试通过 | T1 |
+| T5 Service 与完整链路 | 串联 T1 至 T4，并统一返回成功或受控错误 | 所有错误映射正确；失败时不越过下一边界；至少一条真实问题完成端到端闭环 | T2、T3、T4 |
+
+执行规则：每个 Task 完成后运行对应测试并单独 Commit，然后直接进入下一个 Task。只有发现会改变需求、Architecture 或 Module Spec 的问题时才暂停确认。
+
+API、Gateway、RAG、Evaluation 批处理和生产运维不属于这 5 个任务。
 
 ## 设计状态
 
@@ -112,4 +118,4 @@ Implementation Design（实现设计）已完成，无阻塞技术问题。
 - 模块边界清楚，没有加入 API、Gateway、RAG、Agent 或生产运维能力。
 - 当前结构已经是满足 Contract 的最小方案，无需增加目录或抽象。
 
-下一步进入 Task Split（任务拆分）。
+Task Split（任务拆分）已完成。下一步开始 T1 Contract 与 Context。
