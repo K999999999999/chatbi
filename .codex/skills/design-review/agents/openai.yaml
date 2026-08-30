@@ -1,4 +1,0 @@
-interface:
-  display_name: "设计审查"
-  short_description: "独立审查 Module Implementation Design 是否满足正式 Contract 并可进入开发"
-  default_prompt: "使用 $design-review 对指定 Module Implementation Design 启动独立只读 Reviewer Agent，并输出可追溯的审查结论。"
