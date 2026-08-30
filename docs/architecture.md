@@ -59,4 +59,5 @@ ChatBI 是面向业务数据查询的 Domain AI Engine（领域 AI 引擎），�
 - 数据库、结构记录、指标目录和标准评测集已准备。
 - 结构导出辅助脚本已存在。
 - Online Query Module Spec 已确认。
+- Online Query Implementation Design 已完成，等待设计检查。
 - Online Query、Evaluation 和正式 Offline Build 代码尚未实现。

@@ -64,8 +64,8 @@
 | Requirement（需求确认） | 已完成 | `docs/product-scope.md` |
 | Architecture（架构设计） | 已完成 | `docs/architecture.md` |
 | Online Query Module Spec（在线查询模块规格） | 已完成 | `docs/specs/online-query.md` |
-| Implementation Design（实现设计） | 进行中 | 已讨论核心链路，但需要精简并固化最终实现方案 |
-| Design Review（设计审查） | 未开始 | 等待实现设计完成 |
+| Implementation Design（实现设计） | 已完成 | `docs/designs/online-query.md` |
+| Design Review（设计审查） | 当前阶段 | 检查实现设计是否符合模块规格、真实项目和最小化原则 |
 | Task Split（任务拆分） | 未开始 | 等待设计确认 |
 | Implementation（编码实现） | 未开始 | 当前还没有 Online Query 正式代码 |
 | Test / Evaluation（测试与评估） | 未开始 | 已有 20 条标准测试数据，但在线链路尚未实现 |
@@ -74,7 +74,7 @@
 
 当前下一步：
 
-> 完成一份简洁的 Online Query Implementation Design（在线查询实现设计），确认内部链路、必要文件、外部依赖和测试方式；然后再进行设计检查和任务拆分。
+> 检查 Online Query Implementation Design（在线查询实现设计）是否正确、完整且没有过度设计；确认后再拆具体开发任务。
 
 ## 维护规则
 
