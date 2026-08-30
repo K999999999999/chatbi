@@ -177,6 +177,8 @@ JOIN mart_sales.dim_customer AS c ON c.customer_key = f.customer_key
             "FROM mart_sales.fct_sales_order_line",
             "SELECT pg_read_file('/tmp/x') "
             "FROM mart_sales.fct_sales_order_line",
+            "SELECT public.side_effect(order_id) "
+            "FROM mart_sales.fct_sales_order_line",
         )
 
         for sql in candidates:

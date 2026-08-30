@@ -17,15 +17,6 @@ _FORBIDDEN_NODE_TYPES = (
     exp.Into,
     exp.Lock,
 )
-_FORBIDDEN_FUNCTIONS = {
-    "dblink",
-    "lo_export",
-    "lo_import",
-    "nextval",
-    "set_config",
-    "setval",
-}
-
 
 class SQLRejectedError(RuntimeError):
     """SQL 候选不满足只读白名单契约。"""
@@ -117,11 +108,5 @@ def _validate_columns(expression: exp.Expression, context: QueryContext) -> None
 
 
 def _reject_dangerous_functions(expression: exp.Expression) -> None:
-    for function in expression.find_all(exp.Anonymous):
-        name = function.name.lower()
-        if (
-            name.startswith("pg_")
-            or name.startswith("dblink")
-            or name in _FORBIDDEN_FUNCTIONS
-        ):
-            raise SQLRejectedError("SQL 包含禁止的 PostgreSQL 函数")
+    if expression.find(exp.Anonymous):
+        raise SQLRejectedError("SQL 包含未认证的数据库函数")
