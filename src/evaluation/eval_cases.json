@@ -117,7 +117,7 @@
     "category": "medium",
     "question": "2025 年第一季度已完成订单的人民币销售额是多少？",
     "description": "两表 Join、时间过滤和销售额聚合；按 completion_date_key 关联 dim_date.full_date，按完成日期统计。",
-    "expected_sql": "SELECT d.year,\n       d.quarter,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nJOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\nGROUP BY d.year, d.quarter\nORDER BY d.year, d.quarter;"
+    "expected_sql": "SELECT SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nJOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01';"
   },
   {
     "id": "C01",

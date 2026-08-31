@@ -6,6 +6,8 @@ from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from sqlglot import parse_one
+
 from src.online_query.contracts import QueryData
 
 
@@ -44,6 +46,15 @@ class EvaluationCaseLoadingTest(unittest.TestCase):
             {case.category for case in cases},
             {"simple", "medium", "complex"},
         )
+
+    def test_t01_gold_sql_returns_only_the_requested_sales_amount(self) -> None:
+        from src.evaluation.evaluator import load_evaluation_cases
+
+        cases = load_evaluation_cases(Path("src/evaluation/eval_cases.json"))
+        case = next(case for case in cases if case.id == "T01")
+        query = parse_one(case.expected_sql)
+
+        self.assertEqual(len(query.expressions), 1)
 
     def test_preserves_one_invalid_record_for_later_invalid_case_result(self) -> None:
         from src.evaluation.evaluator import load_evaluation_cases
