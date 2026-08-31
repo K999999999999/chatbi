@@ -118,6 +118,114 @@ def create_report(
     return report
 
 
+def render_markdown_report(report: Mapping[str, object]) -> str:
+    """把机器可读 JSON 报告渲染为简洁的人类可读总结。"""
+
+    metadata = _object_mapping(report.get("metadata"))
+    summary = _object_mapping(report.get("summary"))
+    cases = report.get("cases")
+    if metadata is None or summary is None or not isinstance(cases, list):
+        raise ReportingError("报告结构无效，无法生成总结")
+
+    total = _summary_count(summary, "total_cases")
+    passed = _summary_count(summary, "passed")
+    failed = _summary_count(summary, "failed")
+    invalid = _summary_count(summary, "invalid_cases")
+    accuracy_text = _accuracy_text(summary.get("execution_accuracy"))
+    result = "PASS" if failed == 0 and invalid == 0 else "FAIL"
+
+    lines = [
+        "# ChatBI Evaluation（评测）报告",
+        "",
+        "## 总体结论",
+        "",
+        f"**{result}**",
+        "",
+        (
+            f"本次共评测 {total} 条：成功 {passed} 条，失败 {failed} 条，"
+            f"无效 {invalid} 条；有效案例执行准确率 {accuracy_text}。"
+        ),
+        "",
+        "## 分类准确率",
+        "",
+        "| 分类 | 执行准确率 |",
+        "|---|---:|",
+    ]
+
+    category_accuracy = _object_mapping(summary.get("category_accuracy"))
+    if category_accuracy is None:
+        raise ReportingError("报告分类汇总结构无效")
+    for category, accuracy in sorted(category_accuracy.items()):
+        lines.append(
+            f"| {_markdown_cell(category)} | {_accuracy_text(accuracy)} |"
+        )
+
+    lines.extend(["", "## 失败与无效案例", ""])
+    non_pass_cases: list[Mapping[str, object]] = []
+    for item in cases:
+        case = _object_mapping(item)
+        if case is None:
+            raise ReportingError("报告案例结构无效")
+        if case.get("status") != "PASS":
+            non_pass_cases.append(case)
+    if not non_pass_cases:
+        lines.append("无失败或无效案例。")
+    else:
+        lines.extend(
+            [
+                "| 案例 | 分类 | 状态 | 原因 |",
+                "|---|---|---|---|",
+            ]
+        )
+        for case in non_pass_cases:
+            lines.append(
+                "| {case_id} | {category} | {status} | {reason} |".format(
+                    case_id=_markdown_cell(case.get("case_id")),
+                    category=_markdown_cell(case.get("category")),
+                    status=_markdown_cell(case.get("status")),
+                    reason=_markdown_cell(case.get("failure_reason") or "未说明"),
+                )
+            )
+
+    lines.extend(["", "## 基线对比", ""])
+    comparison = report.get("baseline_comparison")
+    if comparison is None:
+        lines.append("本次未执行自动基线比较；可与历史报告人工对照。")
+    else:
+        comparison_mapping = _object_mapping(comparison)
+        if comparison_mapping is None:
+            raise ReportingError("基线对比结构无效")
+        if comparison_mapping.get("comparable") is not True:
+            reason = _markdown_cell(comparison_mapping.get("reason") or "原因未知")
+            lines.append(f"未形成有效基线对比：{reason}。")
+        else:
+            regressions = _string_list(comparison_mapping, "regressions")
+            improvements = _string_list(comparison_mapping, "improvements")
+            unchanged = _string_list(comparison_mapping, "unchanged")
+            lines.extend(
+                [
+                    _comparison_line("能力回退", regressions),
+                    _comparison_line("能力改善", improvements),
+                    f"状态未变化 {len(unchanged)} 条。",
+                ]
+            )
+
+    lines.extend(
+        [
+            "",
+            "## 运行信息",
+            "",
+            f"- Run ID：{_markdown_cell(metadata.get('run_id'))}",
+            f"- 运行时间：{_markdown_cell(metadata.get('created_at'))}",
+            f"- Git Commit：{_markdown_cell(metadata.get('git_commit'))}",
+            f"- Git Dirty：{_markdown_cell(metadata.get('git_dirty'))}",
+            f"- Model：{_markdown_cell(metadata.get('model'))}",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def compare_baseline(
     current: Mapping[str, object],
     baseline: Mapping[str, object],
@@ -174,6 +282,14 @@ def write_report(report: Mapping[str, object], path: Path) -> None:
         )
     except (OSError, TypeError, ValueError):
         raise ReportingError("评测报告无法写入") from None
+
+
+def write_markdown_report(report: Mapping[str, object], path: Path) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(render_markdown_report(report), encoding="utf-8")
+    except OSError:
+        raise ReportingError("评测总结报告无法写入") from None
 
 
 def load_report(path: Path) -> dict[str, object]:
@@ -254,6 +370,39 @@ def _canonical_value(value: object) -> object:
 
 def _hash_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _summary_count(summary: Mapping[str, object], field: str) -> int:
+    value = summary.get(field)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ReportingError(f"报告汇总字段无效：{field}")
+    return value
+
+
+def _accuracy_text(value: object) -> str:
+    if value is None:
+        return "N/A"
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ReportingError("报告准确率字段无效")
+    return f"{float(value):.2%}"
+
+
+def _markdown_cell(value: object) -> str:
+    return str(value if value is not None else "").replace("|", "\\|").replace("\n", " ")
+
+
+def _string_list(mapping: Mapping[str, object], field: str) -> list[str]:
+    value = mapping.get(field)
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ReportingError(f"基线对比字段无效：{field}")
+    return value
+
+
+def _comparison_line(label: str, case_ids: list[str]) -> str:
+    if not case_ids:
+        return f"{label} 0 条。"
+    rendered = "、".join(_markdown_cell(case_id) for case_id in case_ids)
+    return f"{label} {len(case_ids)} 条：{rendered}。"
 
 
 def _object_mapping(value: object) -> Mapping[str, object] | None:

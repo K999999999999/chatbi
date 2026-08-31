@@ -94,6 +94,47 @@ class EvaluationReportingTest(unittest.TestCase):
         self.assertEqual(len(loaded["cases"]), 2)
         self.assertIsNone(loaded["baseline_comparison"])
 
+    def test_renders_human_readable_summary_without_baseline(self) -> None:
+        from src.evaluation.reporting import create_report, render_markdown_report
+
+        run = self._run(
+            (CaseStatus.PASS, CaseStatus.FAIL, CaseStatus.INVALID_CASE)
+        )
+        report = create_report(run, self._metadata())
+
+        markdown = render_markdown_report(report)
+
+        self.assertIn("## 总体结论", markdown)
+        self.assertIn("**FAIL**", markdown)
+        self.assertIn(
+            "本次共评测 3 条：成功 1 条，失败 1 条，无效 1 条；"
+            "有效案例执行准确率 50.00%。",
+            markdown,
+        )
+        self.assertIn("| C2 | simple | FAIL | 失败 |", markdown)
+        self.assertIn("| C3 | simple | INVALID_CASE | 失败 |", markdown)
+        self.assertIn("本次未执行自动基线比较", markdown)
+
+    def test_renders_regression_and_improvement_summary(self) -> None:
+        from src.evaluation.reporting import create_report, render_markdown_report
+
+        baseline = self._report(
+            test_hash="same-test",
+            reference_hash="same-reference",
+            statuses={"C1": "PASS", "C2": "FAIL", "C3": "PASS"},
+        )
+        report = create_report(
+            self._run((CaseStatus.FAIL, CaseStatus.PASS, CaseStatus.PASS)),
+            self._metadata(),
+            baseline,
+        )
+
+        markdown = render_markdown_report(report)
+
+        self.assertIn("能力回退 1 条：C1", markdown)
+        self.assertIn("能力改善 1 条：C2", markdown)
+        self.assertIn("状态未变化 1 条", markdown)
+
     def test_compares_regressions_and_improvements(self) -> None:
         from src.evaluation.reporting import compare_baseline
 
@@ -197,6 +238,24 @@ class EvaluationReportingTest(unittest.TestCase):
             cases=cases,
             summary=summary,
             reference_results=references,
+        )
+
+    @staticmethod
+    def _metadata():
+        from src.evaluation.reporting import RunMetadata
+
+        return RunMetadata(
+            run_id="20260831T120000Z-abcdef1",
+            created_at="2026-08-31T12:00:00Z",
+            git_commit="abcdef1234567890",
+            git_dirty=False,
+            model="test-model",
+            temperature=0.1,
+            max_tokens=1200,
+            model_endpoint_hash="endpoint",
+            test_set_hash="same-test",
+            context_hash="context",
+            reference_result_hash="same-reference",
         )
 
     @staticmethod

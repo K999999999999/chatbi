@@ -150,7 +150,10 @@ reference_result_hash
 
 ```text
 reports/evaluation/<run_id>.json
+reports/evaluation/<run_id>.md
 ```
+
+JSON 是机器可读评测证据；Markdown 是由同一份 JSON 数据确定性生成的人类可读总结，不重新调用 LLM 或数据库。
 
 报告文件是评测证据，可以单独 Commit。第一份确认有效的真实报告提交后，再创建本地 `v0.1.0` Tag；不自动 Push（推送）远程仓库。
 
@@ -194,7 +197,7 @@ uv run python -m src.evaluation --baseline <report-path>
 
 运行时从现有 `.env` 获取 LLM 和 PostgreSQL 配置。没有明确授权时，不执行真实命令。
 
-终端只打印简短摘要，完整内容写入 JSON 报告。
+终端只打印简短摘要和两份报告路径；完整数据写入 JSON，清晰总结写入 Markdown。
 
 ## 测试设计
 

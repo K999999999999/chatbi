@@ -109,6 +109,13 @@ Execution Accuracy
 
 `Execution Accuracy = PASS 数量 / 有效案例数`。`INVALID_CASE` 不进入分母，但必须在报告中明确列出。
 
+每次运行同时生成两份同名报告：
+
+- JSON 数据报告：保留机器可读的运行元数据、汇总、单条结果和可选基线比较。
+- Markdown 总结报告：明确展示总体结论、成功/失败/无效数量、总体与分类准确率、失败案例及原因、基线比较状态和必要运行信息。
+
+未指定 Baseline 时，Markdown 必须明确写明“本次未执行自动基线比较”，不得暗示能力没有回退。
+
 第一份报告作为 Baseline。存在上一份有效报告时：
 
 - 上次 `PASS`、本次 `FAIL`：Regression（能力回退）。
@@ -141,7 +148,7 @@ Execution Accuracy
 ### AI Evaluation（AI 评测）
 
 - 20 条标准案例能够顺序运行完成，单条失败不影响其余案例。
-- 生成一份包含单条结果、总体准确率和分类准确率的 Baseline 报告。
+- 生成包含单条结果的 JSON 数据报告，以及包含总体结论、准确率和失败摘要的 Markdown 总结报告。
 - 后续报告能够识别相对上一份有效报告的回退和改善案例。
 
 ### Business Acceptance（业务验收）

@@ -1,4 +1,4 @@
-"""运行标准回归评测并生成 JSON 报告。"""
+"""运行标准回归评测并生成 JSON 数据和 Markdown 总结报告。"""
 
 import argparse
 import os
@@ -29,6 +29,7 @@ from .reporting import (
     collect_run_metadata,
     create_report,
     load_report,
+    write_markdown_report,
     write_report,
 )
 from .runner import run_evaluation
@@ -89,8 +90,10 @@ def run_cli(
         )
         report = create_report(run, metadata, baseline)
         report_path = args.output_dir / f"{metadata.run_id}.json"
+        summary_path = args.output_dir / f"{metadata.run_id}.md"
         write_report(report, report_path)
-        _print_summary(report, report_path, output)
+        write_markdown_report(report, summary_path)
+        _print_summary(report, report_path, summary_path, output)
         return 0
     except (
         ContextLoadError,
@@ -118,7 +121,7 @@ def _parser() -> argparse.ArgumentParser:
         "--output-dir",
         type=Path,
         default=DEFAULT_OUTPUT_DIR,
-        help="JSON 报告输出目录",
+        help="评测报告输出目录",
     )
     parser.add_argument(
         "--baseline",
@@ -162,6 +165,7 @@ def _default_context_paths() -> dict[str, Path]:
 def _print_summary(
     report: Mapping[str, object],
     report_path: Path,
+    summary_path: Path,
     output: TextIO,
 ) -> None:
     summary = report["summary"]
@@ -179,6 +183,7 @@ def _print_summary(
         file=output,
     )
     print(f"Report: {report_path}", file=output)
+    print(f"Summary Report: {summary_path}", file=output)
 
 
 def main() -> None:

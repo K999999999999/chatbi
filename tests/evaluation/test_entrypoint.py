@@ -91,16 +91,22 @@ class EvaluationEntrypointTest(unittest.TestCase):
             )
 
             reports = list(output_dir.glob("*.json"))
+            summaries = list(output_dir.glob("*.md"))
             report = json.loads(reports[0].read_text(encoding="utf-8"))
+            summary_report = summaries[0].read_text(encoding="utf-8")
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(stderr.getvalue(), "")
         self.assertEqual(len(reports), 1)
+        self.assertEqual(len(summaries), 1)
         self.assertEqual(report["summary"]["execution_accuracy"], 1.0)
         self.assertEqual(report["cases"][0]["status"], "PASS")
+        self.assertIn("本次共评测 1 条：成功 1 条", summary_report)
+        self.assertIn("本次未执行自动基线比较", summary_report)
         self.assertEqual(len(generator.prompts), 1)
         self.assertEqual(len(executor.calls), 2)
         self.assertIn("Execution Accuracy: 100.00%", stdout.getvalue())
+        self.assertIn("Summary Report:", stdout.getvalue())
 
     def test_loads_explicit_baseline(self) -> None:
         from src.evaluation.__main__ import run_cli
