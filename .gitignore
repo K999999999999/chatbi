@@ -16,3 +16,6 @@ models/bge-m3/
 .model-cache/
 model-cache/
 backups/
+
+# 本地参考资料，不属于产品源码和发布内容。
+项目参考课程/
