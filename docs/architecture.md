@@ -60,5 +60,6 @@ ChatBI 是面向业务数据查询的 Domain AI Engine（领域 AI 引擎），�
 - 结构导出辅助脚本已存在。
 - Online Query Module Spec 与 Implementation Design 已确认。
 - Online Query 已实现，Software Test 与真实 PostgreSQL 集成测试已通过。
-- Evaluation 标准测试集已准备，但 Evaluation 模块和真实 LLM Baseline 尚未执行。
+- Evaluation 已实现并复用正式 Online Query 链路；20 条真实 LLM 标准评测全部通过，JSON 数据报告和 Markdown 总结报告已提交。
+- 旧版扁平 POC 链路及其重复测试已删除。
 - 正式 Offline Build 模块尚未实现。

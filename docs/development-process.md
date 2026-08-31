@@ -57,7 +57,7 @@
 
 ## 当前项目位置
 
-更新时间：2026-08-30
+更新时间：2026-08-31
 
 | 阶段 | 状态 | 依据 |
 |---|---|---|
@@ -70,11 +70,11 @@
 | Implementation（编码实现） | 已完成 | T1 至 T5 已实现并分别提交 |
 | Test / Evaluation（测试与评估） | 已完成 | Software Test（74 passed）、真实 PostgreSQL 集成测试（5 passed）和 20 条真实 LLM 标准回归评测均已通过；基线报告已提交 |
 | Code Review（代码审查） | 已完成 | 整体审查修复未知函数绕过后通过，独立只读审查 PASS |
-| Integration / Release（集成与发布） | 未开始 | 不属于当前 POC（概念验证）阶段 |
+| Integration / Release（集成与发布） | 收口中 | 旧版 POC 已清理，测试与评测证据已提交；统一版本号和新 Tag（标签）尚未确认 |
 
 当前下一步：
 
-> Evaluation（评测）闭环已经完成。进入下一个模块前，先确认新的业务需求和 Contract（契约），不自动扩张到 Production Readiness（生产化建设）。
+> 先统一项目版本：`pyproject.toml` 当前为 `0.1.0`，仓库已有 `v1.0.0` Tag。确认下一个版本并完成 POC 收口后，再为新模块确认业务需求和 Contract（契约）。
 
 ## 维护规则
 
