@@ -68,13 +68,13 @@
 | Design Review（设计审查） | 已完成 | `docs/designs/online-query.md` 中的设计检查结果 |
 | Task Split（任务拆分） | 已完成 | `docs/designs/online-query.md` 中的开发任务清单 |
 | Implementation（编码实现） | 已完成 | T1 至 T5 已实现并分别提交 |
-| Test / Evaluation（测试与评估） | 部分完成 | Software Test 与真实 PostgreSQL 集成测试已通过；AI Evaluation 尚未开始 |
+| Test / Evaluation（测试与评估） | 已完成 | Software Test（72 passed）、真实 PostgreSQL 集成测试（5 passed）和 20 条真实 LLM 标准回归评测均已通过；基线报告已提交 |
 | Code Review（代码审查） | 已完成 | 整体审查修复未知函数绕过后通过，独立只读审查 PASS |
 | Integration / Release（集成与发布） | 未开始 | 不属于当前 POC（概念验证）阶段 |
 
 当前下一步：
 
-> 把 Evaluation 作为独立模块进入 Module Spec（模块规格）与 Implementation Design（实现设计），复用同一个 OnlineQueryService，不复制查询链路。
+> Evaluation（评测）闭环已经完成。进入下一个模块前，先确认新的业务需求和 Contract（契约），不自动扩张到 Production Readiness（生产化建设）。
 
 ## 维护规则
 
