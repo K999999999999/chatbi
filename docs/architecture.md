@@ -56,6 +56,75 @@ flowchart TB
 
 实线表示当前已经实现的能力，虚线表示未来边界。Evaluation 是离线模块，只复用正式 Online Query，不参与用户在线请求。
 
+## 代码地图
+
+这张图用于快速定位“每个文件负责什么”以及主要运行顺序。
+
+```mermaid
+flowchart TB
+    subgraph Knowledge["知识与数据文件"]
+        Tables["tables.json<br/>有哪些表"]
+        Columns["columns.json<br/>有哪些字段"]
+        Relationships["relationships.json<br/>表之间如何关联"]
+        Values["column_values.json<br/>典型字段值"]
+        Metrics["metrics.json<br/>指标定义和业务口径"]
+    end
+
+    subgraph OnlineQuery["src/online_query：在线查询代码"]
+        OInit["__init__.py<br/>模块公开入口"]
+        Contracts["contracts.py<br/>请求、响应、错误码<br/>SQLGenerator / QueryExecutor 接口"]
+        Service["service.py<br/>查询主流程总指挥"]
+        Context["context.py<br/>加载结构和指标文件"]
+        Prompt["prompt.py<br/>把问题和上下文组成 Prompt"]
+        LLM["llm.py<br/>通过 LangChain 调用 LLM 生成 SQL"]
+        Guard["sql_guard.py<br/>检查 SQL 是否安全、合法"]
+        Database["database.py<br/>使用 chatbi_app 只读执行 SQL"]
+
+        OInit --> Service
+        Contracts -. "统一数据类型" .-> Service
+        Service -->|"1. 加载上下文"| Context
+        Context -->|"2. 提供上下文"| Prompt
+        Prompt -->|"3. 生成提示词"| LLM
+        LLM -->|"4. 返回 SQL 候选"| Guard
+        Guard -->|"5. 返回安全 SQL"| Database
+        Database -->|"6. 返回数据或错误"| Service
+    end
+
+    Tables --> Context
+    Columns --> Context
+    Relationships --> Context
+    Values --> Context
+    Metrics --> Context
+
+    subgraph Evaluation["src/evaluation：离线评测代码"]
+        EInit["__init__.py<br/>评测模块公开入口"]
+        Entry["__main__.py<br/>评测命令行入口<br/>组装真实 LLM 和数据库"]
+        Cases["eval_cases.json<br/>20 条标准测试案例"]
+        Evaluator["evaluator.py<br/>加载案例、比较查询结果"]
+        Runner["runner.py<br/>逐条运行、隔离失败、统计准确率"]
+        Reporting["reporting.py<br/>生成指纹、JSON 和 Markdown 报告<br/>可选基线比较"]
+        Reports["reports/evaluation/<br/>保存评测结果"]
+
+        EInit --> Evaluator
+        Entry --> Runner
+        Cases --> Evaluator
+        Evaluator --> Runner
+        Runner -->|"复用正式查询入口"| Service
+        Runner --> Reporting
+        Reporting --> Reports
+    end
+
+    subgraph Tests["tests：正确性证据"]
+        OnlineTests["tests/online_query<br/>在线查询单元与数据库集成测试"]
+        EvaluationTests["tests/evaluation<br/>案例、运行、报告和入口测试"]
+    end
+
+    OnlineTests -. "验证" .-> Service
+    EvaluationTests -. "验证" .-> Runner
+```
+
+箭头表示主要运行顺序和依赖方向，不表示每个文件都直接调用下一个文件。
+
 ## 暂缓模块
 
 ### Offline Build（离线构建）
