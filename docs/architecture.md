@@ -125,6 +125,75 @@ flowchart TB
 
 箭头表示主要运行顺序和依赖方向，不表示每个文件都直接调用下一个文件。
 
+## 数据模型
+
+这里的 Entity（实体）是数据库中需要保存的业务数据对象，不是代码里的 Class（类）。下图只保留理解业务关系所需的核心字段：
+
+- `PK` = Primary Key（主键），唯一标识一条记录。
+- `FK` = Foreign Key（外键），指向另一张表的主键。
+- `dim_` = Dimension（维度），描述日期、客户、产品等业务对象。
+- `fct_` = Fact（事实），记录销售明细、汇率等业务事实。
+
+```mermaid
+erDiagram
+    direction LR
+    DIM_DATE {
+        int date_key PK "日期主键"
+        date full_date "自然日期"
+    }
+
+    DIM_CUSTOMER {
+        bigint customer_key PK "客户主键"
+        string customer_id "客户业务编号"
+        string customer_name "客户名称"
+    }
+
+    DIM_PRODUCT {
+        bigint product_key PK "产品主键"
+        string product_id "产品业务编号"
+        string product_name "产品名称"
+    }
+
+    DIM_SALES_REGION {
+        bigint sales_region_key PK "销售区域主键"
+        string sales_region_name "销售区域名称"
+    }
+
+    DIM_CURRENCY {
+        bigint currency_key PK "币种主键"
+        string currency_code "币种代码"
+    }
+
+    FCT_SALES_ORDER_LINE {
+        bigint sales_order_line_key PK "销售明细主键"
+        bigint customer_key FK "客户"
+        bigint product_key FK "产品"
+        bigint sales_region_key FK "销售区域"
+        bigint transaction_currency_key FK "交易币种"
+        int order_date_key FK "下单日期"
+        int confirmation_date_key FK "确认日期"
+        int completion_date_key FK "完成日期"
+        decimal quantity "销售数量"
+        decimal net_sales_amount_cny "人民币净销售额"
+    }
+
+    FCT_EXCHANGE_RATE_DAILY {
+        int rate_date_key PK, FK "联合主键；汇率日期"
+        bigint currency_key PK, FK "联合主键；币种"
+        decimal fx_rate_to_cny "人民币汇率"
+    }
+
+    DIM_CUSTOMER ||--o{ FCT_SALES_ORDER_LINE : "客户"
+    DIM_PRODUCT ||--o{ FCT_SALES_ORDER_LINE : "产品"
+    DIM_SALES_REGION ||--o{ FCT_SALES_ORDER_LINE : "销售区域"
+    DIM_CURRENCY ||--o{ FCT_SALES_ORDER_LINE : "交易币种"
+    DIM_DATE ||--o{ FCT_SALES_ORDER_LINE : "下单日期"
+    DIM_DATE ||--o{ FCT_SALES_ORDER_LINE : "确认日期"
+    DIM_DATE ||--o{ FCT_SALES_ORDER_LINE : "完成日期"
+    DIM_DATE ||--o{ FCT_EXCHANGE_RATE_DAILY : "汇率日期"
+    DIM_CURRENCY ||--o{ FCT_EXCHANGE_RATE_DAILY : "币种"
+```
+
 ## 暂缓模块
 
 ### Offline Build（离线构建）
