@@ -7,4 +7,5 @@ dependencies = [
     "langchain-openai>=1,<2",
     "psycopg[binary]>=3.2,<4",
     "sqlglot>=27,<31",
+    "streamlit>=1.40,<2",
 ]

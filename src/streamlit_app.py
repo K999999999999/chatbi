@@ -1,0 +1,186 @@
+"""ChatBI 的最小 Streamlit POC 页面。"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+import json
+import os
+from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
+
+_DEFAULT_API_BASE_URL = "http://127.0.0.1:8000"
+_DEFAULT_API_TIMEOUT = 90.0
+
+
+class QueryAPIError(RuntimeError):
+    """查询 API 返回的可展示错误。"""
+
+    def __init__(
+        self,
+        error_code: str,
+        error_message: str,
+        request_id: str = "",
+    ) -> None:
+        super().__init__(error_message)
+        self.error_code = error_code
+        self.error_message = error_message
+        self.request_id = request_id
+
+
+def query_api(
+    base_url: str,
+    question: str,
+    *,
+    timeout: float = _DEFAULT_API_TIMEOUT,
+    opener: Callable[..., Any] | None = None,
+) -> dict[str, Any]:
+    """调用现有查询 API，不在页面层执行 LLM 或数据库逻辑。"""
+    request = Request(
+        url=f"{base_url.rstrip('/')}/api/v1/query",
+        data=json.dumps({"question": question}, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    open_request = urlopen if opener is None else opener
+
+    try:
+        with open_request(request, timeout=timeout) as response:
+            payload = _read_json(response.read())
+    except HTTPError as exc:
+        try:
+            payload = _read_json(exc.read())
+        except (UnicodeDecodeError, ValueError, TypeError):
+            raise QueryAPIError("API_ERROR", "查询服务返回了无效响应") from None
+        raise _error_from_payload(payload, "查询服务请求失败") from None
+    except (URLError, TimeoutError, OSError):
+        raise QueryAPIError("API_UNAVAILABLE", "无法连接查询服务") from None
+    except (UnicodeDecodeError, ValueError, TypeError):
+        raise QueryAPIError("API_ERROR", "查询服务返回了无效响应") from None
+
+    if "error_code" in payload:
+        raise _error_from_payload(payload, "查询服务请求失败")
+    return payload
+
+
+def rows_as_records(
+    columns: list[str],
+    rows: list[list[Any]],
+) -> list[dict[str, Any]]:
+    """将 API 的二维结果转换为 Streamlit 表格可展示的记录。"""
+    return [dict(zip(columns, row)) for row in rows]
+
+
+def main() -> None:
+    """渲染单页查询界面。"""
+    import streamlit as st
+
+    st.set_page_config(page_title="ChatBI 查询", page_icon="📊")
+    st.title("ChatBI 查询")
+    st.caption("输入自然语言问题，查询 mart_sales 数据。")
+
+    with st.form("query_form"):
+        question = st.text_area(
+            "问题",
+            placeholder="例如：当前已完成订单数量是多少？",
+            height=100,
+        )
+        submitted = st.form_submit_button("查询", type="primary")
+
+    if submitted:
+        _submit_query(st, question)
+
+    response = st.session_state.get("last_query_response")
+    error = st.session_state.get("last_query_error")
+    if error is not None:
+        _render_error(st, error)
+    elif response is not None:
+        _render_success(st, response)
+
+
+def _submit_query(st: Any, question: str) -> None:
+    if not question.strip():
+        st.session_state.last_query_response = None
+        st.session_state.last_query_error = QueryAPIError(
+            "INVALID_REQUEST",
+            "请输入问题",
+        )
+        return
+
+    base_url = os.environ.get("CHATBI_API_BASE_URL", _DEFAULT_API_BASE_URL).strip()
+    if not base_url:
+        base_url = _DEFAULT_API_BASE_URL
+
+    with st.spinner("正在查询..."):
+        try:
+            response = query_api(base_url, question)
+        except QueryAPIError as error:
+            st.session_state.last_query_response = None
+            st.session_state.last_query_error = error
+        else:
+            st.session_state.last_query_response = response
+            st.session_state.last_query_error = None
+
+
+def _render_error(st: Any, error: QueryAPIError) -> None:
+    st.error(f"{error.error_code}：{error.error_message}")
+    if error.request_id:
+        st.caption(f"请求编号：{error.request_id}")
+
+
+def _render_success(st: Any, response: dict[str, Any]) -> None:
+    st.subheader("查询结果")
+    columns = response.get("columns", [])
+    rows = response.get("rows", [])
+    if rows:
+        st.dataframe(
+            rows_as_records(columns, rows),
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.info("暂无数据")
+
+    metric_columns = st.columns(2)
+    metric_columns[0].metric("返回行数", response.get("row_count", len(rows)))
+    metric_columns[1].metric(
+        "结果状态",
+        "已截断" if response.get("truncated", False) else "完整",
+    )
+
+    with st.expander("查看 SQL"):
+        st.code(response.get("sql", ""), language="sql")
+
+    request_id = response.get("request_id")
+    if request_id:
+        st.caption(f"请求编号：{request_id}")
+
+
+def _read_json(data: bytes) -> dict[str, Any]:
+    payload = json.loads(data.decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise TypeError("API 响应不是 JSON 对象")
+    return payload
+
+
+def _error_from_payload(
+    payload: dict[str, Any],
+    fallback_message: str,
+) -> QueryAPIError:
+    error_code = payload.get("error_code")
+    error_message = payload.get("error_message")
+    request_id = payload.get("request_id")
+    return QueryAPIError(
+        error_code if isinstance(error_code, str) and error_code else "API_ERROR",
+        (
+            error_message
+            if isinstance(error_message, str) and error_message
+            else fallback_message
+        ),
+        request_id if isinstance(request_id, str) else "",
+    )
+
+
+if __name__ == "__main__":
+    main()

@@ -14,6 +14,10 @@ ChatBI 是面向业务数据查询的 Domain AI Engine（领域 AI 引擎），�
 
 负责把 HTTP JSON 请求转换为现有 Online Query 请求，并把查询结果转换为 HTTP JSON 响应。它不重复 Prompt、LLM、SQL Guard 或数据库执行逻辑，也不负责认证、限流和审计。
 
+### Streamlit POC（验证页面）
+
+负责通过 HTTP 调用 Query API Adapter，验证自然语言查询的输入、结果展示和错误提示。它是当前内部验证入口，不直接连接 LLM 或数据库；正式前端仍属于后续范围。
+
 ### Evaluation（评测）
 
 负责使用标准测试集调用同一条 Online Query 链路，比较生成 SQL 与标准 SQL 的执行结果，并输出评测数据。它不参与用户在线请求。
@@ -26,6 +30,7 @@ flowchart TB
     ExternalCaller["未来外部应用"] -.-> Gateway
     Gateway["API Gateway（未来）<br/>认证、限流、审计"] -.-> API
     API["API Adapter（当前）"] --> Service
+    Streamlit["Streamlit POC（当前）"] --> API
 
     subgraph OnlineQuery["Online Query（在线查询模块）"]
         Service["OnlineQueryService<br/>统一查询入口"] --> Context["加载结构与指标上下文"]
@@ -104,6 +109,12 @@ flowchart TB
         APIApp -->|"调用现有入口"| Service
     end
 
+    subgraph StreamlitApp["src/streamlit_app.py：验证页面"]
+        UIApp["输入问题、调用 API、展示结果和错误"]
+    end
+
+    UIApp --> APIApp
+
     Tables --> Context
     Columns --> Context
     Relationships --> Context
@@ -132,11 +143,13 @@ flowchart TB
         OnlineTests["tests/online_query<br/>在线查询单元与数据库集成测试"]
         EvaluationTests["tests/evaluation<br/>案例、运行、报告和入口测试"]
         QueryAPITests["tests/query_api<br/>API 请求、错误和组装测试"]
+        StreamlitTests["tests/streamlit<br/>客户端请求和页面数据转换测试"]
     end
 
     OnlineTests -. "验证" .-> Service
     EvaluationTests -. "验证" .-> Runner
     QueryAPITests -. "验证" .-> APIApp
+    StreamlitTests -. "验证" .-> UIApp
 ```
 
 箭头表示主要运行顺序和依赖方向，不表示每个文件都直接调用下一个文件。
@@ -244,12 +257,14 @@ erDiagram
 - LLM：提出 SQL 候选，不决定业务真相、权限和安全。
 - 静态知识文件：当前为 Online Query 提供结构和指标上下文。
 - Query API Adapter：当前提供同步 HTTP JSON 接口，只做协议转换。
+- Streamlit POC：当前用于内部验证，只通过 HTTP 调用 API。
 - API Gateway：未来位于 ChatBI 外部边界，负责认证、限流、审计和流量治理；核心模块不绑定具体网关产品。
 
 ## 稳定约束
 
 - Online Query 只能通过只读数据库身份访问 `mart_sales`。
 - Query API Adapter 只能调用现有 Online Query 公开入口，不复制查询逻辑。
+- Streamlit POC 只能调用 Query API，不直接访问 LLM、SQL Guard 或数据库。
 - Evaluation 必须复用正式 Online Query 链路，不维护另一套 SQL 生成逻辑。
 - RAG 未来只能替换上下文获取方式，不能改变指标事实和 SQL 安全边界。
 - 网关接入不能把认证信息、平台 SDK 或流量治理逻辑写入核心业务链路。
@@ -261,6 +276,7 @@ erDiagram
 - Online Query Module Spec 与 Implementation Design 已确认。
 - Online Query 已实现，Software Test 与真实 PostgreSQL 集成测试已通过。
 - Query API Adapter 已实现，提供 `/health` 和 `/api/v1/query`；API 确定性测试已通过。
+- Streamlit POC 页面已实现，提供问题输入、结果展示和受控错误提示。
 - Evaluation 已实现并复用正式 Online Query 链路；20 条真实 LLM 标准评测全部通过，JSON 数据报告和 Markdown 总结报告已提交。
 - 旧版扁平 POC 链路及其重复测试已删除。
 - 正式 Offline Build 模块尚未实现。

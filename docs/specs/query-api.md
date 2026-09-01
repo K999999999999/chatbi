@@ -147,6 +147,6 @@ API 对请求体解析失败时，也必须返回上述 `QueryFailure` 形状，
 - `main.py` 组装现有 `LangChainSQLGenerator`、`PsycopgQueryExecutor` 和 `OnlineQueryService`。
 - FastAPI 运行依赖已写入 `pyproject.toml`，具体解析版本由 `uv.lock` 锁定。
 - API 确定性测试与原有 Online Query、Evaluation 回归测试已通过。
-- 使用真实 `.env` 的 HTTP 到 LLM、SQL Guard 和 PostgreSQL 闭环尚未执行，需要单独授权真实上游调用和只读数据库查询。
+- 已使用真实 `.env` 完成一次 HTTP 到 LLM、SQL Guard 和 PostgreSQL 的闭环验证，返回 `200` 和 1 行结果。
 
-未来 Streamlit 页面是否通过 HTTP 调用 API，仍不属于本次实现范围。
+当前 Streamlit POC 页面通过 HTTP 调用本 API；正式前端是否采用 React、Vue 或其他方案，仍属于后续范围。
