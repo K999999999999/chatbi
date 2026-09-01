@@ -14,6 +14,48 @@ ChatBI 是面向业务数据查询的 Domain AI Engine（领域 AI 引擎），�
 
 负责使用标准测试集调用同一条 Online Query 链路，比较生成 SQL 与标准 SQL 的执行结果，并输出评测数据。它不参与用户在线请求。
 
+## 全局结构
+
+```mermaid
+flowchart TB
+    InternalCaller["当前内部调用方<br/>Python / Tests"] --> Service
+    ExternalCaller["未来外部应用"] -.-> Gateway
+    Gateway["API Gateway（未来）<br/>认证、限流、审计"] -.-> API
+    API["API Adapter（未来）"] -.-> Service
+
+    subgraph OnlineQuery["Online Query（在线查询模块）"]
+        Service["OnlineQueryService<br/>统一查询入口"] --> Context["加载结构与指标上下文"]
+        Context --> Prompt["构造 Prompt"]
+        Prompt --> LLM["LLM 生成 SQL 候选<br/>不可信候选"]
+        LLM --> Guard["SQL Guard<br/>确定性安全校验"]
+        Guard --> Executor["Query Executor<br/>只读执行"]
+        Executor --> Result["查询结果 / 受控错误"]
+    end
+
+    Structure["Structure（结构记录）<br/>表、字段、关系、字段值"] --> Context
+    Metrics["Semantic（语义记录）<br/>指标定义与业务口径"] --> Context
+    Executor -->|"只读 SQL"| Database[("PostgreSQL<br/>mart_sales")]
+    Database -->|"结果集"| Result
+
+    subgraph EvaluationFlow["Evaluation（离线评测模块）"]
+        Cases["20 条标准测试集"] --> Runner["Evaluation Runner"]
+        Runner -->|"调用同一正式入口"| Service
+        Runner --> Reference["标准 SQL<br/>同一 Guard 与 Executor"]
+        ReferenceResult["标准结果"]
+        Result --> Compare["结果比较与准确率统计"]
+        ReferenceResult --> Compare
+        Compare --> Reports["JSON 数据报告<br/>Markdown 总结报告"]
+    end
+
+    Reference -->|"只读 SQL"| Database
+    Database -->|"标准结果集"| ReferenceResult
+    OfflineBuild["Offline Build（暂缓）"] -.-> Structure
+    OfflineBuild -.-> Metrics
+    RAG["RAG Context Retrieval（未来）"] -.-> Context
+```
+
+实线表示当前已经实现的能力，虚线表示未来边界。Evaluation 是离线模块，只复用正式 Online Query，不参与用户在线请求。
+
 ## 暂缓模块
 
 ### Offline Build（离线构建）
