@@ -4,7 +4,13 @@ from unittest import TestCase
 
 from fastapi.testclient import TestClient
 
-from src.online_query.contracts import QueryRequest, QueryResult, QuerySuccess
+from src.online_query.contracts import (
+    QueryErrorCode,
+    QueryFailure,
+    QueryRequest,
+    QueryResult,
+    QuerySuccess,
+)
 from src.query_api.app import create_app
 
 
@@ -31,6 +37,20 @@ class _SuccessService:
             rows=self.rows,
             row_count=len(self.rows),
             truncated=False,
+        )
+
+
+class _FailureService:
+    def __init__(self, error_code: QueryErrorCode) -> None:
+        self.error_code = error_code
+        self.requests: list[QueryRequest] = []
+
+    def query(self, request: QueryRequest) -> QueryResult:
+        self.requests.append(request)
+        return QueryFailure(
+            request_id=request.request_id or "generated-request-id",
+            error_code=self.error_code,
+            error_message=f"错误：{self.error_code.value}",
         )
 
 
@@ -90,3 +110,99 @@ class QueryApiAppTest(TestCase):
             service.requests,
             [QueryRequest(question="查询没有数据的产品", request_id=None)],
         )
+
+    def test_query_maps_each_failure_code_to_http_status(self) -> None:
+        expected_statuses = {
+            QueryErrorCode.INVALID_REQUEST: 400,
+            QueryErrorCode.CANNOT_ANSWER: 422,
+            QueryErrorCode.SQL_REJECTED: 422,
+            QueryErrorCode.LLM_ERROR: 502,
+            QueryErrorCode.CONTEXT_ERROR: 503,
+            QueryErrorCode.DATABASE_ERROR: 503,
+            QueryErrorCode.QUERY_TIMEOUT: 504,
+        }
+
+        for error_code, expected_status in expected_statuses.items():
+            with self.subTest(error_code=error_code):
+                service = _FailureService(error_code)
+                client = TestClient(
+                    create_app(service),
+                    raise_server_exceptions=False,
+                )
+
+                response = client.post(
+                    "/api/v1/query",
+                    json={"question": "查询销售额"},
+                )
+
+                self.assertEqual(response.status_code, expected_status)
+                self.assertEqual(
+                    response.json(),
+                    {
+                        "request_id": "generated-request-id",
+                        "error_code": error_code.value,
+                        "error_message": f"错误：{error_code.value}",
+                    },
+                )
+                self.assertNotIn("detail", response.json())
+
+    def test_blank_question_returns_invalid_request(self) -> None:
+        service = _FailureService(QueryErrorCode.INVALID_REQUEST)
+        client = TestClient(create_app(service))
+
+        response = client.post(
+            "/api/v1/query",
+            json={"question": "   "},
+            headers={"X-Request-ID": "req-invalid"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error_code"], "INVALID_REQUEST")
+        self.assertEqual(response.json()["request_id"], "req-invalid")
+        self.assertEqual(
+            service.requests,
+            [QueryRequest(question="   ", request_id="req-invalid")],
+        )
+
+    def test_invalid_http_body_returns_failure_shape(self) -> None:
+        invalid_bodies = (
+            {},
+            {"question": 123},
+            {"question": "查询销售额", "unexpected": True},
+        )
+
+        for body in invalid_bodies:
+            with self.subTest(body=body):
+                service = _FailureService(QueryErrorCode.INVALID_REQUEST)
+                client = TestClient(create_app(service))
+
+                response = client.post(
+                    "/api/v1/query",
+                    json=body,
+                    headers={"X-Request-ID": "req-invalid-body"},
+                )
+
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.json()["error_code"], "INVALID_REQUEST")
+                self.assertEqual(
+                    response.json()["request_id"], "req-invalid-body"
+                )
+                self.assertNotIn("detail", response.json())
+
+    def test_invalid_json_returns_failure_shape(self) -> None:
+        service = _FailureService(QueryErrorCode.INVALID_REQUEST)
+        client = TestClient(create_app(service))
+
+        response = client.post(
+            "/api/v1/query",
+            content=b"{invalid-json",
+            headers={
+                "Content-Type": "application/json",
+                "X-Request-ID": "req-invalid-json",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error_code"], "INVALID_REQUEST")
+        self.assertEqual(response.json()["request_id"], "req-invalid-json")
+        self.assertNotIn("detail", response.json())

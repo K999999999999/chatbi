@@ -2,11 +2,29 @@
 
 from typing import Any, Protocol
 
-from fastapi import FastAPI, Header
+from fastapi import FastAPI, Header, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, StrictStr
 
-from src.online_query.contracts import QueryRequest, QueryResult, QuerySuccess
+from src.online_query.contracts import (
+    QueryErrorCode,
+    QueryFailure,
+    QueryRequest,
+    QueryResult,
+    QuerySuccess,
+)
+
+
+_HTTP_STATUS_BY_ERROR = {
+    QueryErrorCode.INVALID_REQUEST: 400,
+    QueryErrorCode.CANNOT_ANSWER: 422,
+    QueryErrorCode.SQL_REJECTED: 422,
+    QueryErrorCode.LLM_ERROR: 502,
+    QueryErrorCode.CONTEXT_ERROR: 503,
+    QueryErrorCode.DATABASE_ERROR: 503,
+    QueryErrorCode.QUERY_TIMEOUT: 504,
+}
 
 
 class QueryService(Protocol):
@@ -35,6 +53,14 @@ class QuerySuccessResponse(BaseModel):
     truncated: bool
 
 
+class QueryFailureResponse(BaseModel):
+    """HTTP 查询失败响应。"""
+
+    request_id: str
+    error_code: QueryErrorCode
+    error_message: str
+
+
 def create_app(service: QueryService) -> FastAPI:
     """创建绑定查询服务的 FastAPI 应用。"""
 
@@ -48,7 +74,30 @@ def create_app(service: QueryService) -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.post("/api/v1/query", response_model=QuerySuccessResponse)
+    @app.exception_handler(RequestValidationError)
+    def request_validation_error(
+        request: Request,
+        _: RequestValidationError,
+    ) -> JSONResponse:
+        result = service.query(
+            QueryRequest(
+                question="",
+                request_id=request.headers.get("X-Request-ID"),
+            )
+        )
+        return _result_response(result)
+
+    @app.post(
+        "/api/v1/query",
+        response_model=QuerySuccessResponse,
+        responses={
+            400: {"model": QueryFailureResponse},
+            422: {"model": QueryFailureResponse},
+            502: {"model": QueryFailureResponse},
+            503: {"model": QueryFailureResponse},
+            504: {"model": QueryFailureResponse},
+        },
+    )
     def query(
         body: QueryBody,
         x_request_id: str | None = Header(default=None, alias="X-Request-ID"),
@@ -56,8 +105,13 @@ def create_app(service: QueryService) -> FastAPI:
         result = service.query(
             QueryRequest(question=body.question, request_id=x_request_id)
         )
-        if not isinstance(result, QuerySuccess):
-            raise RuntimeError("T2 只支持成功响应")
+        return _result_response(result)
+
+    return app
+
+
+def _result_response(result: QueryResult) -> JSONResponse:
+    if isinstance(result, QuerySuccess):
         return JSONResponse(
             status_code=200,
             content=QuerySuccessResponse(
@@ -69,5 +123,13 @@ def create_app(service: QueryService) -> FastAPI:
                 truncated=result.truncated,
             ).model_dump(mode="json"),
         )
-
-    return app
+    if isinstance(result, QueryFailure):
+        return JSONResponse(
+            status_code=_HTTP_STATUS_BY_ERROR[result.error_code],
+            content=QueryFailureResponse(
+                request_id=result.request_id,
+                error_code=result.error_code,
+                error_message=result.error_message,
+            ).model_dump(mode="json"),
+        )
+    raise RuntimeError("查询服务返回未知结果")
