@@ -42,6 +42,7 @@ query_api → online_query
 
 ```text
 tests/query_api/test_app.py
+tests/query_api/test_main.py
 ```
 
 ## 运行链路
@@ -229,6 +230,9 @@ error_message
 
 删除 API Adapter 文件、测试和 FastAPI 依赖即可；现有 Python 调用入口、数据库和评测链路不受影响。
 
-## 设计状态
+## 实现状态
 
-已根据 `docs/specs/query-api.md` 确认，无待决策项，进入实现阶段。
+- T1、T2、T3、T4 的代码实现已完成，并分别提交。
+- `src/query_api/app.py` 的应用工厂、成功响应、请求校验和错误映射已由确定性测试覆盖。
+- `src/query_api/main.py` 已复用现有 LLM、数据库和 Online Query 组装逻辑；测试同时验证真实服务对象能够进入现有查询链路。
+- API 测试与原有测试全量通过；真实 `.env` HTTP 查询尚未执行，原因是该步骤会向配置中的真实 LLM 发送问题和上下文，并访问真实数据库，需要单独授权。

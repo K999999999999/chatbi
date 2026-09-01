@@ -10,6 +10,10 @@ ChatBI 是面向业务数据查询的 Domain AI Engine（领域 AI 引擎），�
 
 负责把自然语言问题转换为安全 SQL、执行数据库查询并返回结果。这是当前第一个需要设计和实现的业务模块。
 
+### Query API Adapter（查询接口适配层）
+
+负责把 HTTP JSON 请求转换为现有 Online Query 请求，并把查询结果转换为 HTTP JSON 响应。它不重复 Prompt、LLM、SQL Guard 或数据库执行逻辑，也不负责认证、限流和审计。
+
 ### Evaluation（评测）
 
 负责使用标准测试集调用同一条 Online Query 链路，比较生成 SQL 与标准 SQL 的执行结果，并输出评测数据。它不参与用户在线请求。
@@ -21,7 +25,7 @@ flowchart TB
     InternalCaller["当前内部调用方<br/>Python / Tests"] --> Service
     ExternalCaller["未来外部应用"] -.-> Gateway
     Gateway["API Gateway（未来）<br/>认证、限流、审计"] -.-> API
-    API["API Adapter（未来）"] -.-> Service
+    API["API Adapter（当前）"] --> Service
 
     subgraph OnlineQuery["Online Query（在线查询模块）"]
         Service["OnlineQueryService<br/>统一查询入口"] --> Context["加载结构与指标上下文"]
@@ -90,6 +94,16 @@ flowchart TB
         Database -->|"6. 返回数据或错误"| Service
     end
 
+    subgraph QueryAPI["src/query_api：HTTP 接口适配层"]
+        APIInit["__init__.py<br/>公开 create_app"]
+        APIApp["app.py<br/>HTTP/Pydantic 模型、路由、结果转换"]
+        APIMain["main.py<br/>组装真实服务和 API 入口"]
+
+        APIInit --> APIApp
+        APIMain --> APIApp
+        APIApp -->|"调用现有入口"| Service
+    end
+
     Tables --> Context
     Columns --> Context
     Relationships --> Context
@@ -117,10 +131,12 @@ flowchart TB
     subgraph Tests["tests：正确性证据"]
         OnlineTests["tests/online_query<br/>在线查询单元与数据库集成测试"]
         EvaluationTests["tests/evaluation<br/>案例、运行、报告和入口测试"]
+        QueryAPITests["tests/query_api<br/>API 请求、错误和组装测试"]
     end
 
     OnlineTests -. "验证" .-> Service
     EvaluationTests -. "验证" .-> Runner
+    QueryAPITests -. "验证" .-> APIApp
 ```
 
 箭头表示主要运行顺序和依赖方向，不表示每个文件都直接调用下一个文件。
@@ -220,16 +236,20 @@ erDiagram
 
 节点属于 Online Query 模块内部，不自动等同于顶级模块。最终节点 Contract 和代码落位在 Online Query Module Spec 确认后进入 Implementation Design。
 
+通过 HTTP 调用时，先经过 Query API Adapter，再进入同一条 Online Query 主链路。
+
 ## 外部能力边界
 
 - PostgreSQL：保存业务数据和物理结构事实。
 - LLM：提出 SQL 候选，不决定业务真相、权限和安全。
 - 静态知识文件：当前为 Online Query 提供结构和指标上下文。
+- Query API Adapter：当前提供同步 HTTP JSON 接口，只做协议转换。
 - API Gateway：未来位于 ChatBI 外部边界，负责认证、限流、审计和流量治理；核心模块不绑定具体网关产品。
 
 ## 稳定约束
 
 - Online Query 只能通过只读数据库身份访问 `mart_sales`。
+- Query API Adapter 只能调用现有 Online Query 公开入口，不复制查询逻辑。
 - Evaluation 必须复用正式 Online Query 链路，不维护另一套 SQL 生成逻辑。
 - RAG 未来只能替换上下文获取方式，不能改变指标事实和 SQL 安全边界。
 - 网关接入不能把认证信息、平台 SDK 或流量治理逻辑写入核心业务链路。
@@ -240,6 +260,7 @@ erDiagram
 - 结构导出辅助脚本已存在。
 - Online Query Module Spec 与 Implementation Design 已确认。
 - Online Query 已实现，Software Test 与真实 PostgreSQL 集成测试已通过。
+- Query API Adapter 已实现，提供 `/health` 和 `/api/v1/query`；API 确定性测试已通过。
 - Evaluation 已实现并复用正式 Online Query 链路；20 条真实 LLM 标准评测全部通过，JSON 数据报告和 Markdown 总结报告已提交。
 - 旧版扁平 POC 链路及其重复测试已删除。
 - 正式 Offline Build 模块尚未实现。

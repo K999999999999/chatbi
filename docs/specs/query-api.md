@@ -140,10 +140,13 @@ API 对请求体解析失败时，也必须返回上述 `QueryFailure` 形状，
 
 - 至少一次真实 HTTP 请求完成“HTTP 问题 -> Online Query -> SQL Guard -> PostgreSQL -> JSON 结果”闭环。
 
-## 实现设计阶段再决定
+## 实现状态
 
-- FastAPI 文件和目录落位。
-- `OnlineQueryService` 的实例组装和配置读取方式。
-- FastAPI/uvicorn 的精确依赖版本。
-- 测试客户端、启动命令和本地服务端口。
-- 未来 Streamlit 页面是否通过 HTTP 调用 API。
+- API Adapter 已落位于 `src/query_api/`。
+- `app.py` 提供应用工厂、请求/响应模型、路由和错误映射。
+- `main.py` 组装现有 `LangChainSQLGenerator`、`PsycopgQueryExecutor` 和 `OnlineQueryService`。
+- FastAPI 运行依赖已写入 `pyproject.toml`，具体解析版本由 `uv.lock` 锁定。
+- API 确定性测试与原有 Online Query、Evaluation 回归测试已通过。
+- 使用真实 `.env` 的 HTTP 到 LLM、SQL Guard 和 PostgreSQL 闭环尚未执行，需要单独授权真实上游调用和只读数据库查询。
+
+未来 Streamlit 页面是否通过 HTTP 调用 API，仍不属于本次实现范围。
