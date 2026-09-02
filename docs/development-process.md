@@ -57,7 +57,7 @@
 
 ## 当前项目位置
 
-更新时间：2026-08-31
+更新时间：2026-09-02
 
 | 阶段 | 状态 | 依据 |
 |---|---|---|
@@ -68,13 +68,13 @@
 | Design Review（设计审查） | 已完成 | `docs/designs/online-query.md` 中的设计检查结果 |
 | Task Split（任务拆分） | 已完成 | `docs/designs/online-query.md` 中的开发任务清单 |
 | Implementation（编码实现） | 已完成 | T1 至 T5 已实现并分别提交 |
-| Test / Evaluation（测试与评估） | 已完成 | Software Test（74 passed）、真实 PostgreSQL 集成测试（5 passed）和 20 条真实 LLM 标准回归评测均已通过；基线报告已提交 |
+| Test / Evaluation（测试与评估） | 已完成 | Software Test（89 passed、6 skipped、42 个 subtests）、真实 PostgreSQL 集成测试和 20 条真实 LLM 标准回归评测均已通过；三条 Streamlit 手工业务验收通过；基线报告已提交 |
 | Code Review（代码审查） | 已完成 | 整体审查修复未知函数绕过后通过，独立只读审查 PASS |
-| Integration / Release（集成与发布） | POC 已完成 | 应用版本为 `0.1.0`；本地应用 Tag 为 `v0.1.0`，数据库基线 Tag 为 `db-v1.0.0`；未 Push（推送）远程 |
+| Integration / Release（集成与发布） | POC 已完成并冻结 | 应用版本仍为 `0.1.0`（POC）；功能冻结点为 Git 提交 `34ec587`；数据库基线 Tag 为 `db-v1.0.0`；未 Push（推送）远程 |
 
 当前下一步：
 
-> POC 已完成。进入下一个模块前，先确认新的业务需求和 Contract（契约）；不把 `0.1.0` POC 描述为 Production Ready（生产可用）。
+> 当前 POC 已完成并冻结。Streamlit 继续作为当前入口，正式前端不是下一步必做项；等生产化需求明确后，再按现有 Query API 契约决定是否开发正式前端。继续开发其他模块前，仍需先确认新的业务需求和 Contract（契约）；不把 `0.1.0` POC 描述为 Production Ready（生产可用）。
 
 ## 维护规则
 

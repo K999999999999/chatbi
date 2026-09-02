@@ -14,9 +14,9 @@ ChatBI 是面向业务数据查询的 Domain AI Engine（领域 AI 引擎），�
 
 负责把 HTTP JSON 请求转换为现有 Online Query 请求，并把查询结果转换为 HTTP JSON 响应。它不重复 Prompt、LLM、SQL Guard 或数据库执行逻辑，也不负责认证、限流和审计。
 
-### Streamlit POC（验证页面）
+### Streamlit（当前 POC / 内部入口）
 
-负责通过 HTTP 调用 Query API Adapter，验证自然语言查询的输入、结果展示和错误提示。它是当前内部验证入口，不直接连接 LLM 或数据库；正式前端仍属于后续范围。
+负责通过 HTTP 调用 Query API Adapter，完成自然语言查询的输入、结果展示和错误提示。它是当前 POC 和内部使用入口，不直接连接 LLM 或数据库。正式前端不是当前必需项；生产化时可以按同一 HTTP API 契约替换页面。
 
 ### Evaluation（评测）
 
@@ -257,7 +257,7 @@ erDiagram
 - LLM：提出 SQL 候选，不决定业务真相、权限和安全。
 - 静态知识文件：当前为 Online Query 提供结构和指标上下文。
 - Query API Adapter：当前提供同步 HTTP JSON 接口，只做协议转换。
-- Streamlit POC：当前用于内部验证，只通过 HTTP 调用 API。
+- Streamlit：当前用于 POC 和内部使用，只通过 HTTP 调用 API；未来正式前端可以复用同一 API 契约。
 - API Gateway：未来位于 ChatBI 外部边界，负责认证、限流、审计和流量治理；核心模块不绑定具体网关产品。
 
 ## 稳定约束
@@ -276,7 +276,8 @@ erDiagram
 - Online Query Module Spec 与 Implementation Design 已确认。
 - Online Query 已实现，Software Test 与真实 PostgreSQL 集成测试已通过。
 - Query API Adapter 已实现，提供 `/health` 和 `/api/v1/query`；API 确定性测试已通过。
-- Streamlit POC 页面已实现，提供问题输入、结果展示和受控错误提示。
+- Streamlit 页面已实现，提供问题输入、结果展示和受控错误提示，并通过三条手工业务验收。
 - Evaluation 已实现并复用正式 Online Query 链路；20 条真实 LLM 标准评测全部通过，JSON 数据报告和 Markdown 总结报告已提交。
 - 旧版扁平 POC 链路及其重复测试已删除。
 - 正式 Offline Build 模块尚未实现。
+- 正式前端 UI 不是当前下一步必做项，继续使用 Streamlit，待生产化需求明确后再决定。

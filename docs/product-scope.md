@@ -15,6 +15,7 @@
 - 当前运行方式为同步、单次问答。
 - 提供同步 HTTP API Adapter（接口适配层）：`POST /api/v1/query` 和 `GET /health`。
 - 提供 Streamlit POC 页面，通过 HTTP API 验证查询交互。
+- 当前继续使用 Streamlit 作为 POC 和内部使用入口；正式前端不是当前必需项。
 - 使用 `src/evaluation/eval_cases.json` 作为开发期标准评测集。
 
 ## 业务与安全约束
@@ -31,7 +32,7 @@
 - 自动化 Offline Build 模块。
 - 多轮对话和复杂分析 Agent。
 - SQL 自动修复和多模型投票。
-- 正式前端 UI、API Gateway、登录、限流、审计和生产运维。
+- React、Vue 或其他正式前端 UI（等生产化需求明确后再做）、API Gateway、登录、限流、审计和生产运维。
 - 多数据源、多 Schema 和多租户。
 
 ## 当前验收目标
