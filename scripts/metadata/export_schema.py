@@ -8,15 +8,18 @@
         ↓
     tables.json / columns.json / relationships.json
 
-它不读取 DOMAIN_SPEC、ANALYTICAL_MODEL 或 Semantic Layer（语义层）来
-补充业务描述；表和字段描述只能来自 PostgreSQL COMMENT（注释）。
-数据库连接期间只执行 SELECT，不创建、修改或删除数据库对象及数据。
+columns.json 中已有的 value_examples（字段值示例）是本地补充信息；
+重导出时会严格校验并保留它们。它不读取 DOMAIN_SPEC、ANALYTICAL_MODEL
+或 Semantic Layer（语义层）来补充业务描述；表和字段描述只能来自
+PostgreSQL COMMENT（注释）。数据库连接期间只执行 SELECT，不创建、修改
+或删除数据库对象及数据。
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Iterable
@@ -48,6 +51,64 @@ DEFAULT_OUTPUT_DIR = ROOT / "src" / "structure" / "generated"
 
 class MetadataExportError(RuntimeError):
     """Schema Metadata（结构元数据）无法满足当前导出契约。"""
+
+
+ColumnIdentity = tuple[str, str, str]
+
+
+def load_column_value_examples(
+    columns_path: Path,
+) -> dict[ColumnIdentity, tuple[str, ...]]:
+    """读取并校验已有 columns.json 中的字段值示例。"""
+
+    if not columns_path.exists():
+        return {}
+
+    try:
+        records = json.loads(columns_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise MetadataExportError("已有 columns.json 无法读取") from exc
+
+    if not isinstance(records, list):
+        raise MetadataExportError("已有 columns.json 必须是 JSON 数组")
+
+    examples_by_column: dict[ColumnIdentity, tuple[str, ...]] = {}
+    seen_columns: set[ColumnIdentity] = set()
+    for record in records:
+        if not isinstance(record, dict):
+            raise MetadataExportError("已有 columns.json 的记录必须是 JSON 对象")
+        identity = _column_identity(record)
+        if identity in seen_columns:
+            raise MetadataExportError("已有 columns.json 存在重复字段")
+        seen_columns.add(identity)
+
+        if "value_examples" not in record:
+            continue
+        values = record["value_examples"]
+        if not isinstance(values, list):
+            raise MetadataExportError("value_examples 必须是字符串数组")
+
+        normalized: list[str] = []
+        for value in values:
+            if not isinstance(value, str) or not value.strip():
+                raise MetadataExportError("value_examples 不能包含空值")
+            normalized.append(value.strip())
+        if len(set(normalized)) != len(normalized):
+            raise MetadataExportError("value_examples 不能包含重复值")
+        if normalized:
+            examples_by_column[identity] = tuple(normalized)
+
+    return examples_by_column
+
+
+def _column_identity(record: Mapping[str, Any]) -> ColumnIdentity:
+    values: list[str] = []
+    for field in ("schema_name", "table_name", "column_name"):
+        value = record.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise MetadataExportError(f"已有 columns.json 缺少有效的 {field}")
+        values.append(value.strip())
+    return values[0], values[1], values[2]
 
 
 @dataclass(frozen=True)
@@ -507,11 +568,16 @@ def project_tables(model: CanonicalSchema) -> list[dict[str, Any]]:
     ]
 
 
-def project_columns(model: CanonicalSchema) -> list[dict[str, Any]]:
-    """将统一模型投影为 columns.json。"""
+def project_columns(
+    model: CanonicalSchema,
+    value_examples_by_column: Mapping[ColumnIdentity, tuple[str, ...]] | None = None,
+) -> list[dict[str, Any]]:
+    """将统一模型投影为 columns.json，并保留已有字段值示例。"""
 
-    return [
-        {
+    examples = {} if value_examples_by_column is None else value_examples_by_column
+    records: list[dict[str, Any]] = []
+    for column in model.columns:
+        record: dict[str, Any] = {
             "schema_name": column.schema_name,
             "table_name": column.table_name,
             "column_name": column.column_name,
@@ -525,8 +591,14 @@ def project_columns(model: CanonicalSchema) -> list[dict[str, Any]]:
             "is_identity": column.is_identity,
             "identity_generation": column.identity_generation,
         }
-        for column in model.columns
-    ]
+        value_examples = examples.get(
+            (column.schema_name, column.table_name, column.column_name),
+            (),
+        )
+        if value_examples:
+            record["value_examples"] = list(value_examples)
+        records.append(record)
+    return records
 
 
 def project_relationships(model: CanonicalSchema) -> list[dict[str, Any]]:
@@ -580,12 +652,15 @@ def project_relationships(model: CanonicalSchema) -> list[dict[str, Any]]:
     return records
 
 
-def project_outputs(model: CanonicalSchema) -> dict[str, Any]:
+def project_outputs(
+    model: CanonicalSchema,
+    value_examples_by_column: Mapping[ColumnIdentity, tuple[str, ...]] | None = None,
+) -> dict[str, Any]:
     """从同一个 Canonical Schema Model 生成三份输出对象。"""
 
     return {
         "tables": project_tables(model),
-        "columns": project_columns(model),
+        "columns": project_columns(model, value_examples_by_column),
         "relationships": project_relationships(model),
     }
 
@@ -612,10 +687,13 @@ def export_schema(
 ) -> CanonicalSchema:
     """连接一次 PostgreSQL，提取并写出当前 mart_sales Metadata。"""
 
+    value_examples = load_column_value_examples(
+        output_dir / OUTPUT_FILES["columns"]
+    )
     env = load_env(env_file)
     with psycopg.connect(**connection_config(env)) as conn:
         model = extract_schema(conn)
-    write_outputs(project_outputs(model), output_dir)
+    write_outputs(project_outputs(model, value_examples), output_dir)
     return model
 
 

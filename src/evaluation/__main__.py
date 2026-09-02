@@ -157,7 +157,6 @@ def _default_context_paths() -> dict[str, Path]:
         "tables": DEFAULT_STRUCTURE_DIR / "tables.json",
         "columns": DEFAULT_STRUCTURE_DIR / "columns.json",
         "relationships": DEFAULT_STRUCTURE_DIR / "relationships.json",
-        "column_values": DEFAULT_STRUCTURE_DIR / "column_values.json",
         "metrics": DEFAULT_METRICS_PATH,
     }
 

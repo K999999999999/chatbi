@@ -12,7 +12,7 @@ class ContextTest(unittest.TestCase):
     def setUp(self) -> None:
         load_query_context.cache_clear()
 
-    def test_loads_five_files_and_caches_context(self) -> None:
+    def test_loads_four_files_with_column_value_examples_and_caches_context(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
             structure_dir, metrics_path = self._write_valid_context(root)
@@ -27,10 +27,13 @@ class ContextTest(unittest.TestCase):
             )
             self.assertEqual(
                 first.allowed_columns["mart_sales.fct_sales_order_line"],
-                frozenset({"order_id", "net_sales_amount_cny"}),
+                frozenset(
+                    {"order_id", "net_sales_amount_cny", "order_status"}
+                ),
             )
             self.assertIn("relationships", first.prompt_context)
-            self.assertIn("column_values", first.prompt_context)
+            self.assertIn("value_examples", first.prompt_context)
+            self.assertNotIn("column_values", first.prompt_context)
             self.assertIn("人民币净销售额", first.prompt_context)
 
     def test_missing_file_raises_controlled_error(self) -> None:
@@ -69,6 +72,18 @@ class ContextTest(unittest.TestCase):
             with self.assertRaisesRegex(ContextLoadError, "tables"):
                 load_query_context(structure_dir, metrics_path)
 
+    def test_invalid_column_value_examples_raise_controlled_error(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            structure_dir, metrics_path = self._write_valid_context(root)
+            columns_path = structure_dir / "columns.json"
+            columns = json.loads(columns_path.read_text(encoding="utf-8"))
+            columns[2]["value_examples"] = ["completed", "completed"]
+            columns_path.write_text(json.dumps(columns), encoding="utf-8")
+
+            with self.assertRaisesRegex(ContextLoadError, "value_examples"):
+                load_query_context(structure_dir, metrics_path)
+
     @staticmethod
     def _write_valid_context(root: Path) -> tuple[Path, Path]:
         structure_dir = root / "structure"
@@ -96,6 +111,12 @@ class ContextTest(unittest.TestCase):
                     "table_name": "fct_sales_order_line",
                     "column_name": "net_sales_amount_cny",
                 },
+                {
+                    "schema_name": "mart_sales",
+                    "table_name": "fct_sales_order_line",
+                    "column_name": "order_status",
+                    "value_examples": ["completed"],
+                },
             ],
             "relationships.json": [
                 {
@@ -103,14 +124,6 @@ class ContextTest(unittest.TestCase):
                     "schema_name": "mart_sales",
                     "table_name": "fct_sales_order_line",
                     "column_names": ["order_id"],
-                }
-            ],
-            "column_values.json": [
-                {
-                    "schema_name": "mart_sales",
-                    "table_name": "fct_sales_order_line",
-                    "column_name": "order_status",
-                    "values": ["completed"],
                 }
             ],
         }

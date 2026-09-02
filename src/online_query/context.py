@@ -24,7 +24,7 @@ def load_query_context(
     structure_dir: Path = DEFAULT_STRUCTURE_DIR,
     metrics_path: Path = DEFAULT_METRICS_PATH,
 ) -> QueryContext:
-    """读取五个明确文件，并按路径缓存成功结果。"""
+    """读取四个明确文件，并按路径缓存成功结果。"""
 
     resources = {
         "tables": _load_records(structure_dir / "tables.json", "tables"),
@@ -32,10 +32,6 @@ def load_query_context(
         "relationships": _load_records(
             structure_dir / "relationships.json",
             "relationships",
-        ),
-        "column_values": _load_records(
-            structure_dir / "column_values.json",
-            "column_values",
         ),
         "metrics": _load_records(metrics_path, "metrics"),
     }
@@ -47,6 +43,7 @@ def load_query_context(
     for record in resources["columns"]:
         table = _qualified_table(record, "columns")
         column = _required_text(record, "column_name", "columns")
+        _validate_value_examples(record)
         columns_by_table[table].add(column)
 
     unknown_column_tables = set(columns_by_table) - allowed_tables
@@ -86,6 +83,24 @@ def _load_records(path: Path, label: str) -> list[dict[str, Any]]:
     if any(not isinstance(record, dict) for record in records):
         raise ContextLoadError(f"{label} 的每条记录必须是 JSON 对象")
     return records
+
+
+def _validate_value_examples(record: dict[str, Any]) -> None:
+    if "value_examples" not in record:
+        return
+
+    values = record["value_examples"]
+    if not isinstance(values, list):
+        raise ContextLoadError("columns 的 value_examples 必须是字符串数组")
+
+    normalized: list[str] = []
+    for value in values:
+        if not isinstance(value, str) or not value.strip():
+            raise ContextLoadError("columns 的 value_examples 不能包含空值")
+        normalized.append(value.strip())
+
+    if len(set(normalized)) != len(normalized):
+        raise ContextLoadError("columns 的 value_examples 不能包含重复值")
 
 
 def _qualified_table(record: dict[str, Any], label: str) -> str:

@@ -74,7 +74,7 @@ QueryRequest
 
 ## 上下文规则
 
-- 应用启动时一次性读取 `tables.json`、`columns.json`、`relationships.json`、`column_values.json` 和 `metrics.json`。
+- 应用启动时一次性读取 `tables.json`、`columns.json`、`relationships.json` 和 `metrics.json`；字段典型值位于 `columns.json.value_examples`。
 - 每次查询使用完整结构和完整指标，不做 RAG、向量检索或按问题筛选。
 - 文件修改后通过重启应用重新加载，当前不支持热更新。
 - 文件不存在、JSON 无法解析或内容完全为空时，不允许继续调用 LLM，返回 `CONTEXT_ERROR`。

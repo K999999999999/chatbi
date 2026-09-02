@@ -73,9 +73,8 @@ flowchart TB
 flowchart TB
     subgraph Knowledge["知识与数据文件"]
         Tables["tables.json<br/>有哪些表"]
-        Columns["columns.json<br/>有哪些字段"]
+        Columns["columns.json<br/>字段和典型字段值"]
         Relationships["relationships.json<br/>表之间如何关联"]
-        Values["column_values.json<br/>典型字段值"]
         Metrics["metrics.json<br/>指标定义和业务口径"]
     end
 
@@ -118,7 +117,6 @@ flowchart TB
     Tables --> Context
     Columns --> Context
     Relationships --> Context
-    Values --> Context
     Metrics --> Context
 
     subgraph Evaluation["src/evaluation：离线评测代码"]
@@ -233,7 +231,7 @@ erDiagram
 - `src/structure/generated/`：已生成的结构记录。
 - `src/semantic/metrics.json`：人工维护的指标目录。
 
-现有导出脚本没有覆盖 `column_values.json`、指标校验、统一发布和 RAG 索引，因此定位为辅助脚本，不视为完整业务模块。出现频繁结构变更或正式 RAG 构建需求后，再决定是否模块化。
+现有导出脚本会保留 `columns.json` 中已有的字段值示例，但不负责指标校验、统一发布和 RAG 索引，因此定位为辅助脚本，不视为完整业务模块。出现频繁结构变更或正式 RAG 构建需求后，再决定是否模块化。
 
 ## 在线主链路
 
