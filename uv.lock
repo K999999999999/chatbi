@@ -245,6 +245,7 @@ dependencies = [
     { name = "fastapi", extra = ["standard-no-fastapi-cloud-cli"] },
     { name = "langchain-openai" },
     { name = "psycopg", extra = ["binary"] },
+    { name = "python-dotenv" },
     { name = "sqlglot" },
     { name = "streamlit" },
 ]
@@ -254,6 +255,7 @@ requires-dist = [
     { name = "fastapi", extras = ["standard-no-fastapi-cloud-cli"], specifier = ">=0.115,<1" },
     { name = "langchain-openai", specifier = ">=1,<2" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2,<4" },
+    { name = "python-dotenv", specifier = ">=1,<2" },
     { name = "sqlglot", specifier = ">=27,<31" },
     { name = "streamlit", specifier = ">=1.40,<2" },
 ]

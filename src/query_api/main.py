@@ -1,10 +1,13 @@
 """Query API 的真实服务入口。"""
 
+from .app import create_app
+from .config import load_local_environment
 from src.online_query.database import PsycopgQueryExecutor
 from src.online_query.llm import LangChainSQLGenerator
 from src.online_query.service import OnlineQueryService
 
-from .app import create_app
+
+load_local_environment()
 
 
 def build_service() -> OnlineQueryService:
