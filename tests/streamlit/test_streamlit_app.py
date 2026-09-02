@@ -6,7 +6,12 @@ from unittest import TestCase
 from urllib.error import HTTPError, URLError
 from urllib.request import Request
 
-from src.streamlit_app import QueryAPIError, query_api, rows_as_records
+from src.streamlit_app import (
+    QueryAPIError,
+    format_display_rows,
+    query_api,
+    rows_as_records,
+)
 
 
 class _Response:
@@ -101,6 +106,42 @@ class StreamlitQueryClientTest(TestCase):
             [
                 {"product_name": "产品A", "sales_amount": 10000},
                 {"product_name": "产品B", "sales_amount": 8000},
+            ],
+        )
+
+    def test_display_formats_amount_count_and_percentage(self) -> None:
+        self.assertEqual(
+            format_display_rows(
+                [
+                    "monthly_sales_cny",
+                    "completed_order_count",
+                    "gross_margin",
+                    "product_name",
+                ],
+                [["49766769.735182", 1234567, "0.3567", "产品A"]],
+            ),
+            [
+                {
+                    "monthly_sales_cny": "49,766,769.74",
+                    "completed_order_count": "1,234,567",
+                    "gross_margin": "35.67%",
+                    "product_name": "产品A",
+                }
+            ],
+        )
+
+    def test_display_keeps_null_and_unrecognized_values(self) -> None:
+        self.assertEqual(
+            format_display_rows(
+                ["monthly_sales_cny", "unknown_value", "gross_margin"],
+                [[None, "00123", "unknown"]],
+            ),
+            [
+                {
+                    "monthly_sales_cny": None,
+                    "unknown_value": "00123",
+                    "gross_margin": "unknown",
+                }
             ],
         )
 

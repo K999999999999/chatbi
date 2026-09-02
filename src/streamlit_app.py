@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import json
 import os
 from typing import Any
@@ -72,6 +73,45 @@ def rows_as_records(
     return [dict(zip(columns, row)) for row in rows]
 
 
+def format_display_rows(
+    columns: list[str],
+    rows: list[list[Any]],
+) -> list[dict[str, Any]]:
+    """只格式化页面展示值，不修改 API 返回的原始结果。"""
+    return [
+        {
+            column: format_display_value(column, value)
+            for column, value in zip(columns, row)
+        }
+        for row in rows
+    ]
+
+
+def format_display_value(column: str, value: Any) -> Any:
+    """按结果列名的最小语义约定格式化页面值。"""
+    if value is None:
+        return None
+
+    normalized_column = column.casefold()
+    if normalized_column.endswith("_cny"):
+        return _format_decimal(value, decimals=2)
+    if (
+        normalized_column.endswith("_count")
+        or normalized_column in {"count", "数量"}
+    ):
+        return _format_decimal(value, decimals=0)
+    if (
+        normalized_column == "gross_margin"
+        or normalized_column.endswith(("_rate", "_ratio", "_percent", "_percentage"))
+    ):
+        try:
+            percentage = _as_decimal(value) * 100
+        except (InvalidOperation, ValueError):
+            return value
+        return f"{_format_decimal(percentage, decimals=2)}%"
+    return value
+
+
 def main() -> None:
     """渲染单页查询界面。"""
     import streamlit as st
@@ -135,7 +175,7 @@ def _render_success(st: Any, response: dict[str, Any]) -> None:
     rows = response.get("rows", [])
     if rows:
         st.dataframe(
-            rows_as_records(columns, rows),
+            format_display_rows(columns, rows),
             use_container_width=True,
             hide_index=True,
         )
@@ -162,6 +202,21 @@ def _read_json(data: bytes) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise TypeError("API 响应不是 JSON 对象")
     return payload
+
+
+def _format_decimal(value: Any, *, decimals: int) -> Any:
+    try:
+        number = _as_decimal(value)
+    except (InvalidOperation, ValueError):
+        return value
+
+    quantum = Decimal(1).scaleb(-decimals)
+    rounded = number.quantize(quantum, rounding=ROUND_HALF_UP)
+    return format(rounded, ",.{}f".format(decimals))
+
+
+def _as_decimal(value: Any) -> Decimal:
+    return Decimal(str(value))
 
 
 def _error_from_payload(
