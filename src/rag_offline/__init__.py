@@ -7,6 +7,11 @@ from .documents import (
     RetrievalDocument,
     build_documents,
 )
+from .relationships import (
+    RelationshipGraph,
+    RelationshipGraphError,
+    build_relationship_graph,
+)
 from .sources import (
     DEFAULT_METRICS_PATH,
     DEFAULT_STRUCTURE_DIR,
@@ -21,9 +26,12 @@ __all__ = [
     "DEFAULT_STRUCTURE_DIR",
     "Facts",
     "METRIC_COLLECTION",
+    "RelationshipGraph",
+    "RelationshipGraphError",
     "RetrievalDocument",
     "SourceLoadError",
     "TABLE_COLLECTION",
     "build_documents",
+    "build_relationship_graph",
     "load_facts",
 ]
