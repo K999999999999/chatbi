@@ -1,5 +1,6 @@
 """RAG Offline 三类检索文档生成测试。"""
 
+import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -109,6 +110,23 @@ class DocumentBuildTest(unittest.TestCase):
         )
         self.assertEqual(derived.metadata["depends_on"], ("已完成订单数",))
         self.assertIn("已完成订单数", derived.page_content)
+
+    def test_payload_is_json_serializable_for_vector_store(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            _write_facts(root)
+            facts = load_facts(root, root / "metrics.json")
+
+            document = next(
+                d
+                for d in build_documents(facts)
+                if d.document_id == "metric:已完成订单数"
+            )
+
+        payload = document.to_payload()
+        json.dumps(payload, ensure_ascii=False)
+        self.assertEqual(payload["document_id"], document.document_id)
+        self.assertEqual(payload["metadata"]["depends_on"], [])
 
 
 if __name__ == "__main__":

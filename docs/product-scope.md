@@ -17,6 +17,8 @@
 - 提供 Streamlit POC 页面，通过 HTTP API 验证查询交互。
 - 当前继续使用 Streamlit 作为 POC 和内部使用入口；正式前端不是当前必需项。
 - 使用 `src/evaluation/eval_cases.json` 作为开发期标准评测集。
+- 提供独立的 RAG Offline Build（RAG 离线构建），将已确认事实构建为 TABLE、COLUMN、METRIC 三类 Qdrant 集合和确定性关系图。
+- RAG Offline Build 当前只交付离线资产，不改变现有 Online Query 的静态上下文路径。
 
 ## 业务与安全约束
 
@@ -28,8 +30,7 @@
 
 ## 当前不做
 
-- RAG 和向量数据库。
-- 自动化 Offline Build 模块。
+- Online Retrieval（在线检索）接入、Schema Linking（模式链接）和基于 RAG 的 Prompt 替换。
 - 多轮对话和复杂分析 Agent。
 - SQL 自动修复和多模型投票。
 - React、Vue 或其他正式前端 UI（等生产化需求明确后再做）、API Gateway、登录、限流、审计和生产运维。
@@ -43,11 +44,13 @@
 - 合法只读查询能够执行，危险或越界 SQL 被拒绝。
 - 软件测试、AI 评测和业务验收分别记录结果。
 - 20 条标准测试集能够通过同一条在线查询链路执行和统计。
+- RAG Offline Build 能够构建并重载三个独立集合和关系图；失败时不替换当前已发布资产。
 
 ## 已有基础
 
 - `mart_sales` 建表脚本和本地 PostgreSQL 运行配置。
 - `chatbi_app` 只读授权脚本。
-- 7 条表记录、69 条字段记录、25 条关系记录和 10 条字段值记录。
+- 7 条表记录、69 条字段记录、25 条关系记录；10 个字段包含 `value_examples`。
 - 5 个业务指标定义。
 - 20 条标准评测数据。
+- 已发布的 BGE-M3 / Qdrant 离线检索资产和 5 条固定 Retrieval Evaluation（检索评测）案例。

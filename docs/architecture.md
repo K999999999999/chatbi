@@ -22,6 +22,10 @@ ChatBI 是面向业务数据查询的 Domain AI Engine（领域 AI 引擎），�
 
 负责使用标准测试集调用同一条 Online Query 链路，比较生成 SQL 与标准 SQL 的执行结果，并输出评测数据。它不参与用户在线请求。
 
+### RAG Offline Build（RAG 离线构建）
+
+负责加载并校验表、字段、关系和指标事实，生成 TABLE、COLUMN、METRIC 三类检索文档，使用 BGE-M3 生成向量并写入三个独立 Qdrant 集合，同时交付确定性 Relationship Graph（关系图）。它是同步离线批处理，不参与用户在线请求，也不修改 PostgreSQL。
+
 ## 全局结构
 
 ```mermaid
@@ -58,12 +62,16 @@ flowchart TB
 
     Reference -->|"只读 SQL"| Database
     Database -->|"标准结果集"| ReferenceResult
-    OfflineBuild["Offline Build（暂缓）"] -.-> Structure
-    OfflineBuild -.-> Metrics
+    Structure --> OfflineBuild["RAG Offline Build（当前离线）"]
+    Metrics --> OfflineBuild
+    OfflineBuild --> VectorCollections[("Qdrant<br/>TABLE / COLUMN / METRIC")]
+    OfflineBuild --> RelationshipGraph["Relationship Graph<br/>确定性连接边"]
+    VectorCollections -.-> RAG
+    RelationshipGraph -.-> RAG
     RAG["RAG Context Retrieval（未来）"] -.-> Context
 ```
 
-实线表示当前已经实现的能力，虚线表示未来边界。Evaluation 是离线模块，只复用正式 Online Query，不参与用户在线请求。
+实线表示当前已经实现的能力，虚线表示未来边界。Evaluation 和 RAG Offline Build 都是离线模块；当前 Online Query 尚未接入向量检索。
 
 ## 代码地图
 
@@ -135,6 +143,24 @@ flowchart TB
         Runner -->|"复用正式查询入口"| Service
         Runner --> Reporting
         Reporting --> Reports
+    end
+
+    subgraph RAGOffline["src/rag_offline：RAG 离线构建代码"]
+        RAGSources["sources.py<br/>加载并校验四类事实"]
+        RAGDocuments["documents.py<br/>生成三类检索文档"]
+        RAGEmbedding["embedding.py<br/>BGE-M3 dense / sparse"]
+        RAGStore["qdrant_store.py<br/>三集合写入和重载"]
+        RAGRelations["relationships.py<br/>确定性关系图"]
+        RAGBuild["build.py<br/>版本化构建和发布保护"]
+        RAGEval["evaluation.py<br/>固定检索评测"]
+
+        RAGSources --> RAGDocuments
+        RAGDocuments --> RAGEmbedding
+        RAGEmbedding --> RAGStore
+        RAGSources --> RAGRelations
+        RAGStore --> RAGBuild
+        RAGRelations --> RAGBuild
+        RAGBuild --> RAGEval
     end
 
     subgraph Tests["tests：正确性证据"]
@@ -221,17 +247,16 @@ erDiagram
     DIM_CURRENCY ||--o{ FCT_EXCHANGE_RATE_DAILY : "币种"
 ```
 
-## 暂缓模块
+## 离线检索资产
 
-### Offline Build（离线构建）
+RAG Offline Build 已实现：
 
-当前不建设正式 Offline Build 模块。项目已有：
+- `scripts/metadata/export_schema.py` 仍只是结构导出辅助脚本，不等同于离线构建。
+- `src/structure/generated/` 和 `src/semantic/metrics.json` 是权威输入。
+- `src/rag_offline/` 负责校验事实、生成文档、向量化、写入 Qdrant、构建关系图和发布完整资产。
+- `data/rag/current.json` 是当前发布指针，版本目录保存 manifest 和关系图。
 
-- `scripts/metadata/export_schema.py`：能够从 PostgreSQL 导出表、字段和关系。
-- `src/structure/generated/`：已生成的结构记录。
-- `src/semantic/metrics.json`：人工维护的指标目录。
-
-现有导出脚本会保留 `columns.json` 中已有的字段值示例，但不负责指标校验、统一发布和 RAG 索引，因此定位为辅助脚本，不视为完整业务模块。出现频繁结构变更或正式 RAG 构建需求后，再决定是否模块化。
+Online Retrieval 仍是未来模块；离线资产存在不表示在线查询已经使用 RAG。
 
 ## 在线主链路
 
@@ -253,6 +278,8 @@ erDiagram
 
 - PostgreSQL：保存业务数据和物理结构事实。
 - LLM：提出 SQL 候选，不决定业务真相、权限和安全。
+- BGE-M3：只对离线检索文档正文和检索评测问题生成向量，不决定业务事实。
+- Qdrant：保存版本化 TABLE、COLUMN、METRIC 检索集合，不保存业务真相。
 - 静态知识文件：当前为 Online Query 提供结构和指标上下文。
 - Query API Adapter：当前提供同步 HTTP JSON 接口，只做协议转换。
 - Streamlit：当前用于 POC 和内部使用，只通过 HTTP 调用 API；未来正式前端可以复用同一 API 契约。
@@ -264,6 +291,8 @@ erDiagram
 - Query API Adapter 只能调用现有 Online Query 公开入口，不复制查询逻辑。
 - Streamlit POC 只能调用 Query API，不直接访问 LLM、SQL Guard 或数据库。
 - Evaluation 必须复用正式 Online Query 链路，不维护另一套 SQL 生成逻辑。
+- RAG Offline Build 只能读取已确认 JSON 事实，不得扫描或修改 PostgreSQL。
+- 只有三个集合和关系图全部重载校验通过后，才能替换当前发布指针。
 - RAG 未来只能替换上下文获取方式，不能改变指标事实和 SQL 安全边界。
 - 网关接入不能把认证信息、平台 SDK 或流量治理逻辑写入核心业务链路。
 
@@ -277,5 +306,6 @@ erDiagram
 - Streamlit 页面已实现，提供问题输入、结果展示和受控错误提示，并通过三条手工业务验收。
 - Evaluation 已实现并复用正式 Online Query 链路；20 条真实 LLM 标准评测全部通过，JSON 数据报告和 Markdown 总结报告已提交。
 - 旧版扁平 POC 链路及其重复测试已删除。
-- 正式 Offline Build 模块尚未实现。
+- RAG Offline Build 已实现并发布 BGE-M3 / Qdrant 离线资产；TABLE=7、COLUMN=69、METRIC=5、关系边=9，固定检索评测 5/5 通过。
+- Online Retrieval、Schema Linking 和关系图在线路径查找尚未实现。
 - 正式前端 UI 不是当前下一步必做项，继续使用 Streamlit，待生产化需求明确后再决定。

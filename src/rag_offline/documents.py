@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+import json
 from types import MappingProxyType
 from typing import Any
 
@@ -21,6 +22,19 @@ class RetrievalDocument:
     collection: str
     page_content: str
     metadata: Mapping[str, Any]
+
+    def to_payload(self) -> dict[str, Any]:
+        """转换成可直接作为向量库 payload 的 JSON 对象。"""
+
+        payload = {
+            "document_id": self.document_id,
+            "collection": self.collection,
+            "page_content": self.page_content,
+            "metadata": _jsonable(self.metadata),
+        }
+        # 在边界处验证，避免不可序列化对象进入向量库。
+        json.dumps(payload, ensure_ascii=False)
+        return payload
 
 
 def build_documents(facts: Facts) -> tuple[RetrievalDocument, ...]:
@@ -167,3 +181,13 @@ def _qualified(record: dict[str, Any]) -> str:
 
 def _freeze(metadata: dict[str, Any]) -> Mapping[str, Any]:
     return MappingProxyType(metadata)
+
+
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {key: _jsonable(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, list):
+        return [_jsonable(item) for item in value]
+    return value

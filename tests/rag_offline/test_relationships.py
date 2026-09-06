@@ -2,6 +2,7 @@
 
 import json
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -42,6 +43,52 @@ class RelationshipGraphTest(unittest.TestCase):
         self.assertEqual(edge["target_table"], "dim_date")
         self.assertEqual(edge["source_columns"], ["completion_date_key"])
         self.assertEqual(edge["target_columns"], ["date_key"])
+
+    def test_graph_order_is_independent_of_source_order(self) -> None:
+        facts = load_facts()
+
+        original = build_relationship_graph(facts)
+        reversed_graph = build_relationship_graph(
+            replace(facts, relationships=tuple(reversed(facts.relationships)))
+        )
+
+        self.assertEqual(original.to_dict(), reversed_graph.to_dict())
+
+    def test_generated_graph_preserves_all_sales_date_edges(self) -> None:
+        graph = build_relationship_graph(load_facts())
+
+        date_edges = {
+            tuple(edge["source_columns"])
+            for edge in graph.foreign_keys
+            if edge["source_table"] == "fct_sales_order_line"
+            and edge["target_table"] == "dim_date"
+        }
+
+        self.assertEqual(
+            date_edges,
+            {
+                ("order_date_key",),
+                ("confirmation_date_key",),
+                ("completion_date_key",),
+            },
+        )
+
+    def test_rejects_duplicate_foreign_key_identity(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            _write_facts(root)
+            relationships = json.loads(
+                (root / "relationships.json").read_text(encoding="utf-8")
+            )
+            relationships.append(relationships[0])
+            (root / "relationships.json").write_text(
+                json.dumps(relationships, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            facts = load_facts(root, root / "metrics.json")
+
+            with self.assertRaisesRegex(RelationshipGraphError, "重复关系"):
+                build_relationship_graph(facts)
 
     def test_rejects_unknown_relationship_type(self) -> None:
         with TemporaryDirectory() as directory:

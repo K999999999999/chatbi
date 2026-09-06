@@ -1,6 +1,6 @@
 """Build deterministic Relationship Graph（关系图）from relationships.json."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from .sources import Facts
@@ -128,17 +128,21 @@ def build_relationship_graph(facts: Facts) -> RelationshipGraph:
             index,
         )
         constraint_name = _required_text(relationship, "constraint_name", index)
-        foreign_keys.append(
-            {
-                "relationship_type": "foreign_key",
-                "constraint_name": constraint_name,
-                "source_schema": schema_name,
-                "source_table": table_name,
-                "source_columns": column_names,
-                "target_schema": referenced_schema,
-                "target_table": referenced_table,
-                "target_columns": referenced_columns,
-            }
+        record = {
+            "relationship_type": "foreign_key",
+            "constraint_name": constraint_name,
+            "source_schema": schema_name,
+            "source_table": table_name,
+            "source_columns": column_names,
+            "target_schema": referenced_schema,
+            "target_table": referenced_table,
+            "target_columns": referenced_columns,
+        }
+        _add_unique(
+            foreign_keys,
+            seen_foreign,
+            record,
+            f"{table_key}:{constraint_name}",
         )
 
     return RelationshipGraph(
@@ -269,9 +273,18 @@ def _qualified(record: dict[str, Any]) -> str:
 
 
 def _record_sort_key(record: dict[str, Any]) -> tuple[str, ...]:
-    if "constraint_name" in record:
-        return (record["constraint_name"], record["relationship_type"])
-    return (record.get("index_name", ""), record.get("relationship_type", ""))
+    return (
+        record.get("relationship_type", ""),
+        record.get("schema_name", record.get("source_schema", "")),
+        record.get("table_name", record.get("source_table", "")),
+        record.get("constraint_name", record.get("index_name", "")),
+        ",".join(record.get("column_names", record.get("source_columns", ()))),
+        record.get("referenced_schema", record.get("target_schema", "")),
+        record.get("referenced_table", record.get("target_table", "")),
+        ",".join(
+            record.get("referenced_column_names", record.get("target_columns", ()))
+        ),
+    )
 
 
 def _jsonable(value: Any) -> Any:

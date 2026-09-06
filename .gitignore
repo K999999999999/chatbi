@@ -12,6 +12,7 @@ __pycache__/
 
 data/postgres/
 data/qdrant/
+data/rag/
 models/bge-m3/
 .model-cache/
 model-cache/

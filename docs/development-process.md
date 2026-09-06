@@ -57,24 +57,25 @@
 
 ## 当前项目位置
 
-更新时间：2026-09-02
+更新时间：2026-09-06
 
 | 阶段 | 状态 | 依据 |
 |---|---|---|
 | Requirement（需求确认） | 已完成 | `docs/product-scope.md` |
 | Architecture（架构设计） | 已完成 | `docs/architecture.md` |
 | Online Query Module Spec（在线查询模块规格） | 已完成 | `docs/specs/online-query.md` |
-| Implementation Design（实现设计） | 已完成 | `docs/designs/online-query.md` |
-| Design Review（设计审查） | 已完成 | `docs/designs/online-query.md` 中的设计检查结果 |
-| Task Split（任务拆分） | 已完成 | `docs/designs/online-query.md` 中的开发任务清单 |
-| Implementation（编码实现） | 已完成 | T1 至 T5 已实现并分别提交 |
-| Test / Evaluation（测试与评估） | 已完成 | Software Test（89 passed、6 skipped、42 个 subtests）、真实 PostgreSQL 集成测试和 20 条真实 LLM 标准回归评测均已通过；三条 Streamlit 手工业务验收通过；基线报告已提交 |
-| Code Review（代码审查） | 已完成 | 整体审查修复未知函数绕过后通过，独立只读审查 PASS |
-| Integration / Release（集成与发布） | POC 已完成并冻结 | 应用版本仍为 `0.1.0`（POC）；功能冻结点为 Git 提交 `34ec587`；数据库基线 Tag 为 `db-v1.0.0`；未 Push（推送）远程 |
+| Online Query Implementation（在线查询实现） | 已完成 | T1 至 T5、Query API 和 Streamlit POC 已实现；历史真实 LLM 20 条基线与三条手工业务验收均已通过 |
+| RAG Offline Build Module Spec（RAG 离线构建模块规格） | 已完成 | `docs/specs/rag-offline-build.md` |
+| RAG Offline Implementation Design（RAG 离线构建实现设计） | 已完成 | `docs/designs/rag-offline-build.md` |
+| RAG Offline Task Split（RAG 离线构建任务拆分） | 已完成 | T1 至 T9 均已完成 |
+| RAG Offline Implementation（RAG 离线构建实现） | 已完成 | TABLE / COLUMN / METRIC 文档、BGE-M3 dense+sparse、Qdrant 版本集合、关系图和原子发布均已实现 |
+| Test / Evaluation（测试与评估） | 已完成 | 全仓 128 passed、6 skipped、42 subtests passed；真实 Qdrant 构建为 TABLE=7、COLUMN=69、METRIC=5、关系边=9；固定 Retrieval Evaluation 为 5/5；PostgreSQL 数据与只读权限未变化 |
+| Code Review（代码审查） | 已完成 | Contract、范围、失败保护、Secret、依赖锁和差异检查均已复核 |
+| Integration / Release（集成与发布） | 本地 POC 资产已发布 | 应用仍为 `0.1.0`（POC）；RAG Offline 资产 `20260906-bge-m3-v1` 已发布到本地持久化 Qdrant 和 `data/rag`；生成资产不进入 Git，未 Push（推送）远程 |
 
 当前下一步：
 
-> 当前 POC 已完成并冻结。Streamlit 继续作为当前入口，正式前端不是下一步必做项；等生产化需求明确后，再按现有 Query API 契约决定是否开发正式前端。继续开发其他模块前，仍需先确认新的业务需求和 Contract（契约）；不把 `0.1.0` POC 描述为 Production Ready（生产可用）。
+> Online Query POC 和 RAG Offline Build 已完成。当前离线资产尚未接入 Online Query；下一项若继续，应先确认 Online Retrieval（在线检索）的 Module Spec（模块规格）与接入契约，再实现三路检索、Schema Linking（模式链接）和关系图路径使用。Agent、正式前端、生产级认证与多租户仍不在当前完成范围内；不把 `0.1.0` POC 描述为 Production Ready（生产可用）。
 
 ## 维护规则
 
