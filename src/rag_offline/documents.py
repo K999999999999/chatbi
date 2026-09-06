@@ -128,6 +128,9 @@ def _build_metric_documents(
 ) -> tuple[RetrievalDocument, ...]:
     documents: list[RetrievalDocument] = []
     for metric in metrics:
+        # page_content 是用于 Embedding（向量化）的检索文本，只保留指标识别和
+        # 业务语义。公式、物理来源和时间口径属于结构化业务事实，放入 metadata，
+        # 避免技术细节干扰语义召回，同时保留给在线程序和 LLM 使用。
         lines = [f"指标名：{metric['name']}"]
         aliases = metric["aliases"]
         if aliases:
@@ -138,24 +141,6 @@ def _build_metric_documents(
         definition = metric["definition"]
         if definition:
             lines.append(f"指标定义：{definition}")
-        formula = metric["formula"]
-        if formula:
-            lines.append(f"业务公式：{formula}")
-        data_source = metric["data_source"]
-        if data_source:
-            lines.append(f"数据来源：{data_source}")
-        time_field = metric["time_field"]
-        if time_field:
-            lines.append(f"时间口径：{time_field}")
-        filters = metric["filters"]
-        if filters:
-            lines.append(f"过滤条件：{'；'.join(filters)}")
-        depends_on = metric["depends_on"]
-        if depends_on:
-            lines.append(f"依赖指标：{'、'.join(depends_on)}")
-        notes = metric["notes"]
-        if notes:
-            lines.append(f"注意事项：{notes}")
         documents.append(
             RetrievalDocument(
                 document_id=f"metric:{metric['name']}",
@@ -165,9 +150,15 @@ def _build_metric_documents(
                     {
                         "doc_type": "METRIC",
                         "metric_name": metric["name"],
+                        "aliases": aliases,
                         "level": level,
-                        "data_source": data_source,
-                        "depends_on": depends_on,
+                        "definition": definition,
+                        "formula": metric["formula"],
+                        "data_source": metric["data_source"],
+                        "time_field": metric["time_field"],
+                        "filters": metric["filters"],
+                        "depends_on": metric["depends_on"],
+                        "notes": metric["notes"],
                     }
                 ),
             )

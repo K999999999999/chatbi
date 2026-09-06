@@ -98,18 +98,42 @@ class DocumentBuildTest(unittest.TestCase):
         completed = next(
             d for d in documents if d.metadata["metric_name"] == "已完成订单数"
         )
+        self.assertIn("指标名：已完成订单数", completed.page_content)
+        self.assertIn("别名：完成订单数", completed.page_content)
         self.assertIn("指标定义：已完成状态的订单数量。", completed.page_content)
-        self.assertIn("过滤条件：f.order_status = 'completed'", completed.page_content)
+        self.assertNotIn("业务公式：", completed.page_content)
+        self.assertNotIn("COUNT(DISTINCT f.order_id)", completed.page_content)
+        self.assertNotIn("数据来源：", completed.page_content)
+        self.assertNotIn("时间口径：", completed.page_content)
+        self.assertNotIn("过滤条件：", completed.page_content)
+        self.assertNotIn("依赖指标：", completed.page_content)
+        self.assertNotIn("注意事项：", completed.page_content)
         self.assertNotIn("sql_template", completed.page_content)
         self.assertNotIn("SELECT COUNT(*)", completed.page_content)
         self.assertNotIn("sql_template", completed.metadata)
+        self.assertEqual(completed.metadata["aliases"], ("完成订单数",))
+        self.assertEqual(completed.metadata["definition"], "已完成状态的订单数量。")
+        self.assertEqual(completed.metadata["formula"], "COUNT(DISTINCT f.order_id)")
+        self.assertEqual(
+            completed.metadata["data_source"],
+            "mart_sales.fct_sales",
+        )
+        self.assertEqual(
+            completed.metadata["time_field"],
+            "fct_sales.completion_date_key -> dim_date.full_date",
+        )
+        self.assertEqual(
+            completed.metadata["filters"],
+            ("f.order_status = 'completed'",),
+        )
         self.assertEqual(completed.metadata["depends_on"], ())
+        self.assertEqual(completed.metadata["notes"], "按 order_id 去重。")
 
         derived = next(
             d for d in documents if d.metadata["metric_name"] == "销售金额"
         )
         self.assertEqual(derived.metadata["depends_on"], ("已完成订单数",))
-        self.assertIn("已完成订单数", derived.page_content)
+        self.assertNotIn("已完成订单数", derived.page_content)
 
     def test_payload_is_json_serializable_for_vector_store(self) -> None:
         with TemporaryDirectory() as directory:
@@ -126,6 +150,15 @@ class DocumentBuildTest(unittest.TestCase):
         payload = document.to_payload()
         json.dumps(payload, ensure_ascii=False)
         self.assertEqual(payload["document_id"], document.document_id)
+        self.assertEqual(payload["metadata"]["aliases"], ["完成订单数"])
+        self.assertEqual(
+            payload["metadata"]["formula"],
+            "COUNT(DISTINCT f.order_id)",
+        )
+        self.assertEqual(
+            payload["metadata"]["time_field"],
+            "fct_sales.completion_date_key -> dim_date.full_date",
+        )
         self.assertEqual(payload["metadata"]["depends_on"], [])
 
 

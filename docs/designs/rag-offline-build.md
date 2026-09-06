@@ -4,7 +4,7 @@
 
 - Module Spec（模块规格）：`docs/specs/rag-offline-build.md`
 - Runtime Mode（运行模式）：同步 Batch（批处理）
-- 当前状态：已实现并完成验证，待提交
+- 当前状态：Metric Document 分层调整已实现、测试通过并已发布新资产，待提交
 - 最后更新：2026-09-06
 
 ## 2. 变更背景与边界
@@ -45,6 +45,19 @@
 - `page_content`：唯一进入 Embedding 的内容。
 - `metadata`：结构化身份和过滤字段，不参与 Embedding。
 - `to_payload()`：在向量库边界转换为可 JSON 序列化对象。
+
+### 4.1.1 Metric Document 字段分层
+
+Metric 的 `page_content` 是 Retrieval Text（检索正文），只包含指标名、别名、指标层级和业务定义等用于识别指标的语义内容，不包含公式、物理数据来源、时间字段、固定过滤条件、依赖指标和注意事项。
+
+Metric 的 `metadata` 必须完整保存规范化事实源中的指标属性：
+
+```text
+doc_type、metric_name、aliases、level、definition、formula、
+data_source、time_field、filters、depends_on、notes
+```
+
+同一字段同时存在于 `page_content` 和 `metadata` 不代表两份业务事实：`page_content` 负责向量语义召回，`metadata` 负责精确识别、程序裁决和下游上下文组装。一次 Metric 检索返回命中文档的两部分，不新增第二个 Metric 向量集合。
 
 ### 4.2 EmbeddingProvider
 
@@ -118,7 +131,7 @@ data/rag/
 |---|---|---|
 | T1 | 冻结 Module Spec、三逻辑集合和产物契约 | 已完成 |
 | T2 | 加载和校验表、字段、关系、指标事实 | 已完成并复核 |
-| T3 | 生成三类 RetrievalDocument | 已完成并修复 payload 序列化 |
+| T3 | 生成三类 RetrievalDocument，并分离 Metric 检索正文与结构化事实 | 已完成并通过离线文档测试 |
 | T4 | 生成确定性 Relationship Graph | 已完成并补强排序、重复关系、多日期边测试 |
 | T5 | BGE-M3 dense + sparse Embedding Adapter | 已完成 |
 | T6 | Qdrant 三集合创建、批量写入、过滤与重载检索 | 已完成 |
@@ -132,8 +145,9 @@ Software Test（软件测试）、AI Evaluation（AI 评测）和 Business Accep
 
 - Software Test：RAG Offline 33 项确定性测试通过；全仓回归为 128 passed、6 skipped、42 subtests passed。
 - Dependency Check（依赖检查）：`uv lock --check` 和 `python -m compileall -q src` 通过。
-- Real Integration（真实集成）：正式构建 `20260906-bge-m3-v1` 已发布；Qdrant 三个集合重新连接、精确计数和检索通过，数量为 TABLE=7、COLUMN=69、METRIC=5，关系边=9。
+- Real Integration（真实集成）：正式构建 `20260906-bge-m3-v2` 已发布；Qdrant 三个集合重新连接、精确计数和检索通过，数量为 TABLE=7、COLUMN=69、METRIC=5，关系边=9。v1 旧资产保留，不覆盖。
 - AI Evaluation：BGE-M3 固定 5 案例当前为 5/5；字段案例使用候选表过滤，毛利率案例要求同时召回两个直接依赖。
+- Metric Document 契约：Metric 检索正文只保留识别语义；公式、data_source、time_field、filters、depends_on 和 notes 在 metadata 中完整保留。
 - Business Acceptance：构建成功摘要为 `PUBLISHED`，三个集合重载均为 true；PostgreSQL 仍为 7 张表和原始行数，`chatbi_app` 保持 7 表 SELECT、0 表写权限。
 
 ## 8. 后续边界
