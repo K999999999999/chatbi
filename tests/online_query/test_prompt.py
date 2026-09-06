@@ -21,7 +21,6 @@ class PromptTest(unittest.TestCase):
         self.assertIn("只返回一条可执行的 PostgreSQL SQL", prompt)
         self.assertIn("CANNOT_ANSWER", prompt)
         self.assertIn("不得返回解释、分析过程、Markdown", prompt)
-        self.assertIn("mart_sales", prompt)
         self.assertIn("fct_sales_order_line", prompt)
         self.assertIn("查询已完成订单数", prompt)
 

@@ -1,6 +1,7 @@
 """Online Query（在线查询）主链路编排。"""
 
 from collections.abc import Callable
+import logging
 from uuid import uuid4
 
 from .context import load_query_context
@@ -12,11 +13,13 @@ from .contracts import (
     QueryRequest,
     QueryResult,
     QuerySuccess,
+    RetrievalProvider,
+    RetrievalStatus,
     SQLGenerator,
 )
 from .database import DatabaseError, DatabaseQueryTimeout
 from .prompt import build_prompt
-from .sql_guard import validate_sql
+from .sql_guard import validate_candidate_scope, validate_sql
 
 
 _ERROR_MESSAGES = {
@@ -29,6 +32,16 @@ _ERROR_MESSAGES = {
     QueryErrorCode.QUERY_TIMEOUT: "数据库查询超时",
 }
 
+_LOGGER = logging.getLogger(__name__)
+
+_BUSINESS_RETRIEVAL_FAILURES = {
+    RetrievalStatus.NO_TABLE_HIT,
+    RetrievalStatus.NO_REQUIRED_COLUMN_HIT,
+    RetrievalStatus.NO_METRIC_HIT,
+    RetrievalStatus.PARTIAL_UNREACHABLE,
+    RetrievalStatus.AMBIGUOUS,
+}
+
 
 class OnlineQueryService:
     """同步执行一次自然语言查询完整链路。"""
@@ -39,11 +52,13 @@ class OnlineQueryService:
         query_executor: QueryExecutor,
         *,
         context_loader: Callable[[], QueryContext] = load_query_context,
+        retrieval_provider: RetrievalProvider | None = None,
     ) -> None:
         self._sql_generator = sql_generator
         self._query_executor = query_executor
         self._context: QueryContext | None = None
         self._context_failed = False
+        self._retrieval_provider = retrieval_provider
         try:
             self._context = context_loader()
         except Exception:
@@ -58,10 +73,16 @@ class OnlineQueryService:
         ):
             return _failure(request_id, QueryErrorCode.INVALID_REQUEST)
 
-        if self._context_failed or self._context is None:
+        context, context_error = self._resolve_context(
+            request.question.strip(),
+            request_id,
+        )
+        if context_error is not None:
+            return _failure(request_id, context_error)
+        if context is None:
             return _failure(request_id, QueryErrorCode.CONTEXT_ERROR)
 
-        prompt = build_prompt(request.question.strip(), self._context)
+        prompt = build_prompt(request.question.strip(), context)
         try:
             candidate = self._sql_generator.generate(prompt)
         except Exception:
@@ -71,7 +92,12 @@ class OnlineQueryService:
             return _failure(request_id, QueryErrorCode.CANNOT_ANSWER)
 
         try:
-            validated_sql = validate_sql(candidate, self._context)
+            validate_candidate_scope(candidate, context)
+        except Exception:
+            return _failure(request_id, QueryErrorCode.SQL_REJECTED)
+
+        try:
+            validated_sql = validate_sql(candidate, context)
         except Exception:
             return _failure(request_id, QueryErrorCode.SQL_REJECTED)
 
@@ -93,6 +119,58 @@ class OnlineQueryService:
             truncated=data.truncated,
         )
 
+    def _resolve_context(
+        self,
+        question: str,
+        request_id: str,
+    ) -> tuple[QueryContext | None, QueryErrorCode | None]:
+        if self._retrieval_provider is None:
+            if self._context_failed or self._context is None:
+                return None, QueryErrorCode.CONTEXT_ERROR
+            return self._context, None
+
+        try:
+            result = self._retrieval_provider.retrieve(question)
+        except Exception as exc:
+            _LOGGER.warning(
+                "Online Retrieval fallback: request_id=%s status=PROVIDER_EXCEPTION "
+                "error_type=%s",
+                request_id,
+                type(exc).__name__,
+            )
+            return self._static_context_or_error()
+
+        if result.status == RetrievalStatus.SUCCESS:
+            try:
+                return result.to_query_context(), None
+            except ValueError as exc:
+                _LOGGER.warning(
+                    "Online Retrieval fallback: request_id=%s status=SUCCESS "
+                    "asset_version=%s error_type=%s",
+                    request_id,
+                    result.asset_version,
+                    type(exc).__name__,
+                )
+                return self._static_context_or_error()
+        if result.status in _BUSINESS_RETRIEVAL_FAILURES:
+            return None, QueryErrorCode.CANNOT_ANSWER
+        _LOGGER.warning(
+            "Online Retrieval fallback: request_id=%s status=%s asset_version=%s "
+            "reason=%s",
+            request_id,
+            result.status.value,
+            result.asset_version,
+            _fallback_reason(result.warnings),
+        )
+        return self._static_context_or_error()
+
+    def _static_context_or_error(
+        self,
+    ) -> tuple[QueryContext | None, QueryErrorCode | None]:
+        if self._context_failed or self._context is None:
+            return None, QueryErrorCode.CONTEXT_ERROR
+        return self._context, None
+
 
 def _resolve_request_id(request_id: str | None) -> tuple[str, bool]:
     if request_id is None:
@@ -101,6 +179,15 @@ def _resolve_request_id(request_id: str | None) -> tuple[str, bool]:
         return str(uuid4()), False
     normalized = request_id.strip()
     return (normalized or str(uuid4())), True
+
+
+def _fallback_reason(warnings: tuple[str, ...]) -> str:
+    """只保留已有 warning 的短摘要，避免日志写入完整 Prompt 或 Secret。"""
+
+    if not warnings:
+        return "unspecified"
+    reason = warnings[0].replace("\r", " ").replace("\n", " ").strip()
+    return reason[:256] or "unspecified"
 
 
 def _failure(request_id: str, error_code: QueryErrorCode) -> QueryFailure:

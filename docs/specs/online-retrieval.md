@@ -96,13 +96,19 @@ Schema Linking 和指标 RAG 保持独立：
 
 ~~~
 Schema Linking：查哪里
-TABLE → COLUMN → JOIN → Dynamic Schema
+TABLE → COLUMN → Dynamic Schema
 
 指标 RAG：怎么算
 METRIC → Indicator Context
+
+两路合并
+→ 必需资源检查
+→ Anchor
+→ Relationship Graph Join
+→ Dynamic Context
 ~~~
 
-两条路线可以并行执行，最后由在线编排层合并结果。
+TABLE 和 METRIC 可以并行执行；COLUMN 必须等待 TABLE 候选表后执行。两条路线在必需资源检查后由在线编排层合并。
 
 ### 4.2 表先于列
 
@@ -159,7 +165,7 @@ V1 是同步、无副作用、单请求检索：
 
 一次请求中的 TABLE、COLUMN、METRIC、Relationship Graph 和 Embedding Model 必须来自同一个 asset_version。
 
-请求开始时只读取一次当前发布指针，并根据该指针加载一个不可变资产快照。三条检索路线和图计算在本次请求期间都只能使用这份快照，不允许各路线分别重新读取当前指针。任一资产缺失、版本不一致或 Embedding Model 不匹配时，返回 ASSET_UNAVAILABLE。
+请求开始时只读取一次当前发布指针，并根据该指针取得或创建一个按 `build_id` 缓存的不可变资产快照。三条检索路线和图计算在本次请求期间都只能使用这份快照，不允许各路线分别重新读取当前指针；发布新资产后无需重启即可在新请求使用新版本。任一资产缺失、版本不一致或 Embedding Model 不匹配时，返回 ASSET_UNAVAILABLE。
 
 不允许出现：
 
@@ -176,17 +182,21 @@ Graph 使用 V1
 ~~~
 用户问题
     │
-    ├── Schema Linking 路线
-    │       ├── TABLE Dense Retrieval
-    │       ├── Anchor Table Selection
-    │       ├── COLUMN Dense Retrieval（候选表过滤）
-    │       ├── BFS Shortest Join Path
-    │       └── Dynamic Schema
+    ├── TABLE Dense Retrieval
+    │       └── COLUMN Dense Retrieval（候选表过滤）
     │
-    └── 指标路线
-            ├── METRIC Dense Retrieval
-            ├── 保留完整指标文档
-            └── Indicator Context
+    └── METRIC Dense Retrieval（独立）
+            └── 保留命中指标文档
+
+TABLE / COLUMN / METRIC
+    ↓
+按请求类型检查必需资源
+    ↓
+Anchor Table Selection
+    ↓
+BFS Shortest Join Path
+    ↓
+Dynamic Schema + Indicator Context
 
 Dynamic Schema + Indicator Context + 用户问题
     ↓
@@ -199,22 +209,20 @@ AST Parser / SQL Guard
 
 ### 6.1 路由执行顺序
 
-Schema Linking 路线采用课程顺序：
+以下是实际执行顺序；6.2 至 6.7 是各节点的职责说明，不再表示 Anchor 必须早于 COLUMN 或 METRIC 执行。
 
 ~~~
 TABLE
+  └→ COLUMN
+
+METRIC（独立）
+→ 必需资源检查
 → Anchor
-→ COLUMN
 → JOIN
-→ Dynamic Schema
+→ Dynamic Schema + Indicator Context
 ~~~
 
-METRIC 路线与 Schema Linking 路线独立，可并行执行：
-
-~~~
-METRIC
-→ Indicator Context
-~~~
+其中 TABLE 和 METRIC 可以并行；COLUMN 只在 TABLE 候选范围内执行。
 
 ### 6.2 步骤一：TABLE Retrieval
 
@@ -308,6 +316,16 @@ metadata
 
 字段业务描述和值示例继续来自离线文档。V1 不额外建立业务规则评分器。
 
+必需字段的 V1 定义：
+
+- 指标公式中确定性解析出的物理字段属于必需字段。
+- 指标 `filters` 中确定性解析出的物理字段属于必需字段。
+- 指标 `time_field` 的来源字段、日期过滤字段属于必需字段。
+- Relationship Graph 为 Join 补入的键字段属于结构字段，但不能替代业务字段命中。
+- 用户问题召回的其他业务字段属于候选字段，由 LLM 在候选范围内组合；Online Retrieval 不声称逐一解析每个自然语言短语。
+
+公式字段使用 Formula Reference Resolver（公式引用解析器）从离线已认证的 `formula` 中确定性提取，不调用 LLM，也不负责生成 SQL 的安全校验。公式无法解析时返回 `ASSET_UNAVAILABLE`；公式引用字段未被 COLUMN 路线有效命中时返回 `NO_REQUIRED_COLUMN_HIT`。
+
 ### 6.5 步骤四：Relationship Graph Join Resolution
 
 输入：
@@ -330,7 +348,7 @@ relationship_graph
 
 必须区分必须表和可选候选表：指标对应的事实表、用户明确要求的维度表属于必须表；其他检索命中的表属于可选候选。必须表不可达时，返回 PARTIAL_UNREACHABLE，由外层 Online Query 映射为 CANNOT_ANSWER，不得进入 LLM SQL 生成。仅可选候选不可达时，丢弃该候选并继续。任何情况下都不得猜测 Join 或通过 Cross Join 强行连接不可达表。
 
-图关系必须保留同一对表之间的全部合法边。BFS 选择路径时不能删除或覆盖多日期等不同语义关系。
+图关系必须保留同一对表之间的全部合法边。BFS 选择路径时不能删除或覆盖多日期等不同语义关系。同长度且语义不同的最短路径，在 `time_field` 等已知条件过滤后仍无法唯一确定时，返回 `AMBIGUOUS`；只有同一 `edge_id` 的重复结果才允许去重。
 
 输出：
 
@@ -362,6 +380,8 @@ completion_date_key → dim_date.full_date
 用户输入的月份、日期或日期范围只是过滤值，后续 SQL 按指标 `time_field` 生成过滤条件，不触发新的日期检索或日期意图分类。
 
 Relationship Graph 仍保留全部合法日期边，BFS 不得因为表已访问就丢失平行关系边；但 V1 不让 LLM 或额外分类器自行改变指标的 `time_field`，也不新增默认 `order_date_key` 规则。
+
+当前 `time_field` 采用 `source_table.source_column -> target_table.filter_column` 表达：左侧用于匹配 Relationship Graph 的来源表和来源列，目标表用于确认日期维度，右侧字段用于生成日期过滤。实际 Join 列必须取自匹配到的 Graph Edge 的 `target_columns`，不能把右侧过滤字段误当成 Join Key。匹配不到关系时返回 `ASSET_UNAVAILABLE`；匹配到多条语义不同关系时返回 `AMBIGUOUS`。
 
 ### 6.7 步骤五：METRIC Retrieval
 
@@ -399,6 +419,13 @@ metric_candidates: list[MetricHit]
 - depends_on 信息。
 
 当前项目的 depends_on 保留为血缘和解释信息。由于现有指标公式已经直接引用实际字段，V1 不要求在线展开依赖指标。
+
+METRIC 检索可以保留 Top-K 作为检索证据，但最终 Indicator Context 只能使用一个确定的指标：
+
+- 规范化后的问题命中唯一指标名或别名时，选择该指标。
+- 没有精确命中且阈值以上只有一个指标时，选择该指标。
+- 没有阈值以上候选时返回 `NO_METRIC_HIT`。
+- 有多个阈值以上候选且无法由名称或别名唯一确定时返回 `AMBIGUOUS`，不把多个指标交给 LLM 选择。
 
 ### 6.8 步骤六：Dynamic Schema Assembly
 
@@ -477,7 +504,7 @@ Online Retrieval 只向下游提供结构、指标上下文和候选资源范围
 ~~~json
 {
   "query": "按销售区域统计已完成订单的毛利率",
-  "asset_version": "20260906-bge-m3-v1",
+  "asset_version": "20260906-bge-m3-v2",
   "config": {
     "table_top_k": 3,
     "column_top_k": 12,
@@ -496,6 +523,8 @@ Online Retrieval 只向下游提供结构、指标上下文和候选资源范围
 - 配置只能调整 V1 已支持的 Top-K 和阈值。
 - 请求不得直接传入任意 Qdrant collection、任意 Schema 或任意数据库表作为过滤条件。
 
+对外 QueryRequest 只暴露 `question` 和可选 `request_id`；`asset_version` 与检索配置由服务内部运行时提供，或仅由受控的测试/评测调用注入。外部调用者不能借此选择任意未发布或未允许的资产。
+
 课程中的 Top-K 和阈值作为 V1 初始值，不代表跨模型、跨资产的绝对正确阈值。真实评测可以调整配置，但必须保留评测记录。
 
 ## 8. 输出契约
@@ -505,7 +534,7 @@ Online Retrieval 只向下游提供结构、指标上下文和候选资源范围
 ~~~json
 {
   "status": "SUCCESS",
-  "asset_version": "20260906-bge-m3-v1",
+  "asset_version": "20260906-bge-m3-v2",
   "tables": [],
   "fields": [],
   "join_path": {
@@ -533,6 +562,7 @@ Online Retrieval 只向下游提供结构、指标上下文和候选资源范围
 - dynamic_schema 是给 Prompt 使用的精简 Schema 文本。
 - indicator_context 是给 Prompt 使用的指标知识文本。
 - retrieval_evidence 用于测试、评估、调试和追踪，不默认完整注入 Prompt。
+- metrics 只包含最终确定的指标；其他 Top-K 指标只能保留在 retrieval_evidence 中。
 - warnings 记录合法但需要下游处理的情况。
 
 ### 8.3 状态
@@ -812,7 +842,9 @@ Candidate Scope Check 只检查 SQL 实际引用的表和列是否属于本次 D
 
 ### 14.7 请求类型与必需资源
 
-V1 用确定性的最小规则区分两类请求：问题经过统一规范化后，命中已发布 Metric 的名称或别名时，按指标类请求处理；没有命中时按实体类请求处理。不增加 LLM 意图分类器。
+V1 用确定性的最小规则区分两类请求：问题经过统一规范化后，命中已发布 Metric 的名称或别名，或出现明确的指标 / 聚合表达时，按指标类请求处理；未命中这些条件时按实体类请求处理。不增加 LLM 意图分类器。
+
+明确的指标 / 聚合表达包括“金额、数量、总额、平均值、占比、率、统计”等有限业务表达。该规则只用于决定 METRIC 是否为必需资源，不负责选择具体指标；具体指标仍必须由 METRIC Retrieval 命中。
 
 | 请求类型 | 必须有效命中的资源 | METRIC 零命中 | 失败行为 |
 |---|---|---|---|
@@ -820,3 +852,22 @@ V1 用确定性的最小规则区分两类请求：问题经过统一规范化�
 | 实体类 | TABLE、COLUMN、必要 Join | 正常 | 任一必需资源缺失，直接 CANNOT_ANSWER，不调用 LLM；不需要指标上下文 |
 
 这里的“必须有效命中”指对应检索路线确实返回合法候选；Join Key 可以由已验证 Relationship Graph 补入，但不能替代业务 COLUMN 命中。只有 Qdrant、Embedding、资产加载等技术失败才允许回退静态 Schema。
+
+### 14.8 指标选择与公式字段
+
+- METRIC 的 Top-K 结果只作为检索证据；最终 Indicator Context 只能包含一个确定指标。
+- 规范化问题命中唯一指标名或别名时优先选择该指标；没有精确命中时，只有一个候选超过阈值才选择；多个候选超过阈值且不能唯一确定时返回 `AMBIGUOUS`。
+- 指标公式和 `filters` 引用的物理字段，以及 `time_field` 字段，属于必需 COLUMN；引用由确定性 Formula Reference Resolver 提取，不调用 LLM。
+- 公式或 `filters` 无法解析时返回 `ASSET_UNAVAILABLE`；任一必需字段未被 COLUMN 路线命中时返回 `NO_REQUIRED_COLUMN_HIT`。
+
+### 14.9 日期关系与多路径
+
+- `time_field` 的左侧用于匹配 Graph Edge 的来源表和来源列，右侧字段用于日期过滤；实际 Join Key 必须来自 Graph Edge 的 `target_columns`。
+- 匹配不到时间关系时返回 `ASSET_UNAVAILABLE`；匹配到多条语义不同关系，或存在无法由已知条件唯一确定的同长度路径时返回 `AMBIGUOUS`。
+- 只有同一 `edge_id` 的重复结果可以去重；语义不同的平行边必须保留。
+
+### 14.10 Asset Snapshot 生命周期
+
+- 每个请求只读取一次 `current.json`。
+- Runtime 可以按 `build_id` 缓存不可变快照；同一请求的 TABLE、COLUMN、METRIC、Relationship Graph 和 Embedding Model 必须来自同一快照。
+- `asset_version` 和检索配置不是外部用户可任意指定的 QueryRequest 字段。
