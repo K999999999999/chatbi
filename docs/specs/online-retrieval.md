@@ -430,7 +430,7 @@ filters
 notes
 ~~~
 
-没有匹配指标时，Indicator Context 为空，不视为技术失败。
+实体类请求没有匹配指标时，Indicator Context 为空，不视为技术失败；指标类请求没有匹配指标时，按必需资源缺失返回 CANNOT_ANSWER。
 
 PARTIAL_UNREACHABLE 和 AMBIGUOUS 不是可忽略告警：如果涉及必须表或安全生成 SQL 所需的关系，外层不得继续进入 LLM SQL 生成。只有可选候选不可达时，才可以丢弃该候选并继续。
 
