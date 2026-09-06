@@ -1,0 +1,804 @@
+
+# Online Retrieval Module Spec
+
+## 1. 模块目标
+
+Online Retrieval（在线检索）负责根据用户问题，从已发布的 RAG Offline Build（RAG 离线构建）资产中取得最小、可解释、可用于 SQL 生成的业务上下文。
+
+本模块解决：
+
+~~~
+用户问题
+→ 应该查询哪些表
+→ 应该使用哪些字段
+→ 表之间如何合法连接
+→ 指标应该按什么口径计算
+~~~
+
+本模块不生成 SQL、不执行 SQL、不修改数据库，也不改变已确认的指标口径。
+
+## 2. 设计依据与事实源
+
+### 2.1 优先级
+
+设计和实现遵循以下优先级：
+
+~~~
+Architecture / Domain / Existing Contract
+→ 本规格
+→ 项目参考课程
+→ 具体实现
+~~~
+
+课程用于确定 V1 的最小处理方法；课程示例与当前项目事实冲突时，以当前项目事实和上层 Contract（契约）为准。
+
+### 2.2 权威事实源
+
+在线模块使用已发布且经过校验的离线资产，不直接重新读取未发布的中间文件：
+
+- TABLE、COLUMN、METRIC 三个逻辑向量集合。
+- 已验证的 Relationship Graph（关系图）。
+- 资产版本和发布状态。
+- 指标事实源 src/semantic/metrics.json 经过离线构建后的对应文档。
+
+当前项目的原始业务事实仍然是：
+
+- src/structure/generated/tables.json
+- src/structure/generated/columns.json
+- src/structure/generated/relationships.json
+- src/semantic/metrics.json
+
+向量和图是派生产物，不反向修改这些事实源。
+
+### 2.3 课程参考
+
+V1 采用以下项目课程中已经验证的主链路：
+
+- 第 13 课：Schema Linking 拆分为表召回、字段匹配和 Join 路径推理。
+- 第 14 课：Embedding 和余弦相似度的 Dense Retrieval（稠密向量检索）。
+- 第 16 课：先召回表，再在候选表范围内匹配字段，并输出精简 Schema。
+- 第 17 课：根据查询意图选择锚表，使用 BFS Shortest Path（BFS 最短路径）计算 Join。
+- 第 18 课：把表、字段、Join 组装为 Dynamic Schema（动态 Schema），失败时保留静态 Schema fallback。
+- 第 19 课：指标使用独立语义检索；指标文档包含定义、公式、时间口径和依赖信息。
+- 第 20 课：Schema Linking 负责“查哪里”，指标 RAG 负责“怎么算”，两路上下文最后一起进入 Prompt。
+
+## 3. 范围
+
+### 3.1 本模块负责
+
+1. 在单个已发布资产版本上执行一次同步在线检索。
+2. 执行 TABLE Dense Retrieval（表级稠密检索）。
+3. 根据候选表限制 COLUMN Dense Retrieval（字段级稠密检索）。
+4. 独立执行 METRIC Dense Retrieval（指标级稠密检索）。
+5. 使用确定性 Relationship Graph 计算 BFS 最短合法 Join 路径。
+6. 生成 Dynamic Schema 和 Indicator Context（指标上下文）。
+7. 返回独立的路由证据、结构化结果、状态和告警。
+8. 为外层 Prompt Builder 提供失败状态，使其能够回退到当前静态上下文。
+
+### 3.2 不负责
+
+- 不生成 SQL。
+- 不执行 SQL。
+- 不调用 SQL AST Parser 或 SQL Guard；AST 校验位于 LLM 生成 SQL 之后。
+- 不修改 PostgreSQL、Qdrant 或任何业务数据。
+- 不增加权限系统、租户系统或登录系统。
+- 不实现强制包含、强制排除、条件触发规则引擎。
+- 不执行指标递归依赖展开。
+- 不执行第二次 LLM 调用来选择表、字段或指标。
+- V1 不实现 Sparse、Hybrid、Reranker 或 Multi-vector 检索。
+- 不支持把不可连通的事实表强行 Join 成一条 SQL。
+
+## 4. 核心设计原则
+
+### 4.1 两条检索路线
+
+Schema Linking 和指标 RAG 保持独立：
+
+~~~
+Schema Linking：查哪里
+TABLE → COLUMN → JOIN → Dynamic Schema
+
+指标 RAG：怎么算
+METRIC → Indicator Context
+~~~
+
+两条路线可以并行执行，最后由在线编排层合并结果。
+
+### 4.2 表先于列
+
+COLUMN 检索必须使用 TABLE 路线返回的候选表作为范围过滤条件：
+
+~~~
+TABLE candidates
+→ table_name 范围
+→ COLUMN candidates
+~~~
+
+不得默认在整个 COLUMN 集合中无约束搜索。
+
+### 4.3 指标不参与候选表过滤
+
+V1 中 METRIC 路线不受 TABLE 结果限制，也不反过来修改 COLUMN 的候选表范围。
+
+指标检索只负责提供：
+
+- 指标定义。
+- 完整公式。
+- 数据来源。
+- 时间字段。
+- 过滤条件。
+- depends_on 血缘信息。
+
+指标依赖不触发第二轮检索，不递归扩展。
+
+### 4.4 程序负责结构，模型负责组合
+
+程序确定：
+
+- 候选表范围。
+- 候选字段范围。
+- 合法 Join 路径和 Join 条件。
+- 指标的权威公式、时间口径和过滤条件。
+
+LLM 只在这份精简上下文中组合 SQL。LLM 输出仍然是不可信候选，必须经过后续 AST Guard。
+
+## 5. 运行模式
+
+### 5.1 模式
+
+V1 是同步、无副作用、单请求检索：
+
+~~~
+一次请求
+→ 读取一个不可变资产快照
+→ 执行三条逻辑路线和图计算
+→ 返回一个结果包
+~~~
+
+### 5.2 资产一致性
+
+一次请求中的 TABLE、COLUMN、METRIC、Relationship Graph 和 Embedding Model 必须来自同一个 asset_version。
+
+请求开始时只读取一次当前发布指针，并根据该指针加载一个不可变资产快照。三条检索路线和图计算在本次请求期间都只能使用这份快照，不允许各路线分别重新读取当前指针。任一资产缺失、版本不一致或 Embedding Model 不匹配时，返回 ASSET_UNAVAILABLE。
+
+不允许出现：
+
+~~~
+TABLE 使用 V1
+COLUMN 使用 V2
+Graph 使用 V1
+~~~
+
+资产必须在进入在线请求前处于已发布状态。未完成或半成品资产不得被在线模块读取。
+
+## 6. 处理链路
+
+~~~
+用户问题
+    │
+    ├── Schema Linking 路线
+    │       ├── TABLE Dense Retrieval
+    │       ├── Anchor Table Selection
+    │       ├── COLUMN Dense Retrieval（候选表过滤）
+    │       ├── BFS Shortest Join Path
+    │       └── Dynamic Schema
+    │
+    └── 指标路线
+            ├── METRIC Dense Retrieval
+            ├── 保留完整指标文档
+            └── Indicator Context
+
+Dynamic Schema + Indicator Context + 用户问题
+    ↓
+LLM 生成 SQL
+    ↓
+AST Parser / SQL Guard
+    ↓
+数据库执行
+~~~
+
+### 6.1 路由执行顺序
+
+Schema Linking 路线采用课程顺序：
+
+~~~
+TABLE
+→ Anchor
+→ COLUMN
+→ JOIN
+→ Dynamic Schema
+~~~
+
+METRIC 路线与 Schema Linking 路线独立，可并行执行：
+
+~~~
+METRIC
+→ Indicator Context
+~~~
+
+### 6.2 步骤一：TABLE Retrieval
+
+输入：
+
+~~~
+query: str
+asset_version: str
+~~~
+
+执行：
+
+- 只查询 TABLE 逻辑集合。
+- V1 使用 Dense 向量。
+- 按相似度降序返回 Top-K。
+- 应用可配置的表级阈值。
+
+输出：
+
+~~~
+table_candidates: list[TableHit]
+~~~
+
+每个 TableHit 至少包含：
+
+~~~
+document_id
+schema_name
+table_name
+table_role
+score
+rank
+metadata
+~~~
+
+### 6.3 步骤二：Anchor Selection
+
+Anchor Table（锚表）只作为 Join 计算的内部输入，不作为独立的外部检索路线。
+
+V1 使用轻量确定性规则：
+
+- 命中指标时，优先选择指标对应的事实表。
+- 未命中指标时，选择 TABLE Retrieval 得分最高的表。
+- 没有唯一最高候选或无法确定锚表时，返回 AMBIGUOUS，不调用 LLM 猜测。
+- 不调用 LLM 选择锚表。
+
+输出必须记录 anchor_table 和 anchor_reason，便于调试、评估和回归。
+
+锚表的作用是确定：
+
+- Join 路径起点。
+- 后续 SQL 生成时的主语义表。
+- 可能的 FROM 方向。
+
+### 6.4 步骤三：COLUMN Retrieval
+
+输入：
+
+~~~
+query
+candidate_tables
+asset_version
+~~~
+
+执行：
+
+- 只查询 COLUMN 逻辑集合。
+- 使用 schema_name = mart_sales 等精确元数据过滤。
+- 使用 table_name IN candidate_tables 过滤。
+- V1 使用 Dense 向量。
+- 应用可配置的字段级阈值和 Top-K。
+
+输出：
+
+~~~
+column_candidates: list[ColumnHit]
+~~~
+
+每个 ColumnHit 至少包含：
+
+~~~
+document_id
+schema_name
+table_name
+column_name
+data_type
+score
+rank
+metadata
+~~~
+
+字段业务描述和值示例继续来自离线文档。V1 不额外建立业务规则评分器。
+
+### 6.5 步骤四：Relationship Graph Join Resolution
+
+输入：
+
+~~~
+anchor_table
+candidate_tables
+relationship_graph
+~~~
+
+执行：
+
+1. 从锚表出发，对每个候选目标表执行 BFS。
+2. 返回经过表数量最少的合法路径。
+3. 合并多个目标表共享的路径。
+4. 删除重复 Join Edge，但不合并语义不同的边。
+5. 使用图边中已验证的列、方向、Join 类型和复合键条件。
+6. 如果最短路径包含确定的中间桥接表，将该表加入路径和 Dynamic Schema。
+7. 如果目标表不可达，标记 unreachable_tables，不得强行生成 Join。
+
+必须区分必须表和可选候选表：指标对应的事实表、用户明确要求的维度表属于必须表；其他检索命中的表属于可选候选。必须表不可达时，返回 PARTIAL_UNREACHABLE，由外层 Online Query 映射为 CANNOT_ANSWER，不得进入 LLM SQL 生成。仅可选候选不可达时，丢弃该候选并继续。任何情况下都不得猜测 Join 或通过 Cross Join 强行连接不可达表。
+
+图关系必须保留同一对表之间的全部合法边。BFS 选择路径时不能删除或覆盖多日期等不同语义关系。
+
+输出：
+
+~~~
+join_path: {
+    anchor_table,
+    paths,
+    joins,
+    unreachable_tables
+}
+~~~
+
+### 6.6 多日期处理
+
+多日期不通过额外的日期关键词推理模块解决。
+
+对于指标问题：
+
+~~~
+使用匹配指标文档中的 time_field
+~~~
+
+当前项目指标统一使用：
+
+~~~
+completion_date_key → dim_date.full_date
+~~~
+
+对于非指标问题：
+
+- Relationship Graph 中的多条合法日期边全部保留。
+- 用户明确指定日期角色时，使用对应的已验证关系。
+- 用户没有指定日期角色且存在多个同等可能的日期关系时，返回 AMBIGUOUS，不得让 LLM 猜测。
+- 不因为 BFS 路径长度相同而任意选择一条，也不得用“访问过表即跳过”的简单逻辑丢失平行关系边。
+- 不新增默认 order_date_key 规则。
+
+这保证图事实完整，也避免把未定义的业务日期语义误判为确定结果。
+
+### 6.7 步骤五：METRIC Retrieval
+
+输入：
+
+~~~
+query
+asset_version
+~~~
+
+执行：
+
+- 只查询 METRIC 逻辑集合。
+- 不使用 TABLE 结果做过滤。
+- V1 使用 Dense 向量。
+- 执行一次指标检索。
+- 不执行递归依赖展开。
+- 不因 depends_on 再发起第二次指标向量检索。
+
+输出：
+
+~~~
+metric_candidates: list[MetricHit]
+~~~
+
+指标文档必须包含足够完整的：
+
+- 指标名称和别名。
+- 业务定义。
+- 完整公式。
+- 数据来源。
+- 时间字段。
+- 过滤条件。
+- 注意事项。
+- depends_on 信息。
+
+当前项目的 depends_on 保留为血缘和解释信息。由于现有指标公式已经直接引用实际字段，V1 不要求在线展开依赖指标。
+
+### 6.8 步骤六：Dynamic Schema Assembly
+
+Dynamic Schema 由以下内容组成：
+
+~~~
+候选表
+相关字段
+字段简短描述
+表角色
+Join Path
+Join Condition
+必要的结构说明
+~~~
+
+Dynamic Schema 是一个精简的候选上下文，不是最终 SQL，也不是新的业务事实源。
+
+### 6.9 步骤七：Indicator Context Assembly
+
+Indicator Context 由匹配的指标文档构成：
+
+~~~
+指标名称
+业务定义
+完整公式
+数据来源
+time_field
+filters
+notes
+~~~
+
+没有匹配指标时，Indicator Context 为空，不视为技术失败。
+
+PARTIAL_UNREACHABLE 和 AMBIGUOUS 不是可忽略告警：如果涉及必须表或安全生成 SQL 所需的关系，外层不得继续进入 LLM SQL 生成。只有可选候选不可达时，才可以丢弃该候选并继续。
+
+### 6.10 步骤八：交给 LLM
+
+外层 Prompt Builder 使用：
+
+~~~
+用户问题
++ Dynamic Schema
++ Indicator Context
++ 已有 Prompt 约束和 Few-shot（如启用）
+~~~
+
+只进行一次 SQL 生成调用。
+
+Prompt 必须明确要求 LLM 只能使用本次检索输出的 Dynamic Schema 中的表、列和 Join 关系，不得使用全量数据库中未被检索选中的资源。生成 SQL 后，外层 Online Query 在进入 AST Guard 前执行 Candidate Scope Check，检查 SQL 实际引用的表和列是否都属于本次 Dynamic Schema。检查失败时不得继续进入 AST Guard 或数据库执行。
+
+Online Retrieval 不负责：
+
+- 决定最终 SQL 的具体 SELECT 表达式。
+- 生成 WHERE 的自然语言解释。
+- 生成不存在的指标口径。
+- 绕过 Dynamic Schema 使用全量未知字段；Candidate Scope Check 由外层程序强制执行。
+
+### 6.11 步骤九：AST Guard
+
+SQL 生成后进入既有 SQL 安全边界：
+
+~~~
+LLM SQL
+→ Candidate Scope Check
+→ AST Parse
+→ SQL Guard
+→ 数据库执行
+~~~
+
+Online Retrieval 只向下游提供结构、指标上下文和候选资源范围，不代替 Candidate Scope Check 或 SQL Guard。
+
+## 7. 输入契约
+
+### 7.1 请求对象
+
+~~~json
+{
+  "query": "按销售区域统计已完成订单的毛利率",
+  "asset_version": "20260906-bge-m3-v1",
+  "config": {
+    "table_top_k": 3,
+    "column_top_k": 12,
+    "metric_top_k": 3,
+    "table_score_threshold": 0.30,
+    "column_score_threshold": 0.25,
+    "metric_score_threshold": 0.30
+  }
+}
+~~~
+
+### 7.2 输入约束
+
+- query 必须是非空字符串。
+- asset_version 必须指向已发布资产；未提供时，在请求开始时读取一次当前默认发布版本。
+- 配置只能调整 V1 已支持的 Top-K 和阈值。
+- 请求不得直接传入任意 Qdrant collection、任意 Schema 或任意数据库表作为过滤条件。
+
+课程中的 Top-K 和阈值作为 V1 初始值，不代表跨模型、跨资产的绝对正确阈值。真实评测可以调整配置，但必须保留评测记录。
+
+## 8. 输出契约
+
+### 8.1 结果对象
+
+~~~json
+{
+  "status": "SUCCESS",
+  "asset_version": "20260906-bge-m3-v1",
+  "tables": [],
+  "fields": [],
+  "join_path": {
+    "anchor_table": null,
+    "paths": [],
+    "joins": [],
+    "unreachable_tables": []
+  },
+  "metrics": [],
+  "dynamic_schema": "",
+  "indicator_context": "",
+  "retrieval_evidence": {
+    "table_hits": [],
+    "column_hits": [],
+    "metric_hits": []
+  },
+  "warnings": []
+}
+~~~
+
+### 8.2 输出语义
+
+- tables、fields、metrics 是精简后的候选资源，不是原始全量资源；tables 和 fields 同时构成下游 Candidate Scope Check 的允许范围。
+- join_path 是程序根据确定性图计算出的结构结果。
+- dynamic_schema 是给 Prompt 使用的精简 Schema 文本。
+- indicator_context 是给 Prompt 使用的指标知识文本。
+- retrieval_evidence 用于测试、评估、调试和追踪，不默认完整注入 Prompt。
+- warnings 记录合法但需要下游处理的情况。
+
+### 8.3 状态
+
+| 状态 | 含义 | 下游行为 |
+|---|---|---|
+| SUCCESS | Dynamic Schema 已成功组装 | 正常进入 Prompt |
+| NO_TABLE_HIT | 表路线没有有效候选 | 外层可回退静态 Schema |
+| NO_METRIC_HIT | 没有有效指标命中 | 不注入 Indicator Context |
+| PARTIAL_UNREACHABLE | 必须表不可连通，或存在需要外层处理的不可达资源 | 映射为 CANNOT_ANSWER 时不得进入 LLM；可选候选不可达时丢弃并继续 |
+| AMBIGUOUS | 当前上下文存在无法安全裁决的歧义 | 不进入 LLM SQL 生成，由外层要求澄清或返回无法回答 |
+| ASSET_UNAVAILABLE | 资产不存在、未发布或版本不一致 | 进入技术失败处理 |
+| RETRIEVAL_UNAVAILABLE | Qdrant 或检索服务不可用 | 外层按策略 fallback |
+| EMBEDDING_UNAVAILABLE | 查询向量无法生成 | 外层按策略 fallback |
+| FALLBACK_STATIC_SCHEMA | 外层已切换到静态上下文 | 继续现有 SQL 链路 |
+
+NO_METRIC_HIT 是合法业务分支，不是错误。
+
+## 9. 典型场景
+
+### 9.1 指标查询
+
+~~~text
+问题：按销售区域统计已完成订单的毛利率
+
+TABLE：召回事实表、销售区域维度、日期维度
+COLUMN：只在这些表内匹配区域字段、完成日期字段和必要 Join 字段
+JOIN：BFS 生成事实表到区域维度、日期维度的最短路径
+METRIC：召回毛利率定义和完整公式
+输出：Dynamic Schema + Indicator Context
+~~~
+
+### 9.2 非指标实体查询
+
+~~~text
+问题：列出所有客户
+
+TABLE：召回客户维度
+COLUMN：只匹配客户相关字段
+JOIN：如果不需要订单信息，不主动增加订单表
+METRIC：无命中属于正常情况
+~~~
+
+### 9.3 独立表
+
+~~~text
+问题：对比销售收入和期间费用
+
+销售事实表与费用事实表不可连通
+→ 不强行 Join
+→ 返回 PARTIAL_UNREACHABLE
+→ 外层映射为 CANNOT_ANSWER，不进入 LLM SQL 生成
+~~~
+
+### 9.4 多日期
+
+~~~text
+指标：已完成订单数
+time_field：completion_date_key → dim_date.full_date
+→ 直接使用指标时间口径
+~~~
+
+非指标场景不自行从多条合法日期边中选择一条。
+
+## 10. 失败和恢复
+
+### 10.1 合法零命中
+
+- METRIC 零命中：返回空指标上下文，Schema Linking 仍可继续。
+- TABLE 零命中：返回 NO_TABLE_HIT。
+- COLUMN 零命中：保留候选表，Dynamic Schema 可以标记字段未精确匹配或由外层 fallback。
+
+### 10.2 技术失败
+
+以下情况不是零命中：
+
+- 资产未发布。
+- 资产版本不一致。
+- Qdrant 不可用。
+- Embedding 模型不可用。
+- 返回文档无法反序列化。
+- Relationship Graph 校验失败。
+
+这些情况必须返回明确技术状态，不得伪装成空结果。
+
+### 10.3 静态 Schema fallback
+
+为了保持现有 Online Query 可用：
+
+~~~text
+Online Retrieval 成功
+→ 使用 Dynamic Schema
+
+Online Retrieval 发生合法零命中或技术失败
+→ 外层按状态决定是否回退当前静态结构和指标上下文
+
+PARTIAL_UNREACHABLE 或 AMBIGUOUS
+→ 不回退为可继续生成 SQL 的确定上下文
+→ 外层返回 CANNOT_ANSWER 或要求用户澄清
+~~~
+
+fallback 必须记录实际状态和原因，不允许静默吞掉异常。
+
+## 11. 验收标准
+
+### 11.1 软件测试
+
+至少覆盖：
+
+1. TABLE 只查询 TABLE 集合。
+2. COLUMN 只查询候选表范围。
+3. METRIC 不受候选表范围限制。
+4. METRIC 不触发递归依赖检索。
+5. 指标 time_field 能进入 Indicator Context。
+6. 关系图使用所有已验证关系边。
+7. BFS 返回最短合法路径。
+8. 多个目标表共享路径时 Join 边去重。
+9. 复合键生成完整 Join 条件。
+10. 不可连通表不被强行 Join。
+11. 多日期关系不被错误固定为单一图边。
+12. TABLE、COLUMN、METRIC 使用同一资产版本。
+13. 合法零命中与技术失败状态区分正确。
+14. fallback 由外层触发且保留失败原因。
+15. Online Retrieval 不生成 SQL、不执行数据库操作。
+
+16. Anchor Selection 按 V1 规则输出唯一 anchor_table 和 anchor_reason，无法确定时返回 AMBIGUOUS。
+17. Prompt 明确限制 Dynamic Schema，Candidate Scope Check 能拒绝范围外的表和列。
+18. PARTIAL_UNREACHABLE 和 AMBIGUOUS 不进入 LLM SQL 生成。
+
+### 11.2 AI Evaluation
+
+使用独立评测验证：
+
+- Table Recall。
+- Column Recall。
+- Metric Recall。
+- Candidate Table Filter Correctness。
+- Join Path Accuracy。
+- Unreachable Table Detection。
+- Dynamic Schema Completeness。
+- Indicator Context Completeness。
+- 多日期关系保留正确性。
+- Dense-only 与后续 Hybrid 的效果差异。
+
+现有离线检索评测必须继续通过。Online Retrieval 接入后，使用现有 20 条标准问题与静态上下文基线进行前后对比，至少记录：
+
+- SQL Execution Accuracy。
+- 业务结果正确性。
+- Schema 召回失败率。
+- fallback 触发率。
+- 平均和 P95 延迟。
+
+### 11.3 Business Acceptance
+
+业务验收重点不是“检索到了多少文档”，而是：
+
+- SQL 只使用与问题相关的表和字段。
+- 指标公式和时间口径没有被模型改写。
+- Join 条件来自真实关系事实。
+- 无法确定时不会生成看似正确但口径错误的 SQL。
+- 检索故障不会破坏现有可用链路。
+
+## 12. 后续优化，不进入 V1
+
+以下能力保留为评测驱动的后续演进，不进入当前实现：
+
+- Sparse / Hybrid Retrieval。
+- RRF 或其他融合策略。
+- Reranker。
+- 指标递归依赖展开。
+- 指标依赖参与候选表范围扩展。
+- 针对具体 Bad Case 的定向业务规则。
+- 多日期自然语言角色识别。
+- 多轮 LLM Schema Resolution。
+- 多 SQL 复杂分析和 Plan-and-Execute Agent。
+
+## 13. 实现前置条件与开发顺序
+
+本规格确认后，按以下顺序进入实现：
+
+1. 设计 Online Retrieval 的领域结果对象和状态对象。
+2. 设计 Qdrant 适配器和资产快照加载接口。
+3. 实现 TABLE 检索及候选表过滤。
+4. 实现 COLUMN 检索。
+5. 实现 METRIC 独立检索。
+6. 实现 Anchor 和 BFS Join Resolver。
+7. 实现 Dynamic Schema 与 Indicator Context 组装。
+8. 编写确定性软件测试。
+9. 执行 Retrieval Evaluation。
+10. 进行独立设计审查和 Diff 审查。
+11. 通过后再接入 Online Query Prompt Builder。
+12. 最后执行完整 SQL 回归、AI Evaluation 和业务验收。
+
+在设计审查通过前，不改变现有 Online Query 默认静态上下文路径。
+
+## 14. 设计审查补充约束（V1 最终版）
+
+本节对前文的宽泛描述作最终约束；实现、测试和下游集成均以本节为准。本节不新增检索路线，只明确继续、停止和校验条件。
+
+### 14.1 必须表与不可达表
+
+- 指标对应的事实表、用户明确要求的维度表属于必须表。
+- 其他检索命中的表属于可选候选。
+- 必须表无法通过已验证关系连接时，返回 PARTIAL_UNREACHABLE，由外层 Online Query 映射为 CANNOT_ANSWER，不得进入 LLM SQL 生成。
+- 仅可选候选不可达时，丢弃该候选并继续。
+- 任何情况下都不得猜测 Join，也不得通过 Cross Join 强行连接不可达表。
+
+### 14.2 日期关系消歧
+
+V1 不实现复杂的多日期自然语言角色识别，只处理指标 time_field 和用户明确指定的日期角色。
+
+- 指标文档中的 time_field 是指标问题的权威日期口径。
+- 用户明确指定日期角色时，使用对应的已验证关系。
+- 用户没有指定日期角色且存在多个同等可能的日期关系时，返回 AMBIGUOUS，不得让 LLM 猜测。
+- Relationship Graph 离线保留全部合法日期边；在线 BFS 不得因为表已访问就丢弃语义不同的平行边。
+
+### 14.3 Anchor Table
+
+命中指标时，使用指标文档中的 data_source 确定事实表，并将该事实表作为必须表和 anchor_table。该 data_source 只用于确定指标事实表闭包，不触发递归指标检索，也不扩展无关表。
+
+- 命中指标时，使用指标对应的事实表作为 anchor_table。
+- 未命中指标时，使用 TABLE Retrieval 得分最高的表。
+- 没有唯一最高候选或无法确定锚表时，返回 AMBIGUOUS，不调用 LLM 猜测。
+- Anchor Selection 必须输出 anchor_table 和 anchor_reason。
+
+### 14.4 Dynamic Schema 与 Prompt 约束
+
+Prompt 必须明确要求 LLM 只能使用本次检索输出的 Dynamic Schema 中的表、列和 Join 关系，不得使用全量数据库中未被检索选中的资源。
+
+Dynamic Schema 中的 tables 和 fields 同时构成下游 Candidate Scope Check 的允许范围。该检查由外层 Online Query 在 AST Guard 之前执行：
+
+~~~
+LLM SQL
+→ Candidate Scope Check
+→ AST Parse / SQL Guard
+→ 数据库执行
+~~~
+
+Candidate Scope Check 只检查 SQL 实际引用的表和列是否属于本次 Dynamic Schema，不新增权限系统，也不替代 AST SQL Guard。检查失败时不得进入 AST Guard 或数据库执行。
+
+### 14.5 资产快照一致性
+
+- 请求开始时只读取一次当前发布指针。
+- TABLE、COLUMN、METRIC、Relationship Graph 和 Embedding Model 必须来自同一个 asset_version。
+- 本次请求期间三条检索路线和图计算固定使用这份不可变快照，不允许各路线分别重新读取当前指针。
+- 任一资产缺失、版本不一致或 Embedding Model 不匹配时，返回 ASSET_UNAVAILABLE。
+
+### 14.6 最终 V1 链路
+
+~~~
+加载一致的 RAG 资产快照
+→ Table Retrieval
+→ 候选表内的 Column Retrieval
+→ 独立 Metric Retrieval
+→ Anchor Selection
+→ 确定性 Graph Join Resolution
+→ 日期消歧与不可达检查
+→ Dynamic Schema + Indicator Context
+→ 一次 LLM 生成 SQL
+→ Candidate Scope Check
+→ AST SQL Guard
+→ 执行 SQL
+~~~
