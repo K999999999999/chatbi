@@ -343,7 +343,7 @@ join_path: {
 }
 ~~~
 
-### 6.6 多日期处理
+### 6.6 日期处理
 
 多日期不通过额外的日期关键词推理模块解决。
 
@@ -359,15 +359,9 @@ join_path: {
 completion_date_key → dim_date.full_date
 ~~~
 
-对于非指标问题：
+用户输入的月份、日期或日期范围只是过滤值，后续 SQL 按指标 `time_field` 生成过滤条件，不触发新的日期检索或日期意图分类。
 
-- Relationship Graph 中的多条合法日期边全部保留。
-- 用户明确指定日期角色时，使用对应的已验证关系。
-- 用户没有指定日期角色且存在多个同等可能的日期关系时，返回 AMBIGUOUS，不得让 LLM 猜测。
-- 不因为 BFS 路径长度相同而任意选择一条，也不得用“访问过表即跳过”的简单逻辑丢失平行关系边。
-- 不新增默认 order_date_key 规则。
-
-这保证图事实完整，也避免把未定义的业务日期语义误判为确定结果。
+Relationship Graph 仍保留全部合法日期边，BFS 不得因为表已访问就丢失平行关系边；但 V1 不让 LLM 或额外分类器自行改变指标的 `time_field`，也不新增默认 `order_date_key` 规则。
 
 ### 6.7 步骤五：METRIC Retrieval
 
@@ -546,8 +540,9 @@ Online Retrieval 只向下游提供结构、指标上下文和候选资源范围
 | 状态 | 含义 | 下游行为 |
 |---|---|---|
 | SUCCESS | Dynamic Schema 已成功组装 | 正常进入 Prompt |
-| NO_TABLE_HIT | 表路线没有有效候选 | 外层可回退静态 Schema |
-| NO_METRIC_HIT | 没有有效指标命中 | 不注入 Indicator Context |
+| NO_TABLE_HIT | 表路线没有有效候选 | 对需要表的请求返回 CANNOT_ANSWER，不得用静态 Schema 掩盖业务资源缺失 |
+| NO_REQUIRED_COLUMN_HIT | 必需列没有有效候选 | 返回 CANNOT_ANSWER，不进入 LLM SQL 生成 |
+| NO_METRIC_HIT | 没有有效指标命中 | 指标类请求返回 CANNOT_ANSWER；实体类请求不注入 Indicator Context 并可继续 |
 | PARTIAL_UNREACHABLE | 必须表不可连通，或存在需要外层处理的不可达资源 | 映射为 CANNOT_ANSWER 时不得进入 LLM；可选候选不可达时丢弃并继续 |
 | AMBIGUOUS | 当前上下文存在无法安全裁决的歧义 | 不进入 LLM SQL 生成，由外层要求澄清或返回无法回答 |
 | ASSET_UNAVAILABLE | 资产不存在、未发布或版本不一致 | 进入技术失败处理 |
@@ -555,7 +550,7 @@ Online Retrieval 只向下游提供结构、指标上下文和候选资源范围
 | EMBEDDING_UNAVAILABLE | 查询向量无法生成 | 外层按策略 fallback |
 | FALLBACK_STATIC_SCHEMA | 外层已切换到静态上下文 | 继续现有 SQL 链路 |
 
-NO_METRIC_HIT 是合法业务分支，不是错误。
+NO_METRIC_HIT 仅在实体类请求中是合法业务分支；指标类请求必须命中指标。
 
 ## 9. 典型场景
 
@@ -593,7 +588,7 @@ METRIC：无命中属于正常情况
 → 外层映射为 CANNOT_ANSWER，不进入 LLM SQL 生成
 ~~~
 
-### 9.4 多日期
+### 9.4 日期过滤
 
 ~~~text
 指标：已完成订单数
@@ -601,15 +596,16 @@ time_field：completion_date_key → dim_date.full_date
 → 直接使用指标时间口径
 ~~~
 
-非指标场景不自行从多条合法日期边中选择一条。
+“3 月”“4 月”或具体日期按上述指标 `time_field` 作为过滤值处理，不单独检索日期字段，也不因日期值本身返回 `AMBIGUOUS`。
 
 ## 10. 失败和恢复
 
-### 10.1 合法零命中
+### 10.1 业务资源零命中
 
-- METRIC 零命中：返回空指标上下文，Schema Linking 仍可继续。
-- TABLE 零命中：返回 NO_TABLE_HIT。
-- COLUMN 零命中：保留候选表，Dynamic Schema 可以标记字段未精确匹配或由外层 fallback。
+- 指标类请求要求 TABLE、COLUMN、METRIC 以及必要 Join 资源全部有效命中；任一资源零命中，返回对应状态并映射为 CANNOT_ANSWER。
+- 实体类请求要求 TABLE、COLUMN 以及必要 Join 资源全部有效命中；METRIC 零命中属于正常情况。
+- 必需 COLUMN 零命中返回 NO_REQUIRED_COLUMN_HIT，不保留一个没有可回答字段的表继续生成 SQL，也不允许 LLM 自行补字段。
+- 业务资源零命中不是技术故障，不得回退到静态 Schema。
 
 ### 10.2 技术失败
 
@@ -632,13 +628,23 @@ time_field：completion_date_key → dim_date.full_date
 Online Retrieval 成功
 → 使用 Dynamic Schema
 
-Online Retrieval 发生合法零命中或技术失败
-→ 外层按状态决定是否回退当前静态结构和指标上下文
+Online Retrieval 发生业务资源零命中
+→ 返回 CANNOT_ANSWER，不回退为可生成 SQL 的静态上下文
+
+Online Retrieval 发生技术失败
+→ 外层按状态回退当前静态结构和指标上下文
 
 PARTIAL_UNREACHABLE 或 AMBIGUOUS
 → 不回退为可继续生成 SQL 的确定上下文
 → 外层返回 CANNOT_ANSWER 或要求用户澄清
 ~~~
+
+### 10.4 日期处理简化
+
+- 指标类请求直接使用匹配指标文档中的 `time_field` 选择日期字段和关系。
+- 用户输入的“3 月”“4 月”或具体日期只是过滤值，交给后续 SQL 生成阶段按该 `time_field` 形成过滤条件。
+- V1 不增加独立的日期检索、日期意图分类器或复杂多日期推理链路。
+- 用户日期值本身不会触发 `AMBIGUOUS`；只有确实无法确定业务资源或已验证关系时，才按相应错误规则停止。
 
 fallback 必须记录实际状态和原因，不允许静默吞掉异常。
 
@@ -658,9 +664,9 @@ fallback 必须记录实际状态和原因，不允许静默吞掉异常。
 8. 多个目标表共享路径时 Join 边去重。
 9. 复合键生成完整 Join 条件。
 10. 不可连通表不被强行 Join。
-11. 多日期关系不被错误固定为单一图边。
+11. 多日期关系边不因表访问去重而丢失。
 12. TABLE、COLUMN、METRIC 使用同一资产版本。
-13. 合法零命中与技术失败状态区分正确。
+13. 业务资源零命中与技术失败状态区分正确。
 14. fallback 由外层触发且保留失败原因。
 15. Online Retrieval 不生成 SQL、不执行数据库操作。
 
@@ -711,7 +717,7 @@ fallback 必须记录实际状态和原因，不允许静默吞掉异常。
 - 指标递归依赖展开。
 - 指标依赖参与候选表范围扩展。
 - 针对具体 Bad Case 的定向业务规则。
-- 多日期自然语言角色识别。
+- 复杂多日期自然语言角色识别。
 - 多轮 LLM Schema Resolution。
 - 多 SQL 复杂分析和 Plan-and-Execute Agent。
 
@@ -746,18 +752,18 @@ fallback 必须记录实际状态和原因，不允许静默吞掉异常。
 - 仅可选候选不可达时，丢弃该候选并继续。
 - 任何情况下都不得猜测 Join，也不得通过 Cross Join 强行连接不可达表。
 
-### 14.2 日期关系消歧
+### 14.2 日期处理（简化版）
 
-V1 不实现复杂的多日期自然语言角色识别，只处理指标 time_field 和用户明确指定的日期角色。
+V1 不增加独立的日期检索、日期意图分类器或复杂多日期推理链路。
 
-- 指标文档中的 time_field 是指标问题的权威日期口径。
-- 用户明确指定日期角色时，使用对应的已验证关系。
-- 用户没有指定日期角色且存在多个同等可能的日期关系时，返回 AMBIGUOUS，不得让 LLM 猜测。
+- 指标文档中的 `time_field` 是指标问题的权威日期字段和关系。
+- 用户输入的“3 月”“4 月”或具体日期只是过滤值，后续 SQL 只能基于该 `time_field` 生成过滤条件。
+- 用户日期值本身不会触发 `AMBIGUOUS`，也不会改变指标的 `time_field`。
 - Relationship Graph 离线保留全部合法日期边；在线 BFS 不得因为表已访问就丢弃语义不同的平行边。
 
 ### 14.3 Anchor Table
 
-命中指标时，使用指标文档中的 data_source 确定事实表，并将该事实表作为必须表和 anchor_table。该 data_source 只用于确定指标事实表闭包，不触发递归指标检索，也不扩展无关表。
+命中指标时，使用指标文档中的 `data_source` 确认事实表，并将该事实表作为必须表和 `anchor_table`。但 `data_source` 不能替代 TABLE Retrieval：事实表必须先被 TABLE 路线有效命中，否则指标类请求返回 CANNOT_ANSWER。通过 TABLE 命中后，`data_source` 才用于确认事实表身份，不触发递归指标检索，也不扩展无关表。
 
 - 命中指标时，使用指标对应的事实表作为 anchor_table。
 - 未命中指标时，使用 TABLE Retrieval 得分最高的表。
@@ -793,12 +799,24 @@ Candidate Scope Check 只检查 SQL 实际引用的表和列是否属于本次 D
 → Table Retrieval
 → 候选表内的 Column Retrieval
 → 独立 Metric Retrieval
+→ 按请求类型检查必需资源是否完整
 → Anchor Selection
 → 确定性 Graph Join Resolution
-→ 日期消歧与不可达检查
+→ 按指标 time_field 绑定日期口径与不可达检查
 → Dynamic Schema + Indicator Context
 → 一次 LLM 生成 SQL
 → Candidate Scope Check
 → AST SQL Guard
 → 执行 SQL
 ~~~
+
+### 14.7 请求类型与必需资源
+
+V1 用确定性的最小规则区分两类请求：问题经过统一规范化后，命中已发布 Metric 的名称或别名时，按指标类请求处理；没有命中时按实体类请求处理。不增加 LLM 意图分类器。
+
+| 请求类型 | 必须有效命中的资源 | METRIC 零命中 | 失败行为 |
+|---|---|---|---|
+| 指标类 | TABLE、COLUMN、METRIC、必要 Join | 错误 | 任一必需资源缺失，直接 CANNOT_ANSWER，不调用 LLM，不静态 fallback |
+| 实体类 | TABLE、COLUMN、必要 Join | 正常 | 任一必需资源缺失，直接 CANNOT_ANSWER，不调用 LLM；不需要指标上下文 |
+
+这里的“必须有效命中”指对应检索路线确实返回合法候选；Join Key 可以由已验证 Relationship Graph 补入，但不能替代业务 COLUMN 命中。只有 Qdrant、Embedding、资产加载等技术失败才允许回退静态 Schema。
