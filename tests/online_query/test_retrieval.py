@@ -42,6 +42,31 @@ class _FakeStore:
         return tuple(self.columns.get(table_name, ()))
 
 
+class _GroupingTableStore(_FakeStore):
+    def __init__(self, tables, grouping_tables, columns, metrics) -> None:
+        super().__init__(tables, columns, metrics)
+        self.grouping_tables = grouping_tables
+
+    def search(self, collection_name, query, *, limit=5, filter_payload=None):
+        if filter_payload is None and collection_name == "table":
+            if query.dense[1] == 1.0:
+                return tuple(self.grouping_tables)
+            return tuple(self.tables)
+        return super().search(
+            collection_name,
+            query,
+            limit=limit,
+            filter_payload=filter_payload,
+        )
+
+
+class _GroupingEmbedding(_FakeEmbedding):
+    def embed_query(self, text: str) -> EmbeddedText:
+        self.queries.append(text)
+        dense = (0.0, 1.0, 0.0, 0.0) if text == "技术路线" else (1.0, 0.0, 0.0, 1.0)
+        return EmbeddedText(dense=dense, sparse=SparseEmbedding(indices=(1,), values=(1.0,)))
+
+
 class _FakeRuntime:
     def __init__(self, snapshot: AssetSnapshot) -> None:
         self.snapshot = snapshot
@@ -265,6 +290,50 @@ class RetrievalTest(unittest.TestCase):
             "sales_region_name",
             result.query_context.allowed_columns["mart_sales.dim_sales_region"],
         )
+
+    def test_grouping_table_is_added_by_dimension_query_when_main_top_k_misses_it(self) -> None:
+        fact = _table("table:fct", "fct_sales_order_line", 0.95)
+        product = _table(
+            "table:product",
+            "dim_product",
+            0.85,
+            page_content="产品维度：产品线、产品类别、技术路线",
+        )
+        columns = {
+            "fct_sales_order_line": (_column("fct_sales_order_line", "order_id", 0.90),),
+            "dim_product": (_column("dim_product", "technology_route", 0.90),),
+        }
+        store = _GroupingTableStore(
+            (fact,),
+            (product,),
+            columns,
+            (),
+        )
+        result = OnlineRetriever(
+            _FakeRuntime(
+                _snapshot(
+                    store,
+                    _GroupingEmbedding(),
+                    {
+                        "foreign_keys": [
+                            {
+                                "constraint_name": "fk_product",
+                                "source_schema": "mart_sales",
+                                "source_table": "fct_sales_order_line",
+                                "source_columns": ["product_key"],
+                                "target_schema": "mart_sales",
+                                "target_table": "dim_product",
+                                "target_columns": ["product_key"],
+                            }
+                        ]
+                    },
+                )
+            )
+        ).retrieve("按技术路线查询")
+
+        self.assertEqual(result.status, RetrievalStatus.SUCCESS)
+        assert result.query_context is not None
+        self.assertIn("mart_sales.dim_product", result.query_context.allowed_tables)
 
     def test_metric_candidates_are_not_passed_to_llm_when_ambiguous(self) -> None:
         tables = (_table("table:fct", "fct_sales_order_line", 0.90),)

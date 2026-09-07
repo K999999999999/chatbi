@@ -83,6 +83,7 @@ class OnlineRetriever:
         if not isinstance(question, str) or not question.strip():
             raise ValueError("检索问题不能为空")
         question = question.strip()
+        grouping_text = _grouping_text(question)
         try:
             snapshot = self._runtime.get_snapshot()
         except AssetUnavailableError as exc:
@@ -96,7 +97,12 @@ class OnlineRetriever:
 
         try:
             query_embedding = snapshot.embedding_provider.embed_query(question)
-            table_hits = _table_hits(snapshot, query_embedding, self._config)
+            table_hits = _table_hits(
+                snapshot,
+                query_embedding,
+                self._config,
+                extra_queries=(grouping_text,) if grouping_text else (),
+            )
             metric_hits = _metric_hits(snapshot, query_embedding, self._config)
         except EmbeddingError as exc:
             return _failure(RetrievalStatus.EMBEDDING_UNAVAILABLE, str(exc), asset_version=snapshot.asset_version)
@@ -133,7 +139,6 @@ class OnlineRetriever:
                 time_field,
             )
             column_query = _column_query(question, metric)
-            grouping_text = _grouping_text(question)
             grouping_tables = _grouping_table_names(
                 grouping_text,
                 table_hits,
@@ -214,13 +219,35 @@ def _table_hits(
     snapshot: AssetSnapshot,
     query: Any,
     config: RetrievalConfig,
+    *,
+    extra_queries: tuple[str, ...] = (),
 ) -> tuple[TableHit, ...]:
-    raw_hits = snapshot.qdrant_store.search(
-        snapshot.collection_names[TABLE_COLLECTION],
-        query,
-        limit=config.table_top_k,
+    collection_name = snapshot.collection_names[TABLE_COLLECTION]
+    raw_hits = list(
+        snapshot.qdrant_store.search(
+            collection_name,
+            query,
+            limit=config.table_top_k,
+        )
     )
-    filtered = _filtered_hits(raw_hits, config.table_score_threshold)
+    for extra_query in extra_queries:
+        extra_embedding = snapshot.embedding_provider.embed_query(extra_query)
+        raw_hits.extend(
+            snapshot.qdrant_store.search(
+                collection_name,
+                extra_embedding,
+                limit=config.table_top_k,
+            )
+        )
+    best_by_document: dict[str, SearchHit] = {}
+    for hit in raw_hits:
+        previous = best_by_document.get(hit.document_id)
+        if previous is None or hit.score > previous.score:
+            best_by_document[hit.document_id] = hit
+    filtered = _filtered_hits(
+        best_by_document.values(),
+        config.table_score_threshold,
+    )
     return tuple(_to_table_hit(hit, rank) for rank, hit in enumerate(filtered, 1))
 
 
