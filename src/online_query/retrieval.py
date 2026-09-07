@@ -133,12 +133,20 @@ class OnlineRetriever:
                 time_field,
             )
             column_query = _column_query(question, metric)
+            grouping_text = _grouping_text(question)
+            grouping_tables = _grouping_table_names(
+                grouping_text,
+                table_hits,
+                metric_table,
+            )
             column_hits = _column_hits(
                 snapshot,
                 candidate_tables,
                 column_query,
                 self._config,
                 required=required,
+                grouping_query=grouping_text,
+                grouping_tables=grouping_tables,
             )
         except EmbeddingError as exc:
             return _failure(RetrievalStatus.EMBEDDING_UNAVAILABLE, str(exc), asset_version=snapshot.asset_version, evidence=evidence)
@@ -237,10 +245,18 @@ def _column_hits(
     config: RetrievalConfig,
     *,
     required: Mapping[str, frozenset[str]] = MappingProxyType({}),
+    grouping_query: str = "",
+    grouping_tables: frozenset[str] = frozenset(),
 ) -> tuple[ColumnHit, ...]:
     # Metric formula/time_field 补充文本需要单独向量化；同一请求仍只保留一条列检索路线。
     embedded_query = snapshot.embedding_provider.embed_query(column_query)
+    grouping_embedding = (
+        snapshot.embedding_provider.embed_query(grouping_query)
+        if grouping_query and grouping_tables
+        else None
+    )
     raw: list[ColumnHit] = []
+    grouping_priority: list[ColumnHit] = []
     seen: set[str] = set()
     for table in table_hits:
         hits = snapshot.qdrant_store.search(
@@ -257,6 +273,22 @@ def _column_hits(
             if column.document_id not in seen:
                 seen.add(column.document_id)
                 raw.append(column)
+        if grouping_embedding is not None and table.qualified_name in grouping_tables:
+            grouped_hits = snapshot.qdrant_store.search(
+                snapshot.collection_names[COLUMN_COLLECTION],
+                grouping_embedding,
+                limit=min(2, config.column_top_k),
+                filter_payload={
+                    "schema_name": table.schema_name,
+                    "table_name": table.table_name,
+                },
+            )
+            for hit in _filtered_hits(grouped_hits, config.column_score_threshold)[:2]:
+                column = _to_column_hit(hit, 0)
+                if column.document_id not in seen:
+                    seen.add(column.document_id)
+                    raw.append(column)
+                grouping_priority.append(column)
         for required_column in required.get(table.qualified_name, frozenset()):
             exact_hits = snapshot.qdrant_store.search(
                 snapshot.collection_names[COLUMN_COLLECTION],
@@ -282,6 +314,8 @@ def _column_hits(
         key = (hit.qualified_table, hit.column_name)
         if hit.column_name in required.get(hit.qualified_table, frozenset()):
             selected[key] = hit
+    for hit in grouping_priority:
+        selected[(hit.qualified_table, hit.column_name)] = hit
     ordered = sorted(selected.values(), key=lambda item: (-item.score, item.document_id))
     return tuple(_re_rank_column(hit, rank) for rank, hit in enumerate(ordered, 1))
 
@@ -648,13 +682,7 @@ def _candidate_table_hits(
     # “按……”是 V1 唯一的轻量维度提示；其他 TABLE 命中只保留为证据，
     # 避免把向量误召回的表强行带入 Relationship Graph。
     grouping_text = _grouping_text(question)
-    if grouping_text:
-        names.update(
-            hit.qualified_name
-            for hit in table_hits
-            if hit.qualified_name != metric_table
-            and _table_content_matches(grouping_text, hit.page_content)
-        )
+    names.update(_grouping_table_names(grouping_text, table_hits, metric_table))
 
     by_name = {hit.qualified_name: hit for hit in table_hits}
     candidates: list[TableHit] = []
@@ -673,6 +701,21 @@ def _candidate_table_hits(
                 )
             )
     return tuple(candidates)
+
+
+def _grouping_table_names(
+    grouping_text: str,
+    table_hits: tuple[TableHit, ...],
+    metric_table: str | None,
+) -> frozenset[str]:
+    if not grouping_text:
+        return frozenset()
+    return frozenset(
+        hit.qualified_name
+        for hit in table_hits
+        if hit.qualified_name != metric_table
+        and _table_content_matches(grouping_text, hit.page_content)
+    )
 
 
 def _grouping_text(question: str) -> str:

@@ -214,6 +214,58 @@ class RetrievalTest(unittest.TestCase):
         self.assertEqual(result.metrics, ())
         self.assertEqual(result.indicator_context, "")
 
+    def test_grouping_column_is_preserved_when_fact_columns_fill_global_top_k(self) -> None:
+        tables = (
+            _table("table:fct", "fct_sales_order_line", 0.95),
+            _table(
+                "table:region",
+                "dim_sales_region",
+                0.85,
+                page_content="销售区域维度",
+            ),
+        )
+        columns = {
+            "fct_sales_order_line": tuple(
+                _column("fct_sales_order_line", f"fact_{index}", 0.99 - index * 0.01)
+                for index in range(4)
+            ),
+            "dim_sales_region": (
+                _column("dim_sales_region", "sales_region_code", 0.90),
+                _column("dim_sales_region", "sales_region_name", 0.89),
+                _column("dim_sales_region", "sales_region_key", 0.88),
+            ),
+        }
+        store = _FakeStore(tables, columns, ())
+        result = OnlineRetriever(
+            _FakeRuntime(
+                _snapshot(
+                    store,
+                    _FakeEmbedding(),
+                    {
+                        "foreign_keys": [
+                            {
+                                "constraint_name": "fk_region",
+                                "source_schema": "mart_sales",
+                                "source_table": "fct_sales_order_line",
+                                "source_columns": ["sales_region_key"],
+                                "target_schema": "mart_sales",
+                                "target_table": "dim_sales_region",
+                                "target_columns": ["sales_region_key"],
+                            }
+                        ]
+                    },
+                )
+            ),
+            config=RetrievalConfig(column_top_k=2),
+        ).retrieve("按销售区域查询")
+
+        self.assertEqual(result.status, RetrievalStatus.SUCCESS)
+        assert result.query_context is not None
+        self.assertIn(
+            "sales_region_name",
+            result.query_context.allowed_columns["mart_sales.dim_sales_region"],
+        )
+
     def test_metric_candidates_are_not_passed_to_llm_when_ambiguous(self) -> None:
         tables = (_table("table:fct", "fct_sales_order_line", 0.90),)
         columns = {

@@ -293,6 +293,7 @@ asset_version
 - 使用 schema_name = mart_sales 等精确元数据过滤。
 - 使用 table_name IN candidate_tables 过滤。
 - V1 使用 Dense 向量。
+- 问题明确要求按某个维度分组时，如果该维度表已被确定为候选表，额外保留该分组语义的最多两个 COLUMN 候选；其余结果仍按全局 column_top_k 合并。
 - 应用可配置的字段级阈值和 Top-K。
 
 输出：

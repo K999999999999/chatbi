@@ -241,6 +241,7 @@ METRIC 的 Top-K 结果只用于证据保留。`select_metric()` 按以下规则
 - 每张表的检索结果合并后按 score 排序，再截断到全局 column_top_k，默认 12。
 - 阈值默认 0.25。
 - 不把所有 COLUMN 文档加载进应用内存。
+- 问题明确要求按某个维度分组时，如果该维度表已被确定为候选表，额外保留该分组语义的最多两个 COLUMN 候选；其余结果仍按全局 column_top_k 合并。
 - 指标 `filters` 中确定性解析出的物理字段也属于必需 COLUMN；filters 无法解析返回 `ASSET_UNAVAILABLE`，任一公式、filters 或 `time_field` 必需字段未命中返回 `NO_REQUIRED_COLUMN_HIT`。
 - formula 引用的业务列必须被 COLUMN 路线有效命中；只补入 Join Key 不能替代业务列命中。
 
