@@ -170,7 +170,7 @@ uv run --env-file .env python -c "from src.rag_offline import OfflineBuildConfig
 当前已经验证的资产：
 
 ```text
-build_id: 20260906-bge-m3-v1
+build_id: 20260906-bge-m3-v2
 TABLE: 7
 COLUMN: 69
 METRIC: 5
@@ -286,13 +286,16 @@ Streamlit 的 `CHATBI_API_BASE_URL` 默认是 `http://127.0.0.1:8000`；只有 A
 - Evaluation 评测模块。
 - RAG Offline Build、BGE-M3 和 Qdrant 离线资产。
 
-当前尚未实现：
+当前已完成：
 
-- Online Retrieval。
+- Online Retrieval V1。
 - Schema Linking。
 - 关系图在线路径搜索。
 - RAG 上下文接入 Online Query。
+
+当前仍属于后续边界：
+
 - 多轮对话和复杂分析 Agent。
 - 认证、租户、审计、限流、监控和生产部署。
 
-下一阶段必须先确认 Online Retrieval Module Spec（在线检索模块规格），不能因为 Qdrant 离线资产存在就直接把它接入线上。
+下一阶段如果继续，应单独设计多指标组合编排和生产化治理；当前 V1 已完成最小在线检索闭环。

@@ -68,10 +68,10 @@ flowchart TB
     OfflineBuild --> RelationshipGraph["Relationship Graph<br/>确定性连接边"]
     VectorCollections -.-> RAG
     RelationshipGraph -.-> RAG
-    RAG["RAG Context Retrieval（未来）"] -.-> Context
+    RAG["RAG Context Retrieval（Online Retrieval V1）"] --> Context
 ```
 
-实线表示当前已经实现的能力，虚线表示未来边界。Evaluation 和 RAG Offline Build 都是离线模块；当前 Online Query 尚未接入向量检索。
+实线表示当前已经实现的能力，虚线表示未来边界。Evaluation 和 RAG Offline Build 负责离线资产，Online Retrieval V1 已将 Qdrant 检索、关系图和上下文接入 Online Query。
 
 ## 代码地图
 
@@ -304,8 +304,8 @@ Online Retrieval 仍是未来模块；离线资产存在不表示在线查询已
 - Online Query 已实现，Software Test 与真实 PostgreSQL 集成测试已通过。
 - Query API Adapter 已实现，提供 `/health` 和 `/api/v1/query`；API 确定性测试已通过。
 - Streamlit 页面已实现，提供问题输入、结果展示和受控错误提示，并通过三条手工业务验收。
-- Evaluation 已实现并复用正式 Online Query 链路；20 条真实 LLM 标准评测全部通过，JSON 数据报告和 Markdown 总结报告已提交。
+- Evaluation 已实现并复用正式 Online Query 链路；支持范围内 19/19 通过，另有 1 条多指标组合按 V1 边界受控返回 CANNOT_ANSWER，JSON 数据报告和 Markdown 总结报告已提交。
 - 旧版扁平 POC 链路及其重复测试已删除。
 - RAG Offline Build 已实现并发布 BGE-M3 / Qdrant 离线资产；TABLE=7、COLUMN=69、METRIC=5、关系边=9，固定检索评测 5/5 通过。
-- Online Retrieval、Schema Linking 和关系图在线路径查找尚未实现。
+- Online Retrieval、Schema Linking 和关系图在线路径查找已完成 V1 实现，并已通过真实 Qdrant、LLM 和 PostgreSQL 端到端验收；多指标复杂组合仍属于后续边界。
 - 正式前端 UI 不是当前下一步必做项，继续使用 Streamlit，待生产化需求明确后再决定。

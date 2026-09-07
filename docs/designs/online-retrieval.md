@@ -611,4 +611,4 @@ Implementation Design（实现设计）已获确认，当前代码已完成 Onli
 - Dynamic Schema、Indicator Context、Candidate Scope Check、Prompt 限制和 Online Query Service 接入。
 - v2 已发布资产的加载与真实 Dense 检索基础验证。
 
-当前仍需单独推进：AI Evaluation 的召回调参、完整 SQL 回归和 Business Acceptance；这些结果不被本次软件实现测试替代。
+Online Retrieval V1 已完成真实 AI Evaluation、完整 SQL 回归和 Business Acceptance。支持范围内通过率为 100%；多指标复杂组合按 V1 边界返回 CANNOT_ANSWER。

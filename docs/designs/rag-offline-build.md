@@ -143,7 +143,7 @@ data/rag/
 
 Software Test（软件测试）、AI Evaluation（AI 评测）和 Business Acceptance（业务验收）分别记录：
 
-- Software Test：RAG Offline 33 项确定性测试通过；全仓回归为 128 passed、6 skipped、42 subtests passed。
+- Software Test：RAG Offline 33 项确定性测试通过；全仓回归为 148 passed、6 skipped、42 subtests passed。
 - Dependency Check（依赖检查）：`uv lock --check` 和 `python -m compileall -q src` 通过。
 - Real Integration（真实集成）：正式构建 `20260906-bge-m3-v2` 已发布；Qdrant 三个集合重新连接、精确计数和检索通过，数量为 TABLE=7、COLUMN=69、METRIC=5，关系边=9。v1 旧资产保留，不覆盖。
 - AI Evaluation：BGE-M3 固定 5 案例当前为 5/5；字段案例使用候选表过滤，毛利率案例要求同时召回两个直接依赖。
