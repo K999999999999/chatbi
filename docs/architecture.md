@@ -256,13 +256,14 @@ RAG Offline Build 已实现：
 - `src/rag_offline/` 负责校验事实、生成文档、向量化、写入 Qdrant、构建关系图和发布完整资产。
 - `data/rag/current.json` 是当前发布指针，版本目录保存 manifest 和关系图。
 
-Online Retrieval 仍是未来模块；离线资产存在不表示在线查询已经使用 RAG。
+Online Retrieval V1 已接入 Online Query：实体类和单指标问题默认使用已发布 RAG 资产组装动态上下文；可确定的技术故障仍可按基线规则回退静态上下文。基础 Multi-Metric Retrieval（多指标在线检索）已完成独立规格设计，尚未实现。
 
 ## 在线主链路
 
 ```text
 用户问题
-  -> 加载结构和指标上下文
+  -> 读取已发布 RAG 资产快照并执行 Online Retrieval
+  -> 组装动态结构和指标上下文（基线技术故障时可静态 fallback）
   -> 组装 Prompt
   -> LLM 生成 SQL 候选
   -> SQL Guard 提取并校验 SQL
@@ -280,7 +281,7 @@ Online Retrieval 仍是未来模块；离线资产存在不表示在线查询已
 - LLM：提出 SQL 候选，不决定业务真相、权限和安全。
 - BGE-M3：只对离线检索文档正文和检索评测问题生成向量，不决定业务事实。
 - Qdrant：保存版本化 TABLE、COLUMN、METRIC 检索集合，不保存业务真相。
-- 静态知识文件：当前为 Online Query 提供结构和指标上下文。
+- 已发布 RAG 资产：当前为 Online Query 默认提供动态结构和指标上下文；静态知识文件只作为实体类、单指标基线技术故障时的 fallback。
 - Query API Adapter：当前提供同步 HTTP JSON 接口，只做协议转换。
 - Streamlit：当前用于 POC 和内部使用，只通过 HTTP 调用 API；未来正式前端可以复用同一 API 契约。
 - API Gateway：未来位于 ChatBI 外部边界，负责认证、限流、审计和流量治理；核心模块不绑定具体网关产品。
@@ -293,7 +294,7 @@ Online Retrieval 仍是未来模块；离线资产存在不表示在线查询已
 - Evaluation 必须复用正式 Online Query 链路，不维护另一套 SQL 生成逻辑。
 - RAG Offline Build 只能读取已确认 JSON 事实，不得扫描或修改 PostgreSQL。
 - 只有三个集合和关系图全部重载校验通过后，才能替换当前发布指针。
-- RAG 未来只能替换上下文获取方式，不能改变指标事实和 SQL 安全边界。
+- Online Retrieval 只能替换上下文获取方式，不能改变指标事实、授权边界和 SQL 安全边界。
 - 网关接入不能把认证信息、平台 SDK 或流量治理逻辑写入核心业务链路。
 
 ## 当前状态

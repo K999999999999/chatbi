@@ -1,5 +1,7 @@
 # Online Query Module Spec
 
+状态：当前 Online Query 已接入并通过 Online Retrieval V1（在线检索 V1）验收；实体类和单指标基线行为以本文及 `docs/specs/online-retrieval.md` 为准。基础 Multi-Metric Retrieval（多指标在线检索）是独立的增量规格，见 `docs/specs/multi-metric-retrieval.md`，尚未实现。
+
 ## 目标
 
 接收一个针对 `mart_sales` 的自然语言问题，生成一条 SQL 候选，完成安全校验和只读执行，并返回真实数据库结果或明确错误。
@@ -7,7 +9,7 @@
 ## 运行方式
 
 - 同步、单次问答。
-- 当前不包含 API、UI、流式输出和多轮对话。
+- 核心模块只负责同步、单次问答；API、UI 和流式输出由外部适配层负责，多轮对话不在当前范围内。
 - 本地启动入口自动读取项目根目录的 .env，且不覆盖已经存在的环境变量。
 - 正式环境不依赖 .env 文件，由部署平台注入环境变量或 Secret。
 
@@ -66,7 +68,7 @@ QueryFailure
 ```text
 QueryRequest
   -> 输入检查并确定 request_id
-  -> 获取结构和指标上下文
+  -> 读取已发布 RAG 资产快照并执行 Online Retrieval，获取动态结构和指标上下文
   -> 组装 Prompt
   -> LLM 生成 SQL 或表示无法回答
   -> SQL Guard 提取并校验 SQL
@@ -76,11 +78,12 @@ QueryRequest
 
 ## 上下文规则
 
-- 应用启动时一次性读取 `tables.json`、`columns.json`、`relationships.json` 和 `metrics.json`；字段典型值位于 `columns.json.value_examples`。
-- 每次查询使用完整结构和完整指标，不做 RAG、向量检索或按问题筛选。
-- 文件修改后通过重启应用重新加载，当前不支持热更新。
-- 文件不存在、JSON 无法解析或内容完全为空时，不允许继续调用 LLM，返回 `CONTEXT_ERROR`。
-- 当前不负责校验指标公式、指标依赖和字段引用的业务正确性。
+- 应用仍可在启动时加载 `tables.json`、`columns.json`、`relationships.json` 和 `metrics.json`，作为静态上下文 fallback（回退）；字段典型值位于 `columns.json.value_examples`。
+- 每次查询默认从同一已发布 `asset_version` 的 TABLE、COLUMN、METRIC 集合和 Relationship Graph（关系图）中按问题检索并组装最小动态上下文，不再默认使用完整结构和完整指标。
+- 对已确定为实体类或单指标基线的请求，Qdrant、Embedding 或资产加载等技术故障可以沿用静态上下文 fallback；业务资源缺失不得用静态上下文掩盖。多指标请求按多指标规格直接返回 `CONTEXT_ERROR`，不走静态 fallback。
+- 静态事实文件修改后通过重启应用重新加载，当前不支持静态文件热更新；已发布 RAG 资产按 `current.json` 的新版本在后续请求中加载，不要求重启。
+- 发布资产或静态文件不存在、JSON 无法解析或内容完全为空时，不允许继续调用 LLM；无法建立合法上下文时返回 `CONTEXT_ERROR`。
+- 单指标基线不做任意 SQL 数学等价证明；基础多指标所需的有限公式、固定过滤和请求指标覆盖检查，以多指标规格的后置校验为准。
 
 ## LLM 行为
 
@@ -119,7 +122,7 @@ QueryRequest
 ## 不负责
 
 - 数据库结构导出和指标维护。
-- RAG、向量数据库和 Schema Linking。
+- RAG 离线资产构建、Online Retrieval 检索算法、Schema Linking 和 Relationship Graph 维护；这些能力由对应模块负责，Online Query 只消费其结果。
 - 复杂分析 Agent 和多轮对话。
 - SQL 自动修复和结果自然语言总结。
 - API、UI、网关、认证、租户、限流、审计和生产运维。

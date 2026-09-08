@@ -7,6 +7,8 @@
 - 当前状态：方案已确认，编码与确定性测试已完成，真实资产基础验证已完成
 - Runtime Mode（运行模式）：同步、单请求、无副作用
 
+本文记录的是已经完成的实体类和单指标 Online Retrieval V1 实现设计。基础 Multi-Metric Retrieval（多指标在线检索）的增量行为以 `docs/specs/multi-metric-retrieval.md` 为准，尚未在本文记录为已实现能力；下文出现“一个最终指标”或技术 fallback 的地方均指单指标基线。
+
 目标是把已经确认的 RAG Offline Build（RAG 离线构建）资产接入现有 Online Query（在线查询）上下文获取阶段，实现：
 
 ~~~
@@ -42,13 +44,13 @@ Architecture / Domain / Existing Contract
 - 指标 time_field 优先决定指标查询的日期关系。
 - 用户月份、日期是过滤值；V1 不增加独立日期检索或复杂日期分类链路。
 - Metric 检索使用离线文档的语义 `page_content` 召回，并同时读取同一文档的结构化 metadata；不执行第二次 metadata 向量检索。
-- METRIC Top-K 只保留为检索证据；最终 Indicator Context 只能使用一个确定指标。规范化名称/别名唯一命中优先，否则只能在阈值以上唯一候选时选择，多候选无法确定时返回 AMBIGUOUS。
+- 对单指标基线，METRIC Top-K 只保留为检索证据；最终 Indicator Context 只能使用一个确定指标。规范化名称/别名唯一命中优先，否则只能在阈值以上唯一候选时选择，多候选无法确定时返回 AMBIGUOUS。明确请求多个指标的逐项识别、完整性和后置 SQL 检查以多指标规格为准。
 - 指标公式和 `filters` 引用的物理字段使用确定性 Formula Reference Resolver 提取；它只读取已认证事实，不调用 LLM，也不负责生成 SQL 的 AST 安全校验。
 - `time_field` 左侧用于匹配 Graph Edge 来源字段，右侧用于日期过滤；实际 Join Key 始终来自 Graph Edge，不把日期过滤字段误当 Join Key。
 - 同长度且语义不同的路径无法由已知条件唯一确定时返回 AMBIGUOUS；只有同一 edge_id 的重复结果允许去重。
 - 必须表不可连通时返回 CANNOT_ANSWER，不让 LLM 猜 Join。
-- 指标类请求必须完整命中 TABLE、COLUMN、METRIC 和必要 Join；实体类请求不要求命中 METRIC。
-- 业务资源零命中直接 CANNOT_ANSWER；只有 Qdrant、Embedding、资产加载等技术失败允许静态 fallback。
+- 单指标类请求必须完整命中 TABLE、COLUMN、METRIC 和必要 Join；实体类请求不要求命中 METRIC。多指标请求必须完整命中全部请求 METRIC，遵循多指标规格。
+- 业务资源零命中直接 CANNOT_ANSWER；只有 Qdrant、Embedding、资产加载等技术失败允许静态 fallback；多指标技术故障不回退。
 - Prompt 明确限制 Dynamic Schema，程序使用动态表列白名单进行确定性校验。
 - 保留现有静态 Schema 路径作为技术故障 fallback。
 - 每次请求只读取一次 `current.json`；Runtime 可以按 `build_id` 缓存不可变快照。`asset_version` 和检索配置不是外部用户可以任意指定的 QueryRequest 字段。
@@ -400,9 +402,9 @@ Dynamic QueryContext
 | NO_TABLE_HIT | 需要表的请求返回 CANNOT_ANSWER，不使用静态上下文掩盖业务资源缺失 |
 | PARTIAL_UNREACHABLE | 必须表不可达时返回 CANNOT_ANSWER，不调用 LLM |
 | AMBIGUOUS | 返回 CANNOT_ANSWER 或要求用户澄清，不调用 LLM |
-| ASSET_UNAVAILABLE | 进入静态 fallback；静态上下文也失败才返回 CONTEXT_ERROR |
-| RETRIEVAL_UNAVAILABLE | 进入静态 fallback |
-| EMBEDDING_UNAVAILABLE | 进入静态 fallback |
+| ASSET_UNAVAILABLE | 单指标/实体基线进入静态 fallback；静态上下文也失败才返回 CONTEXT_ERROR；多指标返回 CONTEXT_ERROR |
+| RETRIEVAL_UNAVAILABLE | 单指标/实体基线进入静态 fallback；多指标返回 CONTEXT_ERROR |
+| EMBEDDING_UNAVAILABLE | 单指标/实体基线进入静态 fallback；多指标返回 CONTEXT_ERROR |
 
 PARTIAL_UNREACHABLE 和 AMBIGUOUS 不允许通过静态 fallback 伪装成确定的 Dynamic Schema。
 
@@ -424,7 +426,7 @@ RAG_ONLINE_RETRIEVAL_ENABLED=true
 
 默认值为 true，真实 Online Query 默认走 RAG：
 
-- RAG 技术故障时按规格 fallback 到静态上下文。
+- 单指标/实体基线的 RAG 技术故障时按规格 fallback 到静态上下文；多指标按独立规格停止并返回 CONTEXT_ERROR。
 - 业务资源零命中、必须表不可达或歧义时直接返回 CANNOT_ANSWER，不 fallback 为可生成 SQL 的上下文。
 - 单元测试仍可以不注入 RetrievalProvider，以隔离测试现有静态 Online Query。
 
@@ -488,7 +490,7 @@ RAG_ONLINE_RETRIEVAL_ENABLED=true
 - TABLE 只查 TABLE 集合。
 - METRIC 不受 TABLE 结果过滤。
 - COLUMN 每次检索都带候选表的精确过滤。
-- 多个 METRIC 候选不能被直接交给 LLM 选择；无法唯一确定时返回 AMBIGUOUS。
+- 单指标基线的多个 METRIC 候选不能被直接交给 LLM 选择；无法唯一确定时返回 AMBIGUOUS。多指标请求按用户明确列举项逐项确定，不能交给 LLM 补选或删项。
 - 公式引用字段和 time_field 必需字段缺失时返回 NO_REQUIRED_COLUMN_HIT。
 - 指标 filters 引用字段缺失时同样返回 NO_REQUIRED_COLUMN_HIT。
 - QueryContext 的动态 allowlist 拒绝范围外表和字段。

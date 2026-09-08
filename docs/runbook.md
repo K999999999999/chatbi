@@ -13,8 +13,8 @@
 - PostgreSQL 保存 `mart_sales` 业务数据，使用 `chatbi_app` 只读身份执行查询。
 - FastAPI 提供 Query API（查询接口）。
 - Streamlit 是当前 POC 页面。
-- BGE-M3 和 Qdrant 只用于已完成的离线检索资产构建与评测。
-- RAG Offline 资产当前没有接入 Online Query。
+- BGE-M3 和 Qdrant 用于离线检索资产构建、评测，以及 Online Retrieval V1 的在线查询向量和上下文检索。
+- 已发布 RAG 资产默认接入 Online Query V1：实体类和单指标问题走动态检索上下文；检索技术故障按基线规则回退静态上下文。基础多指标在线检索尚未实现。
 
 ## 2. 系统拓扑
 
@@ -41,7 +41,7 @@ Streamlit（127.0.0.1:8501）
 - `uv`。
 - Docker Desktop。
 - 可用的 LLM 配置，用于 Online Query 和真实 Evaluation。
-- 本地 `models/bge-m3`，用于 RAG Offline Build。
+- 本地 `models/bge-m3`，用于 RAG Offline Build 和 Online Retrieval V1 的查询向量生成。
 
 ### 3.2 配置文件
 

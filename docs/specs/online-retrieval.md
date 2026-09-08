@@ -1,6 +1,8 @@
 
 # Online Retrieval Module Spec
 
+状态：Online Retrieval V1（实体类、单指标、TABLE/COLUMN/METRIC 检索、确定性关系图和动态上下文）已实现并通过验收。基础 Multi-Metric Retrieval（多指标在线检索）为独立增量规格，见 `docs/specs/multi-metric-retrieval.md`，尚未实现。
+
 ## 1. 模块目标
 
 Online Retrieval（在线检索）负责根据用户问题，从已发布的 RAG Offline Build（RAG 离线构建）资产中取得最小、可解释、可用于 SQL 生成的业务上下文。
@@ -62,6 +64,12 @@ V1 采用以下项目课程中已经验证的主链路：
 - 第 19 课：指标使用独立语义检索；指标文档包含定义、公式、时间口径和依赖信息。
 - 第 20 课：Schema Linking 负责“查哪里”，指标 RAG 负责“怎么算”，两路上下文最后一起进入 Prompt。
 
+### 2.4 与基础多指标规格的关系
+
+本文继续作为实体类和单指标基线的主规格。一个问题明确请求多个已登记指标时，由 `docs/specs/multi-metric-retrieval.md` 覆盖本文中关于指标选择、Indicator Context 数量、请求完整性、SQL 后置检查和技术 fallback 的增量规则。
+
+因此，本文中的“最终只选择一个指标”和“技术故障可以回退静态上下文”只适用于实体类或已确定的单指标基线请求；多指标请求必须完整命中全部请求指标，技术故障直接返回 `CONTEXT_ERROR`，不得用静态上下文绕过多指标约束。
+
 ## 3. 范围
 
 ### 3.1 本模块负责
@@ -73,7 +81,7 @@ V1 采用以下项目课程中已经验证的主链路：
 5. 使用确定性 Relationship Graph 计算 BFS 最短合法 Join 路径。
 6. 生成 Dynamic Schema 和 Indicator Context（指标上下文）。
 7. 返回独立的路由证据、结构化结果、状态和告警。
-8. 为外层 Prompt Builder 提供失败状态，使其能够回退到当前静态上下文。
+8. 为外层 Prompt Builder 提供失败状态；实体类和单指标基线的技术故障可回退到静态上下文，多指标请求遵循多指标规格，不回退。
 
 ### 3.2 不负责
 
@@ -398,7 +406,7 @@ asset_version
 - 只查询 METRIC 逻辑集合。
 - 不使用 TABLE 结果做过滤。
 - V1 使用 Dense 向量。
-- 执行一次指标检索。
+- 对实体类或单指标基线请求执行一次指标检索；多指标请求按多指标规格对每个请求指标分别检索。
 - 不执行递归依赖展开。
 - 不因 depends_on 再发起第二次指标向量检索。
 
@@ -421,7 +429,7 @@ metric_candidates: list[MetricHit]
 
 当前项目的 depends_on 保留为血缘和解释信息。由于现有指标公式已经直接引用实际字段，V1 不要求在线展开依赖指标。
 
-METRIC 检索可以保留 Top-K 作为检索证据，但最终 Indicator Context 只能使用一个确定的指标：
+对实体类或单指标基线请求，METRIC 检索可以保留 Top-K 作为检索证据，但最终 Indicator Context 只能使用一个确定的指标：
 
 - 规范化后的问题命中唯一指标名或别名时，选择该指标。
 - 没有精确命中且阈值以上只有一个指标时，选择该指标。
@@ -563,7 +571,7 @@ Online Retrieval 只向下游提供结构、指标上下文和候选资源范围
 - dynamic_schema 是给 Prompt 使用的精简 Schema 文本。
 - indicator_context 是给 Prompt 使用的指标知识文本。
 - retrieval_evidence 用于测试、评估、调试和追踪，不默认完整注入 Prompt。
-- metrics 只包含最终确定的指标；其他 Top-K 指标只能保留在 retrieval_evidence 中。
+- 基线请求的 `metrics` 只包含最终确定的指标；其他 Top-K 指标只能保留在 `retrieval_evidence` 中。多指标请求的 `metrics` 必须包含全部去重后的请求指标，具体以多指标规格为准。
 - warnings 记录合法但需要下游处理的情况。
 
 ### 8.3 状态
@@ -577,9 +585,9 @@ Online Retrieval 只向下游提供结构、指标上下文和候选资源范围
 | PARTIAL_UNREACHABLE | 必须表不可连通，或存在需要外层处理的不可达资源 | 映射为 CANNOT_ANSWER 时不得进入 LLM；可选候选不可达时丢弃并继续 |
 | AMBIGUOUS | 当前上下文存在无法安全裁决的歧义 | 不进入 LLM SQL 生成，由外层要求澄清或返回无法回答 |
 | ASSET_UNAVAILABLE | 资产不存在、未发布或版本不一致 | 进入技术失败处理 |
-| RETRIEVAL_UNAVAILABLE | Qdrant 或检索服务不可用 | 外层按策略 fallback |
-| EMBEDDING_UNAVAILABLE | 查询向量无法生成 | 外层按策略 fallback |
-| FALLBACK_STATIC_SCHEMA | 外层已切换到静态上下文 | 继续现有 SQL 链路 |
+| RETRIEVAL_UNAVAILABLE | Qdrant 或检索服务不可用 | 实体类或单指标基线按策略 fallback；多指标返回 `CONTEXT_ERROR` |
+| EMBEDDING_UNAVAILABLE | 查询向量无法生成 | 实体类或单指标基线按策略 fallback；多指标返回 `CONTEXT_ERROR` |
+| FALLBACK_STATIC_SCHEMA | 外层已切换到静态上下文 | 仅适用于实体类或单指标基线 |
 
 NO_METRIC_HIT 仅在实体类请求中是合法业务分支；指标类请求必须命中指标。
 
@@ -754,7 +762,7 @@ fallback 必须记录实际状态和原因，不允许静默吞掉异常。
 
 ## 13. 实现前置条件与开发顺序
 
-本规格确认后，按以下顺序进入实现：
+基线已按以下顺序实现并验收；该顺序保留作实现记录。基础多指标不在此处追加实现步骤，按 `docs/specs/multi-metric-retrieval.md` 独立推进：
 
 1. 设计 Online Retrieval 的领域结果对象和状态对象。
 2. 设计 Qdrant 适配器和资产快照加载接口。
@@ -769,7 +777,7 @@ fallback 必须记录实际状态和原因，不允许静默吞掉异常。
 11. 通过后再接入 Online Query Prompt Builder。
 12. 最后执行完整 SQL 回归、AI Evaluation 和业务验收。
 
-在设计审查通过前，不改变现有 Online Query 默认静态上下文路径。
+后续多指标实现设计和验收完成前，不改变已经验收的实体类、单指标基线及其技术故障 fallback 行为。
 
 ## 14. 设计审查补充约束（V1 最终版）
 
@@ -843,7 +851,7 @@ Candidate Scope Check 只检查 SQL 实际引用的表和列是否属于本次 D
 
 ### 14.7 请求类型与必需资源
 
-V1 用确定性的最小规则区分两类请求：问题经过统一规范化后，命中已发布 Metric 的名称或别名，或出现明确的指标 / 聚合表达时，按指标类请求处理；未命中这些条件时按实体类请求处理。不增加 LLM 意图分类器。
+基线 V1 用确定性的最小规则区分两类请求：问题经过统一规范化后，命中已发布 Metric 的名称或别名，或出现明确的指标 / 聚合表达时，按单指标类请求处理；未命中这些条件时按实体类请求处理。不增加 LLM 意图分类器。明确列举多个已登记指标的请求，转由基础多指标规格处理。
 
 明确的指标 / 聚合表达包括“金额、数量、总额、平均值、占比、率、统计”等有限业务表达。该规则只用于决定 METRIC 是否为必需资源，不负责选择具体指标；具体指标仍必须由 METRIC Retrieval 命中。
 
@@ -851,13 +859,14 @@ V1 用确定性的最小规则区分两类请求：问题经过统一规范化�
 |---|---|---|---|
 | 指标类 | TABLE、COLUMN、METRIC、必要 Join | 错误 | 任一必需资源缺失，直接 CANNOT_ANSWER，不调用 LLM，不静态 fallback |
 | 实体类 | TABLE、COLUMN、必要 Join | 正常 | 任一必需资源缺失，直接 CANNOT_ANSWER，不调用 LLM；不需要指标上下文 |
+| 基础多指标 | TABLE、COLUMN、全部请求 METRIC、必要 Join | 任一指标错误 | 按多指标规格处理；任一必需资源缺失直接停止，技术故障返回 `CONTEXT_ERROR`，不静态 fallback |
 
-这里的“必须有效命中”指对应检索路线确实返回合法候选；Join Key 可以由已验证 Relationship Graph 补入，但不能替代业务 COLUMN 命中。只有 Qdrant、Embedding、资产加载等技术失败才允许回退静态 Schema。
+这里的“必须有效命中”指对应检索路线确实返回合法候选；Join Key 可以由已验证 Relationship Graph 补入，但不能替代业务 COLUMN 命中。只有 Qdrant、Embedding、资产加载等技术失败才允许回退静态 Schema，且多指标请求受多指标规格的禁止回退规则约束。
 
 ### 14.8 指标选择与公式字段
 
-- METRIC 的 Top-K 结果只作为检索证据；最终 Indicator Context 只能包含一个确定指标。
-- 规范化问题命中唯一指标名或别名时优先选择该指标；没有精确命中时，只有一个候选超过阈值才选择；多个候选超过阈值且不能唯一确定时返回 `AMBIGUOUS`。
+- 对单指标基线，METRIC 的 Top-K 结果只作为检索证据；最终 Indicator Context 只能包含一个确定指标。规范化问题命中唯一指标名或别名时优先选择该指标；没有精确命中时，只有一个候选超过阈值才选择；多个候选超过阈值且不能唯一确定时返回 `AMBIGUOUS`。
+- 对明确列举多个指标的请求，逐项识别、逐项召回并完整组装全部 Indicator Context；名称映射、上限、同表/同日期/同固定条件和 SQL 覆盖检查以多指标规格为准。
 - 指标公式和 `filters` 引用的物理字段，以及 `time_field` 字段，属于必需 COLUMN；引用由确定性 Formula Reference Resolver 提取，不调用 LLM。
 - 公式或 `filters` 无法解析时返回 `ASSET_UNAVAILABLE`；任一必需字段未被 COLUMN 路线命中时返回 `NO_REQUIRED_COLUMN_HIT`。
 

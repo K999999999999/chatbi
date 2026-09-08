@@ -18,7 +18,7 @@
 - 当前继续使用 Streamlit 作为 POC 和内部使用入口；正式前端不是当前必需项。
 - 使用 `src/evaluation/eval_cases.json` 作为开发期标准评测集。
 - 提供独立的 RAG Offline Build（RAG 离线构建），将已确认事实构建为 TABLE、COLUMN、METRIC 三类 Qdrant 集合和确定性关系图。
-- RAG Offline Build 当前只交付离线资产，不改变现有 Online Query 的静态上下文路径。
+- Online Query 已接入 Online Retrieval V1（在线检索 V1）：实体类和单指标问题默认从同一已发布资产检索并组装动态上下文；检索技术故障仍保留静态上下文 fallback（回退）。基础 Multi-Metric Retrieval（多指标在线检索）已完成规格设计，尚未实现和验收。
 
 ## 业务与安全约束
 
@@ -30,7 +30,7 @@
 
 ## 当前不做
 
-- Online Retrieval（在线检索）接入、Schema Linking（模式链接）和基于 RAG 的 Prompt 替换。
+- 基础 Multi-Metric Retrieval（多指标在线检索）的实现、评测和业务验收；该能力由独立规格约束，暂不把未完成的多指标组合当作已支持能力。
 - 多轮对话和复杂分析 Agent。
 - SQL 自动修复和多模型投票。
 - React、Vue 或其他正式前端 UI（等生产化需求明确后再做）、API Gateway、登录、限流、审计和生产运维。
