@@ -256,7 +256,7 @@ RAG Offline Build 已实现：
 - `src/rag_offline/` 负责校验事实、生成文档、向量化、写入 Qdrant、构建关系图和发布完整资产。
 - `data/rag/current.json` 是当前发布指针，版本目录保存 manifest 和关系图。
 
-Online Retrieval V1 已接入 Online Query：实体类和单指标问题默认使用已发布 RAG 资产组装动态上下文；可确定的技术故障仍可按基线规则回退静态上下文。基础 Multi-Metric Retrieval（多指标在线检索）的 T1～T4 软件实现已完成，多指标技术故障禁止静态回退；真实评测与业务验收仍待完成。
+Online Retrieval V1 已接入 Online Query：实体类和单指标问题默认使用已发布 RAG 资产组装动态上下文；可确定的技术故障仍可按基线规则回退静态上下文。基础 Multi-Metric Retrieval（多指标在线检索）的 T1～T4 软件实现已完成，多指标技术故障禁止静态回退；首轮真实在线 RAG 评测为 19/20，C05 通过，M08 出现一次结果不一致，业务验收仍待确认。
 
 ## 在线主链路
 
@@ -305,8 +305,8 @@ Online Retrieval V1 已接入 Online Query：实体类和单指标问题默认�
 - Online Query 已实现，Software Test 与真实 PostgreSQL 集成测试已通过。
 - Query API Adapter 已实现，提供 `/health` 和 `/api/v1/query`；API 确定性测试已通过。
 - Streamlit 页面已实现，提供问题输入、结果展示和受控错误提示，并通过三条手工业务验收。
-- Evaluation 已实现并复用正式 Online Query 链路；支持范围内 19/19 通过，另有 1 条多指标组合按 V1 边界受控返回 CANNOT_ANSWER，JSON 数据报告和 Markdown 总结报告已提交。
+- Evaluation 已实现并复用正式 Online Query 链路；全量软件测试为 186 passed、6 skipped、61 subtests，首轮真实在线 RAG 评测为 19/20，C05 通过、M08 结果不一致，JSON 数据报告和 Markdown 总结报告已生成。
 - 旧版扁平 POC 链路及其重复测试已删除。
 - RAG Offline Build 已实现并发布 BGE-M3 / Qdrant 离线资产；TABLE=7、COLUMN=69、METRIC=5、关系边=9，固定检索评测 5/5 通过。
-- Online Retrieval、Schema Linking 和关系图在线路径查找已完成 V1 实现，并已通过真实 Qdrant、LLM 和 PostgreSQL 端到端验收；基础多指标已完成 T1～T4 软件实现，真实多指标评测与业务验收仍待完成；跨事实表、经营分析等复杂多指标组合仍属于后续边界。
+- Online Retrieval、Schema Linking 和关系图在线路径查找已完成 V1 实现，并已通过真实 Qdrant、LLM 和 PostgreSQL 的单指标端到端验收；基础多指标已完成 T1～T4 软件实现，首轮真实评测为 19/20，C05 通过、M08 仍需稳定性结论，业务验收尚未关闭；跨事实表、经营分析等复杂多指标组合仍属于后续边界。
 - 正式前端 UI 不是当前下一步必做项，继续使用 Streamlit，待生产化需求明确后再决定。

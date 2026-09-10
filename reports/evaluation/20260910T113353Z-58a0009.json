@@ -1,0 +1,211 @@
+{
+  "metadata": {
+    "run_id": "20260910T113353Z-58a0009",
+    "created_at": "2026-09-10T11:33:53.190802Z",
+    "git_commit": "58a00093d612b613eba71be823cbd7e8aaafbcd7",
+    "git_dirty": false,
+    "model": "deepseek-v4-flash",
+    "temperature": 0.1,
+    "max_tokens": 1200,
+    "model_endpoint_hash": "a34e2a4708ed1c61008a151688838dcf1c44d4e7f08054633e72ba7c0b16cfc1",
+    "test_set_hash": "910e550951eb221d5848a9780182c0fb184d9eae4307938eb68897e2fdb0c996",
+    "context_hash": "20424d2e3ab2bd6293fe2766cb1bf54a2869abfbfea9755b1be8d82e9f778e43",
+    "reference_result_hash": "ea8e8cdcc6322f82126bf8e6eeee325f14f0cb3925e3dc99d04464fd6a5b26cc"
+  },
+  "summary": {
+    "total_cases": 20,
+    "valid_cases": 20,
+    "passed": 19,
+    "failed": 1,
+    "invalid_cases": 0,
+    "execution_accuracy": 0.95,
+    "category_accuracy": {
+      "complex": 1.0,
+      "medium": 0.9,
+      "simple": 1.0
+    }
+  },
+  "cases": [
+    {
+      "case_id": "S01",
+      "category": "simple",
+      "status": "PASS",
+      "generated_sql": "SELECT COUNT(DISTINCT f.order_id) AS completed_order_count\nFROM mart_sales.fct_sales_order_line f\nWHERE f.order_status = 'completed';",
+      "query_error_code": null,
+      "failure_reason": null,
+      "duration_ms": 18462
+    },
+    {
+      "case_id": "S02",
+      "category": "simple",
+      "status": "PASS",
+      "generated_sql": "SELECT COUNT(*) AS completed_order_line_count\nFROM mart_sales.fct_sales_order_line\nWHERE order_status = 'completed';",
+      "query_error_code": null,
+      "failure_reason": null,
+      "duration_ms": 2723
+    },
+    {
+      "case_id": "S03",
+      "category": "simple",
+      "status": "PASS",
+      "generated_sql": "SELECT SUM(f.net_sales_amount_cny) AS rmb_net_sales\nFROM mart_sales.fct_sales_order_line f\nWHERE f.order_status = 'completed';",
+      "query_error_code": null,
+      "failure_reason": null,
+      "duration_ms": 2859
+    },
+    {
+      "case_id": "S04",
+      "category": "simple",
+      "status": "PASS",
+      "generated_sql": "SELECT SUM(f.sales_cost_amount_cny) AS sales_cost_cny\nFROM mart_sales.fct_sales_order_line f\nWHERE f.order_status = 'completed';",
+      "query_error_code": null,
+      "failure_reason": null,
+      "duration_ms": 2984
+    },
+    {
+      "case_id": "S05",
+      "category": "simple",
+      "status": "PASS",
+      "generated_sql": "SELECT SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) AS gross_profit_cny\nFROM mart_sales.fct_sales_order_line f\nWHERE f.order_status = 'completed';",
+      "query_error_code": null,
+      "failure_reason": null,
+      "duration_ms": 3709
+    },
+    {
+      "case_id": "M01",
+      "category": "medium",
+      "status": "PASS",
+      "generated_sql": "SELECT p.product_line, SUM(f.net_sales_amount_cny) AS net_sales_amount_cny\nFROM mart_sales.fct_sales_order_line f\nJOIN mart_sales.dim_product p ON f.product_key = p.product_key\nWHERE f.order_status = 'completed'\nGROUP BY p.product_line\nORDER BY p.product_line;",
+      "query_error_code": null,
+      "failure_reason": null,
+      "duration_ms": 3181
+    },
+    {
+      "case_id": "M02",
+      "category": "medium",
+      "status": "PASS",
+      "generated_sql": "SELECT r.sales_region_name AS sales_region,\n       COUNT(DISTINCT f.order_id) AS completed_order_count\nFROM mart_sales.fct_sales_order_line f\nJOIN mart_sales.dim_sales_region r\n  ON f.sales_region_key = r.sales_region_key\nWHERE f.order_status = 'completed'\nGROUP BY r.sales_region_name\nORDER BY r.sales_region_name;",
+      "query_error_code": null,
+      "failure_reason": null,
+      "duration_ms": 2970
+    },
+    {
+      "case_id": "M03",
+      "category": "medium",
+      "status": "PASS",
+      "generated_sql": "SELECT c.customer_type,\n       SUM(f.net_sales_amount_cny) AS net_sales_amount_cny\nFROM mart_sales.fct_sales_order_line f\nJOIN mart_sales.dim_customer c\n  ON f.customer_key = c.customer_key\nWHERE f.order_status = 'completed'\nGROUP BY c.customer_type\nORDER BY c.customer_type;",
+      "query_error_code": null,
+      "failure_reason": null,
+      "duration_ms": 3362
+    },
+    {
+      "case_id": "M04",
+      "category": "medium",
+      "status": "PASS",
+      "generated_sql": "SELECT dp.product_category, SUM(f.net_sales_amount_cny) AS net_sales_amount_cny\nFROM mart_sales.fct_sales_order_line f\nJOIN mart_sales.dim_product dp ON f.product_key = dp.product_key\nWHERE f.order_status = 'completed'\nGROUP BY dp.product_category\nORDER BY dp.product_category;",
+      "query_error_code": null,
+      "failure_reason": null,
+      "duration_ms": 3402
+    },
+    {
+      "case_id": "M05",
+      "category": "medium",
+      "status": "PASS",
+      "generated_sql": "SELECT p.technology_route, SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) AS \"人民币毛利\"\nFROM mart_sales.fct_sales_order_line f\nJOIN mart_sales.dim_product p ON f.product_key = p.product_key\nWHERE f.order_status = 'completed'\nGROUP BY p.technology_route;",
+      "query_error_code": null,
+      "failure_reason": null,
+      "duration_ms": 4064
+    },
+    {
+      "case_id": "M06",
+      "category": "medium",
+      "status": "PASS",
+      "generated_sql": "SELECT c.customer_region, COUNT(DISTINCT f.order_id) AS completed_order_count\nFROM mart_sales.fct_sales_order_line f\nJOIN mart_sales.dim_customer c ON f.customer_key = c.customer_key\nWHERE f.order_status = 'completed'\nGROUP BY c.customer_region\nORDER BY c.customer_region;",
+      "query_error_code": null,
+      "failure_reason": null,
+      "duration_ms": 2700
+    },
+    {
+      "case_id": "M07",
+      "category": "medium",
+      "status": "PASS",
+      "generated_sql": "SELECT p.product_line, SUM(f.sales_cost_amount_cny) AS sales_cost_cny\nFROM mart_sales.fct_sales_order_line f\nJOIN mart_sales.dim_product p ON f.product_key = p.product_key\nWHERE f.order_status = 'completed'\nGROUP BY p.product_line\nORDER BY p.product_line;",
+      "query_error_code": null,
+      "failure_reason": null,
+      "duration_ms": 2853
+    },
+    {
+      "case_id": "M08",
+      "category": "medium",
+      "status": "FAIL",
+      "generated_sql": "SELECT r.sales_region_code,\n       r.sales_region_name,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) / NULLIF(SUM(f.net_sales_amount_cny), 0) AS gross_margin_rate\nFROM mart_sales.fct_sales_order_line f\nJOIN mart_sales.dim_sales_region r ON f.sales_region_key = r.sales_region_key\nWHERE f.order_status = 'completed'\nGROUP BY r.sales_region_code, r.sales_region_name\nORDER BY r.sales_region_code;",
+      "query_error_code": null,
+      "failure_reason": "结果不一致",
+      "duration_ms": 4874
+    },
+    {
+      "case_id": "M09",
+      "category": "medium",
+      "status": "PASS",
+      "generated_sql": "SELECT p.product_line, COUNT(DISTINCT f.order_id) AS completed_order_count\nFROM mart_sales.fct_sales_order_line f\nJOIN mart_sales.dim_product p ON f.product_key = p.product_key\nWHERE f.order_status = 'completed'\nGROUP BY p.product_line\nORDER BY p.product_line;",
+      "query_error_code": null,
+      "failure_reason": null,
+      "duration_ms": 3747
+    },
+    {
+      "case_id": "T01",
+      "category": "medium",
+      "status": "PASS",
+      "generated_sql": "SELECT SUM(f.net_sales_amount_cny) AS rmb_net_sales\nFROM mart_sales.fct_sales_order_line f\nJOIN mart_sales.dim_date d ON f.completion_date_key = d.date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01';",
+      "query_error_code": null,
+      "failure_reason": null,
+      "duration_ms": 2416
+    },
+    {
+      "case_id": "C01",
+      "category": "complex",
+      "status": "PASS",
+      "generated_sql": "SELECT p.product_line AS product_line,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) AS gross_profit_cny,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) / NULLIF(SUM(f.net_sales_amount_cny), 0) AS gross_margin\nFROM mart_sales.fct_sales_order_line f\nJOIN mart_sales.dim_product p ON f.product_key = p.product_key\nWHERE f.order_status = 'completed'\nGROUP BY p.product_line;",
+      "query_error_code": null,
+      "failure_reason": null,
+      "duration_ms": 5919
+    },
+    {
+      "case_id": "C02",
+      "category": "complex",
+      "status": "PASS",
+      "generated_sql": "SELECT p.product_line,\n       SUM(f.net_sales_amount_cny) AS net_sales_amount_cny\nFROM mart_sales.fct_sales_order_line f\nJOIN mart_sales.dim_product p\n  ON f.product_key = p.product_key\nJOIN mart_sales.dim_date d\n  ON f.completion_date_key = d.date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\nGROUP BY p.product_line\nORDER BY p.product_line;",
+      "query_error_code": null,
+      "failure_reason": null,
+      "duration_ms": 3372
+    },
+    {
+      "case_id": "C03",
+      "category": "complex",
+      "status": "PASS",
+      "generated_sql": "SELECT\n  r.sales_region_name,\n  SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) AS \"人民币毛利\",\n  SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) / NULLIF(SUM(f.net_sales_amount_cny), 0) AS \"毛利率\"\nFROM mart_sales.fct_sales_order_line f\nJOIN mart_sales.dim_date d\n  ON f.completion_date_key = d.date_key\nJOIN mart_sales.dim_sales_region r\n  ON f.sales_region_key = r.sales_region_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\nGROUP BY r.sales_region_name;",
+      "query_error_code": null,
+      "failure_reason": null,
+      "duration_ms": 5923
+    },
+    {
+      "case_id": "C04",
+      "category": "complex",
+      "status": "PASS",
+      "generated_sql": "SELECT p.product_line,\n       SUM(f.net_sales_amount_cny) AS \"人民币净销售额\",\n       SUM(f.sales_cost_amount_cny) AS \"人民币销售成本\",\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) AS \"人民币毛利\",\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) / NULLIF(SUM(f.net_sales_amount_cny), 0) AS \"毛利率\"\nFROM mart_sales.fct_sales_order_line f\nJOIN mart_sales.dim_product p ON f.product_key = p.product_key\nWHERE f.order_status = 'completed'\nGROUP BY p.product_line\nORDER BY p.product_line;",
+      "query_error_code": null,
+      "failure_reason": null,
+      "duration_ms": 5027
+    },
+    {
+      "case_id": "C05",
+      "category": "complex",
+      "status": "PASS",
+      "generated_sql": "SELECT c.customer_type,\n       COUNT(DISTINCT f.order_id) AS \"已完成订单数\",\n       SUM(f.net_sales_amount_cny) AS \"人民币净销售额\",\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) / NULLIF(SUM(f.net_sales_amount_cny), 0) AS \"毛利率\"\nFROM mart_sales.fct_sales_order_line f\nJOIN mart_sales.dim_customer c ON f.customer_key = c.customer_key\nWHERE f.order_status = 'completed'\nGROUP BY c.customer_type;",
+      "query_error_code": null,
+      "failure_reason": null,
+      "duration_ms": 6570
+    }
+  ],
+  "baseline_comparison": null
+}

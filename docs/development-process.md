@@ -64,18 +64,18 @@
 | Requirement（需求确认） | 已完成 | `docs/product-scope.md` |
 | Architecture（架构设计） | 已完成 | `docs/architecture.md` |
 | Online Query Module Spec（在线查询模块规格） | 已完成 | `docs/specs/online-query.md` |
-| Online Query Implementation（在线查询实现） | 已完成 | T1 至 T5、Query API 和 Streamlit POC 已实现；真实 LLM 评测支持范围内 19/19 通过，另有 1 条多指标组合按 V1 边界受控返回 CANNOT_ANSWER |
+| Online Query Implementation（在线查询实现） | 已完成 | Query API、Streamlit POC 和基础 Multi-Metric T1～T4 已实现；主验收问题 C05 已通过真实在线 RAG 链路 |
 | RAG Offline Build Module Spec（RAG 离线构建模块规格） | 已完成 | `docs/specs/rag-offline-build.md` |
 | RAG Offline Implementation Design（RAG 离线构建实现设计） | 已完成 | `docs/designs/rag-offline-build.md` |
 | RAG Offline Task Split（RAG 离线构建任务拆分） | 已完成 | T1 至 T9 均已完成 |
 | RAG Offline Implementation（RAG 离线构建实现） | 已完成 | TABLE / COLUMN / METRIC 文档、BGE-M3 dense+sparse、Qdrant 版本集合、关系图和原子发布均已实现 |
-| Test / Evaluation（测试与评估） | 已完成 | 全仓 148 passed、6 skipped、42 subtests passed；真实 Qdrant 构建为 TABLE=7、COLUMN=69、METRIC=5、关系边=9；真实在线检索评测支持范围内 19/19 通过；PostgreSQL 端到端执行通过 |
+| Test / Evaluation（测试与评估） | 进行中 | 全仓 186 passed、6 skipped、61 subtests passed；真实 Qdrant 构建为 TABLE=7、COLUMN=69、METRIC=5、关系边=9；首轮真实在线 RAG 评测 19/20，C05 通过、M08 一次结果不一致；PostgreSQL 端到端执行通过 |
 | Code Review（代码审查） | 已完成 | Contract、范围、失败保护、Secret、依赖锁和差异检查均已复核 |
-| Integration / Release（集成与发布） | 本地 POC 资产已发布 | 应用仍为 `0.1.0`（POC）；RAG Offline 资产 `20260906-bge-m3-v2` 已发布到本地持久化 Qdrant 和 `data/rag`；Online Retrieval V1 已完成真实端到端验收；生成资产不进入 Git，未 Push（推送）远程 |
+| Integration / Release（集成与发布） | 本地 POC 资产已发布 | 应用仍为 `0.1.0`（POC）；RAG Offline 资产 `20260906-bge-m3-v2` 已发布到本地持久化 Qdrant 和 `data/rag`；单指标 Online Retrieval V1 已完成真实端到端验收，多指标业务验收尚未关闭；生成资产不进入 Git，未 Push（推送）远程 |
 
 当前下一步：
 
-> Online Query POC、RAG Offline Build 和 Online Retrieval V1 已完成最小闭环，并已通过真实 Qdrant、LLM 和 PostgreSQL 端到端验收。下一项若继续，应单独设计多指标组合编排；Agent、正式前端、生产级认证与多租户仍不在当前完成范围内；不把 `0.1.0` POC 描述为 Production Ready（生产可用）。
+> Online Query POC、RAG Offline Build 和单指标 Online Retrieval V1 已完成最小闭环；基础多指标已完成实现并完成首轮真实评测，但当前为 19/20，仍需处理 M08 稳定性和业务验收。Agent、正式前端、生产级认证与多租户仍不在当前完成范围内；不把 `0.1.0` POC 描述为 Production Ready（生产可用）。
 
 ## 维护规则
 
