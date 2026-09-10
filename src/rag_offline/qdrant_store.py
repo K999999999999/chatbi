@@ -151,6 +151,68 @@ class QdrantAssetStore:
         except Exception as exc:
             raise QdrantStoreError(f"读取集合数量失败 {collection_name}：{exc}") from exc
 
+    def scroll_payloads(
+        self,
+        collection_name: str,
+        *,
+        page_size: int = 100,
+    ) -> tuple[Mapping[str, Any], ...]:
+        """分页读取集合全部 Payload，不加载向量，并按 document_id 排序。"""
+
+        if page_size <= 0:
+            raise QdrantStoreError("Payload 分页大小必须为正数")
+
+        payloads: list[dict[str, Any]] = []
+        offset: Any | None = None
+        seen_offsets: set[str] = set()
+        while True:
+            try:
+                response = self._client.scroll(
+                    collection_name=collection_name,
+                    limit=page_size,
+                    offset=offset,
+                    with_payload=True,
+                    with_vectors=False,
+                )
+            except Exception as exc:
+                raise QdrantStoreError(
+                    f"读取集合 Payload 失败 {collection_name}：{exc}"
+                ) from exc
+
+            if not isinstance(response, tuple) or len(response) != 2:
+                raise QdrantStoreError(
+                    f"集合 {collection_name} 返回了无效 Scroll 响应"
+                )
+            points, next_offset = response
+            if not isinstance(points, Sequence) or isinstance(points, (str, bytes)):
+                raise QdrantStoreError(
+                    f"集合 {collection_name} 返回了无效 Scroll 记录"
+                )
+            for point in points:
+                payload = _field(point, "payload", {}) or {}
+                if not isinstance(payload, Mapping):
+                    raise QdrantStoreError(
+                        f"集合 {collection_name} 返回了无效 payload"
+                    )
+                payloads.append(dict(payload))
+
+            if next_offset is None:
+                break
+            offset_marker = repr(next_offset)
+            if offset_marker in seen_offsets:
+                raise QdrantStoreError(
+                    f"集合 {collection_name} Scroll 游标重复，拒绝继续读取"
+                )
+            seen_offsets.add(offset_marker)
+            offset = next_offset
+
+        return tuple(
+            sorted(
+                payloads,
+                key=lambda payload: str(payload.get("document_id", "")),
+            )
+        )
+
     def search(
         self,
         collection_name: str,

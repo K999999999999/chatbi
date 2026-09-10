@@ -6,7 +6,7 @@ import unittest
 from src.rag_offline.embedding import EmbeddedText, SparseEmbedding
 from src.rag_offline.qdrant_store import SearchHit
 from src.online_query.contracts import RetrievalConfig, RetrievalStatus
-from src.online_query.rag_runtime import AssetSnapshot
+from src.online_query.rag_runtime import AssetSnapshot, MetricCatalog
 from src.online_query.retrieval import OnlineRetriever
 
 
@@ -145,6 +145,11 @@ def _snapshot(store, embedding, graph):
         manifest={"status": "READY"},
         embedding_provider=embedding,
         qdrant_store=store,
+        metric_catalog=MetricCatalog(
+            entries=(),
+            by_document_id={},
+            by_label={},
+        ),
     )
 
 
