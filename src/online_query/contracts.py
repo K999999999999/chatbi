@@ -52,6 +52,79 @@ class QueryContext:
     allowed_columns: Mapping[str, frozenset[str]]
 
 
+class RequestShape(StrEnum):
+    """读取在线资产前可确定的请求形态。"""
+
+    BASELINE = "BASELINE"
+    EXPLICIT_MULTI = "EXPLICIT_MULTI"
+    POSSIBLE_MULTI = "POSSIBLE_MULTI"
+
+
+class FallbackPolicy(StrEnum):
+    """技术故障时是否允许使用静态上下文。"""
+
+    ALLOW_STATIC = "ALLOW_STATIC"
+    FAIL_CLOSED = "FAIL_CLOSED"
+
+
+@dataclass(frozen=True, slots=True)
+class RetrievalRequest:
+    """Online Retrieval 使用的内部请求。"""
+
+    question: str
+    request_shape: RequestShape
+    fallback_policy: FallbackPolicy
+
+
+@dataclass(frozen=True, slots=True)
+class MetricMention:
+    """用户问题中一个已映射的指标提及。"""
+
+    requested_text: str
+    start: int
+    end: int
+    document_id: str
+    metric_name: str
+
+
+@dataclass(frozen=True, slots=True)
+class MetricConstraint:
+    """一个请求指标的认证业务约束。"""
+
+    ordinal: int
+    requested_text: str
+    document_id: str
+    metric_name: str
+    formula: str
+    data_source: str
+    time_field: str
+    filters: tuple[str, ...]
+    depends_on: tuple[str, ...]
+
+
+class MetricPlanStatus(StrEnum):
+    """确定性多指标计划结果。"""
+
+    NOT_MULTI = "NOT_MULTI"
+    SUCCESS = "SUCCESS"
+    AMBIGUOUS = "AMBIGUOUS"
+    NO_METRIC = "NO_METRIC"
+    TOO_MANY = "TOO_MANY"
+    UNSUPPORTED_COMBINATION = "UNSUPPORTED_COMBINATION"
+    INVALID_ASSET = "INVALID_ASSET"
+
+
+@dataclass(frozen=True, slots=True)
+class MetricRequestPlan:
+    """多指标解析、去重和兼容检查的输出。"""
+
+    status: MetricPlanStatus
+    request: RetrievalRequest
+    mentions: tuple[MetricMention, ...] = ()
+    constraints: tuple[MetricConstraint, ...] = ()
+    reason: str = ""
+
+
 class RetrievalStatus(StrEnum):
     """Online Retrieval（在线检索）对外暴露的状态。"""
 
