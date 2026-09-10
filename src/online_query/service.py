@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from .context import load_query_context
 from .contracts import (
+    FallbackPolicy,
     QueryContext,
     QueryErrorCode,
     QueryExecutor,
@@ -15,9 +16,11 @@ from .contracts import (
     QuerySuccess,
     RetrievalProvider,
     RetrievalStatus,
+    RequestShape,
     SQLGenerator,
 )
 from .database import DatabaseError, DatabaseQueryTimeout
+from .multi_metric import build_retrieval_request
 from .prompt import build_prompt
 from .sql_guard import validate_candidate_scope, validate_sql
 
@@ -129,8 +132,9 @@ class OnlineQueryService:
                 return None, QueryErrorCode.CONTEXT_ERROR
             return self._context, None
 
+        retrieval_request = build_retrieval_request(question)
         try:
-            result = self._retrieval_provider.retrieve(question)
+            result = self._retrieval_provider.retrieve(retrieval_request)
         except Exception as exc:
             _LOGGER.warning(
                 "Online Retrieval fallback: request_id=%s status=PROVIDER_EXCEPTION "
@@ -138,11 +142,19 @@ class OnlineQueryService:
                 request_id,
                 type(exc).__name__,
             )
+            if retrieval_request.fallback_policy == FallbackPolicy.FAIL_CLOSED:
+                return None, QueryErrorCode.CONTEXT_ERROR
             return self._static_context_or_error()
 
         if result.status == RetrievalStatus.SUCCESS:
             try:
-                return result.to_query_context(), None
+                resolved_context = result.to_query_context()
+                if (
+                    retrieval_request.request_shape != RequestShape.BASELINE
+                    and len(resolved_context.metric_constraints) < 2
+                ):
+                    return None, QueryErrorCode.CANNOT_ANSWER
+                return resolved_context, None
             except ValueError as exc:
                 _LOGGER.warning(
                     "Online Retrieval fallback: request_id=%s status=SUCCESS "
@@ -151,9 +163,13 @@ class OnlineQueryService:
                     result.asset_version,
                     type(exc).__name__,
                 )
+                if retrieval_request.fallback_policy == FallbackPolicy.FAIL_CLOSED:
+                    return None, QueryErrorCode.CONTEXT_ERROR
                 return self._static_context_or_error()
         if result.status in _BUSINESS_RETRIEVAL_FAILURES:
             return None, QueryErrorCode.CANNOT_ANSWER
+        if retrieval_request.fallback_policy == FallbackPolicy.FAIL_CLOSED:
+            return None, QueryErrorCode.CONTEXT_ERROR
         _LOGGER.warning(
             "Online Retrieval fallback: request_id=%s status=%s asset_version=%s "
             "reason=%s",

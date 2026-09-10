@@ -5,6 +5,9 @@ import unittest
 
 from src.online_query.context import ContextLoadError
 from src.online_query.contracts import (
+    FallbackPolicy,
+    JoinConstraint,
+    MetricConstraint,
     OnlineRetrievalResult,
     QueryContext,
     QueryData,
@@ -12,6 +15,7 @@ from src.online_query.contracts import (
     QueryFailure,
     QueryRequest,
     QuerySuccess,
+    RequestShape,
     RetrievalStatus,
 )
 from src.online_query.service import OnlineQueryService
@@ -95,6 +99,81 @@ class RetrievalServiceTest(unittest.TestCase):
         self.assertIn("status=RETRIEVAL_UNAVAILABLE", logs.output[0])
         self.assertIn("reason=qdrant unavailable", logs.output[0])
 
+    def test_multi_metric_technical_failure_does_not_fallback_to_static_context(self) -> None:
+        provider = Mock()
+        provider.retrieve.return_value = OnlineRetrievalResult(
+            status=RetrievalStatus.RETRIEVAL_UNAVAILABLE,
+            request_shape=RequestShape.EXPLICIT_MULTI,
+            fallback_policy=FallbackPolicy.FAIL_CLOSED,
+            warnings=("qdrant unavailable",),
+        )
+        service = self._service(provider)
+
+        result = service.query(
+            QueryRequest(question="按客户类型统计销售额和毛利率")
+        )
+
+        self._assert_failure(result, QueryErrorCode.CONTEXT_ERROR)
+        self.generator.generate.assert_not_called()
+        self.executor.execute.assert_not_called()
+        retrieval_request = provider.retrieve.call_args.args[0]
+        self.assertEqual(retrieval_request.request_shape, RequestShape.EXPLICIT_MULTI)
+        self.assertEqual(
+            retrieval_request.fallback_policy,
+            FallbackPolicy.FAIL_CLOSED,
+        )
+
+    def test_multi_metric_provider_exception_does_not_fallback_to_static_context(self) -> None:
+        provider = Mock()
+        provider.retrieve.side_effect = RuntimeError("qdrant unavailable")
+        service = self._service(provider)
+
+        result = service.query(
+            QueryRequest(question="按客户类型统计销售额和毛利率")
+        )
+
+        self._assert_failure(result, QueryErrorCode.CONTEXT_ERROR)
+        self.generator.generate.assert_not_called()
+        self.executor.execute.assert_not_called()
+
+    def test_multi_metric_success_without_constraints_stops_before_llm(self) -> None:
+        provider = Mock()
+        provider.retrieve.return_value = OnlineRetrievalResult(
+            status=RetrievalStatus.SUCCESS,
+            request_shape=RequestShape.EXPLICIT_MULTI,
+            query_context=self.dynamic_context,
+        )
+        service = self._service(provider)
+
+        result = service.query(
+            QueryRequest(question="按客户类型统计销售额和毛利率")
+        )
+
+        self._assert_failure(result, QueryErrorCode.CANNOT_ANSWER)
+        self.generator.generate.assert_not_called()
+        self.executor.execute.assert_not_called()
+
+    def test_multi_metric_success_runs_guard_before_database(self) -> None:
+        provider = Mock()
+        provider.retrieve.return_value = OnlineRetrievalResult(
+            status=RetrievalStatus.SUCCESS,
+            query_context=_multi_context(),
+        )
+        self.generator.generate.return_value = _valid_multi_sql()
+        self.executor.execute.return_value = QueryData(
+            columns=("customer_type", "completed_order_count", "net_sales_cny"),
+            rows=(("Enterprise", 2, 100.0),),
+            truncated=False,
+        )
+        service = self._service(provider)
+
+        result = service.query(
+            QueryRequest(question="按客户类型统计销售额和已完成订单数")
+        )
+
+        self.assertIsInstance(result, QuerySuccess)
+        self.executor.execute.assert_called_once()
+
     def test_technical_failure_with_unavailable_static_context_is_context_error(self) -> None:
         provider = Mock()
         provider.retrieve.return_value = OnlineRetrievalResult(
@@ -140,6 +219,74 @@ class RetrievalServiceTest(unittest.TestCase):
         self.assertIsInstance(result, QueryFailure)
         assert isinstance(result, QueryFailure)
         self.assertEqual(result.error_code, error_code)
+
+
+def _multi_context() -> QueryContext:
+    fact_table = "mart_sales.fct_sales_order_line"
+    customer_table = "mart_sales.dim_customer"
+    return QueryContext(
+        prompt_context="MULTI CONTEXT",
+        allowed_tables=frozenset({fact_table, customer_table}),
+        allowed_columns={
+            fact_table: frozenset(
+                {
+                    "customer_key",
+                    "order_id",
+                    "net_sales_amount_cny",
+                    "order_status",
+                }
+            ),
+            customer_table: frozenset({"customer_key", "customer_type"}),
+        },
+        request_shape=RequestShape.EXPLICIT_MULTI,
+        metric_constraints=(
+            MetricConstraint(
+                ordinal=1,
+                requested_text="销售额",
+                document_id="metric:net_sales",
+                metric_name="人民币净销售额",
+                formula="SUM(f.net_sales_amount_cny)",
+                data_source=fact_table,
+                time_field="fct_sales_order_line.completion_date_key -> dim_date.full_date",
+                filters=("f.order_status = 'completed'",),
+                depends_on=(),
+            ),
+            MetricConstraint(
+                ordinal=2,
+                requested_text="已完成订单数",
+                document_id="metric:completed_orders",
+                metric_name="已完成订单数",
+                formula="COUNT(DISTINCT f.order_id)",
+                data_source=fact_table,
+                time_field="fct_sales_order_line.completion_date_key -> dim_date.full_date",
+                filters=("f.order_status = 'completed'",),
+                depends_on=(),
+            ),
+        ),
+        join_constraints=(
+            JoinConstraint(
+                source_table=fact_table,
+                source_columns=("customer_key",),
+                target_table=customer_table,
+                target_columns=("customer_key",),
+                uniqueness_basis="primary_key:dim_customer",
+                direction="forward",
+            ),
+        ),
+    )
+
+
+def _valid_multi_sql() -> str:
+    return """
+SELECT c.customer_type,
+       SUM(f.net_sales_amount_cny) AS net_sales_cny,
+       COUNT(DISTINCT f.order_id) AS completed_order_count
+FROM mart_sales.fct_sales_order_line AS f
+JOIN mart_sales.dim_customer AS c
+  ON f.customer_key = c.customer_key
+WHERE f.order_status = 'completed'
+GROUP BY c.customer_type
+""".strip()
 
 
 if __name__ == "__main__":

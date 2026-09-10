@@ -4,7 +4,12 @@ import json
 from pathlib import Path
 import unittest
 
-from src.online_query.contracts import QueryContext
+from src.online_query.contracts import (
+    JoinConstraint,
+    MetricConstraint,
+    QueryContext,
+    RequestShape,
+)
 from src.online_query.context import load_query_context
 from src.online_query.sql_guard import SQLRejectedError, validate_sql
 
@@ -34,6 +39,7 @@ class SQLGuardTest(unittest.TestCase):
                 ),
             },
         )
+        cls.multi_context = _multi_metric_context()
 
     def test_valid_select_passes_without_rewriting(self) -> None:
         sql = (
@@ -46,6 +52,116 @@ class SQLGuardTest(unittest.TestCase):
         validated = validate_sql(sql, self.context)
 
         self.assertEqual(validated.sql, sql)
+
+    def test_valid_multi_metric_select_passes_without_rewriting(self) -> None:
+        sql = _valid_multi_metric_sql()
+
+        validated = validate_sql(sql, self.multi_context)
+
+        self.assertEqual(validated.sql, sql)
+
+    def test_multi_metric_allows_parentheses_and_alias_variations(self) -> None:
+        sql = _valid_multi_metric_sql()
+        sql = sql.replace(
+            "COUNT(DISTINCT f.order_id) AS completed_order_count",
+            "((COUNT(DISTINCT f.order_id))) AS completed_order_count",
+        )
+        sql = sql.replace(
+            "WHERE f.order_status = 'completed'",
+            "WHERE (f.order_status = 'completed')",
+        )
+
+        validated = validate_sql(sql, self.multi_context)
+
+        self.assertEqual(validated.sql, sql)
+
+    def test_multi_metric_rejects_incomplete_extra_or_reordered_outputs(self) -> None:
+        candidates = (
+            _valid_multi_metric_sql().replace(
+                "       SUM(f.net_sales_amount_cny) AS net_sales_cny,\n",
+                "",
+            ),
+            _valid_multi_metric_sql().replace(
+                "       SUM(f.net_sales_amount_cny) AS net_sales_cny,",
+                "       SUM(f.sales_cost_amount_cny) AS sales_cost_cny,",
+            ),
+            _valid_multi_metric_sql()
+            .replace(
+                "       SUM(f.net_sales_amount_cny) AS net_sales_cny,\n"
+                "       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny)\n"
+                "           / NULLIF(SUM(f.net_sales_amount_cny), 0) "
+                "AS gross_margin",
+                "       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny)\n"
+                "           / NULLIF(SUM(f.net_sales_amount_cny), 0) "
+                "AS gross_margin,\n"
+                "       SUM(f.net_sales_amount_cny) AS net_sales_cny",
+            ),
+        )
+
+        for sql in candidates:
+            with self.subTest(sql=sql):
+                with self.assertRaises(SQLRejectedError):
+                    validate_sql(sql, self.multi_context)
+
+    def test_multi_metric_rejects_formula_fixed_filter_or_and_wrong_join(self) -> None:
+        candidates = (
+            _valid_multi_metric_sql().replace(
+                "SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny)",
+                "SUM(f.net_sales_amount_cny + f.sales_cost_amount_cny)",
+            ),
+            _valid_multi_metric_sql().replace(
+                "WHERE f.order_status = 'completed'\n",
+                "",
+            ),
+            _valid_multi_metric_sql().replace(
+                "WHERE f.order_status = 'completed'",
+                "WHERE f.order_status = 'completed' "
+                "OR f.order_status = 'pending'",
+            ),
+            _valid_multi_metric_sql().replace(
+                "ON f.customer_key = c.customer_key",
+                "ON f.customer_key = c.customer_name",
+            ),
+        )
+
+        for sql in candidates:
+            with self.subTest(sql=sql):
+                with self.assertRaises(SQLRejectedError):
+                    validate_sql(sql, self.multi_context)
+
+    def test_multi_metric_rejects_unsupported_shapes_and_extra_aggregation(self) -> None:
+        candidates = (
+            """
+WITH base AS (
+    SELECT *
+    FROM mart_sales.fct_sales_order_line
+)
+SELECT c.customer_type,
+       COUNT(DISTINCT f.order_id),
+       SUM(f.net_sales_amount_cny),
+       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny)
+           / NULLIF(SUM(f.net_sales_amount_cny), 0)
+FROM base AS f
+JOIN mart_sales.dim_customer AS c
+  ON f.customer_key = c.customer_key
+WHERE f.order_status = 'completed'
+GROUP BY c.customer_type
+""".strip(),
+            _valid_multi_metric_sql().replace(
+                "GROUP BY c.customer_type",
+                "GROUP BY c.customer_type "
+                "HAVING SUM(f.net_sales_amount_cny) > 0",
+            ),
+            _valid_multi_metric_sql().replace(
+                "ORDER BY gross_margin DESC",
+                "ORDER BY SUM(f.sales_cost_amount_cny) DESC",
+            ),
+        )
+
+        for sql in candidates:
+            with self.subTest(sql=sql):
+                with self.assertRaises(SQLRejectedError):
+                    validate_sql(sql, self.multi_context)
 
     def test_cte_join_and_output_alias_pass(self) -> None:
         sql = """
@@ -185,6 +301,93 @@ JOIN mart_sales.dim_customer AS c ON c.customer_key = f.customer_key
             with self.subTest(sql=sql):
                 with self.assertRaises(SQLRejectedError):
                     validate_sql(sql, self.context)
+
+
+def _multi_metric_context() -> QueryContext:
+    fact_table = "mart_sales.fct_sales_order_line"
+    customer_table = "mart_sales.dim_customer"
+    constraints = (
+        MetricConstraint(
+            ordinal=1,
+            requested_text="已完成订单数",
+            document_id="metric:completed_orders",
+            metric_name="已完成订单数",
+            formula="COUNT(DISTINCT f.order_id)",
+            data_source=fact_table,
+            time_field="fct_sales_order_line.completion_date_key -> dim_date.full_date",
+            filters=("f.order_status = 'completed'",),
+            depends_on=(),
+        ),
+        MetricConstraint(
+            ordinal=2,
+            requested_text="人民币销售额",
+            document_id="metric:net_sales",
+            metric_name="人民币净销售额",
+            formula="SUM(f.net_sales_amount_cny)",
+            data_source=fact_table,
+            time_field="fct_sales_order_line.completion_date_key -> dim_date.full_date",
+            filters=("f.order_status = 'completed'",),
+            depends_on=(),
+        ),
+        MetricConstraint(
+            ordinal=3,
+            requested_text="毛利率",
+            document_id="metric:gross_margin",
+            metric_name="毛利率",
+            formula=(
+                "SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) "
+                "/ NULLIF(SUM(f.net_sales_amount_cny), 0)"
+            ),
+            data_source=fact_table,
+            time_field="fct_sales_order_line.completion_date_key -> dim_date.full_date",
+            filters=("f.order_status = 'completed'",),
+            depends_on=("人民币毛利", "人民币净销售额"),
+        ),
+    )
+    return QueryContext(
+        prompt_context="{}",
+        allowed_tables=frozenset({fact_table, customer_table}),
+        allowed_columns={
+            fact_table: frozenset(
+                {
+                    "customer_key",
+                    "order_id",
+                    "net_sales_amount_cny",
+                    "sales_cost_amount_cny",
+                    "order_status",
+                }
+            ),
+            customer_table: frozenset({"customer_key", "customer_type", "customer_name"}),
+        },
+        request_shape=RequestShape.EXPLICIT_MULTI,
+        metric_constraints=constraints,
+        join_constraints=(
+            JoinConstraint(
+                source_table=fact_table,
+                source_columns=("customer_key",),
+                target_table=customer_table,
+                target_columns=("customer_key",),
+                uniqueness_basis="primary_key:dim_customer",
+                direction="forward",
+            ),
+        ),
+    )
+
+
+def _valid_multi_metric_sql() -> str:
+    return """
+SELECT c.customer_type,
+       COUNT(DISTINCT f.order_id) AS completed_order_count,
+       SUM(f.net_sales_amount_cny) AS net_sales_cny,
+       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny)
+           / NULLIF(SUM(f.net_sales_amount_cny), 0) AS gross_margin
+FROM mart_sales.fct_sales_order_line AS f
+JOIN mart_sales.dim_customer AS c
+  ON f.customer_key = c.customer_key
+WHERE f.order_status = 'completed'
+GROUP BY c.customer_type
+ORDER BY gross_margin DESC
+""".strip()
 
 
 if __name__ == "__main__":

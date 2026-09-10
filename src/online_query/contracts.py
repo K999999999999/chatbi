@@ -310,8 +310,11 @@ class OnlineRetrievalResult:
 class RetrievalProvider(Protocol):
     """Online Query（在线查询）使用的最小检索依赖。"""
 
-    def retrieve(self, question: str) -> OnlineRetrievalResult:
-        """根据用户问题返回检索结果。"""
+    def retrieve(
+        self,
+        question: str | RetrievalRequest,
+    ) -> OnlineRetrievalResult:
+        """根据用户问题或已判定的内部请求返回检索结果。"""
 
 
 @dataclass(frozen=True, slots=True)
