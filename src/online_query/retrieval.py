@@ -17,17 +17,25 @@ from src.rag_offline.qdrant_store import QdrantStoreError, SearchHit
 
 from .contracts import (
     ColumnHit,
+    FallbackPolicy,
+    JoinConstraint,
     JoinEdge,
     JoinPath,
     JoinResolution,
+    MetricConstraint,
     MetricHit,
+    MetricPlanStatus,
+    MetricRetrievalEvidence,
     OnlineRetrievalResult,
     QueryContext,
+    RequestShape,
     RetrievalConfig,
     RetrievalEvidence,
+    RetrievalRequest,
     RetrievalStatus,
     TableHit,
 )
+from .multi_metric import plan_multi_metric_request
 from .rag_runtime import (
     AssetSnapshot,
     AssetUnavailableError,
@@ -77,9 +85,13 @@ class OnlineRetriever:
         self._runtime = runtime
         self._config = config or RetrievalConfig()
 
-    def retrieve(self, question: str) -> OnlineRetrievalResult:
+    def retrieve(self, question: str | RetrievalRequest) -> OnlineRetrievalResult:
         """执行 TABLE、COLUMN、METRIC 和确定性关系解析。"""
 
+        if isinstance(question, RetrievalRequest):
+            if question.request_shape != RequestShape.BASELINE:
+                return self._retrieve_multi(question)
+            question = question.question
         if not isinstance(question, str) or not question.strip():
             raise ValueError("检索问题不能为空")
         question = question.strip()
@@ -212,6 +224,362 @@ class OnlineRetriever:
             evidence=evidence,
             warnings=(f"anchor_reason={reason}",),
             query_context=query_context,
+        )
+
+    def _retrieve_multi(
+        self,
+        request: RetrievalRequest,
+    ) -> OnlineRetrievalResult:
+        """执行已预判多指标请求的完整检索，但不调用 LLM 或数据库。"""
+
+        question = request.question
+        grouping_text = _grouping_text(question)
+        try:
+            snapshot = self._runtime.get_snapshot()
+        except AssetUnavailableError as exc:
+            return _failure(
+                RetrievalStatus.ASSET_UNAVAILABLE,
+                str(exc),
+                request=request,
+            )
+        except RetrievalUnavailableError as exc:
+            return _failure(
+                RetrievalStatus.RETRIEVAL_UNAVAILABLE,
+                str(exc),
+                request=request,
+            )
+        except EmbeddingUnavailableError as exc:
+            return _failure(
+                RetrievalStatus.EMBEDDING_UNAVAILABLE,
+                str(exc),
+                request=request,
+            )
+        except Exception as exc:
+            return _failure(
+                RetrievalStatus.ASSET_UNAVAILABLE,
+                str(exc),
+                request=request,
+            )
+
+        plan = plan_multi_metric_request(request, snapshot.metric_catalog)
+        if plan.status == MetricPlanStatus.INVALID_ASSET:
+            return _failure(
+                RetrievalStatus.ASSET_UNAVAILABLE,
+                plan.reason,
+                asset_version=snapshot.asset_version,
+                request=request,
+                internal_reason=plan.status.value,
+                metric_constraints=plan.constraints,
+            )
+        if plan.status != MetricPlanStatus.SUCCESS:
+            status = (
+                RetrievalStatus.NO_METRIC_HIT
+                if plan.status == MetricPlanStatus.NO_METRIC
+                else RetrievalStatus.AMBIGUOUS
+            )
+            internal_reason = (
+                "UNSUPPORTED_METRIC_COMBINATION"
+                if plan.status
+                in {
+                    MetricPlanStatus.TOO_MANY,
+                    MetricPlanStatus.UNSUPPORTED_COMBINATION,
+                }
+                else plan.status.value
+            )
+            return _result(
+                status,
+                snapshot.asset_version,
+                warnings=(plan.reason or "多指标请求无法形成确定计划",),
+                request=request,
+                internal_reason=internal_reason,
+                metric_constraints=plan.constraints,
+            )
+
+        constraints = plan.constraints
+        metric_queries: list[MetricRetrievalEvidence] = []
+        metric_hits: list[MetricHit] = []
+        selected_metrics: list[MetricHit] = []
+        try:
+            question_embedding = snapshot.embedding_provider.embed_query(question)
+            table_hits = _table_hits(
+                snapshot,
+                question_embedding,
+                self._config,
+                extra_queries=(grouping_text,) if grouping_text else (),
+            )
+            for constraint in constraints:
+                metric_query = _multi_metric_query(constraint)
+                metric_embedding = snapshot.embedding_provider.embed_query(metric_query)
+                hits = _metric_hits(snapshot, metric_embedding, self._config)
+                metric_queries.append(
+                    MetricRetrievalEvidence(
+                        requested_text=constraint.requested_text,
+                        target_document_id=constraint.document_id,
+                        hits=hits,
+                    )
+                )
+                metric_hits.extend(hits)
+                selected = next(
+                    (
+                        hit
+                        for hit in hits
+                        if hit.document_id == constraint.document_id
+                    ),
+                    None,
+                )
+                if selected is None:
+                    evidence = RetrievalEvidence(
+                        table_hits=table_hits,
+                        metric_hits=tuple(metric_hits),
+                        metric_queries=tuple(metric_queries),
+                    )
+                    return _result(
+                        RetrievalStatus.NO_METRIC_HIT,
+                        snapshot.asset_version,
+                        tables=table_hits,
+                        evidence=evidence,
+                        warnings=(
+                            f"指标未在独立 METRIC 检索中有效命中："
+                            f"{constraint.requested_text}",
+                        ),
+                        request=request,
+                        internal_reason="NO_METRIC_HIT",
+                        metric_constraints=constraints,
+                    )
+                _validate_metric_against_constraint(selected, constraint)
+                selected_metrics.append(selected)
+        except EmbeddingError as exc:
+            return _failure(
+                RetrievalStatus.EMBEDDING_UNAVAILABLE,
+                str(exc),
+                asset_version=snapshot.asset_version,
+                request=request,
+                metric_constraints=constraints,
+            )
+        except QdrantStoreError as exc:
+            return _failure(
+                RetrievalStatus.RETRIEVAL_UNAVAILABLE,
+                str(exc),
+                asset_version=snapshot.asset_version,
+                request=request,
+                metric_constraints=constraints,
+            )
+        except RetrievalContractError as exc:
+            return _failure(
+                RetrievalStatus.ASSET_UNAVAILABLE,
+                str(exc),
+                asset_version=snapshot.asset_version,
+                request=request,
+                metric_constraints=constraints,
+            )
+
+        selected_tuple = tuple(selected_metrics)
+        evidence = RetrievalEvidence(
+            table_hits=table_hits,
+            metric_hits=tuple(metric_hits),
+            metric_queries=tuple(metric_queries),
+        )
+        if not table_hits:
+            return _result(
+                RetrievalStatus.NO_TABLE_HIT,
+                snapshot.asset_version,
+                evidence=evidence,
+                warnings=("TABLE 检索没有超过阈值的有效候选",),
+                request=request,
+                metric_constraints=constraints,
+            )
+
+        metric_table = constraints[0].data_source
+        if not any(hit.qualified_name == metric_table for hit in table_hits):
+            return _result(
+                RetrievalStatus.NO_TABLE_HIT,
+                snapshot.asset_version,
+                tables=table_hits,
+                metrics=selected_tuple,
+                evidence=evidence,
+                warnings=("共同指标 data_source 没有被 TABLE 路线命中",),
+                request=request,
+                metric_constraints=constraints,
+            )
+
+        try:
+            time_field = _parse_time_field(selected_tuple[0])
+            required = _required_columns_many(selected_tuple, time_field)
+            candidate_tables = _candidate_table_hits(
+                question,
+                table_hits,
+                metric_table,
+                time_field,
+            )
+            grouping_tables = _grouping_table_names(
+                grouping_text,
+                table_hits,
+                metric_table,
+            )
+            column_hits = _column_hits(
+                snapshot,
+                candidate_tables,
+                _multi_column_query(question, selected_tuple),
+                self._config,
+                required=required,
+                grouping_query=grouping_text,
+                grouping_tables=grouping_tables,
+            )
+        except EmbeddingError as exc:
+            return _failure(
+                RetrievalStatus.EMBEDDING_UNAVAILABLE,
+                str(exc),
+                asset_version=snapshot.asset_version,
+                evidence=evidence,
+                request=request,
+                metric_constraints=constraints,
+            )
+        except QdrantStoreError as exc:
+            return _failure(
+                RetrievalStatus.RETRIEVAL_UNAVAILABLE,
+                str(exc),
+                asset_version=snapshot.asset_version,
+                evidence=evidence,
+                request=request,
+                metric_constraints=constraints,
+            )
+        except RetrievalContractError as exc:
+            return _failure(
+                RetrievalStatus.ASSET_UNAVAILABLE,
+                str(exc),
+                asset_version=snapshot.asset_version,
+                evidence=evidence,
+                request=request,
+                metric_constraints=constraints,
+            )
+
+        evidence = RetrievalEvidence(
+            table_hits=table_hits,
+            column_hits=column_hits,
+            metric_hits=tuple(metric_hits),
+            metric_queries=tuple(metric_queries),
+        )
+        if not column_hits or not _contains_required_columns(column_hits, required):
+            missing_details = _missing_required_column_details(
+                selected_tuple,
+                time_field,
+                column_hits,
+            )
+            return _result(
+                RetrievalStatus.NO_REQUIRED_COLUMN_HIT,
+                snapshot.asset_version,
+                tables=table_hits,
+                fields=column_hits,
+                metrics=selected_tuple,
+                evidence=evidence,
+                warnings=(
+                    "至少一个指标的必需字段没有被 COLUMN 有效命中",
+                    *missing_details,
+                ),
+                request=request,
+                metric_constraints=constraints,
+            )
+
+        try:
+            anchor = metric_table
+            edges = _graph_edges(snapshot.relationship_graph)
+            time_field = _validate_time_edge(time_field, edges)
+            targets = _target_tables(candidate_tables, metric_table, time_field)
+            resolution = _resolve_join_paths(
+                anchor,
+                targets,
+                edges,
+                time_edge=time_field.edge_id,
+                time_target=time_field.target_table,
+            )
+            join_constraints = _validated_multi_joins(
+                anchor,
+                resolution,
+                snapshot.relationship_graph,
+            )
+        except _AmbiguousRetrieval as exc:
+            return _result(
+                RetrievalStatus.AMBIGUOUS,
+                snapshot.asset_version,
+                tables=table_hits,
+                fields=column_hits,
+                metrics=selected_tuple,
+                evidence=evidence,
+                warnings=(str(exc),),
+                request=request,
+                metric_constraints=constraints,
+            )
+        except _UnreachableRequired as exc:
+            return _result(
+                RetrievalStatus.PARTIAL_UNREACHABLE,
+                snapshot.asset_version,
+                tables=table_hits,
+                fields=column_hits,
+                metrics=selected_tuple,
+                evidence=evidence,
+                warnings=(str(exc),),
+                request=request,
+                metric_constraints=constraints,
+            )
+        except RetrievalContractError as exc:
+            return _failure(
+                RetrievalStatus.ASSET_UNAVAILABLE,
+                str(exc),
+                asset_version=snapshot.asset_version,
+                evidence=evidence,
+                request=request,
+                metric_constraints=constraints,
+            )
+
+        final_tables = _final_table_hits(candidate_tables, resolution)
+        final_fields = _final_column_hits(
+            column_hits,
+            resolution,
+            allowed_tables=frozenset(
+                table.qualified_name for table in final_tables
+            ),
+        )
+        dynamic_schema = _build_dynamic_schema(
+            final_tables,
+            final_fields,
+            resolution,
+        )
+        indicator_context = _build_multi_indicator_context(selected_tuple)
+        query_context = QueryContext(
+            prompt_context=_build_prompt_context(
+                dynamic_schema,
+                indicator_context,
+            ),
+            allowed_tables=frozenset(
+                hit.qualified_name for hit in final_tables
+            ),
+            allowed_columns=MappingProxyType(_allowed_columns(final_fields)),
+            request_shape=request.request_shape,
+            metric_constraints=constraints,
+            join_constraints=join_constraints,
+        )
+        evidence = RetrievalEvidence(
+            table_hits=table_hits,
+            column_hits=column_hits,
+            metric_hits=tuple(metric_hits),
+            metric_queries=tuple(metric_queries),
+            join_paths=resolution.paths,
+        )
+        return _result(
+            RetrievalStatus.SUCCESS,
+            snapshot.asset_version,
+            tables=final_tables,
+            fields=final_fields,
+            metrics=selected_tuple,
+            join_path=resolution,
+            dynamic_schema=dynamic_schema,
+            indicator_context=indicator_context,
+            evidence=evidence,
+            warnings=("anchor_reason=common_metric_data_source",),
+            query_context=query_context,
+            request=request,
+            metric_constraints=constraints,
+            join_constraints=join_constraints,
         )
 
 
@@ -504,6 +872,42 @@ def _metric_data_source(metric: MetricHit) -> str:
     return _required_metadata_text(metric.metadata, "data_source", metric.document_id)
 
 
+def _multi_metric_query(constraint: MetricConstraint) -> str:
+    """为每个指标项生成独立且可追踪的 Dense（稠密向量）查询。"""
+
+    return "\n".join(
+        dict.fromkeys((constraint.requested_text, constraint.metric_name))
+    )
+
+
+def _validate_metric_against_constraint(
+    metric: MetricHit,
+    constraint: MetricConstraint,
+) -> None:
+    """防止向量命中内容与同版本目录中的认证业务事实发生漂移。"""
+
+    actual = (
+        metric.metric_name,
+        _required_metadata_text(metric.metadata, "formula", metric.document_id),
+        _metric_data_source(metric),
+        _required_metadata_text(metric.metadata, "time_field", metric.document_id),
+        _as_strings(metric.metadata.get("filters")),
+        _as_strings(metric.metadata.get("depends_on")),
+    )
+    expected = (
+        constraint.metric_name,
+        constraint.formula,
+        constraint.data_source,
+        constraint.time_field,
+        constraint.filters,
+        constraint.depends_on,
+    )
+    if actual != expected:
+        raise RetrievalContractError(
+            f"指标 {constraint.document_id} 的检索结果与同版本目录不一致"
+        )
+
+
 def _column_query(question: str, metric: MetricHit | None) -> str:
     if metric is None:
         return question
@@ -514,6 +918,21 @@ def _column_query(question: str, metric: MetricHit | None) -> str:
         for value in (question, metric.page_content, str(formula), str(time_field))
         if value
     )
+
+
+def _multi_column_query(question: str, metrics: tuple[MetricHit, ...]) -> str:
+    """合并全部指标的语义文本和认证字段事实，形成一次 COLUMN 查询。"""
+
+    values: list[str] = [question]
+    for metric in metrics:
+        values.extend(
+            (
+                metric.page_content,
+                str(metric.metadata.get("formula", "")),
+                str(metric.metadata.get("time_field", "")),
+            )
+        )
+    return "\n".join(dict.fromkeys(value for value in values if value))
 
 
 def _parse_time_field(metric: MetricHit | None) -> _TimeField | None:
@@ -600,6 +1019,24 @@ def _required_columns(
     )
 
 
+def _required_columns_many(
+    metrics: tuple[MetricHit, ...],
+    time_field: _TimeField | None,
+) -> Mapping[str, frozenset[str]]:
+    """合并全部指标公式、过滤条件及公共时间关系要求的字段。"""
+
+    merged: defaultdict[str, set[str]] = defaultdict(set)
+    for metric in metrics:
+        for table, columns in _required_columns(metric, time_field).items():
+            merged[table].update(columns)
+    return MappingProxyType(
+        {
+            table: frozenset(columns)
+            for table, columns in sorted(merged.items())
+        }
+    )
+
+
 def _contains_required_columns(
     column_hits: tuple[ColumnHit, ...],
     required: Mapping[str, frozenset[str]],
@@ -610,6 +1047,29 @@ def _contains_required_columns(
     return all(
         required_columns <= by_table.get(table, set())
         for table, required_columns in required.items()
+    )
+
+
+def _missing_required_column_details(
+    metrics: tuple[MetricHit, ...],
+    time_field: _TimeField | None,
+    column_hits: tuple[ColumnHit, ...],
+) -> tuple[str, ...]:
+    """记录每个缺失物理字段及依赖它的请求指标。"""
+
+    available = {
+        (hit.qualified_table, hit.column_name)
+        for hit in column_hits
+    }
+    dependents: defaultdict[tuple[str, str], set[str]] = defaultdict(set)
+    for metric in metrics:
+        for table, columns in _required_columns(metric, time_field).items():
+            for column in columns:
+                if (table, column) not in available:
+                    dependents[(table, column)].add(metric.metric_name)
+    return tuple(
+        f"缺失字段 {table}.{column}；影响指标：{'、'.join(sorted(names))}"
+        for (table, column), names in sorted(dependents.items())
     )
 
 
@@ -651,6 +1111,76 @@ def _graph_edges(graph: Mapping[str, Any]) -> tuple[JoinEdge, ...]:
             )
         )
     return tuple(sorted(edges, key=lambda edge: edge.edge_id))
+
+
+def _validated_multi_joins(
+    anchor_table: str,
+    resolution: JoinResolution,
+    graph: Mapping[str, Any],
+) -> tuple[JoinConstraint, ...]:
+    """仅允许从共同事实表正向连接到有唯一性证明的目标表。"""
+
+    if not resolution.joins:
+        return ()
+    unique_keys = _graph_unique_keys(graph)
+    for path in resolution.paths:
+        current = anchor_table
+        for edge in path.edges:
+            if edge.direction != "forward" or edge.source_table != current:
+                raise _UnreachableRequired(
+                    "多指标 Join 必须从共同事实表沿 Foreign Key（外键）正向展开"
+                )
+            current = edge.target_table
+
+    constraints: list[JoinConstraint] = []
+    for edge in resolution.joins:
+        basis = unique_keys.get((edge.target_table, edge.target_columns))
+        if basis is None:
+            raise _UnreachableRequired(
+                f"Join 目标缺少 Primary Key / Unique Constraint（主键/唯一约束）证明："
+                f"{edge.target_table}({', '.join(edge.target_columns)})"
+            )
+        constraints.append(
+            JoinConstraint(
+                source_table=edge.source_table,
+                source_columns=edge.source_columns,
+                target_table=edge.target_table,
+                target_columns=edge.target_columns,
+                uniqueness_basis=basis,
+                direction="forward",
+            )
+        )
+    return tuple(constraints)
+
+
+def _graph_unique_keys(
+    graph: Mapping[str, Any],
+) -> Mapping[tuple[str, tuple[str, ...]], str]:
+    """读取无条件 Primary Key / Unique Constraint；V1 不采信 Unique Index。"""
+
+    result: dict[tuple[str, tuple[str, ...]], str] = {}
+    for section, prefix in (
+        ("primary_keys", "primary_key"),
+        ("unique_constraints", "unique_constraint"),
+    ):
+        records = graph.get(section)
+        if not isinstance(records, list):
+            raise RetrievalContractError(f"Relationship Graph 缺少 {section}")
+        for index, raw in enumerate(records, 1):
+            if not isinstance(raw, Mapping):
+                raise RetrievalContractError(
+                    f"Relationship Graph {section} 第 {index} 条记录格式无效"
+                )
+            table = _qualified_from_graph(
+                raw,
+                "schema_name",
+                "table_name",
+                index,
+            )
+            columns = _string_tuple(raw.get("column_names"), "column_names", index)
+            constraint_name = _text(raw, "constraint_name", index)
+            result[(table, columns)] = f"{prefix}:{constraint_name}"
+    return MappingProxyType(result)
 
 
 def _validate_time_edge(
@@ -1040,6 +1570,22 @@ def _build_dynamic_schema(
 def _build_indicator_context(metric: MetricHit | None) -> str:
     if metric is None:
         return ""
+    return json.dumps(
+        _indicator_value(metric),
+        ensure_ascii=False,
+        indent=2,
+        sort_keys=True,
+    )
+
+
+def _build_multi_indicator_context(metrics: tuple[MetricHit, ...]) -> str:
+    value = {
+        "requested_metrics": [_indicator_value(metric) for metric in metrics]
+    }
+    return json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
+
+
+def _indicator_value(metric: MetricHit) -> dict[str, Any]:
     keys = (
         "metric_name",
         "aliases",
@@ -1052,12 +1598,11 @@ def _build_indicator_context(metric: MetricHit | None) -> str:
         "depends_on",
         "notes",
     )
-    value = {
+    return {
         key: _json_value(metric.metadata.get(key))
         for key in keys
         if key in metric.metadata
     }
-    return json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
 
 
 def _build_prompt_context(dynamic_schema: str, indicator_context: str) -> str:
@@ -1090,9 +1635,22 @@ def _result(
     evidence: RetrievalEvidence | None = None,
     warnings: tuple[str, ...] = (),
     query_context: QueryContext | None = None,
+    request: RetrievalRequest | None = None,
+    internal_reason: str | None = None,
+    metric_constraints: tuple[MetricConstraint, ...] = (),
+    join_constraints: tuple[JoinConstraint, ...] = (),
 ) -> OnlineRetrievalResult:
     return OnlineRetrievalResult(
         status=status,
+        request_shape=(
+            request.request_shape if request is not None else RequestShape.BASELINE
+        ),
+        fallback_policy=(
+            request.fallback_policy
+            if request is not None
+            else FallbackPolicy.ALLOW_STATIC
+        ),
+        internal_reason=internal_reason,
         asset_version=asset_version,
         tables=tables,
         fields=fields,
@@ -1103,6 +1661,8 @@ def _result(
         evidence=evidence or RetrievalEvidence(),
         warnings=warnings,
         query_context=query_context,
+        metric_constraints=metric_constraints,
+        join_constraints=join_constraints,
     )
 
 
@@ -1112,12 +1672,18 @@ def _failure(
     *,
     asset_version: str | None = None,
     evidence: RetrievalEvidence | None = None,
+    request: RetrievalRequest | None = None,
+    internal_reason: str | None = None,
+    metric_constraints: tuple[MetricConstraint, ...] = (),
 ) -> OnlineRetrievalResult:
     return _result(
         status,
         asset_version,
         evidence=evidence,
         warnings=(warning,),
+        request=request,
+        internal_reason=internal_reason,
+        metric_constraints=metric_constraints,
     )
 
 

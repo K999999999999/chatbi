@@ -43,15 +43,6 @@ class QueryFailure:
 QueryResult: TypeAlias = QuerySuccess | QueryFailure
 
 
-@dataclass(frozen=True, slots=True)
-class QueryContext:
-    """Prompt（提示词）上下文及 SQL Guard（SQL 安全校验）白名单。"""
-
-    prompt_context: str
-    allowed_tables: frozenset[str]
-    allowed_columns: Mapping[str, frozenset[str]]
-
-
 class RequestShape(StrEnum):
     """读取在线资产前可确定的请求形态。"""
 
@@ -226,6 +217,30 @@ class JoinEdge:
 
 
 @dataclass(frozen=True, slots=True)
+class JoinConstraint:
+    """多指标 SQL 允许使用的一条安全 Join 约束。"""
+
+    source_table: str
+    source_columns: tuple[str, ...]
+    target_table: str
+    target_columns: tuple[str, ...]
+    uniqueness_basis: str
+    direction: str
+
+
+@dataclass(frozen=True, slots=True)
+class QueryContext:
+    """Prompt（提示词）上下文及 SQL Guard（SQL 安全校验）白名单。"""
+
+    prompt_context: str
+    allowed_tables: frozenset[str]
+    allowed_columns: Mapping[str, frozenset[str]]
+    request_shape: RequestShape = RequestShape.BASELINE
+    metric_constraints: tuple[MetricConstraint, ...] = ()
+    join_constraints: tuple[JoinConstraint, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class JoinPath:
     """从 Anchor 到目标表的一条最短合法路径。"""
 
@@ -244,12 +259,22 @@ class JoinResolution:
 
 
 @dataclass(frozen=True, slots=True)
+class MetricRetrievalEvidence:
+    """一个用户指标项对应的独立向量召回证据。"""
+
+    requested_text: str
+    target_document_id: str
+    hits: tuple[MetricHit, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class RetrievalEvidence:
     """用于评测、调试和追踪的原始检索证据。"""
 
     table_hits: tuple[TableHit, ...] = ()
     column_hits: tuple[ColumnHit, ...] = ()
     metric_hits: tuple[MetricHit, ...] = ()
+    metric_queries: tuple[MetricRetrievalEvidence, ...] = ()
     join_paths: tuple[JoinPath, ...] = ()
 
 
@@ -258,6 +283,9 @@ class OnlineRetrievalResult:
     """Online Retrieval（在线检索）的完整结果包。"""
 
     status: RetrievalStatus
+    request_shape: RequestShape = RequestShape.BASELINE
+    fallback_policy: FallbackPolicy = FallbackPolicy.ALLOW_STATIC
+    internal_reason: str | None = None
     asset_version: str | None = None
     tables: tuple[TableHit, ...] = ()
     fields: tuple[ColumnHit, ...] = ()
@@ -268,6 +296,8 @@ class OnlineRetrievalResult:
     evidence: RetrievalEvidence = RetrievalEvidence()
     warnings: tuple[str, ...] = ()
     query_context: QueryContext | None = None
+    metric_constraints: tuple[MetricConstraint, ...] = ()
+    join_constraints: tuple[JoinConstraint, ...] = ()
 
     def to_query_context(self) -> QueryContext:
         """返回成功检索生成的动态 QueryContext。"""
