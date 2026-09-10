@@ -2,7 +2,7 @@
 
 from collections import defaultdict, deque
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 import re
 from types import MappingProxyType
@@ -297,7 +297,6 @@ class OnlineRetriever:
 
         constraints = plan.constraints
         metric_queries: list[MetricRetrievalEvidence] = []
-        metric_hits: list[MetricHit] = []
         selected_metrics: list[MetricHit] = []
         try:
             question_embedding = snapshot.embedding_provider.embed_query(question)
@@ -307,22 +306,30 @@ class OnlineRetriever:
                 self._config,
                 extra_queries=(grouping_text,) if grouping_text else (),
             )
-            for constraint in constraints:
-                metric_query = _multi_metric_query(constraint)
-                metric_embedding = snapshot.embedding_provider.embed_query(metric_query)
-                hits = _metric_hits(snapshot, metric_embedding, self._config)
-                metric_queries.append(
-                    MetricRetrievalEvidence(
-                        requested_text=constraint.requested_text,
-                        target_document_id=constraint.document_id,
-                        hits=hits,
-                    )
+            # 同一完整问题向量同时服务 TABLE 和一次综合 METRIC 路线，
+            # 不再按请求指标重复生成查询或发起补检索。
+            metric_config = replace(
+                self._config,
+                metric_top_k=max(self._config.metric_top_k, 5, len(constraints)),
+            )
+            combined_metric_hits = _metric_hits(
+                snapshot,
+                question_embedding,
+                metric_config,
+            )
+            metric_queries = [
+                MetricRetrievalEvidence(
+                    requested_text=constraint.requested_text,
+                    target_document_id=constraint.document_id,
+                    hits=combined_metric_hits,
                 )
-                metric_hits.extend(hits)
+                for constraint in constraints
+            ]
+            for constraint in constraints:
                 selected = next(
                     (
                         hit
-                        for hit in hits
+                        for hit in combined_metric_hits
                         if hit.document_id == constraint.document_id
                     ),
                     None,
@@ -330,7 +337,7 @@ class OnlineRetriever:
                 if selected is None:
                     evidence = RetrievalEvidence(
                         table_hits=table_hits,
-                        metric_hits=tuple(metric_hits),
+                        metric_hits=combined_metric_hits,
                         metric_queries=tuple(metric_queries),
                     )
                     return _result(
@@ -339,7 +346,7 @@ class OnlineRetriever:
                         tables=table_hits,
                         evidence=evidence,
                         warnings=(
-                            f"指标未在独立 METRIC 检索中有效命中："
+                            f"指标未在综合 METRIC 检索中有效命中："
                             f"{constraint.requested_text}",
                         ),
                         request=request,
@@ -376,7 +383,7 @@ class OnlineRetriever:
         selected_tuple = tuple(selected_metrics)
         evidence = RetrievalEvidence(
             table_hits=table_hits,
-            metric_hits=tuple(metric_hits),
+            metric_hits=combined_metric_hits,
             metric_queries=tuple(metric_queries),
         )
         if not table_hits:
@@ -456,7 +463,7 @@ class OnlineRetriever:
         evidence = RetrievalEvidence(
             table_hits=table_hits,
             column_hits=column_hits,
-            metric_hits=tuple(metric_hits),
+            metric_hits=combined_metric_hits,
             metric_queries=tuple(metric_queries),
         )
         if not column_hits or not _contains_required_columns(column_hits, required):
@@ -561,7 +568,7 @@ class OnlineRetriever:
         evidence = RetrievalEvidence(
             table_hits=table_hits,
             column_hits=column_hits,
-            metric_hits=tuple(metric_hits),
+            metric_hits=combined_metric_hits,
             metric_queries=tuple(metric_queries),
             join_paths=resolution.paths,
         )
@@ -870,14 +877,6 @@ def _metric_match_length(question: str, hit: MetricHit) -> int:
 
 def _metric_data_source(metric: MetricHit) -> str:
     return _required_metadata_text(metric.metadata, "data_source", metric.document_id)
-
-
-def _multi_metric_query(constraint: MetricConstraint) -> str:
-    """为每个指标项生成独立且可追踪的 Dense（稠密向量）查询。"""
-
-    return "\n".join(
-        dict.fromkeys((constraint.requested_text, constraint.metric_name))
-    )
 
 
 def _validate_metric_against_constraint(

@@ -260,7 +260,7 @@ class JoinResolution:
 
 @dataclass(frozen=True, slots=True)
 class MetricRetrievalEvidence:
-    """一个用户指标项对应的独立向量召回证据。"""
+    """一个用户指标项在一次综合 METRIC 检索中的覆盖证据。"""
 
     requested_text: str
     target_document_id: str

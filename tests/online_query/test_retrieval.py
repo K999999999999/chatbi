@@ -54,21 +54,20 @@ class _FakeStore:
         return tuple(self.columns.get(table_name, ()))
 
 
-class _SequencedMetricStore(_FakeStore):
-    def __init__(self, tables, columns, metric_pages, *, catalog_metrics=None) -> None:
-        metrics = tuple(hit for page in metric_pages for hit in page)
+class _CombinedMetricStore(_FakeStore):
+    def __init__(self, tables, columns, metric_hits, *, catalog_metrics=None) -> None:
+        metrics = tuple(metric_hits)
         super().__init__(tables, columns, catalog_metrics or metrics)
-        self.metric_pages = tuple(tuple(page) for page in metric_pages)
+        self.metric_hits = metrics
         self.metric_query_count = 0
+        self.metric_limits: list[int] = []
 
     def search(self, collection_name, query, *, limit=5, filter_payload=None):
         if collection_name == "metric" and filter_payload is None:
-            del query, limit
-            index = self.metric_query_count
+            del query
             self.metric_query_count += 1
-            if index >= len(self.metric_pages):
-                return ()
-            return self.metric_pages[index]
+            self.metric_limits.append(limit)
+            return self.metric_hits
         return super().search(
             collection_name,
             query,
@@ -597,10 +596,10 @@ class RetrievalTest(unittest.TestCase):
 
     def test_multi_metric_retrieval_builds_one_verified_query_context(self) -> None:
         metrics = _multi_metrics()
-        store = _SequencedMetricStore(
+        store = _CombinedMetricStore(
             _multi_tables(),
             _multi_columns(),
-            tuple((metric,) for metric in metrics),
+            metrics,
         )
         embedding = _FakeEmbedding()
         request = build_retrieval_request(
@@ -618,14 +617,15 @@ class RetrievalTest(unittest.TestCase):
             [metric.metric_name for metric in result.metrics],
             ["已完成订单数", "人民币净销售额", "毛利率"],
         )
-        self.assertEqual(store.metric_query_count, 3)
+        self.assertEqual(store.metric_query_count, 1)
+        self.assertEqual(store.metric_limits, [5])
         self.assertEqual(len(result.evidence.metric_queries), 3)
         self.assertEqual(
             [item.target_document_id for item in result.evidence.metric_queries],
             [metric.document_id for metric in metrics],
         )
-        self.assertIn("已完成订单数", embedding.queries)
-        self.assertIn("人民币销售额\n人民币净销售额", embedding.queries)
+        self.assertEqual(embedding.queries.count(request.question), 1)
+        self.assertNotIn("人民币销售额\n人民币净销售额", embedding.queries)
         indicator = json.loads(result.indicator_context)
         self.assertEqual(
             [item["metric_name"] for item in indicator["requested_metrics"]],
@@ -664,12 +664,12 @@ class RetrievalTest(unittest.TestCase):
             <= fact_columns
         )
 
-    def test_multi_metric_stops_when_one_independent_metric_misses(self) -> None:
+    def test_multi_metric_stops_when_one_combined_metric_candidate_misses(self) -> None:
         metrics = _multi_metrics()
-        store = _SequencedMetricStore(
+        store = _CombinedMetricStore(
             _multi_tables(),
             _multi_columns(),
-            ((metrics[0],), (metrics[1],), ()),
+            (metrics[0], metrics[1]),
             catalog_metrics=metrics,
         )
 
@@ -684,16 +684,24 @@ class RetrievalTest(unittest.TestCase):
         self.assertEqual(result.status, RetrievalStatus.NO_METRIC_HIT)
         self.assertEqual(result.internal_reason, "NO_METRIC_HIT")
         self.assertEqual(result.fallback_policy, FallbackPolicy.FAIL_CLOSED)
+        self.assertEqual(store.metric_query_count, 1)
+        self.assertEqual(store.metric_limits, [5])
         self.assertEqual(len(result.evidence.metric_queries), 3)
+        self.assertTrue(
+            all(
+                item.hits == result.evidence.metric_hits
+                for item in result.evidence.metric_queries
+            )
+        )
         self.assertEqual(store.column_filters, [])
         self.assertIsNone(result.query_context)
 
     def test_multi_metric_stops_when_any_required_column_is_missing(self) -> None:
         metrics = _multi_metrics()
-        store = _SequencedMetricStore(
+        store = _CombinedMetricStore(
             _multi_tables(),
             _multi_columns(include_cost=False),
-            tuple((metric,) for metric in metrics),
+            metrics,
         )
 
         result = OnlineRetriever(
@@ -716,10 +724,10 @@ class RetrievalTest(unittest.TestCase):
 
     def test_multi_metric_rejects_reverse_one_to_many_join(self) -> None:
         metrics = _multi_metrics()
-        store = _SequencedMetricStore(
+        store = _CombinedMetricStore(
             _multi_tables(),
             _multi_columns(),
-            tuple((metric,) for metric in metrics),
+            metrics,
         )
 
         result = OnlineRetriever(
@@ -742,10 +750,10 @@ class RetrievalTest(unittest.TestCase):
 
     def test_multi_metric_rejects_join_without_uniqueness_proof(self) -> None:
         metrics = _multi_metrics()
-        store = _SequencedMetricStore(
+        store = _CombinedMetricStore(
             _multi_tables(),
             _multi_columns(),
-            tuple((metric,) for metric in metrics),
+            metrics,
         )
 
         result = OnlineRetriever(
