@@ -214,14 +214,16 @@ uv run --env-file .env --with pytest python -m pytest -q
 执行：
 
 ```powershell
-uv run --env-file .env python -m src.evaluation
+uv run --env-file .env python -m src.evaluation --online-retrieval
 ```
 
 指定历史报告进行回退比较：
 
 ```powershell
-uv run --env-file .env python -m src.evaluation --baseline reports/evaluation/<previous-report>.json
+uv run --env-file .env python -m src.evaluation --online-retrieval --baseline reports/evaluation/<previous-report>.json
 ```
+
+`--online-retrieval` 是真实 RAG 验收的必要开关；不带该参数的入口只适合不依赖本地模型和 Qdrant 的确定性软件测试。
 
 报告输出到：
 

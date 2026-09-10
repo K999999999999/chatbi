@@ -6,6 +6,8 @@ Evaluation（评测）实现为一个离线回归评测 Runner（运行器），
 
 它读取固定测试集，逐条调用现有 `OnlineQueryService.query()`，执行标准 SQL 得到标准结果，比较两边数据并输出 JSON 报告。第一份报告建立 Baseline（基线），后续报告识别 Regression（能力回退）。
 
+评测入口支持两种装配模式：Software Test（软件测试）默认使用静态 `QueryContext`，保证确定性测试不依赖本地模型和 Qdrant；真实 AI Evaluation（AI 评测）通过 `--online-retrieval` 显式装配与生产入口一致的 `OnlineRetriever`，用于验证在线 RAG 和后续 SQL 链路。
+
 ## 实现链路
 
 ```text
@@ -32,7 +34,7 @@ Evaluation（评测）实现为一个离线回归评测 Runner（运行器），
 |---|---|
 | `eval_cases.json` | 已确认的 20 条标准案例 |
 | `evaluator.py` | 加载案例、比较结果、运行案例、汇总准确率和比较上一份报告 |
-| `__main__.py` | 创建现有 Online Query 依赖、收集运行指纹、保存 JSON 报告并打印摘要 |
+| `__main__.py` | 创建现有 Online Query 依赖，可选装配在线 RAG、收集运行指纹、保存 JSON 报告并打印摘要 |
 | `__init__.py` | 只导出评测入口和结果类型 |
 
 测试放在 `tests/evaluation/`：
@@ -52,8 +54,16 @@ Evaluation（评测）实现为一个离线回归评测 Runner（运行器），
 QueryContext = load_query_context()
 SQLGenerator = LangChainSQLGenerator.from_env()
 QueryExecutor = PsycopgQueryExecutor.from_env()
-OnlineQueryService(SQLGenerator, QueryExecutor, same QueryContext)
+RetrievalProvider = OnlineRetriever(RagRuntime.from_environment())  # 仅 --online-retrieval
+OnlineQueryService(
+    SQLGenerator,
+    QueryExecutor,
+    same QueryContext,
+    retrieval_provider=RetrievalProvider,
+)
 ```
+
+未指定 `--online-retrieval` 时，`retrieval_provider` 为 `None`，保持软件测试的静态上下文模式；指定后，查询必须先经过在线 RAG，Multi-Metric（多指标）请求的技术故障遵循既有 `FAIL_CLOSED` 规则。
 
 评测 Runner 接收：
 
@@ -191,8 +201,8 @@ JSON 是机器可读评测证据；Markdown 是由同一份 JSON 数据确定性
 真实评测命令设计为：
 
 ```text
-uv run python -m src.evaluation
-uv run python -m src.evaluation --baseline <report-path>
+uv run --env-file .env python -m src.evaluation --online-retrieval
+uv run --env-file .env python -m src.evaluation --online-retrieval --baseline <report-path>
 ```
 
 运行时从现有 `.env` 获取 LLM 和 PostgreSQL 配置。没有明确授权时，不执行真实命令。
@@ -231,7 +241,7 @@ uv run python -m src.evaluation --baseline <report-path>
 | T2 Runner 与汇总 | 复用现有 Service 和 Executor 顺序运行案例 | 单条失败隔离、状态和准确率汇总测试通过 |
 | T3 报告与回归 | 生成运行指纹、JSON 报告并比较明确基线 | 指纹、Secret 防护、回退和改善测试通过 |
 | T4 运行入口 | 组装现有真实依赖并提供模块命令 | 不复制查询链路；假的依赖端到端测试通过 |
-| T5 真实 Baseline | 经明确授权后运行 20 条真实模型案例 | 报告生成并人工确认；随后按仓库整体版本规则决定是否创建 Tag |
+| T5 真实 Baseline | 经明确授权后以在线 RAG 模式运行 20 条真实模型案例 | 报告生成并人工确认；随后按仓库整体版本规则决定是否创建 Tag |
 
 T1 至 T4 是软件实现任务，完成后分别测试、审查和 Commit。T5 是有外部调用的评测运行，不在未授权情况下自动执行。
 

@@ -47,6 +47,8 @@ question
   -> QuerySuccess 或 QueryFailure
 ```
 
+真实 AI Evaluation 必须通过 `--online-retrieval` 装配与生产入口一致的 `OnlineRetriever`；Software Test 可以省略该参数并使用静态 `QueryContext`，以保持确定性和离线性。评测工具不得因此复制一套检索、Prompt 或 SQL Guard 逻辑。
+
 不得复制或重新实现 Prompt、LLM 调用、SQL Guard、数据库查询和错误转换。
 
 ## 单条评测链路
@@ -125,7 +127,7 @@ Execution Accuracy
 ## 外部调用边界
 
 - Software Test（软件测试）使用假的 SQL Generator 和测试数据库行为，不调用真实外部 LLM。
-- 真实 Baseline 和后续能力回归必须调用配置的真实 LLM。
+- 真实 Baseline 和后续能力回归必须调用配置的真实 LLM，并启用 `--online-retrieval` 验证在线 RAG 链路。
 - 调用真实外部 LLM 前，需要明确允许发送测试问题、数据库结构和指标上下文。
 - 评测过程不得记录 API Key、数据库密码或其他 Secret。
 
@@ -147,7 +149,7 @@ Execution Accuracy
 
 ### AI Evaluation（AI 评测）
 
-- 20 条标准案例能够顺序运行完成，单条失败不影响其余案例。
+- 使用 `uv run --env-file .env python -m src.evaluation --online-retrieval`，20 条标准案例能够顺序运行完成，单条失败不影响其余案例。
 - 生成包含单条结果的 JSON 数据报告，以及包含总体结论、准确率和失败摘要的 Markdown 总结报告。
 - 后续报告能够识别相对上一份有效报告的回退和改善案例。
 

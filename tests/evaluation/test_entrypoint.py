@@ -6,7 +6,14 @@ from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from src.online_query.contracts import QueryContext, QueryData, ValidatedSQL
+from src.online_query.contracts import (
+    OnlineRetrievalResult,
+    QueryContext,
+    QueryData,
+    RetrievalRequest,
+    RetrievalStatus,
+    ValidatedSQL,
+)
 
 
 class _FakeGenerator:
@@ -27,6 +34,19 @@ class _FakeExecutor:
     def execute(self, sql: ValidatedSQL) -> QueryData:
         self.calls.append(sql)
         return self._data
+
+
+class _FakeRetrievalProvider:
+    def __init__(self, context: QueryContext) -> None:
+        self._context = context
+        self.requests: list[object] = []
+
+    def retrieve(self, request: object) -> OnlineRetrievalResult:
+        self.requests.append(request)
+        return OnlineRetrievalResult(
+            status=RetrievalStatus.SUCCESS,
+            query_context=self._context,
+        )
 
 
 class EvaluationEntrypointTest(unittest.TestCase):
@@ -107,6 +127,46 @@ class EvaluationEntrypointTest(unittest.TestCase):
         self.assertEqual(len(executor.calls), 2)
         self.assertIn("Execution Accuracy: 100.00%", stdout.getvalue())
         self.assertIn("Summary Report:", stdout.getvalue())
+
+    def test_online_retrieval_mode_injects_provider(self) -> None:
+        from src.evaluation.__main__ import run_cli
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            cases_path, context_file, context, sql = self._files(root)
+            output_dir = root / "reports"
+            data = QueryData(
+                columns=("value",),
+                rows=((1,),),
+                truncated=False,
+            )
+            provider = _FakeRetrievalProvider(context)
+
+            exit_code = run_cli(
+                [
+                    "--cases",
+                    str(cases_path),
+                    "--output-dir",
+                    str(output_dir),
+                    "--online-retrieval",
+                ],
+                environ={
+                    "LLM_MODEL": "test-model",
+                    "RAG_ONLINE_RETRIEVAL_ENABLED": "true",
+                },
+                context_loader=lambda: context,
+                generator_factory=lambda environ: _FakeGenerator(sql),
+                executor_factory=lambda environ: _FakeExecutor(data),
+                retrieval_factory=lambda: provider,
+                git_state_reader=lambda project_root: ("abcdef123456", False),
+                context_paths={"context": context_file},
+                stdout=StringIO(),
+                stderr=StringIO(),
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(len(provider.requests), 1)
+        self.assertIsInstance(provider.requests[0], RetrievalRequest)
 
     def test_loads_explicit_baseline(self) -> None:
         from src.evaluation.__main__ import run_cli

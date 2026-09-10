@@ -17,10 +17,13 @@ from src.online_query.context import (
 from src.online_query.contracts import (
     QueryContext,
     QueryExecutor,
+    RetrievalProvider,
     SQLGenerator,
 )
 from src.online_query.database import DatabaseError, PsycopgQueryExecutor
 from src.online_query.llm import LangChainSQLGenerator, LLMError
+from src.online_query.rag_runtime import RagRuntime
+from src.online_query.retrieval import OnlineRetriever
 from src.online_query.service import OnlineQueryService
 
 from .evaluator import EvaluationLoadError, load_evaluation_cases
@@ -50,6 +53,7 @@ def run_cli(
     executor_factory: Callable[[Mapping[str, str]], QueryExecutor] = (
         PsycopgQueryExecutor.from_env
     ),
+    retrieval_factory: Callable[[], RetrievalProvider] | None = None,
     git_state_reader: Callable[[Path], tuple[str, bool]] | None = None,
     context_paths: Mapping[str, Path] | None = None,
     stdout: TextIO | None = None,
@@ -69,10 +73,23 @@ def run_cli(
         context = context_loader()
         executor = executor_factory(source)
         generator = generator_factory(source)
+        retrieval_provider = None
+        if args.online_retrieval:
+            if not _rag_online_retrieval_enabled(source):
+                raise ReportingError(
+                    "RAG_ONLINE_RETRIEVAL_ENABLED 已关闭，不能运行在线检索评测"
+                )
+            provider_factory = (
+                _build_online_retrieval_provider
+                if retrieval_factory is None
+                else retrieval_factory
+            )
+            retrieval_provider = provider_factory()
         service = OnlineQueryService(
             generator,
             executor,
             context_loader=lambda: context,
+            retrieval_provider=retrieval_provider,
         )
         state_reader = _read_git_state if git_state_reader is None else git_state_reader
         git_commit, git_dirty = state_reader(PROJECT_ROOT)
@@ -128,7 +145,21 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         help="明确指定的上一份有效报告",
     )
+    parser.add_argument(
+        "--online-retrieval",
+        action="store_true",
+        help="启用与生产入口一致的在线 RAG 检索链路",
+    )
     return parser
+
+
+def _build_online_retrieval_provider() -> RetrievalProvider:
+    return OnlineRetriever(RagRuntime.from_environment())
+
+
+def _rag_online_retrieval_enabled(environ: Mapping[str, str]) -> bool:
+    value = environ.get("RAG_ONLINE_RETRIEVAL_ENABLED", "true").strip().lower()
+    return value not in {"0", "false", "no", "off"}
 
 
 def _read_git_state(project_root: Path) -> tuple[str, bool]:
