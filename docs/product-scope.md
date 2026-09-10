@@ -18,7 +18,7 @@
 - 当前继续使用 Streamlit 作为 POC 和内部使用入口；正式前端不是当前必需项。
 - 使用 `src/evaluation/eval_cases.json` 作为开发期标准评测集。
 - 提供独立的 RAG Offline Build（RAG 离线构建），将已确认事实构建为 TABLE、COLUMN、METRIC 三类 Qdrant 集合和确定性关系图。
-- Online Query 已接入 Online Retrieval V1（在线检索 V1）：实体类和单指标问题默认从同一已发布资产检索并组装动态上下文；检索技术故障仍保留静态上下文 fallback（回退）。基础 Multi-Metric Retrieval（多指标在线检索）已完成 T1～T4 实现和确定性测试；首轮真实在线 RAG 评测为 19/20，主验收问题 C05 通过，业务验收仍待确认。
+- Online Query 已接入 Online Retrieval V1（在线检索 V1）：实体类和单指标问题默认从同一已发布资产检索并组装动态上下文；检索技术故障仍保留静态上下文 fallback（回退）。基础 Multi-Metric Retrieval（多指标在线检索）已完成 T1～T4 实现和确定性测试；修复分组粒度约束后真实在线 RAG 评测为 20/20，主验收问题 C05 通过，业务验收仍待确认。
 
 ## 业务与安全约束
 
@@ -30,7 +30,7 @@
 
 ## 当前不做
 
-- 基础 Multi-Metric Retrieval（多指标在线检索）的稳定性加固和正式业务验收；当前实现和首轮真实评测已完成，但不把 19/20 或单条重跑通过描述为稳定 20/20、Production Ready（生产可用）或正式业务验收通过。
+- 基础 Multi-Metric Retrieval（多指标在线检索）的正式业务验收和生产化边界；当前实现、确定性测试和修复后的 20/20 真实评测已完成，但不把该结果直接描述为 Production Ready（生产可用）。
 - 多轮对话和复杂分析 Agent。
 - SQL 自动修复和多模型投票。
 - React、Vue 或其他正式前端 UI（等生产化需求明确后再做）、API Gateway、登录、限流、审计和生产运维。

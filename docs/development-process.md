@@ -69,13 +69,13 @@
 | RAG Offline Implementation Design（RAG 离线构建实现设计） | 已完成 | `docs/designs/rag-offline-build.md` |
 | RAG Offline Task Split（RAG 离线构建任务拆分） | 已完成 | T1 至 T9 均已完成 |
 | RAG Offline Implementation（RAG 离线构建实现） | 已完成 | TABLE / COLUMN / METRIC 文档、BGE-M3 dense+sparse、Qdrant 版本集合、关系图和原子发布均已实现 |
-| Test / Evaluation（测试与评估） | 进行中 | 全仓 186 passed、6 skipped、61 subtests passed；真实 Qdrant 构建为 TABLE=7、COLUMN=69、METRIC=5、关系边=9；首轮真实在线 RAG 评测 19/20，C05 通过、M08 一次结果不一致；PostgreSQL 端到端执行通过 |
+| Test / Evaluation（测试与评估） | 已完成 | 全仓 186 passed、6 skipped、61 subtests passed；真实 Qdrant 构建为 TABLE=7、COLUMN=69、METRIC=5、关系边=9；修复分组粒度约束后真实在线 RAG 评测 20/20，C05 和 M08 均通过；PostgreSQL 端到端执行通过 |
 | Code Review（代码审查） | 已完成 | Contract、范围、失败保护、Secret、依赖锁和差异检查均已复核 |
-| Integration / Release（集成与发布） | 本地 POC 资产已发布 | 应用仍为 `0.1.0`（POC）；RAG Offline 资产 `20260906-bge-m3-v2` 已发布到本地持久化 Qdrant 和 `data/rag`；单指标 Online Retrieval V1 已完成真实端到端验收，多指标业务验收尚未关闭；生成资产不进入 Git，未 Push（推送）远程 |
+| Integration / Release（集成与发布） | 本地 POC 资产已发布 | 应用仍为 `0.1.0`（POC）；RAG Offline 资产 `20260906-bge-m3-v2` 已发布到本地持久化 Qdrant 和 `data/rag`；单指标 Online Retrieval V1 和基础多指标真实评测已完成，多指标业务验收尚未关闭；生成资产不进入 Git，未 Push（推送）远程 |
 
 当前下一步：
 
-> Online Query POC、RAG Offline Build 和单指标 Online Retrieval V1 已完成最小闭环；基础多指标已完成实现并完成首轮真实评测，但当前为 19/20，仍需处理 M08 稳定性和业务验收。Agent、正式前端、生产级认证与多租户仍不在当前完成范围内；不把 `0.1.0` POC 描述为 Production Ready（生产可用）。
+> Online Query POC、RAG Offline Build、单指标 Online Retrieval V1 和基础多指标已完成最小闭环；基础多指标修复后真实评测为 20/20，下一步是用户确认业务验收，再单独设计生产化权限、安全和运维边界。Agent、正式前端与多租户仍不在当前完成范围内；不把 `0.1.0` POC 描述为 Production Ready（生产可用）。
 
 ## 维护规则
 

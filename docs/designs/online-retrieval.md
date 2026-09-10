@@ -7,7 +7,7 @@
 - 当前状态：方案已确认，编码与确定性测试已完成，真实资产基础验证已完成
 - Runtime Mode（运行模式）：同步、单请求、无副作用
 
-本文记录的是已经完成的实体类和单指标 Online Retrieval V1 实现设计。基础 Multi-Metric Retrieval（多指标在线检索）的 T1～T4 软件实现记录在 `docs/designs/multi-metric-retrieval.md`；T5 首轮真实在线 RAG 评测为 19/20，C05 通过，M08 存在一次模型输出粒度波动，业务验收仍待确认。下文出现“一个最终指标”或技术 fallback 的地方均指单指标基线。
+本文记录的是已经完成的实体类和单指标 Online Retrieval V1 实现设计。基础 Multi-Metric Retrieval（多指标在线检索）的 T1～T4 软件实现记录在 `docs/designs/multi-metric-retrieval.md`；T5 修复分组粒度 Prompt 约束后真实在线 RAG 评测为 20/20，C05 通过，业务验收仍待确认。下文出现“一个最终指标”或技术 fallback 的地方均指单指标基线。
 
 目标是把已经确认的 RAG Offline Build（RAG 离线构建）资产接入现有 Online Query（在线查询）上下文获取阶段，实现：
 
