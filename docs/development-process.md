@@ -57,7 +57,7 @@
 
 ## 当前项目位置
 
-更新时间：2026-09-06
+更新时间：2026-09-11
 
 | 阶段 | 状态 | 依据 |
 |---|---|---|
@@ -71,11 +71,11 @@
 | RAG Offline Implementation（RAG 离线构建实现） | 已完成 | TABLE / COLUMN / METRIC 文档、BGE-M3 dense+sparse、Qdrant 版本集合、关系图和原子发布均已实现 |
 | Test / Evaluation（测试与评估） | 已完成 | 全仓 186 passed、6 skipped、61 subtests passed；真实 Qdrant 构建为 TABLE=7、COLUMN=69、METRIC=5、关系边=9；修复分组粒度约束后真实在线 RAG 评测 20/20，C05 和 M08 均通过；PostgreSQL 端到端执行通过 |
 | Code Review（代码审查） | 已完成 | Contract、范围、失败保护、Secret、依赖锁和差异检查均已复核 |
-| Integration / Release（集成与发布） | 本地 POC 资产已发布 | 应用仍为 `0.1.0`（POC）；RAG Offline 资产 `20260906-bge-m3-v2` 已发布到本地持久化 Qdrant 和 `data/rag`；单指标 Online Retrieval V1 和基础多指标真实评测已完成，多指标业务验收尚未关闭；生成资产不进入 Git，未 Push（推送）远程 |
+| Integration / Release（集成与发布） | 本地 POC 资产已发布 | 应用仍为 `0.1.0`（POC）；RAG Offline 资产 `20260906-bge-m3-v2` 已发布到本地持久化 Qdrant 和 `data/rag`；单指标 Online Retrieval V1、基础多指标真实评测和 C05 业务验收均已完成；生成资产不进入 Git，未 Push（推送）远程 |
 
 当前下一步：
 
-> Online Query POC、RAG Offline Build、单指标 Online Retrieval V1 和基础多指标已完成最小闭环；基础多指标修复后真实评测为 20/20，下一步是用户确认业务验收，再单独设计生产化权限、安全和运维边界。Agent、正式前端与多租户仍不在当前完成范围内；不把 `0.1.0` POC 描述为 Production Ready（生产可用）。
+> 按 `docs/roadmap.md` 继续推进，下一阶段是 Observability（可观测性）；各阶段的具体范围、技术选择和验收标准在进入该阶段时再讨论确认，不把 `0.1.0` POC 描述为 Production Ready（生产可用）。
 
 ## 维护规则
 
