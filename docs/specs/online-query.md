@@ -1,6 +1,6 @@
 # Online Query Module Spec
 
-状态：当前 Online Query 已接入并通过 Online Retrieval V1（在线检索 V1）验收；实体类和单指标基线行为以本文及 `docs/specs/online-retrieval.md` 为准。基础 Multi-Metric Retrieval（多指标在线检索）是独立的增量规格，见 `docs/specs/multi-metric-retrieval.md`，尚未实现。
+状态：当前 Online Query 已接入并通过 Online Retrieval V1（在线检索 V1）验收；实体类和单指标基线行为以本文及 `docs/specs/online-retrieval.md` 为准。基础 Multi-Metric Retrieval（多指标在线检索）增量行为见 `docs/specs/multi-metric-retrieval.md`，已实现并通过真实在线 RAG 评测和 C05 业务验收。
 
 ## 目标
 

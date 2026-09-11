@@ -65,6 +65,7 @@
 | Architecture（架构设计） | 已完成 | `docs/architecture.md` |
 | Online Query Module Spec（在线查询模块规格） | 已完成 | `docs/specs/online-query.md` |
 | Online Query Implementation（在线查询实现） | 已完成 | Query API、Streamlit POC 和基础 Multi-Metric T1～T4 已实现；主验收问题 C05 已通过真实在线 RAG 链路 |
+| Observability V1 Module Spec（可观测性规格） | 已完成 | `docs/specs/observability.md`；行为、数据安全、降级和验收边界已确认，尚未进入实现设计 |
 | RAG Offline Build Module Spec（RAG 离线构建模块规格） | 已完成 | `docs/specs/rag-offline-build.md` |
 | RAG Offline Implementation Design（RAG 离线构建实现设计） | 已完成 | `docs/designs/rag-offline-build.md` |
 | RAG Offline Task Split（RAG 离线构建任务拆分） | 已完成 | T1 至 T9 均已完成 |
@@ -75,7 +76,7 @@
 
 当前下一步：
 
-> 按 `docs/roadmap.md` 继续推进，下一阶段是 Observability（可观测性）；各阶段的具体范围、技术选择和验收标准在进入该阶段时再讨论确认，不把 `0.1.0` POC 描述为 Production Ready（生产可用）。
+> 按 `docs/roadmap.md` 继续推进；Observability V1 行为规格已确认，下一步是 Implementation Design（实现设计），再经过设计审查后拆分编码任务，不把 `0.1.0` POC 描述为 Production Ready（生产可用）。
 
 ## 维护规则
 
