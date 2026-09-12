@@ -77,6 +77,7 @@ _SAFE_GEN_AI_ATTRIBUTE_RULES: dict[str, str] = {
     "gen_ai.usage.total_tokens": "gen_ai_count",
 }
 _SAFE_ATTRIBUTE_RULES: dict[str, str] = {
+    "evaluation.case_id": "identifier",
     "chatbi.request.source": "source",
     "chatbi.request.id": "identifier",
     "chatbi.content_capture.enabled": "boolean",

@@ -108,6 +108,8 @@ def create_report(
                 "query_error_code": result.query_error_code,
                 "failure_reason": result.failure_reason,
                 "duration_ms": result.duration_ms,
+                "request_id": result.request_id,
+                "trace_id": result.trace_id,
             }
             for result in run.cases
         ],
@@ -158,6 +160,27 @@ def render_markdown_report(report: Mapping[str, object]) -> str:
     for category, accuracy in sorted(category_accuracy.items()):
         lines.append(
             f"| {_markdown_cell(category)} | {_accuracy_text(accuracy)} |"
+        )
+
+    lines.extend(["", "## 链路关联", ""])
+    lines.extend(
+        [
+            "| 案例 | Request ID | Trace ID |",
+            "|---|---|---|",
+        ]
+    )
+    for item in cases:
+        case = _object_mapping(item)
+        if case is None:
+            raise ReportingError("报告案例结构无效")
+        request_id = case.get("request_id") or "-"
+        trace_id = case.get("trace_id") or "-"
+        lines.append(
+            "| {case_id} | {request_id} | {trace_id} |".format(
+                case_id=_markdown_cell(case.get("case_id")),
+                request_id=_markdown_cell(request_id),
+                trace_id=_markdown_cell(trace_id),
+            )
         )
 
     lines.extend(["", "## 失败与无效案例", ""])

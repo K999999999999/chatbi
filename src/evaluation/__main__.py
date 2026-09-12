@@ -8,6 +8,8 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import TextIO
 
+from src.observability.contracts import TraceRecorder
+from src.observability.tracing import create_trace_recorder
 from src.online_query.context import (
     DEFAULT_METRICS_PATH,
     DEFAULT_STRUCTURE_DIR,
@@ -47,9 +49,7 @@ def run_cli(
     *,
     environ: Mapping[str, str] | None = None,
     context_loader: Callable[[], QueryContext] = load_query_context,
-    generator_factory: Callable[[Mapping[str, str]], SQLGenerator] = (
-        LangChainSQLGenerator.from_env
-    ),
+    generator_factory: Callable[[Mapping[str, str]], SQLGenerator] | None = None,
     executor_factory: Callable[[Mapping[str, str]], QueryExecutor] = (
         PsycopgQueryExecutor.from_env
     ),
@@ -66,35 +66,57 @@ def run_cli(
     source = os.environ if environ is None else environ
     parser = _parser()
     args = parser.parse_args(argv)
+    trace_recorder: TraceRecorder | None = None
 
     try:
+        try:
+            trace_recorder = create_trace_recorder()
+        except Exception:
+            # Trace 失败不能阻断 Evaluation；下游仍按原有业务链路运行。
+            trace_recorder = None
+
         cases = load_evaluation_cases(args.cases)
         baseline = load_report(args.baseline) if args.baseline else None
         context = context_loader()
         executor = executor_factory(source)
-        generator = generator_factory(source)
+        generator = (
+            LangChainSQLGenerator.from_env(
+                source,
+                trace_recorder=trace_recorder,
+            )
+            if generator_factory is None
+            else generator_factory(source)
+        )
         retrieval_provider = None
         if args.online_retrieval:
             if not _rag_online_retrieval_enabled(source):
                 raise ReportingError(
                     "RAG_ONLINE_RETRIEVAL_ENABLED 已关闭，不能运行在线检索评测"
                 )
-            provider_factory = (
-                _build_online_retrieval_provider
-                if retrieval_factory is None
-                else retrieval_factory
-            )
+            if retrieval_factory is None:
+                provider_factory = lambda: _build_online_retrieval_provider(
+                    trace_recorder
+                )
+            else:
+                provider_factory = retrieval_factory
             retrieval_provider = provider_factory()
         service = OnlineQueryService(
             generator,
             executor,
             context_loader=lambda: context,
             retrieval_provider=retrieval_provider,
+            trace_recorder=trace_recorder,
         )
         state_reader = _read_git_state if git_state_reader is None else git_state_reader
         git_commit, git_dirty = state_reader(PROJECT_ROOT)
 
-        run = run_evaluation(cases, service, executor, context)
+        run = run_evaluation(
+            cases,
+            service,
+            executor,
+            context,
+            trace_recorder=trace_recorder,
+        )
         metadata = collect_run_metadata(
             run,
             git_commit=git_commit,
@@ -124,6 +146,8 @@ def run_cli(
     except Exception:
         print("ERROR: 评测运行失败", file=error_output)
         return 1
+    finally:
+        _shutdown_trace_recorder(trace_recorder)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -153,8 +177,24 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _build_online_retrieval_provider() -> RetrievalProvider:
-    return OnlineRetriever(RagRuntime.from_environment())
+def _build_online_retrieval_provider(
+    trace_recorder: TraceRecorder | None = None,
+) -> RetrievalProvider:
+    return OnlineRetriever(
+        RagRuntime.from_environment(),
+        trace_recorder=trace_recorder,
+    )
+
+
+def _shutdown_trace_recorder(trace_recorder: TraceRecorder | None) -> None:
+    if trace_recorder is None:
+        return
+    try:
+        shutdown = getattr(trace_recorder, "shutdown", None)
+        if callable(shutdown):
+            shutdown()
+    except Exception:
+        pass
 
 
 def _rag_online_retrieval_enabled(environ: Mapping[str, str]) -> bool:
