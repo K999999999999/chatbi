@@ -1,9 +1,20 @@
 """Online Query（在线查询）主链路编排。"""
 
+from contextlib import contextmanager
 from collections.abc import Callable
+from collections.abc import Iterator
+from hashlib import sha256
 import logging
+from typing import Any
 from uuid import uuid4
 
+from ..observability.contracts import (
+    ErrorType,
+    QuerySource,
+    TraceOutcome,
+    TraceRecorder,
+)
+from ..observability.tracing import create_trace_recorder
 from .context import load_query_context
 from .contracts import (
     FallbackPolicy,
@@ -56,12 +67,14 @@ class OnlineQueryService:
         *,
         context_loader: Callable[[], QueryContext] = load_query_context,
         retrieval_provider: RetrievalProvider | None = None,
+        trace_recorder: TraceRecorder | None = None,
     ) -> None:
         self._sql_generator = sql_generator
         self._query_executor = query_executor
         self._context: QueryContext | None = None
         self._context_failed = False
         self._retrieval_provider = retrieval_provider
+        self._trace_recorder = trace_recorder or create_trace_recorder()
         try:
             self._context = context_loader()
         except Exception:
@@ -69,12 +82,43 @@ class OnlineQueryService:
 
     def query(self, request: QueryRequest) -> QueryResult:
         request_id, request_id_valid = _resolve_request_id(request.request_id)
-        if (
-            not request_id_valid
-            or not isinstance(request.question, str)
-            or not request.question.strip()
+        with _safe_trace_scope(
+            self._trace_recorder,
+            root=True,
+            name="query.request",
+            attributes={"chatbi.request.id": request_id},
         ):
-            return _failure(request_id, QueryErrorCode.INVALID_REQUEST)
+            result = self._query(
+                request,
+                request_id,
+                request_id_valid,
+            )
+            _enrich_query_result(self._trace_recorder, result)
+            return result
+
+    def _query(
+        self,
+        request: QueryRequest,
+        request_id: str,
+        request_id_valid: bool,
+    ) -> QueryResult:
+        with _safe_trace_scope(
+            self._trace_recorder,
+            name="request.validate",
+        ):
+            if (
+                not request_id_valid
+                or not isinstance(request.question, str)
+                or not request.question.strip()
+            ):
+                result = _failure(request_id, QueryErrorCode.INVALID_REQUEST)
+                _enrich_failure_span(
+                    self._trace_recorder,
+                    result.error_code,
+                    ErrorType.VALIDATION,
+                )
+                return result
+            _safe_enrich(self._trace_recorder, outcome=TraceOutcome.SUCCESS)
 
         context, context_error = self._resolve_context(
             request.question.strip(),
@@ -85,42 +129,130 @@ class OnlineQueryService:
         if context is None:
             return _failure(request_id, QueryErrorCode.CONTEXT_ERROR)
 
-        prompt = build_prompt(request.question.strip(), context)
-        try:
-            candidate = self._sql_generator.generate(prompt)
-        except Exception:
-            return _failure(request_id, QueryErrorCode.LLM_ERROR)
+        with _safe_trace_scope(self._trace_recorder, name="prompt.build"):
+            try:
+                prompt = build_prompt(request.question.strip(), context)
+            except Exception:
+                result = _failure(request_id, QueryErrorCode.CONTEXT_ERROR)
+                _enrich_failure_span(
+                    self._trace_recorder,
+                    result.error_code,
+                    ErrorType.RETRIEVAL,
+                )
+                return result
+            _safe_enrich(
+                self._trace_recorder,
+                attributes={
+                    "chatbi.prompt.length": len(prompt),
+                    "chatbi.prompt.question_length": len(request.question.strip()),
+                    "chatbi.prompt.context_length": len(context.prompt_context),
+                },
+                outcome=TraceOutcome.SUCCESS,
+            )
 
-        if candidate == "CANNOT_ANSWER":
-            return _failure(request_id, QueryErrorCode.CANNOT_ANSWER)
+        with _safe_trace_scope(self._trace_recorder, name="llm.generate"):
+            try:
+                candidate = self._sql_generator.generate(prompt)
+            except Exception:
+                result = _failure(request_id, QueryErrorCode.LLM_ERROR)
+                _enrich_failure_span(
+                    self._trace_recorder,
+                    result.error_code,
+                    ErrorType.LLM,
+                )
+                return result
 
-        try:
-            validate_candidate_scope(candidate, context)
-        except Exception:
-            return _failure(request_id, QueryErrorCode.SQL_REJECTED)
+            if candidate == "CANNOT_ANSWER":
+                result = _failure(request_id, QueryErrorCode.CANNOT_ANSWER)
+                _enrich_failure_span(
+                    self._trace_recorder,
+                    result.error_code,
+                    ErrorType.LLM,
+                )
+                return result
+            _safe_enrich(self._trace_recorder, outcome=TraceOutcome.SUCCESS)
 
-        try:
-            validated_sql = validate_sql(candidate, context)
-        except Exception:
-            return _failure(request_id, QueryErrorCode.SQL_REJECTED)
+        with _safe_trace_scope(
+            self._trace_recorder,
+            name="candidate_scope.validate",
+        ):
+            try:
+                validate_candidate_scope(candidate, context)
+            except Exception:
+                result = _failure(request_id, QueryErrorCode.SQL_REJECTED)
+                _enrich_failure_span(
+                    self._trace_recorder,
+                    result.error_code,
+                    ErrorType.SQL_GUARD,
+                )
+                return result
+            _safe_enrich(self._trace_recorder, outcome=TraceOutcome.SUCCESS)
 
-        try:
-            data = self._query_executor.execute(validated_sql)
-        except DatabaseQueryTimeout:
-            return _failure(request_id, QueryErrorCode.QUERY_TIMEOUT)
-        except DatabaseError:
-            return _failure(request_id, QueryErrorCode.DATABASE_ERROR)
-        except Exception:
-            return _failure(request_id, QueryErrorCode.DATABASE_ERROR)
+        with _safe_trace_scope(self._trace_recorder, name="sql.guard"):
+            try:
+                validated_sql = validate_sql(candidate, context)
+            except Exception:
+                result = _failure(request_id, QueryErrorCode.SQL_REJECTED)
+                _enrich_failure_span(
+                    self._trace_recorder,
+                    result.error_code,
+                    ErrorType.SQL_GUARD,
+                )
+                return result
+            _safe_enrich(
+                self._trace_recorder,
+                attributes={
+                    "chatbi.sql.sha256": sha256(
+                        validated_sql.sql.encode("utf-8")
+                    ).hexdigest(),
+                },
+                outcome=TraceOutcome.SUCCESS,
+            )
 
-        return QuerySuccess(
-            request_id=request_id,
-            sql=validated_sql.sql,
-            columns=data.columns,
-            rows=data.rows,
-            row_count=len(data.rows),
-            truncated=data.truncated,
-        )
+        with _safe_trace_scope(self._trace_recorder, name="database.execute"):
+            try:
+                data = self._query_executor.execute(validated_sql)
+            except DatabaseQueryTimeout:
+                result = _failure(request_id, QueryErrorCode.QUERY_TIMEOUT)
+                _enrich_failure_span(
+                    self._trace_recorder,
+                    result.error_code,
+                    ErrorType.TIMEOUT,
+                )
+                return result
+            except DatabaseError:
+                result = _failure(request_id, QueryErrorCode.DATABASE_ERROR)
+                _enrich_failure_span(
+                    self._trace_recorder,
+                    result.error_code,
+                    ErrorType.DATABASE,
+                )
+                return result
+            except Exception:
+                result = _failure(request_id, QueryErrorCode.DATABASE_ERROR)
+                _enrich_failure_span(
+                    self._trace_recorder,
+                    result.error_code,
+                    ErrorType.DATABASE,
+                )
+                return result
+
+            _safe_enrich(
+                self._trace_recorder,
+                attributes={
+                    "chatbi.database.row_count": len(data.rows),
+                    "chatbi.database.truncated": data.truncated,
+                },
+                outcome=TraceOutcome.SUCCESS,
+            )
+            return QuerySuccess(
+                request_id=request_id,
+                sql=validated_sql.sql,
+                columns=data.columns,
+                rows=data.rows,
+                row_count=len(data.rows),
+                truncated=data.truncated,
+            )
 
     def _resolve_context(
         self,
@@ -132,53 +264,168 @@ class OnlineQueryService:
                 return None, QueryErrorCode.CONTEXT_ERROR
             return self._context, None
 
-        retrieval_request = build_retrieval_request(question)
-        try:
-            result = self._retrieval_provider.retrieve(retrieval_request)
-        except Exception as exc:
-            _LOGGER.warning(
-                "Online Retrieval fallback: request_id=%s status=PROVIDER_EXCEPTION "
-                "error_type=%s",
-                request_id,
-                type(exc).__name__,
-            )
-            if retrieval_request.fallback_policy == FallbackPolicy.FAIL_CLOSED:
-                return None, QueryErrorCode.CONTEXT_ERROR
-            return self._static_context_or_error()
-
-        if result.status == RetrievalStatus.SUCCESS:
+        with _safe_trace_scope(self._trace_recorder, name="retrieval.plan"):
             try:
-                resolved_context = result.to_query_context()
-                if (
-                    retrieval_request.request_shape != RequestShape.BASELINE
-                    and len(resolved_context.metric_constraints) < 2
-                ):
-                    return None, QueryErrorCode.CANNOT_ANSWER
-                return resolved_context, None
-            except ValueError as exc:
+                retrieval_request = build_retrieval_request(question)
+            except Exception:
+                error = QueryErrorCode.CONTEXT_ERROR
+                _enrich_failure_span(
+                    self._trace_recorder,
+                    error,
+                    ErrorType.RETRIEVAL,
+                )
+                return None, error
+            _safe_enrich(
+                self._trace_recorder,
+                attributes={
+                    "chatbi.retrieval.request_shape": retrieval_request.request_shape.value,
+                    "chatbi.retrieval.fallback_policy": retrieval_request.fallback_policy.value,
+                },
+                outcome=TraceOutcome.SUCCESS,
+            )
+
+        with _safe_trace_scope(self._trace_recorder, name="retrieval.execute"):
+            base_attributes = {
+                "chatbi.retrieval.request_shape": retrieval_request.request_shape.value,
+                "chatbi.retrieval.fallback_policy": retrieval_request.fallback_policy.value,
+                "chatbi.retrieval.fallback_used": False,
+            }
+            try:
+                result = self._retrieval_provider.retrieve(retrieval_request)
+            except Exception as exc:
                 _LOGGER.warning(
-                    "Online Retrieval fallback: request_id=%s status=SUCCESS "
-                    "asset_version=%s error_type=%s",
+                    "Online Retrieval fallback: request_id=%s status=PROVIDER_EXCEPTION "
+                    "error_type=%s",
                     request_id,
-                    result.asset_version,
                     type(exc).__name__,
                 )
-                if retrieval_request.fallback_policy == FallbackPolicy.FAIL_CLOSED:
-                    return None, QueryErrorCode.CONTEXT_ERROR
-                return self._static_context_or_error()
-        if result.status in _BUSINESS_RETRIEVAL_FAILURES:
-            return None, QueryErrorCode.CANNOT_ANSWER
+                return self._retrieval_failure_or_static_fallback(
+                    request_id,
+                    retrieval_request,
+                    status=RetrievalStatus.RETRIEVAL_UNAVAILABLE,
+                    attributes=base_attributes,
+                )
+
+            retrieval_attributes = {
+                **base_attributes,
+                "chatbi.retrieval.status": result.status.value,
+                "chatbi.retrieval.asset_version": result.asset_version,
+                "chatbi.retrieval.table_count": len(result.tables),
+                "chatbi.retrieval.column_count": len(result.fields),
+                "chatbi.retrieval.metric_count": len(result.metrics),
+            }
+            if result.status == RetrievalStatus.SUCCESS:
+                try:
+                    resolved_context = result.to_query_context()
+                    if (
+                        retrieval_request.request_shape != RequestShape.BASELINE
+                        and len(resolved_context.metric_constraints) < 2
+                    ):
+                        error = QueryErrorCode.CANNOT_ANSWER
+                        _safe_enrich(
+                            self._trace_recorder,
+                            attributes=retrieval_attributes,
+                            outcome=TraceOutcome.BUSINESS_REJECTION,
+                            error_type=ErrorType.RETRIEVAL,
+                            error_code=error.value,
+                        )
+                        return None, error
+                    _safe_enrich(
+                        self._trace_recorder,
+                        attributes=retrieval_attributes,
+                        outcome=TraceOutcome.SUCCESS,
+                    )
+                    return resolved_context, None
+                except ValueError as exc:
+                    _LOGGER.warning(
+                        "Online Retrieval fallback: request_id=%s status=SUCCESS "
+                        "asset_version=%s error_type=%s",
+                        request_id,
+                        result.asset_version,
+                        type(exc).__name__,
+                    )
+                    return self._retrieval_failure_or_static_fallback(
+                        request_id,
+                        retrieval_request,
+                        status=result.status,
+                        attributes=retrieval_attributes,
+                    )
+            if result.status in _BUSINESS_RETRIEVAL_FAILURES:
+                error = QueryErrorCode.CANNOT_ANSWER
+                _safe_enrich(
+                    self._trace_recorder,
+                    attributes=retrieval_attributes,
+                    outcome=TraceOutcome.BUSINESS_REJECTION,
+                    error_type=ErrorType.RETRIEVAL,
+                    error_code=error.value,
+                )
+                return None, error
+            _LOGGER.warning(
+                "Online Retrieval fallback: request_id=%s status=%s asset_version=%s "
+                "reason=%s",
+                request_id,
+                result.status.value,
+                result.asset_version,
+                _fallback_reason(result.warnings),
+            )
+            return self._retrieval_failure_or_static_fallback(
+                request_id,
+                retrieval_request,
+                status=result.status,
+                attributes=retrieval_attributes,
+            )
+
+    def _retrieval_failure_or_static_fallback(
+        self,
+        request_id: str,
+        retrieval_request: Any,
+        *,
+        status: RetrievalStatus,
+        attributes: dict[str, object],
+    ) -> tuple[QueryContext | None, QueryErrorCode | None]:
         if retrieval_request.fallback_policy == FallbackPolicy.FAIL_CLOSED:
-            return None, QueryErrorCode.CONTEXT_ERROR
-        _LOGGER.warning(
-            "Online Retrieval fallback: request_id=%s status=%s asset_version=%s "
-            "reason=%s",
-            request_id,
-            result.status.value,
-            result.asset_version,
-            _fallback_reason(result.warnings),
+            error = QueryErrorCode.CONTEXT_ERROR
+            _safe_enrich(
+                self._trace_recorder,
+                attributes={
+                    **attributes,
+                    "chatbi.retrieval.status": status.value,
+                    "chatbi.retrieval.fallback_used": False,
+                },
+                outcome=TraceOutcome.TECHNICAL_FAILURE,
+                error_type=ErrorType.RETRIEVAL,
+                error_code=error.value,
+            )
+            return None, error
+
+        context, error = self._static_context_or_error()
+        if error is not None or context is None:
+            error = QueryErrorCode.CONTEXT_ERROR
+            _safe_enrich(
+                self._trace_recorder,
+                attributes={
+                    **attributes,
+                    "chatbi.retrieval.status": status.value,
+                    "chatbi.retrieval.fallback_used": False,
+                },
+                outcome=TraceOutcome.TECHNICAL_FAILURE,
+                error_type=ErrorType.RETRIEVAL,
+                error_code=error.value,
+            )
+            return None, error
+
+        _safe_enrich(
+            self._trace_recorder,
+            attributes={
+                **attributes,
+                "chatbi.retrieval.status": status.value,
+                "chatbi.retrieval.fallback_used": True,
+                "chatbi.retrieval.context_source": "static_fallback",
+            },
+            outcome=TraceOutcome.FALLBACK_SUCCESS,
+            error_type=ErrorType.RETRIEVAL,
         )
-        return self._static_context_or_error()
+        return context, None
 
     def _static_context_or_error(
         self,
@@ -204,6 +451,136 @@ def _fallback_reason(warnings: tuple[str, ...]) -> str:
         return "unspecified"
     reason = warnings[0].replace("\r", " ").replace("\n", " ").strip()
     return reason[:256] or "unspecified"
+
+
+@contextmanager
+def _safe_trace_scope(
+    recorder: TraceRecorder,
+    *,
+    name: str,
+    root: bool = False,
+    attributes: dict[str, object] | None = None,
+) -> Iterator[Any]:
+    """让 Trace 失败退化为空作用域，不影响业务节点。"""
+
+    try:
+        scope = (
+            recorder.query_trace(
+                QuerySource.INTERNAL,
+                attributes=attributes,
+            )
+            if root
+            else recorder.span(name, attributes=attributes)
+        )
+    except Exception:
+        scope = _NoopTraceScope()
+
+    entered = False
+    try:
+        try:
+            scope.__enter__()
+            entered = True
+        except Exception:
+            scope = _NoopTraceScope()
+            scope.__enter__()
+            entered = True
+        yield scope
+    finally:
+        if entered:
+            try:
+                scope.__exit__(None, None, None)
+            except Exception:
+                pass
+
+
+class _NoopTraceScope:
+    def __enter__(self) -> "_NoopTraceScope":
+        return self
+
+    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> bool:
+        return False
+
+
+def _safe_enrich(
+    recorder: TraceRecorder,
+    *,
+    attributes: dict[str, object] | None = None,
+    outcome: TraceOutcome | None = None,
+    error_type: ErrorType | None = None,
+    error_code: str | None = None,
+) -> None:
+    try:
+        recorder.enrich_current(
+            attributes=attributes,
+            outcome=outcome,
+            error_type=error_type,
+            error_code=error_code,
+        )
+    except Exception:
+        pass
+
+
+def _enrich_failure_span(
+    recorder: TraceRecorder,
+    error_code: QueryErrorCode,
+    error_type: ErrorType,
+) -> None:
+    outcome = (
+        TraceOutcome.TIMEOUT
+        if error_code == QueryErrorCode.QUERY_TIMEOUT
+        else TraceOutcome.BUSINESS_REJECTION
+        if error_code
+        in {
+            QueryErrorCode.INVALID_REQUEST,
+            QueryErrorCode.CANNOT_ANSWER,
+            QueryErrorCode.SQL_REJECTED,
+        }
+        else TraceOutcome.TECHNICAL_FAILURE
+    )
+    _safe_enrich(
+        recorder,
+        outcome=outcome,
+        error_type=error_type,
+        error_code=error_code.value,
+    )
+
+
+def _enrich_query_result(recorder: TraceRecorder, result: QueryResult) -> None:
+    if isinstance(result, QuerySuccess):
+        _safe_enrich(
+            recorder,
+            attributes={
+                "chatbi.result.row_count": result.row_count,
+                "chatbi.result.truncated": result.truncated,
+            },
+            outcome=TraceOutcome.SUCCESS,
+        )
+        return
+    error_type, outcome = _failure_trace_mapping(result.error_code)
+    _safe_enrich(
+        recorder,
+        outcome=outcome,
+        error_type=error_type,
+        error_code=result.error_code.value,
+    )
+
+
+def _failure_trace_mapping(
+    error_code: QueryErrorCode,
+) -> tuple[ErrorType, TraceOutcome]:
+    if error_code == QueryErrorCode.INVALID_REQUEST:
+        return ErrorType.VALIDATION, TraceOutcome.BUSINESS_REJECTION
+    if error_code == QueryErrorCode.CANNOT_ANSWER:
+        return ErrorType.RETRIEVAL, TraceOutcome.BUSINESS_REJECTION
+    if error_code == QueryErrorCode.SQL_REJECTED:
+        return ErrorType.SQL_GUARD, TraceOutcome.BUSINESS_REJECTION
+    if error_code == QueryErrorCode.LLM_ERROR:
+        return ErrorType.LLM, TraceOutcome.TECHNICAL_FAILURE
+    if error_code == QueryErrorCode.CONTEXT_ERROR:
+        return ErrorType.RETRIEVAL, TraceOutcome.TECHNICAL_FAILURE
+    if error_code == QueryErrorCode.QUERY_TIMEOUT:
+        return ErrorType.TIMEOUT, TraceOutcome.TIMEOUT
+    return ErrorType.DATABASE, TraceOutcome.TECHNICAL_FAILURE
 
 
 def _failure(request_id: str, error_code: QueryErrorCode) -> QueryFailure:
