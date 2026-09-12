@@ -4,6 +4,7 @@ import os
 
 from .app import create_app
 from .config import load_local_environment
+from src.observability.tracing import create_trace_recorder
 from src.online_query.database import PsycopgQueryExecutor
 from src.online_query.llm import LangChainSQLGenerator
 from src.online_query.rag_runtime import RagRuntime
@@ -17,13 +18,18 @@ load_local_environment()
 def build_service() -> OnlineQueryService:
     """使用现有环境配置创建真实 Online Query 服务。"""
 
+    trace_recorder = create_trace_recorder()
     retrieval_provider = None
     if _rag_online_retrieval_enabled():
-        retrieval_provider = OnlineRetriever(RagRuntime.from_environment())
+        retrieval_provider = OnlineRetriever(
+            RagRuntime.from_environment(),
+            trace_recorder=trace_recorder,
+        )
     return OnlineQueryService(
-        LangChainSQLGenerator.from_env(),
+        LangChainSQLGenerator.from_env(trace_recorder=trace_recorder),
         PsycopgQueryExecutor.from_env(),
         retrieval_provider=retrieval_provider,
+        trace_recorder=trace_recorder,
     )
 
 

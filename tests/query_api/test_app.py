@@ -102,14 +102,15 @@ class QueryApiAppTest(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["request_id"], "generated-request-id")
+        generated_request_id = response.json()["request_id"]
+        self.assertTrue(generated_request_id)
+        self.assertEqual(
+            service.requests,
+            [QueryRequest(question="查询没有数据的产品", request_id=generated_request_id)],
+        )
         self.assertEqual(response.json()["rows"], [])
         self.assertEqual(response.json()["row_count"], 0)
         self.assertFalse(response.json()["truncated"])
-        self.assertEqual(
-            service.requests,
-            [QueryRequest(question="查询没有数据的产品", request_id=None)],
-        )
 
     def test_query_maps_each_failure_code_to_http_status(self) -> None:
         expected_statuses = {
@@ -136,10 +137,12 @@ class QueryApiAppTest(TestCase):
                 )
 
                 self.assertEqual(response.status_code, expected_status)
+                expected_request_id = service.requests[0].request_id
+                self.assertTrue(expected_request_id)
                 self.assertEqual(
                     response.json(),
                     {
-                        "request_id": "generated-request-id",
+                        "request_id": expected_request_id,
                         "error_code": error_code.value,
                         "error_message": f"错误：{error_code.value}",
                     },

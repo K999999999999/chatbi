@@ -1,12 +1,18 @@
 """FastAPI HTTP 适配层。"""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+import re
 from typing import Any, Protocol
+from uuid import uuid4
 
-from fastapi import FastAPI, Header, Request
+from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, StrictStr
 
+from src.observability.contracts import QuerySource, TraceRecorder
+from src.observability.tracing import create_trace_recorder
 from src.online_query.contracts import (
     QueryErrorCode,
     QueryFailure,
@@ -14,6 +20,9 @@ from src.online_query.contracts import (
     QueryResult,
     QuerySuccess,
 )
+
+
+_TRACE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 
 
 _HTTP_STATUS_BY_ERROR = {
@@ -61,14 +70,39 @@ class QueryFailureResponse(BaseModel):
     error_message: str
 
 
-def create_app(service: QueryService) -> FastAPI:
+def create_app(
+    service: QueryService,
+    trace_recorder: TraceRecorder | None = None,
+) -> FastAPI:
     """创建绑定查询服务的 FastAPI 应用。"""
+
+    recorder = trace_recorder or getattr(service, "_trace_recorder", None)
+    if recorder is None:
+        try:
+            recorder = create_trace_recorder()
+        except Exception:
+            recorder = None
 
     app = FastAPI(
         title="ChatBI Query API",
         version="0.1.0",
     )
     app.state.query_service = service
+    app.state.trace_recorder = recorder
+
+    @app.middleware("http")
+    async def observability_middleware(
+        request: Request,
+        call_next: Any,
+    ) -> JSONResponse:
+        if request.url.path != "/api/v1/query":
+            return await call_next(request)
+        request_id = _request_id_from_header(request.headers.get("X-Request-ID"))
+        request.state.request_id = request_id
+        with _http_trace_scope(recorder, request_id) as trace_scope:
+            response = await call_next(request)
+            response.headers["X-Trace-ID"] = trace_scope.trace_id
+            return response
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -82,10 +116,10 @@ def create_app(service: QueryService) -> FastAPI:
         result = service.query(
             QueryRequest(
                 question="",
-                request_id=request.headers.get("X-Request-ID"),
+                request_id=_request_id_from_state(request),
             )
         )
-        return _result_response(result)
+        return _result_response(result, trace_recorder=recorder)
 
     @app.post(
         "/api/v1/query",
@@ -99,37 +133,120 @@ def create_app(service: QueryService) -> FastAPI:
         },
     )
     def query(
+        request: Request,
         body: QueryBody,
-        x_request_id: str | None = Header(default=None, alias="X-Request-ID"),
     ) -> JSONResponse:
         result = service.query(
-            QueryRequest(question=body.question, request_id=x_request_id)
+            QueryRequest(
+                question=body.question,
+                request_id=_request_id_from_state(request),
+            )
         )
-        return _result_response(result)
+        return _result_response(result, trace_recorder=recorder)
 
     return app
 
 
-def _result_response(result: QueryResult) -> JSONResponse:
-    if isinstance(result, QuerySuccess):
-        return JSONResponse(
-            status_code=200,
-            content=QuerySuccessResponse(
-                request_id=result.request_id,
-                sql=result.sql,
-                columns=list(result.columns),
-                rows=[list(row) for row in result.rows],
-                row_count=result.row_count,
-                truncated=result.truncated,
-            ).model_dump(mode="json"),
-        )
-    if isinstance(result, QueryFailure):
-        return JSONResponse(
-            status_code=_HTTP_STATUS_BY_ERROR[result.error_code],
-            content=QueryFailureResponse(
-                request_id=result.request_id,
-                error_code=result.error_code,
-                error_message=result.error_message,
-            ).model_dump(mode="json"),
-        )
-    raise RuntimeError("查询服务返回未知结果")
+def _result_response(
+    result: QueryResult,
+    *,
+    trace_recorder: TraceRecorder | None = None,
+) -> JSONResponse:
+    with _safe_span(trace_recorder, "response.serialize"):
+        if isinstance(result, QuerySuccess):
+            return JSONResponse(
+                status_code=200,
+                content=QuerySuccessResponse(
+                    request_id=result.request_id,
+                    sql=result.sql,
+                    columns=list(result.columns),
+                    rows=[list(row) for row in result.rows],
+                    row_count=result.row_count,
+                    truncated=result.truncated,
+                ).model_dump(mode="json"),
+            )
+        if isinstance(result, QueryFailure):
+            return JSONResponse(
+                status_code=_HTTP_STATUS_BY_ERROR[result.error_code],
+                content=QueryFailureResponse(
+                    request_id=result.request_id,
+                    error_code=result.error_code,
+                    error_message=result.error_message,
+                ).model_dump(mode="json"),
+            )
+        raise RuntimeError("查询服务返回未知结果")
+
+
+class _FallbackScope:
+    def __init__(self, trace_id: str | None = None) -> None:
+        self.trace_id = trace_id if _TRACE_ID_RE.fullmatch(trace_id or "") else uuid4().hex
+
+    def __enter__(self) -> "_FallbackScope":
+        return self
+
+    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> bool:
+        return False
+
+
+@contextmanager
+def _http_trace_scope(
+    recorder: TraceRecorder | None,
+    request_id: str,
+) -> Iterator[Any]:
+    scope: Any = _FallbackScope()
+    if recorder is not None:
+        try:
+            scope = recorder.query_trace(
+                QuerySource.HTTP,
+                attributes={"chatbi.request.id": request_id},
+            )
+        except Exception:
+            scope = _FallbackScope()
+    try:
+        scope.__enter__()
+    except Exception:
+        scope = _FallbackScope()
+        scope.__enter__()
+    try:
+        yield scope
+    finally:
+        try:
+            scope.__exit__(None, None, None)
+        except Exception:
+            pass
+
+
+@contextmanager
+def _safe_span(
+    recorder: TraceRecorder | None,
+    name: str,
+) -> Iterator[None]:
+    if recorder is None:
+        yield
+        return
+    try:
+        scope = recorder.span(name)
+        scope.__enter__()
+    except Exception:
+        yield
+        return
+    try:
+        yield
+    finally:
+        try:
+            scope.__exit__(None, None, None)
+        except Exception:
+            pass
+
+
+def _request_id_from_header(value: str | None) -> str:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return str(uuid4())
+
+
+def _request_id_from_state(request: Request) -> str:
+    value = getattr(request.state, "request_id", None)
+    return value if isinstance(value, str) and value.strip() else _request_id_from_header(
+        request.headers.get("X-Request-ID")
+    )
