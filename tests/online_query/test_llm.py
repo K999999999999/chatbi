@@ -45,6 +45,20 @@ class LLMTest(unittest.TestCase):
         self.assertEqual(result, "SELECT 1;")
         model.invoke.assert_called_once_with("prompt")
 
+    @patch("src.online_query.llm.ChatOpenAI")
+    def test_from_env_passes_optional_trace_recorder(self, chat_open_ai: Mock) -> None:
+        recorder = Mock()
+
+        generator = LangChainSQLGenerator.from_env(
+            {
+                "LLM_API_KEY": "test-key",
+                "LLM_MODEL": "test-model",
+            },
+            trace_recorder=recorder,
+        )
+
+        self.assertIs(generator._trace_recorder, recorder)
+
     def test_generate_preserves_cannot_answer(self) -> None:
         model = Mock()
         model.invoke.return_value = SimpleNamespace(content="CANNOT_ANSWER")

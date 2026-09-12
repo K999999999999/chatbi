@@ -2,9 +2,12 @@
 
 from collections.abc import Mapping
 import os
+import re
 from typing import Protocol
 
 from langchain_openai import ChatOpenAI
+
+from ..observability.contracts import TraceRecorder
 
 
 class LLMError(RuntimeError):
@@ -19,13 +22,22 @@ class _InvokableModel(Protocol):
 class LangChainSQLGenerator:
     """只负责把完整 Prompt 交给模型并返回文本。"""
 
-    def __init__(self, model: _InvokableModel) -> None:
+    def __init__(
+        self,
+        model: _InvokableModel,
+        trace_recorder: TraceRecorder | None = None,
+        model_name: str | None = None,
+    ) -> None:
         self._model = model
+        self._trace_recorder = trace_recorder
+        self._model_name = _safe_model_name(model_name)
 
     @classmethod
     def from_env(
         cls,
         environ: Mapping[str, str] | None = None,
+        *,
+        trace_recorder: TraceRecorder | None = None,
     ) -> "LangChainSQLGenerator":
         source = os.environ if environ is None else environ
         api_key = source.get("LLM_API_KEY", "").strip()
@@ -58,7 +70,11 @@ class LangChainSQLGenerator:
             )
         except Exception as exc:
             raise LLMError("LLM 配置无效") from exc
-        return cls(model)
+        return cls(
+            model,
+            trace_recorder=trace_recorder,
+            model_name=model_name,
+        )
 
     def generate(self, prompt: str) -> str:
         try:
@@ -72,4 +88,105 @@ class LangChainSQLGenerator:
         result = content.strip()
         if not result:
             raise LLMError("LLM 返回空响应")
+        self._enrich_current(response)
         return result
+
+    def _enrich_current(self, response: object) -> None:
+        if self._trace_recorder is None:
+            return
+
+        attributes: dict[str, str | int] = {
+            "gen_ai.operation.name": "chat",
+        }
+        if self._model_name is not None:
+            attributes["gen_ai.request.model"] = self._model_name
+
+        response_metadata = _safe_mapping(response, "response_metadata")
+        response_model = None
+        if response_metadata is not None:
+            for model_key in ("model_name", "model"):
+                response_model = _safe_model_name(
+                    _mapping_value(response_metadata, model_key)
+                )
+                if response_model is not None:
+                    break
+        if response_model is not None:
+            attributes["gen_ai.response.model"] = response_model
+
+        usage_metadata = _safe_mapping(response, "usage_metadata")
+        token_usage = _safe_mapping_value(response_metadata, "token_usage")
+        for attribute_name, usage_key, fallback_key in (
+            ("gen_ai.usage.input_tokens", "input_tokens", "prompt_tokens"),
+            ("gen_ai.usage.output_tokens", "output_tokens", "completion_tokens"),
+            ("gen_ai.usage.total_tokens", "total_tokens", "total_tokens"),
+        ):
+            value = _valid_non_negative_int(
+                _mapping_value(usage_metadata, usage_key)
+            )
+            if value is None:
+                value = _valid_non_negative_int(
+                    _mapping_value(token_usage, fallback_key)
+                )
+            if value is not None:
+                attributes[attribute_name] = value
+
+        try:
+            self._trace_recorder.enrich_current(attributes=attributes)
+        except Exception:
+            pass
+
+
+_SAFE_MODEL_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+@-]{0,127}$")
+_UNSAFE_MODEL_NAME_RE = re.compile(
+    r"(?:api[-_ ]?key|authorization|bearer|password|secret|"
+    r"access[-_ ]?token|prompt|sql|raw(?:[-_ ]?response)?|sk-)",
+    re.IGNORECASE,
+)
+
+
+def _safe_model_name(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    candidate = value.strip()
+    if (
+        not candidate
+        or "\n" in candidate
+        or "\r" in candidate
+        or _UNSAFE_MODEL_NAME_RE.search(candidate) is not None
+        or _SAFE_MODEL_NAME_RE.fullmatch(candidate) is None
+    ):
+        return None
+    return candidate
+
+
+def _safe_mapping(value: object, attribute: str) -> Mapping[str, object] | None:
+    try:
+        candidate = getattr(value, attribute, None)
+    except Exception:
+        return None
+    return candidate if isinstance(candidate, Mapping) else None
+
+
+def _safe_mapping_value(
+    value: Mapping[str, object] | None,
+    key: str,
+) -> Mapping[str, object] | None:
+    if value is None:
+        return None
+    candidate = _mapping_value(value, key)
+    return candidate if isinstance(candidate, Mapping) else None
+
+
+def _mapping_value(value: Mapping[str, object] | None, key: str) -> object | None:
+    if value is None:
+        return None
+    try:
+        return value.get(key)
+    except Exception:
+        return None
+
+
+def _valid_non_negative_int(value: object) -> int | None:
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return None

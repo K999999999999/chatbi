@@ -68,6 +68,14 @@ _SAFE_WARNING_STAGES = frozenset(
         "status",
     }
 )
+_SAFE_GEN_AI_ATTRIBUTE_RULES: dict[str, str] = {
+    "gen_ai.operation.name": "gen_ai_operation",
+    "gen_ai.request.model": "gen_ai_model",
+    "gen_ai.response.model": "gen_ai_model",
+    "gen_ai.usage.input_tokens": "gen_ai_count",
+    "gen_ai.usage.output_tokens": "gen_ai_count",
+    "gen_ai.usage.total_tokens": "gen_ai_count",
+}
 _SAFE_ATTRIBUTE_RULES: dict[str, str] = {
     "chatbi.request.source": "source",
     "chatbi.request.id": "identifier",
@@ -108,10 +116,17 @@ _SAFE_ATTRIBUTE_RULES: dict[str, str] = {
     "chatbi.retrieval.candidate_count": "count",
     "chatbi.result.row_count": "count",
     "chatbi.duration_ms": "count",
+    **_SAFE_GEN_AI_ATTRIBUTE_RULES,
 }
 _SAFE_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _SAFE_HASH_RE = re.compile(r"^[0-9a-fA-F]{32,128}$")
 _SAFE_VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$")
+_SAFE_GEN_AI_MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+@-]{0,127}$")
+_UNSAFE_GEN_AI_MODEL_RE = re.compile(
+    r"(?:api[-_ ]?key|authorization|bearer|password|secret|"
+    r"access[-_ ]?token|prompt|sql|raw(?:[-_ ]?response)?)",
+    re.IGNORECASE,
+)
 _SENSITIVE_VALUE_RE = re.compile(
     r"(?:raw[-_ ]?secret|password|authorization|api[-_ ]?key|bearer|access[-_ ]?token)",
     re.IGNORECASE,
@@ -536,7 +551,7 @@ def _safe_attributes(attributes: Attributes | None) -> dict[str, Any]:
 def _safe_attribute_value(value: Any, rule: str) -> Any:
     if rule == "boolean":
         return value if isinstance(value, bool) else None
-    if rule == "count":
+    if rule in {"count", "gen_ai_count"}:
         return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
     if rule in {"identifier_list", "count_list", "number_list"}:
         if not isinstance(value, (list, tuple)):
@@ -566,6 +581,12 @@ def _safe_attribute_value(value: Any, rule: str) -> Any:
         return None
     if _SENSITIVE_VALUE_RE.search(value):
         return None
+    if rule == "gen_ai_operation":
+        return value if value == "chat" else None
+    if rule == "gen_ai_model":
+        if _UNSAFE_GEN_AI_MODEL_RE.search(value) is not None:
+            return None
+        return value if _SAFE_GEN_AI_MODEL_RE.fullmatch(value) else None
     if rule == "source":
         return value if value in {item.value for item in QuerySource} else None
     if rule == "outcome":
