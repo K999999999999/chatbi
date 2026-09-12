@@ -4,6 +4,7 @@ from collections.abc import Mapping, Sequence
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
 import logging
+import math
 import re
 import secrets
 from typing import Any
@@ -84,9 +85,17 @@ _SAFE_ATTRIBUTE_RULES: dict[str, str] = {
     "chatbi.retrieval.asset_version": "version",
     "chatbi.retrieval.candidate_id": "identifier",
     "chatbi.retrieval.candidate_type": "identifier",
+    "chatbi.retrieval.candidate.document_ids": "identifier_list",
+    "chatbi.retrieval.candidate.ranks": "count_list",
+    "chatbi.retrieval.candidate.scores": "number_list",
+    "chatbi.retrieval.candidate.qualified_tables": "identifier_list",
+    "chatbi.retrieval.search.qualified_table": "identifier",
     "chatbi.retrieval.table_count": "count",
     "chatbi.retrieval.column_count": "count",
     "chatbi.retrieval.metric_count": "count",
+    "chatbi.retrieval.join.edge_ids": "identifier_list",
+    "chatbi.retrieval.join.path_ids": "identifier_list",
+    "chatbi.retrieval.join.path_count": "count",
     "chatbi.prompt.length": "count",
     "chatbi.prompt.question_length": "count",
     "chatbi.prompt.context_length": "count",
@@ -529,6 +538,28 @@ def _safe_attribute_value(value: Any, rule: str) -> Any:
         return value if isinstance(value, bool) else None
     if rule == "count":
         return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+    if rule in {"identifier_list", "count_list", "number_list"}:
+        if not isinstance(value, (list, tuple)):
+            return None
+        safe_values: list[Any] = []
+        for item in value[:10]:
+            if rule == "identifier_list":
+                if (
+                    isinstance(item, str)
+                    and _SAFE_IDENTIFIER_RE.fullmatch(item)
+                    and not _SENSITIVE_VALUE_RE.search(item)
+                ):
+                    safe_values.append(item)
+            elif rule == "count_list":
+                if isinstance(item, int) and not isinstance(item, bool) and item >= 0:
+                    safe_values.append(item)
+            elif (
+                isinstance(item, (int, float))
+                and not isinstance(item, bool)
+                and math.isfinite(float(item))
+            ):
+                safe_values.append(item)
+        return tuple(safe_values) or None
     if not isinstance(value, str):
         return None
     if len(value) > 128 or "\n" in value or "\r" in value:

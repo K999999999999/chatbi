@@ -1,7 +1,8 @@
 """Online Retrieval（在线检索）三路检索、关系解析和上下文组装。"""
 
 from collections import defaultdict, deque
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 import json
 import re
@@ -11,6 +12,8 @@ from typing import Any
 from sqlglot import exp, parse_one
 from sqlglot.errors import SqlglotError
 
+from src.observability.contracts import TraceRecorder
+from src.observability.tracing import create_trace_recorder
 from src.rag_offline.documents import COLUMN_COLLECTION, METRIC_COLLECTION, TABLE_COLLECTION
 from src.rag_offline.embedding import EmbeddingError
 from src.rag_offline.qdrant_store import QdrantStoreError, SearchHit
@@ -62,6 +65,7 @@ _GENERIC_GROUPING_TERMS = frozenset(
     {"类型", "属性", "业务", "数据", "信息", "记录", "完成", "订单", "金额", "统计"}
 )
 _TIME_FIELD_PATTERN = re.compile(r"^\s*(?P<source>[^\s]+)\s*->\s*(?P<target>[^\s]+)\s*$")
+_TRACE_EVIDENCE_LIMIT = 10
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,9 +85,17 @@ class OnlineRetriever:
         runtime: RagRuntime,
         *,
         config: RetrievalConfig | None = None,
+        trace_recorder: TraceRecorder | None = None,
     ) -> None:
         self._runtime = runtime
         self._config = config or RetrievalConfig()
+        if trace_recorder is not None:
+            self._trace_recorder = trace_recorder
+        else:
+            try:
+                self._trace_recorder = create_trace_recorder()
+            except Exception:
+                self._trace_recorder = None
 
     def retrieve(self, question: str | RetrievalRequest) -> OnlineRetrievalResult:
         """执行 TABLE、COLUMN、METRIC 和确定性关系解析。"""
@@ -97,7 +109,12 @@ class OnlineRetriever:
         question = question.strip()
         grouping_text = _grouping_text(question)
         try:
-            snapshot = self._runtime.get_snapshot()
+            with _safe_span(self._trace_recorder, "asset.resolve"):
+                snapshot = self._runtime.get_snapshot()
+                _safe_enrich_current(
+                    self._trace_recorder,
+                    {"chatbi.retrieval.asset_version": snapshot.asset_version},
+                )
         except AssetUnavailableError as exc:
             return _failure(RetrievalStatus.ASSET_UNAVAILABLE, str(exc))
         except RetrievalUnavailableError as exc:
@@ -108,14 +125,33 @@ class OnlineRetriever:
             return _failure(RetrievalStatus.ASSET_UNAVAILABLE, str(exc))
 
         try:
-            query_embedding = snapshot.embedding_provider.embed_query(question)
+            query_embedding = self._embed_query(snapshot, question)
             table_hits = _table_hits(
                 snapshot,
                 query_embedding,
                 self._config,
                 extra_queries=(grouping_text,) if grouping_text else (),
+                embed_query=lambda text: self._embed_query(snapshot, text),
+                search=lambda collection_name, query, **kwargs: self._search(
+                    "table.search",
+                    snapshot,
+                    collection_name,
+                    query,
+                    **kwargs,
+                ),
             )
-            metric_hits = _metric_hits(snapshot, query_embedding, self._config)
+            metric_hits = _metric_hits(
+                snapshot,
+                query_embedding,
+                self._config,
+                search=lambda collection_name, query, **kwargs: self._search(
+                    "metric.search",
+                    snapshot,
+                    collection_name,
+                    query,
+                    **kwargs,
+                ),
+            )
         except EmbeddingError as exc:
             return _failure(RetrievalStatus.EMBEDDING_UNAVAILABLE, str(exc), asset_version=snapshot.asset_version)
         except QdrantStoreError as exc:
@@ -164,6 +200,14 @@ class OnlineRetriever:
                 required=required,
                 grouping_query=grouping_text,
                 grouping_tables=grouping_tables,
+                embed_query=lambda text: self._embed_query(snapshot, text),
+                search=lambda collection_name, query, **kwargs: self._search(
+                    "column.search",
+                    snapshot,
+                    collection_name,
+                    query,
+                    **kwargs,
+                ),
             )
         except EmbeddingError as exc:
             return _failure(RetrievalStatus.EMBEDDING_UNAVAILABLE, str(exc), asset_version=snapshot.asset_version, evidence=evidence)
@@ -179,18 +223,27 @@ class OnlineRetriever:
         try:
             if not _contains_required_columns(column_hits, required):
                 return _result(RetrievalStatus.NO_REQUIRED_COLUMN_HIT, snapshot.asset_version, tables=table_hits, fields=column_hits, metrics=(metric,) if metric else (), evidence=evidence, warnings=("公式或 time_field 引用的必需字段没有被 COLUMN 命中",))
-            anchor, reason = _select_anchor(metric, table_hits)
-            edges = _graph_edges(snapshot.relationship_graph)
-            if time_field is not None:
-                time_field = _validate_time_edge(time_field, edges)
-            targets = _target_tables(candidate_tables, metric_table, time_field)
-            resolution = _resolve_join_paths(
-                anchor,
-                targets,
-                edges,
-                time_edge=time_field.edge_id if time_field else None,
-                time_target=time_field.target_table if time_field else None,
-            )
+            with _safe_span(
+                self._trace_recorder,
+                "join.resolve",
+                {"chatbi.retrieval.asset_version": snapshot.asset_version},
+            ):
+                anchor, reason = _select_anchor(metric, table_hits)
+                edges = _graph_edges(snapshot.relationship_graph)
+                if time_field is not None:
+                    time_field = _validate_time_edge(time_field, edges)
+                targets = _target_tables(candidate_tables, metric_table, time_field)
+                resolution = _resolve_join_paths(
+                    anchor,
+                    targets,
+                    edges,
+                    time_edge=time_field.edge_id if time_field else None,
+                    time_target=time_field.target_table if time_field else None,
+                )
+                _safe_enrich_current(
+                    self._trace_recorder,
+                    _join_trace_attributes(resolution),
+                )
         except _AmbiguousRetrieval as exc:
             return _result(RetrievalStatus.AMBIGUOUS, snapshot.asset_version, tables=table_hits, fields=column_hits, metrics=(metric,) if metric else (), evidence=evidence, warnings=(str(exc),))
         except _UnreachableRequired as exc:
@@ -198,19 +251,37 @@ class OnlineRetriever:
         except RetrievalContractError as exc:
             return _failure(RetrievalStatus.ASSET_UNAVAILABLE, str(exc), asset_version=snapshot.asset_version, evidence=evidence)
 
-        final_tables = _final_table_hits(candidate_tables, resolution)
-        final_fields = _final_column_hits(
-            column_hits,
-            resolution,
-            allowed_tables=frozenset(table.qualified_name for table in final_tables),
-        )
-        dynamic_schema = _build_dynamic_schema(final_tables, final_fields, resolution)
-        indicator_context = _build_indicator_context(metric)
-        query_context = QueryContext(
-            prompt_context=_build_prompt_context(dynamic_schema, indicator_context),
-            allowed_tables=frozenset(hit.qualified_name for hit in final_tables),
-            allowed_columns=MappingProxyType(_allowed_columns(final_fields)),
-        )
+        with _safe_span(
+            self._trace_recorder,
+            "context.assemble",
+            {"chatbi.retrieval.asset_version": snapshot.asset_version},
+        ):
+            final_tables = _final_table_hits(candidate_tables, resolution)
+            final_fields = _final_column_hits(
+                column_hits,
+                resolution,
+                allowed_tables=frozenset(
+                    table.qualified_name for table in final_tables
+                ),
+            )
+            dynamic_schema = _build_dynamic_schema(final_tables, final_fields, resolution)
+            indicator_context = _build_indicator_context(metric)
+            query_context = QueryContext(
+                prompt_context=_build_prompt_context(dynamic_schema, indicator_context),
+                allowed_tables=frozenset(hit.qualified_name for hit in final_tables),
+                allowed_columns=MappingProxyType(_allowed_columns(final_fields)),
+            )
+            _safe_enrich_current(
+                self._trace_recorder,
+                {
+                    "chatbi.retrieval.table_count": len(final_tables),
+                    "chatbi.retrieval.column_count": len(final_fields),
+                    "chatbi.retrieval.metric_count": 1 if metric is not None else 0,
+                    "chatbi.retrieval.candidate.qualified_tables": tuple(
+                        hit.qualified_name for hit in final_tables[:_TRACE_EVIDENCE_LIMIT]
+                    ),
+                },
+            )
         evidence = RetrievalEvidence(table_hits=table_hits, column_hits=column_hits, metric_hits=metric_hits, join_paths=resolution.paths)
         return _result(
             RetrievalStatus.SUCCESS,
@@ -235,7 +306,12 @@ class OnlineRetriever:
         question = request.question
         grouping_text = _grouping_text(question)
         try:
-            snapshot = self._runtime.get_snapshot()
+            with _safe_span(self._trace_recorder, "asset.resolve"):
+                snapshot = self._runtime.get_snapshot()
+                _safe_enrich_current(
+                    self._trace_recorder,
+                    {"chatbi.retrieval.asset_version": snapshot.asset_version},
+                )
         except AssetUnavailableError as exc:
             return _failure(
                 RetrievalStatus.ASSET_UNAVAILABLE,
@@ -299,12 +375,20 @@ class OnlineRetriever:
         metric_queries: list[MetricRetrievalEvidence] = []
         selected_metrics: list[MetricHit] = []
         try:
-            question_embedding = snapshot.embedding_provider.embed_query(question)
+            question_embedding = self._embed_query(snapshot, question)
             table_hits = _table_hits(
                 snapshot,
                 question_embedding,
                 self._config,
                 extra_queries=(grouping_text,) if grouping_text else (),
+                embed_query=lambda text: self._embed_query(snapshot, text),
+                search=lambda collection_name, query, **kwargs: self._search(
+                    "table.search",
+                    snapshot,
+                    collection_name,
+                    query,
+                    **kwargs,
+                ),
             )
             # 同一完整问题向量同时服务 TABLE 和一次综合 METRIC 路线，
             # 不再按请求指标重复生成查询或发起补检索。
@@ -316,6 +400,13 @@ class OnlineRetriever:
                 snapshot,
                 question_embedding,
                 metric_config,
+                search=lambda collection_name, query, **kwargs: self._search(
+                    "metric.search",
+                    snapshot,
+                    collection_name,
+                    query,
+                    **kwargs,
+                ),
             )
             metric_queries = [
                 MetricRetrievalEvidence(
@@ -431,6 +522,14 @@ class OnlineRetriever:
                 required=required,
                 grouping_query=grouping_text,
                 grouping_tables=grouping_tables,
+                embed_query=lambda text: self._embed_query(snapshot, text),
+                search=lambda collection_name, query, **kwargs: self._search(
+                    "column.search",
+                    snapshot,
+                    collection_name,
+                    query,
+                    **kwargs,
+                ),
             )
         except EmbeddingError as exc:
             return _failure(
@@ -488,22 +587,31 @@ class OnlineRetriever:
             )
 
         try:
-            anchor = metric_table
-            edges = _graph_edges(snapshot.relationship_graph)
-            time_field = _validate_time_edge(time_field, edges)
-            targets = _target_tables(candidate_tables, metric_table, time_field)
-            resolution = _resolve_join_paths(
-                anchor,
-                targets,
-                edges,
-                time_edge=time_field.edge_id,
-                time_target=time_field.target_table,
-            )
-            join_constraints = _validated_multi_joins(
-                anchor,
-                resolution,
-                snapshot.relationship_graph,
-            )
+            with _safe_span(
+                self._trace_recorder,
+                "join.resolve",
+                {"chatbi.retrieval.asset_version": snapshot.asset_version},
+            ):
+                anchor = metric_table
+                edges = _graph_edges(snapshot.relationship_graph)
+                time_field = _validate_time_edge(time_field, edges)
+                targets = _target_tables(candidate_tables, metric_table, time_field)
+                resolution = _resolve_join_paths(
+                    anchor,
+                    targets,
+                    edges,
+                    time_edge=time_field.edge_id,
+                    time_target=time_field.target_table,
+                )
+                join_constraints = _validated_multi_joins(
+                    anchor,
+                    resolution,
+                    snapshot.relationship_graph,
+                )
+                _safe_enrich_current(
+                    self._trace_recorder,
+                    _join_trace_attributes(resolution),
+                )
         except _AmbiguousRetrieval as exc:
             return _result(
                 RetrievalStatus.AMBIGUOUS,
@@ -538,33 +646,49 @@ class OnlineRetriever:
                 metric_constraints=constraints,
             )
 
-        final_tables = _final_table_hits(candidate_tables, resolution)
-        final_fields = _final_column_hits(
-            column_hits,
-            resolution,
-            allowed_tables=frozenset(
-                table.qualified_name for table in final_tables
-            ),
-        )
-        dynamic_schema = _build_dynamic_schema(
-            final_tables,
-            final_fields,
-            resolution,
-        )
-        indicator_context = _build_multi_indicator_context(selected_tuple)
-        query_context = QueryContext(
-            prompt_context=_build_prompt_context(
-                dynamic_schema,
-                indicator_context,
-            ),
-            allowed_tables=frozenset(
-                hit.qualified_name for hit in final_tables
-            ),
-            allowed_columns=MappingProxyType(_allowed_columns(final_fields)),
-            request_shape=request.request_shape,
-            metric_constraints=constraints,
-            join_constraints=join_constraints,
-        )
+        with _safe_span(
+            self._trace_recorder,
+            "context.assemble",
+            {"chatbi.retrieval.asset_version": snapshot.asset_version},
+        ):
+            final_tables = _final_table_hits(candidate_tables, resolution)
+            final_fields = _final_column_hits(
+                column_hits,
+                resolution,
+                allowed_tables=frozenset(
+                    table.qualified_name for table in final_tables
+                ),
+            )
+            dynamic_schema = _build_dynamic_schema(
+                final_tables,
+                final_fields,
+                resolution,
+            )
+            indicator_context = _build_multi_indicator_context(selected_tuple)
+            query_context = QueryContext(
+                prompt_context=_build_prompt_context(
+                    dynamic_schema,
+                    indicator_context,
+                ),
+                allowed_tables=frozenset(
+                    hit.qualified_name for hit in final_tables
+                ),
+                allowed_columns=MappingProxyType(_allowed_columns(final_fields)),
+                request_shape=request.request_shape,
+                metric_constraints=constraints,
+                join_constraints=join_constraints,
+            )
+            _safe_enrich_current(
+                self._trace_recorder,
+                {
+                    "chatbi.retrieval.table_count": len(final_tables),
+                    "chatbi.retrieval.column_count": len(final_fields),
+                    "chatbi.retrieval.metric_count": len(selected_tuple),
+                    "chatbi.retrieval.candidate.qualified_tables": tuple(
+                        hit.qualified_name for hit in final_tables[:_TRACE_EVIDENCE_LIMIT]
+                    ),
+                },
+            )
         evidence = RetrievalEvidence(
             table_hits=table_hits,
             column_hits=column_hits,
@@ -589,6 +713,175 @@ class OnlineRetriever:
             join_constraints=join_constraints,
         )
 
+    def _embed_query(self, snapshot: AssetSnapshot, text: str) -> Any:
+        with _safe_span(self._trace_recorder, "embedding.query"):
+            return snapshot.embedding_provider.embed_query(text)
+
+    def _search(
+        self,
+        stage: str,
+        snapshot: AssetSnapshot,
+        collection_name: str,
+        query: Any,
+        *,
+        limit: int = 5,
+        filter_payload: Mapping[str, str] | None = None,
+    ) -> tuple[SearchHit, ...]:
+        attributes: dict[str, object] = {
+            "chatbi.retrieval.asset_version": snapshot.asset_version,
+        }
+        qualified_table = _qualified_filter_table(filter_payload)
+        if qualified_table is not None:
+            attributes["chatbi.retrieval.search.qualified_table"] = qualified_table
+        with _safe_span(self._trace_recorder, stage, attributes):
+            hits = tuple(
+                snapshot.qdrant_store.search(
+                    collection_name,
+                    query,
+                    limit=limit,
+                    filter_payload=filter_payload,
+                )
+            )
+            _safe_enrich_current(
+                self._trace_recorder,
+                _candidate_trace_attributes(hits, scope_table=qualified_table),
+            )
+            return hits
+
+
+@contextmanager
+def _safe_span(
+    recorder: TraceRecorder | None,
+    name: str,
+    attributes: Mapping[str, object] | None = None,
+) -> Iterator[Any]:
+    """创建内部 Retrieval Span；记录器失败时保持业务异常和返回值不变。"""
+
+    scope: Any = _NoopTraceScope()
+    try:
+        if recorder is not None:
+            scope = recorder.span(name, attributes=attributes)
+        scope.__enter__()
+    except Exception:
+        scope = _NoopTraceScope()
+        scope.__enter__()
+
+    try:
+        yield scope
+    except BaseException as exc:
+        try:
+            scope.__exit__(type(exc), exc, exc.__traceback__)
+        except Exception:
+            pass
+        raise
+    else:
+        try:
+            scope.__exit__(None, None, None)
+        except Exception:
+            pass
+
+
+class _NoopTraceScope:
+    def __enter__(self) -> "_NoopTraceScope":
+        return self
+
+    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> bool:
+        return False
+
+
+def _safe_enrich_current(
+    recorder: TraceRecorder | None,
+    attributes: Mapping[str, object],
+) -> None:
+    if recorder is None:
+        return
+    try:
+        recorder.enrich_current(attributes=attributes)
+    except Exception:
+        pass
+
+
+def _candidate_trace_attributes(
+    hits: Iterable[SearchHit],
+    *,
+    scope_table: str | None = None,
+) -> dict[str, object]:
+    """只提取有界的检索身份/排序证据，不读取正文或完整 Metadata。"""
+
+    materialized = tuple(hits)
+    evidence = materialized[:_TRACE_EVIDENCE_LIMIT]
+    attributes: dict[str, object] = {
+        "chatbi.retrieval.candidate_count": len(materialized),
+    }
+    if not evidence:
+        return attributes
+
+    attributes.update(
+        {
+            "chatbi.retrieval.candidate.document_ids": tuple(
+                hit.document_id for hit in evidence
+            ),
+            "chatbi.retrieval.candidate.ranks": tuple(
+                range(1, len(evidence) + 1)
+            ),
+            "chatbi.retrieval.candidate.scores": tuple(
+                float(hit.score) for hit in evidence
+            ),
+        }
+    )
+    qualified_tables = tuple(
+        dict.fromkeys(
+            table
+            for hit in evidence
+            if (table := scope_table or _qualified_table_from_hit(hit)) is not None
+        )
+    )
+    if qualified_tables:
+        attributes["chatbi.retrieval.candidate.qualified_tables"] = qualified_tables
+    return attributes
+
+
+def _qualified_table_from_hit(hit: SearchHit) -> str | None:
+    metadata = hit.payload.get("metadata")
+    if not isinstance(metadata, Mapping):
+        return None
+    schema_name = metadata.get("schema_name")
+    table_name = metadata.get("table_name")
+    if not isinstance(schema_name, str) or not isinstance(table_name, str):
+        return None
+    if not schema_name.strip() or not table_name.strip():
+        return None
+    return f"{schema_name.strip()}.{table_name.strip()}"
+
+
+def _qualified_filter_table(
+    filter_payload: Mapping[str, str] | None,
+) -> str | None:
+    if not isinstance(filter_payload, Mapping):
+        return None
+    schema_name = filter_payload.get("schema_name")
+    table_name = filter_payload.get("table_name")
+    if not isinstance(schema_name, str) or not isinstance(table_name, str):
+        return None
+    if not schema_name.strip() or not table_name.strip():
+        return None
+    return f"{schema_name.strip()}.{table_name.strip()}"
+
+
+def _join_trace_attributes(resolution: JoinResolution) -> dict[str, object]:
+    paths = resolution.paths[:_TRACE_EVIDENCE_LIMIT]
+    return {
+        "chatbi.retrieval.join.edge_ids": tuple(
+            edge.edge_id
+            for edge in resolution.joins[:_TRACE_EVIDENCE_LIMIT]
+        ),
+        "chatbi.retrieval.join.path_ids": tuple(
+            f"path:{index}"
+            for index, _ in enumerate(paths, 1)
+        ),
+        "chatbi.retrieval.join.path_count": len(resolution.paths),
+    }
+
 
 def _table_hits(
     snapshot: AssetSnapshot,
@@ -596,19 +889,23 @@ def _table_hits(
     config: RetrievalConfig,
     *,
     extra_queries: tuple[str, ...] = (),
+    embed_query: Callable[[str], Any] | None = None,
+    search: Callable[..., Iterable[SearchHit]] | None = None,
 ) -> tuple[TableHit, ...]:
+    embed = embed_query or snapshot.embedding_provider.embed_query
+    search_hits = search or snapshot.qdrant_store.search
     collection_name = snapshot.collection_names[TABLE_COLLECTION]
     raw_hits = list(
-        snapshot.qdrant_store.search(
+        search_hits(
             collection_name,
             query,
             limit=config.table_top_k,
         )
     )
     for extra_query in extra_queries:
-        extra_embedding = snapshot.embedding_provider.embed_query(extra_query)
+        extra_embedding = embed(extra_query)
         raw_hits.extend(
-            snapshot.qdrant_store.search(
+            search_hits(
                 collection_name,
                 extra_embedding,
                 limit=config.table_top_k,
@@ -630,8 +927,11 @@ def _metric_hits(
     snapshot: AssetSnapshot,
     query: Any,
     config: RetrievalConfig,
+    *,
+    search: Callable[..., Iterable[SearchHit]] | None = None,
 ) -> tuple[MetricHit, ...]:
-    raw_hits = snapshot.qdrant_store.search(
+    search_hits = search or snapshot.qdrant_store.search
+    raw_hits = search_hits(
         snapshot.collection_names[METRIC_COLLECTION],
         query,
         limit=config.metric_top_k,
@@ -649,11 +949,15 @@ def _column_hits(
     required: Mapping[str, frozenset[str]] = MappingProxyType({}),
     grouping_query: str = "",
     grouping_tables: frozenset[str] = frozenset(),
+    embed_query: Callable[[str], Any] | None = None,
+    search: Callable[..., Iterable[SearchHit]] | None = None,
 ) -> tuple[ColumnHit, ...]:
     # Metric formula/time_field 补充文本需要单独向量化；同一请求仍只保留一条列检索路线。
-    embedded_query = snapshot.embedding_provider.embed_query(column_query)
+    embed = embed_query or snapshot.embedding_provider.embed_query
+    search_hits = search or snapshot.qdrant_store.search
+    embedded_query = embed(column_query)
     grouping_embedding = (
-        snapshot.embedding_provider.embed_query(grouping_query)
+        embed(grouping_query)
         if grouping_query and grouping_tables
         else None
     )
@@ -661,7 +965,7 @@ def _column_hits(
     grouping_priority: list[ColumnHit] = []
     seen: set[str] = set()
     for table in table_hits:
-        hits = snapshot.qdrant_store.search(
+        hits = search_hits(
             snapshot.collection_names[COLUMN_COLLECTION],
             embedded_query,
             limit=config.column_top_k,
@@ -676,7 +980,7 @@ def _column_hits(
                 seen.add(column.document_id)
                 raw.append(column)
         if grouping_embedding is not None and table.qualified_name in grouping_tables:
-            grouped_hits = snapshot.qdrant_store.search(
+            grouped_hits = search_hits(
                 snapshot.collection_names[COLUMN_COLLECTION],
                 grouping_embedding,
                 limit=min(2, config.column_top_k),
@@ -692,7 +996,7 @@ def _column_hits(
                     raw.append(column)
                 grouping_priority.append(column)
         for required_column in required.get(table.qualified_name, frozenset()):
-            exact_hits = snapshot.qdrant_store.search(
+            exact_hits = search_hits(
                 snapshot.collection_names[COLUMN_COLLECTION],
                 embedded_query,
                 limit=1,
