@@ -1,6 +1,6 @@
 # Observability V1 Implementation Design
 
-状态：Design Review（设计审查）已通过，等待人工确认进入 T1；尚未编码。
+状态：T1～T4C 已完成并通过各自测试，已有独立提交；本地 API 与真实 Evaluation（评测）验收已完成。T5 Langfuse / Business Acceptance Gate（业务验收门禁）因 `.env` 未配置 OTLP/Langfuse Endpoint（端点）待补，不能记为 T5 PASS 或 Production Ready（生产可用）。
 
 ## 1. 结论
 
@@ -635,21 +635,20 @@ CHATBI_OTLP_TIMEOUT_SECONDS=5
 - `tests/query_api/`：Trace Header、无效请求和响应序列化。
 - `tests/streamlit/`：成功和错误 Header 显示及缺失兼容。
 - `tests/evaluation/`：Evaluation 来源和案例关联。
-- 全仓确定性回归必须通过。
+- T1～T4C 已分别完成并通过各自测试，独立提交为 `97a2d15`、`9935731`、`1243796`、`d23f8e4`、`e187282`、`eb56975`、`c60e073`。
+- 当前全量确定性测试：230 passed、6 skipped、79 subtests。
+- 本地 Query API 的 C05 成功请求和空问题受控失败均已验证返回 `X-Trace-ID`。
 
 ### 14.2 AI Evaluation
 
-- 使用原有 20 条案例和正式 Online Query 链路；
-- Execution Accuracy 不下降；
-- 每个实际查询可关联模型、资产版本、节点耗时和可用 Token；
+- 使用原有 20 条案例和正式 Online Query 链路，报告 `reports/evaluation/20260912T145505Z-c60e073.json` 结果为 20/20，C05 为 PASS；
+- Evaluation 报告已记录每个实际查询的 `request_id` 和 `trace_id`，C05 为 `request_id=evaluation-C05`、`trace_id=b88a9d4e50ffd73a7f05cd62c573e4fb`；
 - 只建立 Latency/Token Baseline，不预设优化结论。
 
 ### 14.3 Business Acceptance
 
-- C05 页面结果与接入前一致；
-- 页面显示 Trace ID；
-- Langfuse 能按 Trace ID 找到链路；
-- 人工确认最慢节点和一个受控失败节点。
+- 本地 API 已完成 C05 成功和空问题受控失败验收，均验证 `X-Trace-ID`；
+- 外部 Langfuse Endpoint 未配置，按 T5 完成条件要求的 Langfuse 链路查询、Generation 映射和外部业务验收 Gate 待补；当前不能宣称 T5 PASS 或 Production Ready。
 
 ## 15. 回滚
 
