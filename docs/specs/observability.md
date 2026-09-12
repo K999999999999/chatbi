@@ -1,6 +1,6 @@
 # Observability V1 Module Spec
 
-状态：行为规格已确认，尚未进入 Implementation Design（实现设计）和编码。
+状态：行为规格已补充 request_id/trace_id 时序和 HTTP 观测边界；Implementation Design（实现设计）已通过设计审查，等待人工确认进入 T1；尚未编码。
 
 ## 1. 目标
 
@@ -34,7 +34,8 @@ Observability 只记录和关联已有业务行为，不决定业务事实、RAG
 
 - 沿用同步、单次请求/响应的 Online Query 运行方式。
 - API 请求和直接调用 `OnlineQueryService.query()` 的评测路径都必须可以形成完整 Trace。
-- 已存在上游 Trace 时继续使用；没有上游 Trace 时由系统创建。
+- 进程内已有可信活动 Trace 时继续使用；HTTP 客户端传入的 `traceparent` / `tracestate` 在 V1 不视为可信上游，不直接继承；没有可信活动 Trace 时由系统创建。
+- HTTP Middleware 必须在请求体解析前先读取或生成 `request_id`，再创建带该编号的 Root Trace；同一个 `request_id` 必须传入后续 Service 和响应体。
 - 可观测记录属于旁路行为，不增加业务重试，不改变节点顺序和调用次数。
 - 可观测能力关闭、配置错误或后端不可用时，查询主链路继续按原 Contract 运行。
 
@@ -48,11 +49,13 @@ Observability 只记录和关联已有业务行为，不决定业务事实、RAG
 
 ### 5.2 trace_id
 
-- 标识一次实际执行链路，由可信 Trace 上下文继承或由系统生成。
+- 标识一次实际执行链路，由可信的进程内活动上下文继承或由系统生成。
 - Root Trace（根链路）必须记录对应的 `request_id`。
 - HTTP 成功和失败响应都必须通过 `X-Trace-ID` Header（响应头）返回 `trace_id`。
 - 现有成功和失败 JSON Body（响应体）保持不变，不新增公开业务字段和错误码。
 - 无效请求和请求体解析失败也必须产生 `trace_id`。
+- V1 不接受客户端直接指定 `X-Trace-ID`，也不把客户端 `traceparent` / `tracestate` 作为根链路来源；将来只有在可信 Gateway 建立边界并完成单独设计审查后，才能开放受控继承。
+- Root Trace 的 `request_id` 绑定发生在请求体解析前；`response.serialize` 仅表示 API Adapter 构造最终 JSONResponse，不包含 FastAPI/ASGI 网络发送。
 
 ## 6. 观察范围
 
@@ -113,6 +116,7 @@ query.request
 - 调用耗时和成功、失败状态；
 - Provider 返回时记录输入、输出和总 Token 数；
 - Token 信息缺失不得导致查询失败；
+- `llm.generate` 使用标准 GenAI 操作、模型和 Usage 属性；若通用属性不能被验收平台识别，只能在基础设施适配器中增加最小平台兼容字段；
 - V1 不计算或承诺费用。
 
 ### 7.4 SQL 与数据库
@@ -134,10 +138,16 @@ query.request
 - RAG 文档正文和完整 Metadata；
 - 可能包含 Secret 或敏感数据的原始异常消息和堆栈。
 
+异常安全规则：
+
+- OTel/Langfuse 不自动记录完整异常、堆栈或 `str(exc)`；
+- 只记录固定错误类型、公开错误码和受控状态；
+- 生产环境如果未来需要完整排障堆栈，应进入独立的受保护、脱敏内部日志系统，不通过放宽 Trace 内容开关实现；该日志系统不属于本 V1。
+
 本地受控调试可以通过独立配置临时记录完整问题和最终校验 SQL，但必须满足：
 
 - 默认关闭；
-- 正式环境保持关闭；
+- 只有运行环境明确为 `local`、`dev` 或 `test` 且独立开关显式开启时允许；缺失、空值、`production`、`staging` 或未知环境一律关闭；
 - 不记录完整 Prompt、完整查询结果和 Secret；
 - 关闭后无需修改代码或业务 Contract；
 - Trace 中明确标识当前是否启用了内容记录。
@@ -176,6 +186,8 @@ query.request
 - `request_id` 与 `trace_id` 能稳定关联，但保持不同语义。
 - Token 信息存在时被记录，缺失时不影响查询。
 - 默认 Trace 不包含完整问题、Prompt、SQL、结果、Secret 或原始敏感异常。
+- 客户端伪造 Trace Context 不会改变 V1 HTTP Root Trace；一次请求只产生一个 Root Trace，且上下文不会泄漏到下一次请求。
+- OTel 自动异常记录关闭时，异常消息和堆栈不会进入 Trace、Langfuse 或安全 Warning。
 - 可观测后端抛出异常、超时或不可用时，原查询结果不变。
 - 可观测能力关闭时，原有确定性测试继续通过。
 
@@ -212,3 +224,5 @@ query.request
 | D4 | 可观测能力采用 fail-open（记录失败不影响查询）的旁路原则 |
 | D5 | V1 覆盖成功、拒绝、技术失败、超时和 Retrieval fallback |
 | D6 | 用户、租户、权限、生产告警和具体技术产品不属于本规格 |
+| D7 | V1 HTTP 不信任客户端 Trace Context；可信 Gateway 接入后再单独开放上游继承 |
+| D8 | OTel/Langfuse 只记录安全错误分类和错误码；原始异常不进入 Trace |

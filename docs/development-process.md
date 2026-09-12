@@ -57,7 +57,7 @@
 
 ## 当前项目位置
 
-更新时间：2026-09-11
+更新时间：2026-09-12
 
 | 阶段 | 状态 | 依据 |
 |---|---|---|
@@ -65,7 +65,8 @@
 | Architecture（架构设计） | 已完成 | `docs/architecture.md` |
 | Online Query Module Spec（在线查询模块规格） | 已完成 | `docs/specs/online-query.md` |
 | Online Query Implementation（在线查询实现） | 已完成 | Query API、Streamlit POC 和基础 Multi-Metric T1～T4 已实现；主验收问题 C05 已通过真实在线 RAG 链路 |
-| Observability V1 Module Spec（可观测性规格） | 已完成 | `docs/specs/observability.md`；行为、数据安全、降级和验收边界已确认，尚未进入实现设计 |
+| Observability V1 Module Spec（可观测性规格） | 已完成 | `docs/specs/observability.md`；行为、数据安全、降级和验收边界已确认 |
+| Observability V1 Implementation Design（可观测性实现设计） | 设计审查通过，待人工确认进入编码 | `docs/designs/observability.md`；已明确 request_id → Root Trace 时序、T1/T2/T3A/T3B/T4A～T4C 任务和 T5 验收 Gate，尚未编码 |
 | RAG Offline Build Module Spec（RAG 离线构建模块规格） | 已完成 | `docs/specs/rag-offline-build.md` |
 | RAG Offline Implementation Design（RAG 离线构建实现设计） | 已完成 | `docs/designs/rag-offline-build.md` |
 | RAG Offline Task Split（RAG 离线构建任务拆分） | 已完成 | T1 至 T9 均已完成 |
@@ -76,7 +77,7 @@
 
 当前下一步：
 
-> 按 `docs/roadmap.md` 继续推进；Observability V1 行为规格已确认，下一步是 Implementation Design（实现设计），再经过设计审查后拆分编码任务，不把 `0.1.0` POC 描述为 Production Ready（生产可用）。
+> Observability V1 Implementation Design（实现设计）已通过 Design Review（设计审查）；下一步等待人工确认后进入 T1，按 T1、T2、T3A、T3B、T4A～T4C 编码，最后执行 T5 验收 Gate，不把 `0.1.0` POC 描述为 Production Ready（生产可用）。
 
 ## 维护规则
 
