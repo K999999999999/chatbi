@@ -136,6 +136,26 @@ uv run streamlit run src/streamlit_app.py --server.address 127.0.0.1 --server.po
 
 Streamlit 只调用 FastAPI，不直接访问 LLM、SQL Guard 或 PostgreSQL。
 
+### 5.3 Observability / Trace ID（可观测性 / 链路编号）
+
+`POST /api/v1/query` 的成功响应和 HTTP Error 都会在 Response Header（响应头）返回 `X-Trace-ID`。Trace ID 不属于 Query API JSON Body（响应体）字段；只读取这个单独的 Header，不要打印或复制完整请求头、响应头。
+
+取得链路编号的方式：
+
+- 直接调用 Query API 时，从成功响应或 HTTP Error 的 `X-Trace-ID` Header 读取；错误响应仍优先查看现有 `error_code`、`error_message` 和 `request_id`。
+- 使用 Streamlit 时，从成功页面或错误页面的“链路编号：<trace_id>”读取；“请求编号：<request_id>”仍保持独立显示。
+- Header 缺失时不代表查询失败，也不应人为把 JSON Body 中的字段当作 Trace ID。
+
+定位一次查询时，以同一个 `trace_id` 从 `query.request` 根节点开始，依次查看固定节点：
+
+```text
+query.request -> retrieval -> llm -> sql -> database
+```
+
+优先结合固定 `status`、`error_code`、节点耗时和 `trace_id` 判断失败节点或最慢节点。Production（生产）只查看这些固定状态、错误码、耗时和链路编号；不要查看或传播原始异常、Prompt、候选/最终 SQL、RAG 正文、结果行、API Key 或完整请求头。
+
+如果没有配置或连接 Trace Exporter（链路导出器），服务仍可以正常运行，Query API 仍会返回链路编号；这只表示本地链路上下文可用，不等于 Trace 已经导出到后端。`GET /health` 只检查 HTTP 服务存活，不创建 Query Trace，因此正常不会返回 `X-Trace-ID`。
+
 ## 6. 构建 RAG Offline 资产
 
 RAG Offline Build 读取以下权威事实源：

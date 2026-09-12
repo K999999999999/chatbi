@@ -23,11 +23,21 @@ class QueryAPIError(RuntimeError):
         error_code: str,
         error_message: str,
         request_id: str = "",
+        trace_id: str = "",
     ) -> None:
         super().__init__(error_message)
         self.error_code = error_code
         self.error_message = error_message
         self.request_id = request_id
+        self.trace_id = trace_id
+
+
+class QueryAPIResponse(dict[str, Any]):
+    """保留 JSON shape，同时在页面层保存响应头中的 Trace ID。"""
+
+    def __init__(self, payload: dict[str, Any], *, trace_id: str = "") -> None:
+        super().__init__(payload)
+        self.trace_id = trace_id
 
 
 def query_api(
@@ -36,7 +46,7 @@ def query_api(
     *,
     timeout: float = _DEFAULT_API_TIMEOUT,
     opener: Callable[..., Any] | None = None,
-) -> dict[str, Any]:
+) -> QueryAPIResponse:
     """调用现有查询 API，不在页面层执行 LLM 或数据库逻辑。"""
     request = Request(
         url=f"{base_url.rstrip('/')}/api/v1/query",
@@ -45,24 +55,43 @@ def query_api(
         method="POST",
     )
     open_request = urlopen if opener is None else opener
+    trace_id = ""
 
     try:
         with open_request(request, timeout=timeout) as response:
+            trace_id = _trace_id_from_response(response)
             payload = _read_json(response.read())
     except HTTPError as exc:
+        trace_id = _trace_id_from_response(exc)
         try:
             payload = _read_json(exc.read())
         except (UnicodeDecodeError, ValueError, TypeError):
-            raise QueryAPIError("API_ERROR", "查询服务返回了无效响应") from None
-        raise _error_from_payload(payload, "查询服务请求失败") from None
+            raise QueryAPIError(
+                "API_ERROR",
+                "查询服务返回了无效响应",
+                trace_id=trace_id,
+            ) from None
+        raise _error_from_payload(
+            payload,
+            "查询服务请求失败",
+            trace_id=trace_id,
+        ) from None
     except (URLError, TimeoutError, OSError):
         raise QueryAPIError("API_UNAVAILABLE", "无法连接查询服务") from None
     except (UnicodeDecodeError, ValueError, TypeError):
-        raise QueryAPIError("API_ERROR", "查询服务返回了无效响应") from None
+        raise QueryAPIError(
+            "API_ERROR",
+            "查询服务返回了无效响应",
+            trace_id=trace_id,
+        ) from None
 
     if "error_code" in payload:
-        raise _error_from_payload(payload, "查询服务请求失败")
-    return payload
+        raise _error_from_payload(
+            payload,
+            "查询服务请求失败",
+            trace_id=trace_id,
+        )
+    return QueryAPIResponse(payload, trace_id=trace_id)
 
 
 def rows_as_records(
@@ -167,6 +196,8 @@ def _render_error(st: Any, error: QueryAPIError) -> None:
     st.error(f"{error.error_code}：{error.error_message}")
     if error.request_id:
         st.caption(f"请求编号：{error.request_id}")
+    if error.trace_id:
+        st.caption(f"链路编号：{error.trace_id}")
 
 
 def _render_success(st: Any, response: dict[str, Any]) -> None:
@@ -195,6 +226,9 @@ def _render_success(st: Any, response: dict[str, Any]) -> None:
     request_id = response.get("request_id")
     if request_id:
         st.caption(f"请求编号：{request_id}")
+    trace_id = getattr(response, "trace_id", "")
+    if isinstance(trace_id, str) and trace_id:
+        st.caption(f"链路编号：{trace_id}")
 
 
 def _read_json(data: bytes) -> dict[str, Any]:
@@ -202,6 +236,23 @@ def _read_json(data: bytes) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise TypeError("API 响应不是 JSON 对象")
     return payload
+
+
+def _trace_id_from_response(response: Any) -> str:
+    """只读取 X-Trace-ID，不把完整响应头带入页面或错误信息。"""
+    headers = getattr(response, "headers", None)
+    value: Any = None
+    if headers is not None:
+        getter = getattr(headers, "get", None)
+        if callable(getter):
+            value = getter("X-Trace-ID")
+            if value is None:
+                value = getter("x-trace-id")
+    if value is None:
+        getheader = getattr(response, "getheader", None)
+        if callable(getheader):
+            value = getheader("X-Trace-ID")
+    return value.strip() if isinstance(value, str) else ""
 
 
 def _format_decimal(value: Any, *, decimals: int) -> Any:
@@ -222,6 +273,8 @@ def _as_decimal(value: Any) -> Decimal:
 def _error_from_payload(
     payload: dict[str, Any],
     fallback_message: str,
+    *,
+    trace_id: str = "",
 ) -> QueryAPIError:
     error_code = payload.get("error_code")
     error_message = payload.get("error_message")
@@ -234,6 +287,7 @@ def _error_from_payload(
             else fallback_message
         ),
         request_id if isinstance(request_id, str) else "",
+        trace_id,
     )
 
 
