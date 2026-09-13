@@ -98,7 +98,19 @@ docker compose logs --tail=100 qdrant
 
 ## 5. 启动 Online Query
 
-### 5.1 启动 FastAPI
+### 5.1 一键启动（本地开发）
+
+在项目根目录执行：
+
+```powershell
+.\scripts\start-dev.ps1
+```
+
+脚本会确认 PostgreSQL 和 Qdrant 已启动，并分别打开 FastAPI、Streamlit 两个可见终端。启动成功后浏览器打开 `http://127.0.0.1:8501`；停止服务时，在两个服务终端中分别按 `Ctrl+C`。
+
+脚本不会自动终止占用 8000 或 8501 端口的现有进程，也不会重建或删除数据库、Qdrant 和本地资产。
+
+### 5.2 手动启动 FastAPI
 
 在一个 PowerShell 窗口执行：
 
@@ -122,7 +134,7 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 
 `/health` 只表示 HTTP 服务正在运行，不检查 LLM、PostgreSQL 或静态上下文是否可用。
 
-### 5.2 启动 Streamlit
+### 5.3 手动启动 Streamlit
 
 在另一个 PowerShell 窗口执行：
 
@@ -136,7 +148,7 @@ uv run streamlit run src/streamlit_app.py --server.address 127.0.0.1 --server.po
 
 Streamlit 只调用 FastAPI，不直接访问 LLM、SQL Guard 或 PostgreSQL。
 
-### 5.3 Observability / Trace ID（可观测性 / 链路编号）
+### 5.4 Observability / Trace ID（可观测性 / 链路编号）
 
 `POST /api/v1/query` 的成功响应和 HTTP Error 都会在 Response Header（响应头）返回 `X-Trace-ID`。Trace ID 不属于 Query API JSON Body（响应体）字段；只读取这个单独的 Header，不要打印或复制完整请求头、响应头。
 
