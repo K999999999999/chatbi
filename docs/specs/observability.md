@@ -1,6 +1,6 @@
 # Observability V1 Module Spec
 
-状态：行为规格已补充 request_id/trace_id 时序和 HTTP 观测边界；T1～T4C 已完成并通过各自测试。本地验收已完成；T5 Langfuse / Business Acceptance Gate（业务验收门禁）因 `.env` 未配置 OTLP/Langfuse Endpoint（端点）待补，不能记为 T5 PASS 或 Production Ready（生产可用）。本规格行为和 T5 完成条件保持不变。
+状态：行为规格已补充 request_id/trace_id 时序和 HTTP 观测边界；T1～T4C 已完成并通过各自测试。T5 Langfuse / Business Acceptance Gate（业务验收门禁）已通过阿里云 OTLP / Trace 外部验收；当前仍不代表 Production Ready（生产可用）。本规格行为和生产边界保持不变。
 
 ## 1. 目标
 

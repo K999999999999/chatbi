@@ -74,6 +74,5 @@ Multi-Metric Retrieval 已完成当前规格范围内的软件实现、确定性
 
 本次业务验收完成后，Multi-Metric Retrieval 可以作为当前规格范围内的已验收能力使用。以下事项仍需独立立项或单独验收：
 
-- Observability T5 的 Langfuse / OTLP 外部 Endpoint（端点）门禁。
 - 权限、多租户、审计、限流、性能和部署治理。
 - 跨事实表组合、经营分析和更复杂的任务编排。
