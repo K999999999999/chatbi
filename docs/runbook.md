@@ -14,7 +14,7 @@
 - FastAPI 提供 Query API（查询接口）。
 - Streamlit 是当前 POC 页面。
 - BGE-M3 和 Qdrant 用于离线检索资产构建、评测，以及 Online Retrieval V1 的在线查询向量和上下文检索。
-- 已发布 RAG 资产默认接入 Online Query V1：实体类和单指标问题走动态检索上下文；检索技术故障按基线规则回退静态上下文。基础多指标在线检索尚未实现。
+- 已发布 RAG 资产默认接入 Online Query V1：实体类和单指标问题走动态检索上下文；检索技术故障按基线规则回退静态上下文。基础多指标在线检索已完成 T1～T4 软件实现与确定性测试，修复后真实在线 RAG 评测为 20/20；正式 Business Acceptance（业务验收）仍待确认。
 
 ## 2. 系统拓扑
 
