@@ -2,27 +2,28 @@
 
 # ChatBI AI Development Rules
 
-本文件定义 Codex / AI Coding Agent 在本仓库中的全局开发规则。
-
-具体 Architecture（架构）、Domain（领域）、Spec（规格）和当前状态，以对应 Source of Truth（事实源）为准。
+本文件定义 Codex / AI Coding Agent 在本仓库中的项目规则。具体 Architecture（架构）、Domain（领域）、Spec（规格）和当前状态，以对应 Source of Truth（事实源）为准。
 
 ## Language
 
-- 默认使用中文生成 Spec、Ticket、ADR、Code Review 和工程报告。
+- 默认使用中文生成 Spec、Ticket、ADR、Code Review、工程报告和完成报告。
+- Commit Message 使用 `<type>(<scope>): <中文摘要>`；`type`、`scope` 可以保持 Conventional Commit（约定式提交）格式，摘要必须使用中文。
 - English 技术术语、Skill 名称、命令名、API、类名、函数名、文件路径和代码保持原样。
 - 需要引用原始英文内容时，保留原文并补充中文解释。
 
 ## Agent skills
 
+这里仅保留当前仓库的本地配置指针，不重复编写 Skill 的工作流程：
+
 ### Local task tracker
 
-本仓库使用本地 Markdown 保存 Spec 和 Ticket，文件位于 `.scratch/<feature>/`。不要求 GitHub、GitLab、PR 或外部 Issue 作为需求入口。详见 `docs/agents/issue-tracker.md`。
+Spec、Ticket 和路径规划使用本地 Markdown，详见 `docs/agents/issue-tracker.md`。
 
 ### Domain docs
 
-本仓库按 single-context 规则处理领域文档。处理领域相关任务前，按需读取 `CONTEXT.md` 和 `docs/adr/` 下相关 ADR；文件不存在时不要为了补齐结构而提前创建。详见 `docs/agents/domain.md`。
+领域文档的读取位置和边界详见 `docs/agents/domain.md`。
 
-## 1. Core Principles
+## ChatBI Identity & Core Principles
 
 ChatBI = Domain AI Engine（领域 AI 引擎）
 Architecture = Modular Monolith（模块化单体）
@@ -35,11 +36,11 @@ Architecture = Modular Monolith（模块化单体）
 - Stable Core, Replaceable Edge（稳定核心，可替换边缘）
 - Do Not Overbuild（不过度建设）
 
-优先完成：
+优先级为：
 
 业务正确 → 最小完整闭环 → Test / Evaluation → 可维护 → Production Readiness。
 
-## 2. Source of Truth
+## Source of Truth
 
 职责：
 
@@ -53,35 +54,10 @@ Architecture = Modular Monolith（模块化单体）
 规则：
 
 - 上层事实源优先于下层实现。
-- 不得用 Legacy Code、旧 Metadata 或 Derived Artifact 反向修改已确认的 Architecture / Domain / Contract。
+- 不得用 Legacy Code、旧 Metadata 或 Derived Artifact 反向修改已确认的 Architecture、Domain 或 Contract。
 - 实现与设计冲突时，先检查并修正实现。
 
-## 3. Task Flow
-
-每个 Task 默认执行：
-
-Read
-→ Understand Contract
-→ Implement
-→ Test / Evaluation
-→ Review Diff
-→ Commit
-→ Report
-
-开始前明确：
-
-- Goal
-- Source of Truth
-- Scope
-- Contract
-- Out of Scope
-- Done When
-
-一次只完成一个可独立验证的 Task。
-
-不得混入无关 Feature、重构、清理、架构变化或未来能力。
-
-## 4. Architecture & Layer Boundary
+## Architecture & Layer Boundary
 
 以下变化必须先确认：
 
@@ -96,6 +72,7 @@ Read
 
 稳定依赖：
 
+```text
 Interfaces
 → Application
 → Domain
@@ -103,31 +80,29 @@ Interfaces
 Application
 → Port / Contract
 ← Infrastructure Adapter
+```
 
 禁止：
 
-- Domain 依赖具体 Provider / Database / Platform SDK
-- Infrastructure 定义业务真相
-- 为假设中的未来提前建设复杂抽象
+- Domain 依赖具体 Provider、Database 或 Platform SDK；
+- Infrastructure 定义业务真相；
+- 为假设中的未来提前建设复杂抽象。
 
-## 5. Semantic & Model Rule
+## Semantic & Model Rule
 
 保持：
 
+```text
 Natural Language
 → Business Semantic Resolution
 → SemanticQuery
 → Certified Physical Mapping
 → SQL
+```
 
-不得直接：
+不得直接从 Natural Language 映射到 Database Column。
 
-Natural Language
-→ Database Column
-
-LLM 输出始终视为 Untrusted Candidate（不可信候选）。
-
-LLM 可以提出候选，但不得最终决定：
+LLM 输出始终视为 Untrusted Candidate（不可信候选）。LLM 可以提出候选，但不得最终决定：
 
 - Business Truth
 - Metric Definition
@@ -135,59 +110,19 @@ LLM 可以提出候选，但不得最终决定：
 - Data Scope
 - SQL Safety
 
-最终由 Authoritative Data + Contract + Deterministic Code 裁决。
+最终由 Authoritative Data、Contract 和 Deterministic Code 裁决。模型生成 SQL 必须经过确定性 SQL Guard。
 
-模型生成 SQL 必须经过确定性 SQL Guard。
+## Quality Evidence
 
-## 6. Test & Review
+- 行为变化必须同步更新相应测试。
+- Software Test 验证确定性软件正确性；AI Evaluation 验证 AI 行为；Business Acceptance 验证业务目标是否满足。
+- 新的 Bad Case 应加入 Regression（回归）集合。
+- 没有相应验证，不得声称目标行为已经完成。
+- 具体 TDD、Code Review、测试执行和报告格式由对应 Skill 负责。
 
-行为变化必须同步更新相应测试。
+## Security Rule
 
-质量证据区分：
-
-- Software Test：确定性软件正确性
-- AI Evaluation：AI 行为正确性
-- Business Acceptance：业务目标是否满足
-
-发现新的 Bad Case，应加入 Regression（回归）集合。
-
-没有相应验证，不得声明 Task 完成。
-
-Review Diff 必须确认：
-
-- Contract 满足
-- Scope 未扩张
-- Architecture / Domain 未破坏
-- 无无关修改
-- 无 Secret
-- 文档与实际状态一致
-
-## 7. Subagent Rule
-
-Main Agent 默认负责实现、整合、修复和最终验证。
-
-仅当能够：
-
-- 独立处理
-- 减少主上下文污染
-- 提供独立验证
-- 获得真实并行收益
-
-时才使用 Subagent。
-
-适合：
-
-- Explorer：代码探索
-- Tester：独立测试
-- Reviewer：独立审查
-
-Tester / Reviewer 应优先基于 Spec、Contract、Diff 和 Relevant Code 独立判断。
-
-禁止为了并行而强行拆任务，或让多个 Agent 同时修改同一核心文件。
-
-## 8. Secret Rule
-
-真实 API Key、Token、Password、Connection String、Secret 不得进入：
+真实 API Key、Token、Password、Connection String 和其他 Secret 不得进入：
 
 - Source Code
 - Git
@@ -195,62 +130,18 @@ Tester / Reviewer 应优先基于 Spec、Contract、Diff 和 Relevant Code 独�
 - Documentation
 - Test Data
 
-`.env` = 本地真实配置
-`.env.example` = 可提交安全模板
+`.env` 是本地真实配置，`.env.example` 是可提交的安全模板。
 
-## 9. Git Rule
+## Delivery Boundary
 
-每个独立 Task 原则上对应一个独立 Commit。
-
-满足以下条件后自动 Commit，无需再次询问：
-
-- Task 完成
-- 必需 Test / Evaluation PASS
-- Diff 正确
-- 无无关修改
-- 无 Secret
-- 无 Ask First 冲突
-
-Commit Message：
-
-`<type>(<scope>): <summary>`
-
-工作区存在用户已有修改时：
-
-- 不覆盖
-- 不删除
-- 不回退
-- 不 Stage 无关文件
-
-能够隔离当前 Task 时，只 Commit 当前 Task 修改。
-
-无法确认修改归属、验证失败或存在未解决问题时，不 Commit，并报告原因。
-
-## 10. Completion
-
-完成前确认：
-
-- Contract 满足
-- Scope 未扩张
-- 必需 Tests PASS
-- Evaluation PASS（适用时）
-- Diff 已审查
-- 无 Secret
-- `git diff --check` PASS
-- Commit 完成
-
-成功报告保持简洁：
-
-Status: PASS
-Tests: <结果>
-Commit: <hash> <message>
-Changed: <核心变化>
-Remaining: None / <剩余问题>
+- 每次修改只覆盖已确认的 Scope，不混入无关 Feature、重构、清理或未来能力。
+- 保留用户已有修改，不覆盖、不删除、不回退，也不把无关文件加入当前提交。
+- 默认只做本地 Commit，不 Push、不创建 PR、不创建外部 Issue，除非用户明确要求。
+- 只有 Contract、相关验证和 Diff 检查完成后才提交；无法确认修改归属或验证失败时不提交。
+- Commit Message 使用 `<type>(<scope>): <中文摘要>`，完成报告使用中文说明提交内容、验证结果和剩余问题。
 
 ## Final Principle
 
 > Contract 内自主执行，Contract 外停止扩张。
-
-> 验证通过，自动提交。
 
 > 先完成最小正确闭环，再根据真实需求演进。
