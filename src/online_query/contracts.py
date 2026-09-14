@@ -94,9 +94,8 @@ class MetricConstraint:
 
 
 class MetricPlanStatus(StrEnum):
-    """确定性多指标计划结果。"""
+    """确定性指标请求计划结果。"""
 
-    NOT_MULTI = "NOT_MULTI"
     SUCCESS = "SUCCESS"
     AMBIGUOUS = "AMBIGUOUS"
     NO_METRIC = "NO_METRIC"
@@ -107,7 +106,7 @@ class MetricPlanStatus(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class MetricRequestPlan:
-    """多指标解析、去重和兼容检查的输出。"""
+    """指标解析、去重和兼容检查的输出。"""
 
     status: MetricPlanStatus
     request: RetrievalRequest

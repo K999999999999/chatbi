@@ -9,13 +9,13 @@ from sqlglot.errors import SqlglotError
 from .contracts import (
     FallbackPolicy,
     MetricConstraint,
+    MetricHit,
     MetricMention,
     MetricRequestPlan,
     MetricPlanStatus,
     RequestShape,
     RetrievalRequest,
 )
-from .rag_runtime import MetricCatalog, MetricCatalogEntry
 
 
 _ACTION_PATTERN = re.compile(r"统计|查询|查看|比较|分析")
@@ -32,6 +32,7 @@ _TEXT_MATCH_MARKERS = (
     "字符串中包含",
 )
 _TRIM_CHARS = " 。！？；;：:"
+_MAX_REQUEST_METRICS = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,22 +73,55 @@ def classify_request_shape(question: str) -> RequestShape:
     return RequestShape.EXPLICIT_MULTI
 
 
-def plan_multi_metric_request(
+def plan_retrieved_metrics(
     request: RetrievalRequest,
-    catalog: MetricCatalog,
+    metric_hits: tuple[MetricHit, ...],
 ) -> MetricRequestPlan:
-    """把明确指标列举映射为有序认证指标约束。"""
+    """只依据本次 METRIC 检索命中构造有序认证指标约束。
 
-    if request.request_shape == RequestShape.BASELINE:
-        return MetricRequestPlan(
-            status=MetricPlanStatus.NOT_MULTI,
-            request=request,
-        )
+    指标正文和 Metadata 已经随向量命中返回；在线链路不再读取完整指标目录，
+    也不按指标 ID 发起第二次 Catalog 查询。
+    """
+
     if request.request_shape == RequestShape.POSSIBLE_MULTI:
         return MetricRequestPlan(
             status=MetricPlanStatus.AMBIGUOUS,
             request=request,
             reason="多指标列举包含否定、分别范围或其他不支持表达",
+        )
+
+    if request.request_shape == RequestShape.BASELINE:
+        selected, status, reason = _select_single_retrieved_metric(
+            request.question,
+            metric_hits,
+        )
+        if selected is None:
+            return MetricRequestPlan(
+                status=status,
+                request=request,
+                reason=reason,
+            )
+        try:
+            constraint = _constraint_from_hit(1, selected, requested_text=selected.metric_name)
+        except ValueError as exc:
+            return MetricRequestPlan(
+                status=MetricPlanStatus.INVALID_ASSET,
+                request=request,
+                reason=str(exc),
+            )
+        return MetricRequestPlan(
+            status=MetricPlanStatus.SUCCESS,
+            request=request,
+            mentions=(
+                MetricMention(
+                    requested_text=selected.metric_name,
+                    start=0,
+                    end=len(selected.metric_name),
+                    document_id=selected.document_id,
+                    metric_name=selected.metric_name,
+                ),
+            ),
+            constraints=(constraint,),
         )
 
     segment, segment_offset = _metric_segment(request.question)
@@ -96,7 +130,7 @@ def plan_multi_metric_request(
         for item in _list_items(segment)
         if _looks_like_metric(item.text)
     )
-    mentions = _resolve_mentions(segment, segment_offset, catalog)
+    mentions = _resolve_retrieved_mentions(segment, segment_offset, metric_hits)
     selected_mentions: list[MetricMention] = []
     for item in items:
         item_mentions = tuple(
@@ -113,7 +147,7 @@ def plan_multi_metric_request(
                 status=MetricPlanStatus.NO_METRIC,
                 request=request,
                 mentions=tuple(selected_mentions),
-                reason=f"列举项无法映射到已发布指标：{item.text}",
+                reason=f"列举项无法映射到本次 METRIC 候选：{item.text}",
             )
         if len(identities) > 1:
             return MetricRequestPlan(
@@ -135,20 +169,33 @@ def plan_multi_metric_request(
         return MetricRequestPlan(
             status=MetricPlanStatus.NO_METRIC,
             request=request,
-            reason="没有列举项能够映射到已发布指标",
+            reason="没有列举项能够映射到本次 METRIC 候选",
         )
-    if len(unique_mentions) > 5:
+    if len(unique_mentions) > _MAX_REQUEST_METRICS:
         return MetricRequestPlan(
             status=MetricPlanStatus.TOO_MANY,
             request=request,
             mentions=tuple(selected_mentions),
-            reason="去重后的请求指标超过 5 个",
+            reason=f"去重后的请求指标超过 V1 上限 {_MAX_REQUEST_METRICS} 个",
         )
 
-    constraints = tuple(
-        _constraint(index, mention, catalog)
-        for index, mention in enumerate(unique_mentions, 1)
-    )
+    hits_by_document = {hit.document_id: hit for hit in metric_hits}
+    try:
+        constraints = tuple(
+            _constraint_from_hit(
+                index,
+                hits_by_document[mention.document_id],
+                requested_text=mention.requested_text,
+            )
+            for index, mention in enumerate(unique_mentions, 1)
+        )
+    except (KeyError, ValueError) as exc:
+        return MetricRequestPlan(
+            status=MetricPlanStatus.INVALID_ASSET,
+            request=request,
+            mentions=tuple(selected_mentions),
+            reason=str(exc),
+        )
     try:
         compatible = _compatible(constraints)
     except ValueError as exc:
@@ -173,6 +220,119 @@ def plan_multi_metric_request(
         mentions=tuple(selected_mentions),
         constraints=constraints,
     )
+
+
+def _select_single_retrieved_metric(
+    question: str,
+    metric_hits: tuple[MetricHit, ...],
+) -> tuple[MetricHit | None, MetricPlanStatus, str]:
+    normalized_question = _normalize(question)
+    matched = tuple(
+        (match_length, hit)
+        for hit in metric_hits
+        if (match_length := _metric_match_length(normalized_question, hit)) > 0
+    )
+    longest_match = max((length for length, _ in matched), default=0)
+    exact = {
+        hit.document_id: hit
+        for length, hit in matched
+        if length == longest_match
+    }
+    if len(exact) == 1:
+        return next(iter(exact.values())), MetricPlanStatus.SUCCESS, ""
+    if len(exact) > 1:
+        return None, MetricPlanStatus.AMBIGUOUS, "指标候选无法唯一确定"
+    if len(metric_hits) > 1:
+        return None, MetricPlanStatus.AMBIGUOUS, "问题未明确匹配唯一指标，候选存在歧义"
+    return None, MetricPlanStatus.NO_METRIC, "问题未匹配到本次 METRIC 候选"
+
+
+def _resolve_retrieved_mentions(
+    segment: str,
+    segment_offset: int,
+    metric_hits: tuple[MetricHit, ...],
+) -> tuple[MetricMention, ...]:
+    candidates: list[tuple[int, int, MetricHit]] = []
+    for hit in metric_hits:
+        for label in _metric_labels(hit):
+            if not label:
+                continue
+            for match in re.finditer(re.escape(label), segment, flags=re.IGNORECASE):
+                candidates.append((match.start(), match.end(), hit))
+    candidates.sort(key=lambda item: (item[0], -(item[1] - item[0]), item[1]))
+
+    mentions: list[MetricMention] = []
+    occupied_until = -1
+    for start, end, hit in candidates:
+        if start < occupied_until:
+            continue
+        requested_text = segment[start:end]
+        mentions.append(
+            MetricMention(
+                requested_text=requested_text,
+                start=segment_offset + start,
+                end=segment_offset + end,
+                document_id=hit.document_id,
+                metric_name=hit.metric_name,
+            )
+        )
+        occupied_until = end
+    return tuple(mentions)
+
+
+def _metric_labels(hit: MetricHit) -> tuple[str, ...]:
+    aliases = hit.metadata.get("aliases")
+    if aliases is None:
+        return (hit.metric_name,)
+    if not isinstance(aliases, (list, tuple)):
+        return (hit.metric_name,)
+    return (hit.metric_name, *(item for item in aliases if isinstance(item, str)))
+
+
+def _metric_match_length(question: str, hit: MetricHit) -> int:
+    return max(
+        (
+            len(_normalize(label))
+            for label in _metric_labels(hit)
+            if _contains_normalized(question, label)
+        ),
+        default=0,
+    )
+
+
+def _constraint_from_hit(
+    ordinal: int,
+    hit: MetricHit,
+    *,
+    requested_text: str,
+) -> MetricConstraint:
+    return MetricConstraint(
+        ordinal=ordinal,
+        requested_text=requested_text,
+        document_id=hit.document_id,
+        metric_name=hit.metric_name,
+        formula=_required_metadata_text(hit, "formula"),
+        data_source=_required_metadata_text(hit, "data_source"),
+        time_field=_required_metadata_text(hit, "time_field"),
+        filters=_metadata_strings(hit, "filters"),
+        depends_on=_metadata_strings(hit, "depends_on"),
+    )
+
+
+def _required_metadata_text(hit: MetricHit, key: str) -> str:
+    value = hit.metadata.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"指标 {hit.document_id} 缺少有效 {key}")
+    return value.strip()
+
+
+def _metadata_strings(hit: MetricHit, key: str) -> tuple[str, ...]:
+    value = hit.metadata.get(key, ())
+    if not isinstance(value, (list, tuple)):
+        raise ValueError(f"指标 {hit.document_id} 的 {key} 格式无效")
+    if any(not isinstance(item, str) or not item.strip() for item in value):
+        raise ValueError(f"指标 {hit.document_id} 的 {key} 格式无效")
+    return tuple(item.strip() for item in value)
 
 
 def _metric_segment(question: str) -> tuple[str, int]:
@@ -218,59 +378,6 @@ def _has_separate_item_dates(items: tuple[_ListItem, ...]) -> bool:
         r"(?:20\d{2}年|\d{1,2}月|第[一二三四1-4]季度|上月|本月|去年|今年)"
     )
     return sum(bool(date_pattern.search(item.text)) for item in items) > 1
-
-
-def _resolve_mentions(
-    segment: str,
-    segment_offset: int,
-    catalog: MetricCatalog,
-) -> tuple[MetricMention, ...]:
-    candidates: list[tuple[int, int, str, MetricCatalogEntry]] = []
-    for entry in catalog.entries:
-        for label in (entry.metric_name, *entry.aliases):
-            if not label:
-                continue
-            for match in re.finditer(re.escape(label), segment, flags=re.IGNORECASE):
-                candidates.append((match.start(), match.end(), label, entry))
-    candidates.sort(key=lambda item: (item[0], -(item[1] - item[0]), item[1]))
-
-    mentions: list[MetricMention] = []
-    occupied_until = -1
-    for start, end, _, entry in candidates:
-        if start < occupied_until:
-            continue
-        mentions.append(
-            MetricMention(
-                requested_text=segment[start:end],
-                start=segment_offset + start,
-                end=segment_offset + end,
-                document_id=entry.document_id,
-                metric_name=entry.metric_name,
-            )
-        )
-        occupied_until = end
-    return tuple(mentions)
-
-
-def _constraint(
-    ordinal: int,
-    mention: MetricMention,
-    catalog: MetricCatalog,
-) -> MetricConstraint:
-    entry = catalog.by_document_id.get(mention.document_id)
-    if entry is None:
-        raise ValueError(f"指标目录缺少 document_id：{mention.document_id}")
-    return MetricConstraint(
-        ordinal=ordinal,
-        requested_text=mention.requested_text,
-        document_id=entry.document_id,
-        metric_name=entry.metric_name,
-        formula=entry.formula,
-        data_source=entry.data_source,
-        time_field=entry.time_field,
-        filters=entry.filters,
-        depends_on=entry.depends_on,
-    )
 
 
 def _compatible(constraints: tuple[MetricConstraint, ...]) -> bool:
@@ -325,3 +432,16 @@ def _flatten_and(condition: exp.Expression) -> tuple[exp.Expression, ...]:
     if isinstance(condition, exp.Paren):
         return _flatten_and(condition.this)
     return (condition,)
+
+
+def _normalize(value: str) -> str:
+    return "".join(
+        char
+        for char in value.casefold()
+        if char.isalnum() or "\u4e00" <= char <= "\u9fff"
+    )
+
+
+def _contains_normalized(question: str, candidate: str) -> bool:
+    normalized_candidate = _normalize(candidate)
+    return bool(normalized_candidate) and normalized_candidate in question

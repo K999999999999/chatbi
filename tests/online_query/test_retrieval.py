@@ -15,8 +15,6 @@ from src.online_query.contracts import (
 from src.online_query.multi_metric import build_retrieval_request
 from src.online_query.rag_runtime import (
     AssetSnapshot,
-    MetricCatalog,
-    MetricCatalogEntry,
     RetrievalUnavailableError,
 )
 from src.online_query.retrieval import OnlineRetriever
@@ -55,9 +53,9 @@ class _FakeStore:
 
 
 class _CombinedMetricStore(_FakeStore):
-    def __init__(self, tables, columns, metric_hits, *, catalog_metrics=None) -> None:
+    def __init__(self, tables, columns, metric_hits) -> None:
         metrics = tuple(metric_hits)
-        super().__init__(tables, columns, catalog_metrics or metrics)
+        super().__init__(tables, columns, metrics)
         self.metric_hits = metrics
         self.metric_query_count = 0
         self.metric_limits: list[int] = []
@@ -194,39 +192,6 @@ def _snapshot(store, embedding, graph):
         manifest={"status": "READY"},
         embedding_provider=embedding,
         qdrant_store=store,
-        metric_catalog=_metric_catalog(store.metrics),
-    )
-
-
-def _metric_catalog(metrics) -> MetricCatalog:
-    entries_by_document = {}
-    for hit in metrics:
-        metadata = hit.payload["metadata"]
-        entries_by_document[hit.document_id] = MetricCatalogEntry(
-            document_id=hit.document_id,
-            metric_name=metadata["metric_name"],
-            aliases=tuple(metadata["aliases"]),
-            formula=metadata["formula"],
-            data_source=metadata["data_source"],
-            time_field=metadata["time_field"],
-            filters=tuple(metadata["filters"]),
-            depends_on=tuple(metadata["depends_on"]),
-            page_content=hit.payload["page_content"],
-            payload=MappingProxyType(dict(hit.payload)),
-        )
-    entries = tuple(
-        entries_by_document[key]
-        for key in sorted(entries_by_document)
-    )
-    by_label = {
-        label.casefold(): entry
-        for entry in entries
-        for label in (entry.metric_name, *entry.aliases)
-    }
-    return MetricCatalog(
-        entries=entries,
-        by_document_id=MappingProxyType(dict(entries_by_document)),
-        by_label=MappingProxyType(by_label),
     )
 
 
@@ -637,13 +602,11 @@ class RetrievalTest(unittest.TestCase):
             metrics,
         )
         embedding = _FakeEmbedding()
-        request = build_retrieval_request(
-            "按客户类型统计已完成订单数、人民币销售额和毛利率"
-        )
+        question = "按客户类型统计已完成订单数、人民币销售额和毛利率"
 
         result = OnlineRetriever(
             _FakeRuntime(_snapshot(store, embedding, _multi_graph()))
-        ).retrieve(request)
+        ).retrieve(question)
 
         self.assertEqual(result.status, RetrievalStatus.SUCCESS)
         self.assertEqual(result.request_shape, RequestShape.EXPLICIT_MULTI)
@@ -659,7 +622,7 @@ class RetrievalTest(unittest.TestCase):
             [item.target_document_id for item in result.evidence.metric_queries],
             [metric.document_id for metric in metrics],
         )
-        self.assertEqual(embedding.queries.count(request.question), 1)
+        self.assertEqual(embedding.queries.count(question), 1)
         self.assertNotIn("人民币销售额\n人民币净销售额", embedding.queries)
         indicator = json.loads(result.indicator_context)
         self.assertEqual(
@@ -699,13 +662,35 @@ class RetrievalTest(unittest.TestCase):
             <= fact_columns
         )
 
+    def test_multi_metric_rejects_more_than_three_before_column_search(self) -> None:
+        metrics = (*_multi_metrics(), _metric("订单折扣额", 0.95))
+        store = _CombinedMetricStore(
+            _multi_tables(),
+            _multi_columns(),
+            metrics,
+        )
+
+        result = OnlineRetriever(
+            _FakeRuntime(_snapshot(store, _FakeEmbedding(), _multi_graph()))
+        ).retrieve(
+            build_retrieval_request(
+                "按客户类型统计已完成订单数、人民币销售额、毛利率和订单折扣额"
+            )
+        )
+
+        self.assertEqual(result.status, RetrievalStatus.AMBIGUOUS)
+        self.assertEqual(result.internal_reason, "TOO_MANY_METRICS")
+        self.assertEqual(store.metric_query_count, 1)
+        self.assertEqual(store.metric_limits, [5])
+        self.assertEqual(store.column_filters, [])
+        self.assertIsNone(result.query_context)
+
     def test_multi_metric_stops_when_one_combined_metric_candidate_misses(self) -> None:
         metrics = _multi_metrics()
         store = _CombinedMetricStore(
             _multi_tables(),
             _multi_columns(),
             (metrics[0], metrics[1]),
-            catalog_metrics=metrics,
         )
 
         result = OnlineRetriever(
@@ -721,7 +706,7 @@ class RetrievalTest(unittest.TestCase):
         self.assertEqual(result.fallback_policy, FallbackPolicy.FAIL_CLOSED)
         self.assertEqual(store.metric_query_count, 1)
         self.assertEqual(store.metric_limits, [5])
-        self.assertEqual(len(result.evidence.metric_queries), 3)
+        self.assertEqual(len(result.evidence.metric_queries), 2)
         self.assertTrue(
             all(
                 item.hits == result.evidence.metric_hits

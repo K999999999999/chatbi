@@ -13,14 +13,7 @@ from sqlglot.errors import SqlglotError
 from src.rag_offline.documents import COLUMN_COLLECTION, METRIC_COLLECTION, TABLE_COLLECTION
 from src.rag_offline.qdrant_store import SearchHit
 
-from .contracts import (
-    ColumnHit,
-    MetricConstraint,
-    MetricHit,
-    RetrievalConfig,
-    RetrievalStatus,
-    TableHit,
-)
+from .contracts import ColumnHit, MetricHit, RetrievalConfig, TableHit
 from .rag_runtime import AssetSnapshot
 
 
@@ -28,7 +21,6 @@ class ResourceRetrievalContractError(RuntimeError):
     """候选资源或指标必需字段不满足在线 Contract。"""
 
 
-_METRIC_EXPRESSIONS = ("金额", "数量", "总额", "平均值", "占比", "率", "统计")
 _METRIC_INTENT_TERMS = (
     "已完成订单数",
     "已完成订单数量",
@@ -50,6 +42,9 @@ _METRIC_INTENT_TERMS = (
     "占比",
     "统计",
 )
+_METRIC_INTENT_PATTERN = re.compile(
+    r"(?:数量|金额|总额|均价|单价|成本|利润|占比|率|数|额)"
+)
 _TIME_FIELD_PATTERN = re.compile(r"^\s*(?P<source>[^\s]+)\s*->\s*(?P<target>[^\s]+)\s*$")
 
 
@@ -62,10 +57,7 @@ class _TimeField:
     edge_id: str = ""
 
 
-def _has_metric_intent(
-    question: str,
-    catalog: Any | None = None,
-) -> bool:
+def _has_metric_intent(question: str) -> bool:
     """判断是否需要进入 METRIC 路线，不把普通实体查询误判为指标查询。"""
 
     normalized_question = _normalize(question)
@@ -74,12 +66,10 @@ def _has_metric_intent(
         for term in _METRIC_INTENT_TERMS
     ):
         return True
-    entries = getattr(catalog, "entries", ())
-    return any(
-        _contains_normalized(normalized_question, label)
-        for entry in entries
-        for label in (entry.metric_name, *entry.aliases)
-    )
+    if _METRIC_INTENT_PATTERN.search(normalized_question) is not None:
+        return True
+    return False
+
 
 def _table_hits(
     snapshot: AssetSnapshot,
@@ -118,7 +108,10 @@ def _table_hits(
         best_by_document.values(),
         config.table_score_threshold,
     )
-    return tuple(_to_table_hit(hit, rank) for rank, hit in enumerate(filtered, 1))
+    return tuple(
+        _to_table_hit(hit, rank)
+        for rank, hit in enumerate(filtered[: config.table_top_k], 1)
+    )
 
 
 def _metric_hits(
@@ -135,7 +128,10 @@ def _metric_hits(
         limit=config.metric_top_k,
     )
     filtered = _filtered_hits(raw_hits, config.metric_score_threshold)
-    return tuple(_to_metric_hit(hit, rank) for rank, hit in enumerate(filtered, 1))
+    return tuple(
+        _to_metric_hit(hit, rank)
+        for rank, hit in enumerate(filtered[: config.metric_top_k], 1)
+    )
 
 
 def _column_hits(
@@ -279,91 +275,8 @@ def _required_metadata_text(
     return value.strip()
 
 
-def _is_metric_request(
-    question: str,
-    metric_hits: tuple[MetricHit, ...],
-) -> bool:
-    normalized_question = _normalize(question)
-    for hit in metric_hits:
-        candidates = (hit.metric_name, *_as_strings(hit.metadata.get("aliases")))
-        if any(_contains_normalized(normalized_question, candidate) for candidate in candidates):
-            return True
-    return any(expression in question for expression in _METRIC_EXPRESSIONS)
-
-
-def _select_metric(
-    question: str,
-    metric_hits: tuple[MetricHit, ...],
-) -> tuple[MetricHit | None, RetrievalStatus | None]:
-    normalized_question = _normalize(question)
-    matched = tuple(
-        (match_length, hit)
-        for hit in metric_hits
-        if (match_length := _metric_match_length(normalized_question, hit)) > 0
-    )
-    longest_match = max((length for length, _ in matched), default=0)
-    exact = {
-        hit.metric_name: hit
-        for length, hit in matched
-        if length == longest_match
-    }
-    if len(exact) == 1:
-        return next(iter(exact.values())), None
-    if len(exact) > 1:
-        return None, RetrievalStatus.AMBIGUOUS
-    if len(metric_hits) == 1:
-        return metric_hits[0], None
-    if not metric_hits:
-        return None, None
-    return None, RetrievalStatus.AMBIGUOUS
-
-
-def _metric_match_length(question: str, hit: MetricHit) -> int:
-    """返回命中的最长指标名或别名，避免短别名遮蔽长指标名。"""
-
-    return max(
-        (
-            len(_normalize(candidate))
-            for candidate in (
-                hit.metric_name,
-                *_as_strings(hit.metadata.get("aliases")),
-            )
-            if _contains_normalized(question, candidate)
-        ),
-        default=0,
-    )
-
-
 def _metric_data_source(metric: MetricHit) -> str:
     return _required_metadata_text(metric.metadata, "data_source", metric.document_id)
-
-
-def _validate_metric_against_constraint(
-    metric: MetricHit,
-    constraint: MetricConstraint,
-) -> None:
-    """防止向量命中内容与同版本目录中的认证业务事实发生漂移。"""
-
-    actual = (
-        metric.metric_name,
-        _required_metadata_text(metric.metadata, "formula", metric.document_id),
-        _metric_data_source(metric),
-        _required_metadata_text(metric.metadata, "time_field", metric.document_id),
-        _as_strings(metric.metadata.get("filters")),
-        _as_strings(metric.metadata.get("depends_on")),
-    )
-    expected = (
-        constraint.metric_name,
-        constraint.formula,
-        constraint.data_source,
-        constraint.time_field,
-        constraint.filters,
-        constraint.depends_on,
-    )
-    if actual != expected:
-        raise ResourceRetrievalContractError(
-            f"指标 {constraint.document_id} 的检索结果与同版本目录不一致"
-        )
 
 
 def _column_query(question: str, metric: MetricHit | None) -> str:
@@ -541,16 +454,6 @@ def _re_rank_column(hit: ColumnHit, rank: int) -> ColumnHit:
         rank=rank,
         metadata=hit.metadata,
         page_content=hit.page_content,
-    )
-
-
-def _as_strings(value: Any) -> tuple[str, ...]:
-    if not isinstance(value, (list, tuple)):
-        return ()
-    return tuple(
-        item.strip()
-        for item in value
-        if isinstance(item, str) and item.strip()
     )
 
 
