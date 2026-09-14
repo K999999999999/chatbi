@@ -1,6 +1,6 @@
 """Online Retrieval（在线检索）三路检索、关系解析和上下文组装。"""
 
-from collections import defaultdict, deque
+from collections import defaultdict
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
@@ -46,18 +46,19 @@ from .rag_runtime import (
     RagRuntime,
     RetrievalUnavailableError,
 )
+from .relationship_graph import (
+    RelationshipGraphAmbiguousError as _AmbiguousRetrieval,
+    RelationshipGraphContractError,
+    RelationshipGraphUnreachableError as _UnreachableRequired,
+    parse_edges as _graph_edges,
+    resolve_join_paths as _resolve_join_paths,
+    validate_time_edge as _validate_time_edge,
+    validated_multi_joins as _validated_multi_joins,
+)
 
 
 class RetrievalContractError(RuntimeError):
     """检索结果或已发布资产不满足在线契约。"""
-
-
-class _AmbiguousRetrieval(RuntimeError):
-    """确定性规则无法在多个业务路径中做唯一选择。"""
-
-
-class _UnreachableRequired(RuntimeError):
-    """必需表无法通过已验证关系到达。"""
 
 
 _METRIC_EXPRESSIONS = ("金额", "数量", "总额", "平均值", "占比", "率", "统计")
@@ -248,6 +249,8 @@ class OnlineRetriever:
             return _result(RetrievalStatus.AMBIGUOUS, snapshot.asset_version, tables=table_hits, fields=column_hits, metrics=(metric,) if metric else (), evidence=evidence, warnings=(str(exc),))
         except _UnreachableRequired as exc:
             return _result(RetrievalStatus.PARTIAL_UNREACHABLE, snapshot.asset_version, tables=table_hits, fields=column_hits, metrics=(metric,) if metric else (), evidence=evidence, warnings=(str(exc),))
+        except RelationshipGraphContractError as exc:
+            return _failure(RetrievalStatus.ASSET_UNAVAILABLE, str(exc), asset_version=snapshot.asset_version, evidence=evidence)
         except RetrievalContractError as exc:
             return _failure(RetrievalStatus.ASSET_UNAVAILABLE, str(exc), asset_version=snapshot.asset_version, evidence=evidence)
 
@@ -633,6 +636,15 @@ class OnlineRetriever:
                 metrics=selected_tuple,
                 evidence=evidence,
                 warnings=(str(exc),),
+                request=request,
+                metric_constraints=constraints,
+            )
+        except RelationshipGraphContractError as exc:
+            return _failure(
+                RetrievalStatus.ASSET_UNAVAILABLE,
+                str(exc),
+                asset_version=snapshot.asset_version,
+                evidence=evidence,
                 request=request,
                 metric_constraints=constraints,
             )
@@ -1387,129 +1399,6 @@ def _select_anchor(
     return table_hits[0].qualified_name, "highest_table_score"
 
 
-def _graph_edges(graph: Mapping[str, Any]) -> tuple[JoinEdge, ...]:
-    raw_edges = graph.get("foreign_keys")
-    if not isinstance(raw_edges, list):
-        raise RetrievalContractError("Relationship Graph 缺少 foreign_keys")
-    edges: list[JoinEdge] = []
-    for index, raw in enumerate(raw_edges, 1):
-        if not isinstance(raw, Mapping):
-            raise RetrievalContractError(f"Relationship Graph 第 {index} 条边格式无效")
-        edge_id = _text(raw, "constraint_name", index)
-        source_table = _qualified_from_graph(raw, "source_schema", "source_table", index)
-        target_table = _qualified_from_graph(raw, "target_schema", "target_table", index)
-        source_columns = _string_tuple(raw.get("source_columns"), "source_columns", index)
-        target_columns = _string_tuple(raw.get("target_columns"), "target_columns", index)
-        if len(source_columns) != len(target_columns):
-            raise RetrievalContractError(f"Relationship Graph 第 {index} 条边键数量不一致")
-        edges.append(
-            JoinEdge(
-                edge_id=edge_id,
-                source_table=source_table,
-                target_table=target_table,
-                source_columns=source_columns,
-                target_columns=target_columns,
-                constraint_name=edge_id,
-                direction="forward",
-            )
-        )
-    return tuple(sorted(edges, key=lambda edge: edge.edge_id))
-
-
-def _validated_multi_joins(
-    anchor_table: str,
-    resolution: JoinResolution,
-    graph: Mapping[str, Any],
-) -> tuple[JoinConstraint, ...]:
-    """仅允许从共同事实表正向连接到有唯一性证明的目标表。"""
-
-    if not resolution.joins:
-        return ()
-    unique_keys = _graph_unique_keys(graph)
-    for path in resolution.paths:
-        current = anchor_table
-        for edge in path.edges:
-            if edge.direction != "forward" or edge.source_table != current:
-                raise _UnreachableRequired(
-                    "多指标 Join 必须从共同事实表沿 Foreign Key（外键）正向展开"
-                )
-            current = edge.target_table
-
-    constraints: list[JoinConstraint] = []
-    for edge in resolution.joins:
-        basis = unique_keys.get((edge.target_table, edge.target_columns))
-        if basis is None:
-            raise _UnreachableRequired(
-                f"Join 目标缺少 Primary Key / Unique Constraint（主键/唯一约束）证明："
-                f"{edge.target_table}({', '.join(edge.target_columns)})"
-            )
-        constraints.append(
-            JoinConstraint(
-                source_table=edge.source_table,
-                source_columns=edge.source_columns,
-                target_table=edge.target_table,
-                target_columns=edge.target_columns,
-                uniqueness_basis=basis,
-                direction="forward",
-            )
-        )
-    return tuple(constraints)
-
-
-def _graph_unique_keys(
-    graph: Mapping[str, Any],
-) -> Mapping[tuple[str, tuple[str, ...]], str]:
-    """读取无条件 Primary Key / Unique Constraint；V1 不采信 Unique Index。"""
-
-    result: dict[tuple[str, tuple[str, ...]], str] = {}
-    for section, prefix in (
-        ("primary_keys", "primary_key"),
-        ("unique_constraints", "unique_constraint"),
-    ):
-        records = graph.get(section)
-        if not isinstance(records, list):
-            raise RetrievalContractError(f"Relationship Graph 缺少 {section}")
-        for index, raw in enumerate(records, 1):
-            if not isinstance(raw, Mapping):
-                raise RetrievalContractError(
-                    f"Relationship Graph {section} 第 {index} 条记录格式无效"
-                )
-            table = _qualified_from_graph(
-                raw,
-                "schema_name",
-                "table_name",
-                index,
-            )
-            columns = _string_tuple(raw.get("column_names"), "column_names", index)
-            constraint_name = _text(raw, "constraint_name", index)
-            result[(table, columns)] = f"{prefix}:{constraint_name}"
-    return MappingProxyType(result)
-
-
-def _validate_time_edge(
-    time_field: _TimeField,
-    edges: tuple[JoinEdge, ...],
-) -> _TimeField:
-    matches = tuple(
-        edge
-        for edge in edges
-        if edge.source_table == time_field.source_table
-        and edge.target_table == time_field.target_table
-        and edge.source_columns == (time_field.source_column,)
-    )
-    if not matches:
-        raise RetrievalContractError("time_field 无法匹配已验证 Relationship Graph")
-    if len(matches) > 1:
-        raise _AmbiguousRetrieval("time_field 匹配到多条语义不同关系")
-    return _TimeField(
-        time_field.source_table,
-        time_field.source_column,
-        time_field.target_table,
-        time_field.filter_column,
-        matches[0].edge_id,
-    )
-
-
 def _target_tables(
     candidate_tables: tuple[TableHit, ...],
     metric_table: str | None,
@@ -1603,118 +1492,6 @@ def _cjk_bigrams(value: str) -> tuple[str, ...]:
             if (term := run[index : index + 2]) not in _GENERIC_GROUPING_TERMS
         )
     return tuple(sorted(terms))
-
-
-def _resolve_join_paths(
-    anchor_table: str,
-    target_tables: tuple[str, ...],
-    edges: tuple[JoinEdge, ...],
-    *,
-    time_edge: str | None,
-    time_target: str | None,
-) -> JoinResolution:
-    all_paths: list[JoinPath] = []
-    chosen_joins: list[JoinEdge] = []
-    unreachable: list[str] = []
-    for target in target_tables:
-        if target == anchor_table:
-            continue
-        paths = _shortest_paths(anchor_table, target, edges)
-        if target == time_target and time_edge is not None and any(
-            time_edge in {edge.edge_id for edge in path.edges} for path in paths
-        ):
-            paths = tuple(
-                path
-                for path in paths
-                if time_edge in {edge.edge_id for edge in path.edges}
-            )
-        unique_paths = _unique_paths(paths)
-        if not unique_paths:
-            unreachable.append(target)
-            continue
-        if len(unique_paths) > 1:
-            raise _AmbiguousRetrieval(
-                f"目标表 {target} 存在多条无法唯一裁决的最短路径"
-            )
-        path = unique_paths[0]
-        all_paths.append(path)
-        chosen_joins.extend(path.edges)
-    if unreachable:
-        raise _UnreachableRequired(f"必需表不可达：{'、'.join(sorted(unreachable))}")
-    return JoinResolution(
-        anchor_table=anchor_table,
-        paths=tuple(all_paths),
-        joins=_dedupe_edges(chosen_joins),
-        unreachable_tables=(),
-    )
-
-
-def _shortest_paths(
-    start: str,
-    target: str,
-    edges: tuple[JoinEdge, ...],
-) -> tuple[JoinPath, ...]:
-    adjacency: defaultdict[str, list[tuple[str, JoinEdge]]] = defaultdict(list)
-    for edge in edges:
-        adjacency[edge.source_table].append((edge.target_table, edge))
-        adjacency[edge.target_table].append(
-            (
-                edge.source_table,
-                JoinEdge(
-                    edge_id=edge.edge_id,
-                    source_table=edge.source_table,
-                    target_table=edge.target_table,
-                    source_columns=edge.source_columns,
-                    target_columns=edge.target_columns,
-                    constraint_name=edge.constraint_name,
-                    direction="reverse",
-                ),
-            )
-        )
-    queue: deque[tuple[str, tuple[str, ...], tuple[JoinEdge, ...]]] = deque(
-        [(start, (start,), ())]
-    )
-    found_distance: int | None = None
-    paths: list[JoinPath] = []
-    while queue:
-        current, tables, path_edges = queue.popleft()
-        distance = len(path_edges)
-        if found_distance is not None and distance > found_distance:
-            continue
-        if current == target:
-            found_distance = distance
-            paths.append(JoinPath(tables=tables, edges=path_edges))
-            continue
-        for next_table, edge in sorted(
-            adjacency.get(current, ()),
-            key=lambda item: (item[0], item[1].edge_id, item[1].direction),
-        ):
-            if next_table in tables:
-                continue
-            queue.append((next_table, (*tables, next_table), (*path_edges, edge)))
-    return tuple(paths)
-
-
-def _unique_paths(paths: tuple[JoinPath, ...]) -> tuple[JoinPath, ...]:
-    result: dict[tuple[Any, ...], JoinPath] = {}
-    for path in paths:
-        key = (
-            path.tables,
-            tuple((edge.edge_id, edge.direction) for edge in path.edges),
-        )
-        result[key] = path
-    return tuple(result.values())
-
-
-def _dedupe_edges(edges: Iterable[JoinEdge]) -> tuple[JoinEdge, ...]:
-    result: list[JoinEdge] = []
-    seen: set[tuple[str, str]] = set()
-    for edge in edges:
-        key = (edge.edge_id, edge.direction)
-        if key not in seen:
-            seen.add(key)
-            result.append(edge)
-    return tuple(result)
 
 
 def _final_table_hits(
