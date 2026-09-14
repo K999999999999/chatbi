@@ -1,7 +1,9 @@
 
 # Online Retrieval Module Spec
 
-状态：Online Retrieval V1（实体类、单指标、TABLE/COLUMN/METRIC 检索、确定性关系图和动态上下文）已实现并通过验收。基础 Multi-Metric Retrieval（多指标在线检索）为独立增量规格，见 `docs/specs/multi-metric-retrieval.md`；T1～T4 软件实现与确定性测试已完成，修复后真实在线 RAG 评测为 20/20，正式 Business Acceptance（业务验收）已通过。
+> 当前实现、测试和验收以 [Online Retrieval V1 Feature Contract（在线检索 V1 功能契约）](../../.scratch/online-retrieval-v1/spec.md) 为唯一有效口径。本文保留为历史基线规格参考；其中关于 BFS、多跳/中间表补入、独立多指标流水线、静态全量 Schema fallback 或普通 `JOIN` 的旧描述，不得用于当前实现、测试和验收。
+
+状态：历史基线规格，内容保留用于追溯。当前 Online Retrieval V1（实体类、单指标、多指标、TABLE/COLUMN/METRIC 检索、确定性关系图和动态上下文）的行为、测试和验收以仓库根目录 `.scratch/online-retrieval-v1/spec.md` 为准。
 
 ## 1. 模块目标
 

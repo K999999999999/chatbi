@@ -222,6 +222,19 @@ ORDER BY s.revenue DESC
         with self.assertRaises(SQLRejectedError):
             validate_sql(sql, self.context)
 
+    def test_cte_without_join_is_rejected_by_v1_shape(self) -> None:
+        sql = """
+WITH sales AS (
+    SELECT order_id
+    FROM mart_sales.fct_sales_order_line
+)
+SELECT order_id
+FROM sales
+""".strip()
+
+        with self.assertRaises(SQLRejectedError):
+            validate_sql(sql, self.context)
+
     def test_all_metric_sql_templates_pass(self) -> None:
         root = Path(__file__).resolve().parents[2]
         metrics = json.loads(

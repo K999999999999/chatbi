@@ -1,6 +1,8 @@
 # 基础 Multi-Metric Retrieval（多指标在线检索）规格
 
-状态：T1～T5 已完成；修复 M08 分组粒度后真实在线 RAG 评测 20/20 通过，Business Acceptance（业务验收）已通过；当前仍不代表 Production Ready（生产可用）
+> 当前多指标行为以 [Online Retrieval V1 Feature Contract（在线检索 V1 功能契约）](../../.scratch/online-retrieval-v1/spec.md) 为唯一有效口径。本文保留为历史规格和决策记录；当前覆盖旧描述的关键规则是：实体类、单指标和多指标共用 `metrics=0/1/N` 一条流水线；用户指标最多 3 个；只支持直接 FK→PK、`LEFT JOIN`，不使用中间表、多跳 Join、公式字段自动补入或指标二次查询。
+
+状态：历史规格记录，内容保留用于追溯；当前行为以仓库根目录 `.scratch/online-retrieval-v1/spec.md` 为准。当前 V1 已完成确定性验收，但仍不代表 Production Ready（生产可用）。
 
 日期：2026-09-10
 

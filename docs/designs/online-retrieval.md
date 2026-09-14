@@ -1,10 +1,12 @@
 # Online Retrieval Implementation Design
 
+> 本文是历史 Implementation Design（实现设计）记录，不是当前行为事实源。当前实现以 [Online Retrieval V1 Feature Contract（在线检索 V1 功能契约）](../../.scratch/online-retrieval-v1/spec.md)、代码和测试为准；本文中关于 BFS、技术 fallback（回退）和独立多指标分支的旧设计仅供追溯。
+
 ## 1. 状态与目标
 
 - Module Spec（模块规格）：docs/specs/online-retrieval.md
-- 当前阶段：Implementation / Verification（实现与验证）
-- 当前状态：方案已确认，编码与确定性测试已完成，真实资产基础验证已完成
+- 当前阶段：Historical Record（历史记录）
+- 当前状态：原设计已完成；当前代码以 V1 Feature Contract（V1 功能契约）和确定性测试为准
 - Runtime Mode（运行模式）：同步、单请求、无副作用
 
 本文记录的是已经完成的实体类和单指标 Online Retrieval V1 实现设计。基础 Multi-Metric Retrieval（多指标在线检索）的 T1～T4 软件实现记录在 `docs/designs/multi-metric-retrieval.md`；T5 修复分组粒度 Prompt 约束后真实在线 RAG 评测为 20/20，C05 通过，正式业务验收已通过。下文出现“一个最终指标”或技术 fallback 的地方均指单指标基线。

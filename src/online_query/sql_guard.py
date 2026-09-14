@@ -49,6 +49,8 @@ def validate_sql(candidate: str, context: QueryContext) -> ValidatedSQL:
     expression = _parse_single_select(sql)
     if any(expression.find(node_type) for node_type in _FORBIDDEN_NODE_TYPES):
         raise SQLRejectedError("SQL 包含禁止的写入、结构修改或锁定操作")
+    if expression.find(exp.With) is not None:
+        raise SQLRejectedError("V1 SQL 不支持 CTE")
 
     _reject_dangerous_functions(expression)
     physical_tables = _physical_tables(expression)
@@ -230,7 +232,7 @@ def _validate_join_constraints(
         raise SQLRejectedError("SQL Join 必须从事实表 Anchor 开始")
     base_table = _qualified_table_ref(from_clause.this)
     source_tables = {constraint.source_table.casefold() for constraint in constraints}
-    if len(source_tables) != 1 or base_table.casefold() not in source_tables:
+    if base_table.casefold() not in source_tables:
         raise SQLRejectedError("SQL Join 的主表不是认证事实表 Anchor")
 
     bindings = _table_bindings(expression)
@@ -573,7 +575,7 @@ def _parse_single_select(sql: str) -> exp.Select:
         raise SQLRejectedError("只允许一条 SQL")
     expression = statements[0]
     if not isinstance(expression, exp.Select):
-        raise SQLRejectedError("只允许 SELECT 或 WITH SELECT")
+        raise SQLRejectedError("只允许单层 SELECT")
     return expression
 
 

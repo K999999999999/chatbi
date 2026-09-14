@@ -5,9 +5,9 @@
 ## 当前状态
 
 - Online Query、Online Retrieval V1 和 RAG Offline Build 已实现；实体类、单指标和离线资产链路已完成相应软件测试与验收。
-- 基础 Multi-Metric Retrieval（多指标在线检索）已完成 T1～T4 软件实现与确定性测试，修复 M08 后真实在线 RAG Evaluation（评测）达到 20/20；C05 和 M08 通过，正式 Business Acceptance（业务验收）已通过。
+- 基础 Multi-Metric Retrieval（多指标在线检索）已按当前 V1 统一为 `metrics=0/1/N` 流程，完成软件实现和确定性验收；既有真实在线 RAG Evaluation（评测）20/20、C05 和 M08 业务验收记录继续作为历史证据保留。
 - Observability V1 已完成 T1～T5；阿里云 OTLP / Trace 外部验收已通过。当前仍不能称为 Production Ready（生产可用）。
-- 当前全量确定性测试为 230 passed、6 skipped、79 subtests；真实在线 RAG Evaluation 为 20/20。三类证据仍分别记录，不互相替代。
+- 当前全量确定性测试为 248 passed、6 skipped、85 subtests；真实在线 RAG Evaluation 为既有 20/20 记录。三类证据仍分别记录，不互相替代。
 
 ## 后续路线
 

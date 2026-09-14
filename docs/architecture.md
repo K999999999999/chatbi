@@ -256,14 +256,14 @@ RAG Offline Build 已实现：
 - `src/rag_offline/` 负责校验事实、生成文档、向量化、写入 Qdrant、构建关系图和发布完整资产。
 - `data/rag/current.json` 是当前发布指针，版本目录保存 manifest 和关系图。
 
-Online Retrieval V1 已接入 Online Query：实体类和单指标问题默认使用已发布 RAG 资产组装动态上下文；可确定的技术故障仍可按基线规则回退静态上下文。基础 Multi-Metric Retrieval（多指标在线检索）的 T1～T4 软件实现已完成，多指标技术故障禁止静态回退；修复分组粒度 Prompt 约束后真实在线 RAG 评测为 20/20，C05 和 M08 通过，正式 Business Acceptance（业务验收）已通过。
+Online Retrieval V1 已接入 Online Query：实体类、单指标和多指标问题统一使用同一条 `metrics=0/1/N` 检索流程，并从已发布 RAG 资产组装最小动态上下文。在线 RAG 技术故障统一 Fail Closed（失败关闭）并返回 `CONTEXT_ERROR`；静态上下文只在显式静态评测/基础模式下使用。直接关系只允许认证的 FK→PK 和 `LEFT JOIN`；多指标最多 3 个，真实在线 RAG 的既有 20/20 结果和业务验收记录继续保留为历史证据。
 
 ## 在线主链路
 
 ```text
 用户问题
   -> 读取已发布 RAG 资产快照并执行 Online Retrieval
-  -> 组装动态结构和指标上下文（基线技术故障时可静态 fallback）
+  -> 组装动态结构和指标上下文（在线 RAG 技术故障 Fail Closed）
   -> 组装 Prompt
   -> LLM 生成 SQL 候选
   -> SQL Guard 提取并校验 SQL
@@ -281,7 +281,7 @@ Online Retrieval V1 已接入 Online Query：实体类和单指标问题默认�
 - LLM：提出 SQL 候选，不决定业务真相、权限和安全。
 - BGE-M3：只对离线检索文档正文和检索评测问题生成向量，不决定业务事实。
 - Qdrant：保存版本化 TABLE、COLUMN、METRIC 检索集合，不保存业务真相。
-- 已发布 RAG 资产：当前为 Online Query 默认提供动态结构和指标上下文；静态知识文件只作为实体类、单指标基线技术故障时的 fallback。
+- 已发布 RAG 资产：当前为 Online Query 默认提供动态结构和指标上下文；静态知识文件只用于显式静态评测/基础模式，不作为在线 RAG 技术故障 fallback。
 - Query API Adapter：当前提供同步 HTTP JSON 接口，只做协议转换。
 - Streamlit：当前用于 POC 和内部使用，只通过 HTTP 调用 API；未来正式前端可以复用同一 API 契约。
 - API Gateway：未来位于 ChatBI 外部边界，负责认证、限流、审计和流量治理；核心模块不绑定具体网关产品。
@@ -305,8 +305,8 @@ Online Retrieval V1 已接入 Online Query：实体类和单指标问题默认�
 - Online Query 已实现，Software Test 与真实 PostgreSQL 集成测试已通过。
 - Query API Adapter 已实现，提供 `/health` 和 `/api/v1/query`；API 确定性测试已通过。
 - Streamlit 页面已实现，提供问题输入、结果展示和受控错误提示，并通过三条手工业务验收。
-- Evaluation 已实现并复用正式 Online Query 链路；当前全量软件测试为 230 passed、6 skipped、79 subtests，修复后的真实在线 RAG 评测为 20/20，C05 和 M08 均通过，JSON 数据报告和 Markdown 总结报告已生成。
+- Evaluation 已实现并复用正式 Online Query 链路；当前全量确定性软件测试为 248 passed、6 skipped、85 subtests。既有真实在线 RAG 评测 20/20、C05 和 M08 业务验收记录作为独立历史证据保留，JSON 数据报告和 Markdown 总结报告按本地策略忽略。
 - 旧版扁平 POC 链路及其重复测试已删除。
 - RAG Offline Build 已实现并发布 BGE-M3 / Qdrant 离线资产；TABLE=7、COLUMN=69、METRIC=5、关系边=9，固定检索评测 5/5 通过。
-- Online Retrieval、Schema Linking 和关系图在线路径查找已完成 V1 实现，并已通过真实 Qdrant、LLM 和 PostgreSQL 的单指标端到端验收；基础多指标已完成 T1～T4 软件实现，修复后真实评测为 20/20，C05 和 M08 均通过，正式业务验收已通过；跨事实表、经营分析等复杂多指标组合仍属于后续边界。
+- Online Retrieval、Schema Linking 和关系图在线路径查找已完成 V1 实现；统一 `metrics=0/1/N`、直接 FK→PK、最多 3 个指标和 Fail Closed 边界已通过确定性验收。既有真实 Qdrant、LLM 和 PostgreSQL 20/20 及 C05/M08 记录继续作为独立业务证据；跨事实表、经营分析等复杂多指标组合仍属于后续边界。
 - 正式前端 UI 不是当前下一步必做项，继续使用 Streamlit，待生产化需求明确后再决定。
