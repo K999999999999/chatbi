@@ -1,12 +1,9 @@
 """Online Retrieval（在线检索）三路检索、关系解析和上下文组装。"""
 
-from collections import defaultdict
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import replace
-import json
 import re
-from types import MappingProxyType
 from typing import Any
 
 from src.observability.contracts import TraceRecorder
@@ -68,6 +65,7 @@ from .resource_retrieval import (
     _table_hits,
     _validate_metric_against_constraint,
 )
+from .retrieval_context import _synthetic_table_hit, assemble_context
 
 
 class RetrievalContractError(RuntimeError):
@@ -267,21 +265,17 @@ class OnlineRetriever:
             "context.assemble",
             {"chatbi.retrieval.asset_version": snapshot.asset_version},
         ):
-            final_tables = _final_table_hits(candidate_tables, resolution)
-            final_fields = _final_column_hits(
+            context = assemble_context(
+                candidate_tables,
                 column_hits,
                 resolution,
-                allowed_tables=frozenset(
-                    table.qualified_name for table in final_tables
-                ),
+                metric=metric,
             )
-            dynamic_schema = _build_dynamic_schema(final_tables, final_fields, resolution)
-            indicator_context = _build_indicator_context(metric)
-            query_context = QueryContext(
-                prompt_context=_build_prompt_context(dynamic_schema, indicator_context),
-                allowed_tables=frozenset(hit.qualified_name for hit in final_tables),
-                allowed_columns=MappingProxyType(_allowed_columns(final_fields)),
-            )
+            final_tables = context.final_tables
+            final_fields = context.final_fields
+            dynamic_schema = context.dynamic_schema
+            indicator_context = context.indicator_context
+            query_context = context.query_context
             _safe_enrich_current(
                 self._trace_recorder,
                 {
@@ -697,33 +691,20 @@ class OnlineRetriever:
             "context.assemble",
             {"chatbi.retrieval.asset_version": snapshot.asset_version},
         ):
-            final_tables = _final_table_hits(candidate_tables, resolution)
-            final_fields = _final_column_hits(
+            context = assemble_context(
+                candidate_tables,
                 column_hits,
                 resolution,
-                allowed_tables=frozenset(
-                    table.qualified_name for table in final_tables
-                ),
-            )
-            dynamic_schema = _build_dynamic_schema(
-                final_tables,
-                final_fields,
-                resolution,
-            )
-            indicator_context = _build_multi_indicator_context(selected_tuple)
-            query_context = QueryContext(
-                prompt_context=_build_prompt_context(
-                    dynamic_schema,
-                    indicator_context,
-                ),
-                allowed_tables=frozenset(
-                    hit.qualified_name for hit in final_tables
-                ),
-                allowed_columns=MappingProxyType(_allowed_columns(final_fields)),
+                metrics=selected_tuple,
                 request_shape=request.request_shape,
                 metric_constraints=constraints,
                 join_constraints=join_constraints,
             )
+            final_tables = context.final_tables
+            final_fields = context.final_fields
+            dynamic_schema = context.dynamic_schema
+            indicator_context = context.indicator_context
+            query_context = context.query_context
             _safe_enrich_current(
                 self._trace_recorder,
                 {
@@ -1035,214 +1016,6 @@ def _cjk_bigrams(value: str) -> tuple[str, ...]:
     return tuple(sorted(terms))
 
 
-def _final_table_hits(
-    table_hits: tuple[TableHit, ...],
-    resolution: JoinResolution,
-) -> tuple[TableHit, ...]:
-    by_name = {hit.qualified_name: hit for hit in table_hits}
-    names = {resolution.anchor_table} if resolution.anchor_table else set()
-    for path in resolution.paths:
-        names.update(path.tables)
-    final: list[TableHit] = []
-    for name in sorted(name for name in names if name):
-        existing = by_name.get(name)
-        if existing is not None:
-            final.append(existing)
-            continue
-        schema, table = name.split(".", maxsplit=1)
-        final.append(
-            _synthetic_table_hit(
-                schema,
-                table,
-                table_role="relationship_bridge",
-                page_content=f"关系图桥接表：{name}",
-            )
-        )
-    return tuple(final)
-
-
-def _synthetic_table_hit(
-    schema_name: str,
-    table_name: str,
-    *,
-    table_role: str,
-    page_content: str,
-) -> TableHit:
-    qualified_name = f"{schema_name}.{table_name}"
-    return TableHit(
-        document_id=f"graph:{qualified_name}",
-        schema_name=schema_name,
-        table_name=table_name,
-        table_role=table_role,
-        score=0.0,
-        rank=0,
-        metadata=MappingProxyType(
-            {
-                "doc_type": "TABLE",
-                "schema_name": schema_name,
-                "table_name": table_name,
-                "table_type": table_role,
-            }
-        ),
-        page_content=page_content,
-    )
-
-
-def _final_column_hits(
-    column_hits: tuple[ColumnHit, ...],
-    resolution: JoinResolution,
-    *,
-    allowed_tables: frozenset[str],
-) -> tuple[ColumnHit, ...]:
-    by_identity = {
-        (hit.qualified_table, hit.column_name): hit for hit in column_hits
-        if hit.qualified_table in allowed_tables
-    }
-    for edge in resolution.joins:
-        if edge.direction == "forward":
-            endpoints = (
-                (edge.source_table, edge.source_columns),
-                (edge.target_table, edge.target_columns),
-            )
-        else:
-            endpoints = (
-                (edge.target_table, edge.target_columns),
-                (edge.source_table, edge.source_columns),
-            )
-        for table, columns in endpoints:
-            if table not in allowed_tables:
-                continue
-            for column in columns:
-                by_identity.setdefault(
-                    (table, column),
-                    _synthetic_column(table, column, edge.edge_id),
-                )
-    return tuple(
-        sorted(
-            by_identity.values(),
-            key=lambda hit: (hit.qualified_table, hit.column_name, -hit.score),
-        )
-    )
-
-
-def _synthetic_column(table: str, column: str, edge_id: str) -> ColumnHit:
-    schema, table_name = table.split(".", maxsplit=1)
-    return ColumnHit(
-        document_id=f"graph:{table}.{column}",
-        schema_name=schema,
-        table_name=table_name,
-        column_name=column,
-        data_type="UNKNOWN",
-        score=0.0,
-        rank=0,
-        metadata=MappingProxyType(
-            {
-                "doc_type": "COLUMN",
-                "schema_name": schema,
-                "table_name": table_name,
-                "column_name": column,
-                "data_type": "UNKNOWN",
-                "relationship_edge_id": edge_id,
-            }
-        ),
-        page_content=f"关系键字段：{table}.{column}",
-    )
-
-
-def _build_dynamic_schema(
-    tables: tuple[TableHit, ...],
-    fields: tuple[ColumnHit, ...],
-    resolution: JoinResolution,
-) -> str:
-    value = {
-        "tables": [
-            {
-                "schema_name": table.schema_name,
-                "table_name": table.table_name,
-                "table_role": table.table_role,
-            }
-            for table in tables
-        ],
-        "columns": [
-            {
-                "schema_name": field.schema_name,
-                "table_name": field.table_name,
-                "column_name": field.column_name,
-                "data_type": field.data_type,
-                "description": field.page_content,
-            }
-            for field in fields
-        ],
-        "joins": [
-            {
-                "edge_id": edge.edge_id,
-                "source_table": edge.source_table,
-                "source_columns": list(edge.source_columns),
-                "target_table": edge.target_table,
-                "target_columns": list(edge.target_columns),
-                "direction": edge.direction,
-            }
-            for edge in resolution.joins
-        ],
-    }
-    return json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
-
-
-def _build_indicator_context(metric: MetricHit | None) -> str:
-    if metric is None:
-        return ""
-    return json.dumps(
-        _indicator_value(metric),
-        ensure_ascii=False,
-        indent=2,
-        sort_keys=True,
-    )
-
-
-def _build_multi_indicator_context(metrics: tuple[MetricHit, ...]) -> str:
-    value = {
-        "requested_metrics": [_indicator_value(metric) for metric in metrics]
-    }
-    return json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
-
-
-def _indicator_value(metric: MetricHit) -> dict[str, Any]:
-    keys = (
-        "metric_name",
-        "aliases",
-        "level",
-        "definition",
-        "formula",
-        "data_source",
-        "time_field",
-        "filters",
-        "depends_on",
-        "notes",
-    )
-    return {
-        key: _json_value(metric.metadata.get(key))
-        for key in keys
-        if key in metric.metadata
-    }
-
-
-def _build_prompt_context(dynamic_schema: str, indicator_context: str) -> str:
-    parts = [f"Dynamic Schema:\n{dynamic_schema}"]
-    if indicator_context:
-        parts.append(f"Indicator Context:\n{indicator_context}")
-    return "\n\n".join(parts)
-
-
-def _allowed_columns(fields: tuple[ColumnHit, ...]) -> dict[str, frozenset[str]]:
-    result: defaultdict[str, set[str]] = defaultdict(set)
-    for field in fields:
-        result[field.qualified_table].add(field.column_name)
-    return {
-        table: frozenset(columns)
-        for table, columns in sorted(result.items())
-    }
-
-
 def _result(
     status: RetrievalStatus,
     asset_version: str | None,
@@ -1314,9 +1087,3 @@ def _normalize(value: str) -> str:
         for char in value.casefold()
         if char.isalnum() or "\u4e00" <= char <= "\u9fff"
     )
-def _json_value(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return {str(key): _json_value(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_json_value(item) for item in value]
-    return value

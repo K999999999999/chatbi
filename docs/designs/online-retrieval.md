@@ -89,7 +89,10 @@ Architecture / Domain / Existing Contract
 ~~~
 src/online_query/
 ├─ contracts.py       # 补充 Retrieval Contract 和 Dynamic Context 类型
-├─ retrieval.py       # 三路检索、Anchor、BFS、结果组装
+├─ retrieval.py       # OnlineRetriever 公共 Seam、顺序编排和失败映射
+├─ resource_retrieval.py # TABLE、COLUMN、METRIC 候选资源和必需字段
+├─ relationship_graph.py # Relationship Graph 和 Join Resolution
+├─ retrieval_context.py # 最终资源闭包和 QueryContext 组装
 ├─ rag_runtime.py     # 发布资产快照、Qdrant、Embedding 运行时适配
 ├─ prompt.py          # 增加 Dynamic Schema 资源限制
 ├─ service.py         # 按请求取得动态上下文，保留静态 fallback
@@ -189,22 +192,17 @@ qdrant_store
 manifest
 ~~~
 
-### 6.3 retrieval.py
+### 6.3 Online Retrieval 内部 Module
 
-OnlineRetriever 负责业务顺序和确定性决策，不直接依赖 LangChain、psycopg 或数据库。
+`OnlineRetriever` 负责业务顺序、失败状态映射和公共 `retrieve()` Seam，不直接依赖 LangChain、psycopg 或数据库。
 
-内部方法建议：
+内部职责按以下 Module 组织：
 
-- retrieve_tables()
-- retrieve_metrics()
-- select_metric()
-- select_anchor()
-- retrieve_columns()
-- resolve_formula_columns()
-- resolve_join_paths()
-- apply_metric_time_field()
-- assemble_dynamic_context()
-- to_query_context()
+- `resource_retrieval.py`：TABLE、COLUMN、METRIC 候选检索、指标选择、公式/filters/time_field 必需字段。
+- `relationship_graph.py`：Relationship Graph 事实解析、time_field 关系校验、BFS 最短路径和安全 Join 约束。
+- `retrieval_context.py`：最终表/字段闭包、关系键补充、Dynamic Schema、Indicator Context、QueryContext 和 allowlist。
+
+这些 Module 只用于内部实现组织，不新增公共 API、Port / Adapter 或完整 DDD 分层。
 
 Qdrant COLUMN 过滤优先复用现有 search()：对每个候选表执行带有 schema_name 和 table_name 的精确过滤检索，再合并、排序和截断。这样不需要把整个 COLUMN 集合加载到内存，也不需要先修改 Qdrant 通用适配器。
 
@@ -469,10 +467,10 @@ RAG_ONLINE_RETRIEVAL_ENABLED=true
 | Task | 目标 | 主要文件 | 完成标准 | 依赖 |
 |---|---|---|---|---|
 | T1 运行时资产快照 | 加载 current、Manifest、Graph、集合和 Embedding 配置 | src/online_query/rag_runtime.py、contracts.py | 同一 asset_version 快照可创建；版本、集合、模型不一致受控失败 | 无 |
-| T2 TABLE / METRIC Retrieval | 实现两路独立 Dense 检索、阈值处理和最终指标选择 | src/online_query/retrieval.py | TABLE、METRIC 只访问对应集合；指标多候选时不交给 LLM 选择 | T1 |
-| T3 COLUMN Retrieval | 在候选表内做精确过滤检索，并校验公式/日期必需字段 | src/online_query/retrieval.py | 不查询候选范围外字段；必需公式字段缺失时停止；结果合并排序稳定 | T1、T2 |
-| T4 Graph Join Resolver | 实现 Anchor、BFS、平行边、多日期和不可达处理 | src/online_query/retrieval.py | 最短合法路径、Join Key、time_field 映射、不可达和歧义测试通过 | T2、T3 |
-| T5 Dynamic Context | 组装 Dynamic Schema、Indicator Context 和 QueryContext | src/online_query/retrieval.py、contracts.py | 只输出最终资源；allowlist 完整；指标公式和 time_field 保留 | T3、T4 |
+| T2 TABLE / METRIC Retrieval | 实现两路独立 Dense 检索、阈值处理和最终指标选择 | src/online_query/resource_retrieval.py、src/online_query/retrieval.py | TABLE、METRIC 只访问对应集合；指标多候选时不交给 LLM 选择 | T1 |
+| T3 COLUMN Retrieval | 在候选表内做精确过滤检索，并校验公式/日期必需字段 | src/online_query/resource_retrieval.py、src/online_query/retrieval.py | 不查询候选范围外字段；必需公式字段缺失时停止；结果合并排序稳定 | T1、T2 |
+| T4 Graph Join Resolver | 实现 Anchor、BFS、平行边、多日期和不可达处理 | src/online_query/relationship_graph.py、src/online_query/retrieval.py | 最短合法路径、Join Key、time_field 映射、不可达和歧义测试通过 | T2、T3 |
+| T5 Dynamic Context | 组装 Dynamic Schema、Indicator Context 和 QueryContext | src/online_query/retrieval_context.py、src/online_query/retrieval.py、contracts.py | 只输出最终资源；allowlist 完整；指标公式和 time_field 保留 | T3、T4 |
 | T6 Prompt / Service 接入 | 增加 Prompt 资源限制、检索依赖和静态 fallback | src/online_query/prompt.py、service.py、query_api/main.py | 真实 API 默认走 RAG；技术失败 fallback；静态单元测试路径不回归 | T5 |
 | T7 软件测试 | 覆盖契约、路由、图、状态和 SQL 范围校验 | tests/online_query/ | 新增测试和全仓回归通过 | T1-T6 |
 | T8 真实资产验证 | 使用当前 BGE-M3、Qdrant 和标准问题验证 | tests 或 scripts/evaluation | 资产可加载、真实 Dense 检索可运行、评测证据可复现 | T7 |
