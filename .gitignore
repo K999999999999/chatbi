@@ -20,3 +20,7 @@ backups/
 
 # 本地参考资料，不属于产品源码和发布内容。
 项目参考课程/
+
+# 本次评测生成的临时报告，不纳入仓库。
+reports/evaluation/20260912T145505Z-c60e073.json
+reports/evaluation/20260912T145505Z-c60e073.md
