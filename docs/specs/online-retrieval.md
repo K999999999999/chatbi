@@ -1,7 +1,7 @@
 
 # Online Retrieval Module Spec
 
-状态：Online Retrieval V1（实体类、单指标、TABLE/COLUMN/METRIC 检索、确定性关系图和动态上下文）已实现并通过验收。基础 Multi-Metric Retrieval（多指标在线检索）为独立增量规格，见 `docs/specs/multi-metric-retrieval.md`；T1～T4 软件实现与确定性测试已完成，修复后真实在线 RAG 评测为 20/20，正式 Business Acceptance（业务验收）仍待确认。
+状态：Online Retrieval V1（实体类、单指标、TABLE/COLUMN/METRIC 检索、确定性关系图和动态上下文）已实现并通过验收。基础 Multi-Metric Retrieval（多指标在线检索）为独立增量规格，见 `docs/specs/multi-metric-retrieval.md`；T1～T4 软件实现与确定性测试已完成，修复后真实在线 RAG 评测为 20/20，正式 Business Acceptance（业务验收）已通过。
 
 ## 1. 模块目标
 

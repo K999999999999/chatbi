@@ -641,7 +641,7 @@ CHATBI_OTLP_TIMEOUT_SECONDS=5
 
 ### 14.2 AI Evaluation
 
-- 使用原有 20 条案例和正式 Online Query 链路，报告 `reports/evaluation/20260912T145505Z-c60e073.json` 结果为 20/20，C05 为 PASS；
+- 使用原有 20 条案例和正式 Online Query 链路，评测运行标识为 `20260912T145505Z-c60e073`，结果为 20/20，C05 为 PASS；对应 JSON / Markdown 原始报告按仓库本地策略忽略；
 - Evaluation 报告已记录每个实际查询的 `request_id` 和 `trace_id`，C05 为 `request_id=evaluation-C05`、`trace_id=b88a9d4e50ffd73a7f05cd62c573e4fb`；
 - 只建立 Latency/Token Baseline，不预设优化结论。
 
