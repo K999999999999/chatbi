@@ -1,51 +1,33 @@
 # Domain 文档
 
-说明工程 Skills 在探索本仓库代码时，如何读取和使用领域文档。
+本文档只记录本仓库的领域文档位置和读取边界；领域术语的澄清、Glossary 维护和 ADR 判断由 `domain-modeling` 负责。
 
-## 探索前先读取
+## 读取顺序
 
-- 根目录的 **`CONTEXT.md`**，或者
-- 如果根目录存在 **`CONTEXT-MAP.md`**，读取它指向的、与当前主题相关的各个 Context 的 `CONTEXT.md`。
-- **`docs/adr/`**：读取与当前工作范围相关的 ADR。对于 multi-context 仓库，还要检查 `src/<context>/docs/adr/` 下的 Context 专属决策。
+处理领域相关任务前，读取与当前主题相关的：
 
-如果这些文件或目录不存在，**静默继续**。不要把它们缺失当成问题，也不要在没有实际领域决策时建议提前创建。只有在术语或决策真正被解决时，`/domain-modeling` 才会按需创建它们；该 Skill 可以由 `/grill-with-docs` 或 `/improve-codebase-architecture` 触发。
+1. `AGENTS.md`；
+2. `CONTEXT-MAP.md`（如果存在）；
+3. 对应的 `CONTEXT.md`（如果存在）；
+4. `docs/adr/` 下的相关 ADR（如果存在）；
+5. `docs/product-scope.md`、`docs/architecture.md`、相关 Spec、Design、测试和验收记录。
 
-## 文件结构
+文件或目录不存在时静默继续，不要为了补齐结构而创建空的 `CONTEXT.md`、`CONTEXT-MAP.md` 或 ADR。只有在真实领域术语被确认，或不可逆且存在实际权衡的决策被确认时，才按 `domain-modeling` 的规则按需创建。
 
-Single-context 仓库（大多数仓库）：
+## 领域文档边界
 
-```
-/
-├── CONTEXT.md
-├── docs/adr/
-│   ├── 0001-event-sourced-orders.md
-│   └── 0002-postgres-for-write-model.md
-└── src/
-```
+- `CONTEXT.md` 只记录 ChatBI 已确认的领域词汇、定义、同义词和边界，不记录实现细节、数据库表、接口路径、测试步骤或临时讨论。
+- `docs/adr/` 只记录已确认的、难以逆转且存在真实取舍的长期决策，重点说明决定和原因。
+- `docs/specs/` 记录功能行为和验收 Contract；不要把 Feature Spec 写进 `CONTEXT.md`。
+- `docs/designs/` 记录如何实现已确认的 Contract；不要用 Implementation Design 反向改写领域事实。
 
-Multi-context 仓库（根目录存在 `CONTEXT-MAP.md`）：
+## 术语冲突
 
-```
-/
-├── CONTEXT-MAP.md
-├── docs/adr/                          ← 系统级决策
-└── src/
-    ├── ordering/
-    │   ├── CONTEXT.md
-    │   └── docs/adr/                  ← Context 专属决策
-    └── billing/
-        ├── CONTEXT.md
-        └── docs/adr/                  ← Context 专属决策
-```
+如果用户说法、代码、文档或已有领域定义不一致，先明确区分：
 
-## 使用 Glossary 中的词汇
+- 已确认的领域事实；
+- 当前实现事实；
+- 用户希望实现的目标；
+- 尚未确认的假设。
 
-当输出中出现领域概念时，例如 Issue 标题、重构提案、假设或测试名称，使用 `CONTEXT.md` 中定义的术语。不要改用 Glossary 明确避免的同义词。
-
-如果需要的概念还没有出现在 Glossary 中，这说明两种可能：你正在创造项目并未使用的语言，应重新考虑；或者 Glossary 确实存在缺口，应记录给 `/domain-modeling`。
-
-## 标记 ADR 冲突
-
-如果输出与已有 ADR 冲突，必须明确指出，不要静默覆盖：
-
-> _与 ADR-0007（event-sourced orders）冲突，但由于……值得重新打开讨论。_
+不得默默用同义词替换已确认术语，也不得把旧代码或模型推测当成业务真相。发现与 ADR 冲突时，明确指出冲突及其影响，等待重新确认。

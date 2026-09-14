@@ -14,13 +14,13 @@
 
 ## Agent skills
 
-### Issue tracker
+### Local task tracker
 
-本仓库的 Issue 和 Spec 统一存放在 GitHub Issues 中，所有操作使用 `gh` CLI。详见 `docs/agents/issue-tracker.md`。
+本仓库使用本地 Markdown 保存 Spec 和 Ticket，文件位于 `.scratch/<feature>/`。不要求 GitHub、GitLab、PR 或外部 Issue 作为需求入口。详见 `docs/agents/issue-tracker.md`。
 
 ### Domain docs
 
-本仓库采用 single-context 结构。处理领域相关任务前，读取 `CONTEXT.md` 和 `docs/adr/` 下相关 ADR。详见 `docs/agents/domain.md`。
+本仓库按 single-context 规则处理领域文档。处理领域相关任务前，按需读取 `CONTEXT.md` 和 `docs/adr/` 下相关 ADR；文件不存在时不要为了补齐结构而提前创建。详见 `docs/agents/domain.md`。
 
 ## 1. Core Principles
 
