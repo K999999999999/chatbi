@@ -8,25 +8,25 @@
 
 01
 
-**Status:** open
+**Status:** done
 
 ## Acceptance criteria
 
-- [ ] 支持事实表与维度表之间的直接 FK → PK Join。
-- [ ] 事实表作为 Join Anchor（连接锚点）。
-- [ ] Join 类型固定为允许的 `LEFT JOIN`。
-- [ ] Join Key 只能来自 Relationship Graph 结构化事实，不占用 COLUMN TopK=10 名额。
-- [ ] LLM 不能猜测 Join Key、修改关系方向或新增 Relationship Graph 中不存在的关系。
-- [ ] 只支持直接 Join；需要中间表、桥接表或多跳 Join 时返回 `CANNOT_ANSWER`。
-- [ ] 需要日期过滤或分组时使用指标定义中的 `time_field`。
-- [ ] 存在多个日期关系且无法根据 `time_field` 或用户语义确定时返回 `CANNOT_ANSWER`。
-- [ ] Relationship Graph 只检查当前候选表之间的必要关系，不自动把所有候选表连接起来。
-- [ ] 结构化上下文只发送当前候选 TABLE、COLUMN、METRIC、必要 Join Facts、指标定义和原始问题，不发送完整 Schema、无关表列或行数据。
-- [ ] 为按客户、产品、日期分组的直接 Join，以及无关系、桥接表、多跳和日期关系歧义场景补充确定性测试。
+- [x] 支持事实表与维度表之间的直接 FK → PK Join。
+- [x] 事实表作为 Join Anchor（连接锚点）。
+- [x] Join 类型固定为允许的 `LEFT JOIN`。
+- [x] Join Key 只能来自 Relationship Graph 结构化事实，不占用 COLUMN TopK=10 名额。
+- [x] LLM 不能猜测 Join Key、修改关系方向或新增 Relationship Graph 中不存在的关系。
+- [x] 只支持直接 Join；需要中间表、桥接表或多跳 Join 时返回 `CANNOT_ANSWER`。
+- [x] 需要日期过滤或分组时使用指标定义中的 `time_field`。
+- [x] 存在多个日期关系且无法根据 `time_field` 或用户语义确定时返回 `CANNOT_ANSWER`。
+- [x] Relationship Graph 只检查当前候选表之间的必要关系，不自动把所有候选表连接起来。
+- [x] 结构化上下文只发送当前候选 TABLE、COLUMN、METRIC、必要 Join Facts、指标定义和原始问题，不发送完整 Schema、无关表列或行数据。
+- [x] 为按客户、产品、日期分组的直接 Join，以及无关系、桥接表、多跳和日期关系歧义场景补充确定性测试。
 
 ## Result
 
-待实现。
+已完成。统一在线检索现在只解析候选事实表到维表的直接 FK → PK 关系；关系键由结构化 Relationship Graph 提供并加入 SQL 白名单，不再合成隐藏表或沿反向/多跳路径推断。普通查询不自动连接日期表，只有明确日期语义时才使用指标 `time_field`。SQL Guard 对动态 Join 只接受已认证的 `LEFT JOIN`。
 
 ## Comments
 

@@ -1,6 +1,5 @@
 """Relationship Graph（关系图）的确定性解析与 Join Resolution（连接解析）。"""
 
-from collections import defaultdict, deque
 from collections.abc import Iterable, Mapping
 from dataclasses import replace
 from types import MappingProxyType
@@ -105,7 +104,11 @@ def resolve_join_paths(
     time_edge: str | None,
     time_target: str | None,
 ) -> JoinResolution:
-    """使用 BFS 选择 Anchor 到各目标表的唯一最短路径。"""
+    """只解析 Anchor 到目标表之间的唯一直接 FK 边。
+
+    V1 不沿关系图做反向推断或多跳 BFS；目标表必须由事实表 Anchor
+    直接通过 Foreign Key（外键）指向。
+    """
 
     all_paths: list[JoinPath] = []
     chosen_joins: list[JoinEdge] = []
@@ -113,29 +116,36 @@ def resolve_join_paths(
     for target in target_tables:
         if target == anchor_table:
             continue
-        paths = _shortest_paths(anchor_table, target, edges)
-        if target == time_target and time_edge is not None and any(
-            time_edge in {edge.edge_id for edge in path.edges} for path in paths
-        ):
-            paths = tuple(
-                path
-                for path in paths
-                if time_edge in {edge.edge_id for edge in path.edges}
+        direct_edges = tuple(
+            edge
+            for edge in edges
+            if edge.source_table == anchor_table
+            and edge.target_table == target
+        )
+        if target == time_target and time_edge is not None:
+            time_edges = tuple(
+                edge for edge in direct_edges if edge.edge_id == time_edge
             )
-        unique_paths = _unique_paths(paths)
-        if not unique_paths:
+            if time_edges:
+                direct_edges = time_edges
+        if not direct_edges:
             unreachable.append(target)
             continue
-        if len(unique_paths) > 1:
+        if len(direct_edges) > 1:
             raise RelationshipGraphAmbiguousError(
-                f"目标表 {target} 存在多条无法唯一裁决的最短路径"
+                f"目标表 {target} 存在多条无法唯一裁决的直接关系"
             )
-        path = unique_paths[0]
+        edge = direct_edges[0]
+        path = JoinPath(
+            tables=(anchor_table, target),
+            edges=(edge,),
+        )
         all_paths.append(path)
         chosen_joins.extend(path.edges)
     if unreachable:
         raise RelationshipGraphUnreachableError(
-            f"必需表不可达：{'、'.join(sorted(unreachable))}"
+            "必需表不可达（只支持从事实表沿 Foreign Key（外键）正向展开）："
+            f"{'、'.join(sorted(unreachable))}"
         )
     return JoinResolution(
         anchor_table=anchor_table,
@@ -145,12 +155,12 @@ def resolve_join_paths(
     )
 
 
-def validated_multi_joins(
+def validated_join_constraints(
     anchor_table: str,
     resolution: JoinResolution,
     graph: Mapping[str, Any],
 ) -> tuple[JoinConstraint, ...]:
-    """只允许从共同事实表正向连接到有唯一性证明的目标表。"""
+    """只允许从事实表 Anchor 正向连接到有唯一性证明的目标表。"""
 
     if not resolution.joins:
         return ()
@@ -160,7 +170,7 @@ def validated_multi_joins(
         for edge in path.edges:
             if edge.direction != "forward" or edge.source_table != current:
                 raise RelationshipGraphUnreachableError(
-                    "多指标 Join 必须从共同事实表沿 Foreign Key（外键）正向展开"
+                    "Join 必须从事实表 Anchor 沿 Foreign Key（外键）正向展开"
                 )
             current = edge.target_table
 
@@ -219,63 +229,6 @@ def _graph_unique_keys(
             constraint_name = _text(raw, "constraint_name", index)
             result[(table, columns)] = f"{prefix}:{constraint_name}"
     return MappingProxyType(result)
-
-
-def _shortest_paths(
-    start: str,
-    target: str,
-    edges: tuple[JoinEdge, ...],
-) -> tuple[JoinPath, ...]:
-    adjacency: defaultdict[str, list[tuple[str, JoinEdge]]] = defaultdict(list)
-    for edge in edges:
-        adjacency[edge.source_table].append((edge.target_table, edge))
-        adjacency[edge.target_table].append(
-            (
-                edge.source_table,
-                JoinEdge(
-                    edge_id=edge.edge_id,
-                    source_table=edge.source_table,
-                    target_table=edge.target_table,
-                    source_columns=edge.source_columns,
-                    target_columns=edge.target_columns,
-                    constraint_name=edge.constraint_name,
-                    direction="reverse",
-                ),
-            )
-        )
-    queue: deque[tuple[str, tuple[str, ...], tuple[JoinEdge, ...]]] = deque(
-        [(start, (start,), ())]
-    )
-    found_distance: int | None = None
-    paths: list[JoinPath] = []
-    while queue:
-        current, tables, path_edges = queue.popleft()
-        distance = len(path_edges)
-        if found_distance is not None and distance > found_distance:
-            continue
-        if current == target:
-            found_distance = distance
-            paths.append(JoinPath(tables=tables, edges=path_edges))
-            continue
-        for next_table, edge in sorted(
-            adjacency.get(current, ()),
-            key=lambda item: (item[0], item[1].edge_id, item[1].direction),
-        ):
-            if next_table in tables:
-                continue
-            queue.append((next_table, (*tables, next_table), (*path_edges, edge)))
-    return tuple(paths)
-
-
-def _unique_paths(paths: tuple[JoinPath, ...]) -> tuple[JoinPath, ...]:
-    result: dict[tuple[Any, ...], JoinPath] = {}
-    for path in paths:
-        key = (
-            path.tables,
-            tuple((edge.edge_id, edge.direction) for edge in path.edges),
-        )
-        result[key] = path
-    return tuple(result.values())
 
 
 def _dedupe_edges(edges: Iterable[JoinEdge]) -> tuple[JoinEdge, ...]:

@@ -221,7 +221,32 @@ def _sales_graph(*, include_region=True, include_date=True):
                 "target_columns": ["date_key"],
             }
         )
-    return {"foreign_keys": edges}
+    primary_keys = []
+    if include_region:
+        primary_keys.append(
+            {
+                "relationship_type": "primary_key",
+                "schema_name": "mart_sales",
+                "table_name": "dim_sales_region",
+                "column_names": ["sales_region_key"],
+                "constraint_name": "pk_dim_sales_region",
+            }
+        )
+    if include_date:
+        primary_keys.append(
+            {
+                "relationship_type": "primary_key",
+                "schema_name": "mart_sales",
+                "table_name": "dim_date",
+                "column_names": ["date_key"],
+                "constraint_name": "pk_dim_date",
+            }
+        )
+    return {
+        "foreign_keys": edges,
+        "primary_keys": primary_keys,
+        "unique_constraints": [],
+    }
 
 
 def _multi_metrics():
@@ -365,20 +390,104 @@ class RetrievalTest(unittest.TestCase):
         self.assertEqual([metric.metric_name for metric in result.metrics], ["毛利率"])
         self.assertIn("SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny)", result.indicator_context)
         self.assertIn("completion_date_key", result.indicator_context)
-        self.assertIn("full_date", result.dynamic_schema)
-        self.assertIn("date_key", result.dynamic_schema)
+        dynamic_schema = json.loads(result.dynamic_schema)
+        dynamic_columns = {
+            column["column_name"] for column in dynamic_schema["columns"]
+        }
+        self.assertNotIn("full_date", dynamic_columns)
+        self.assertNotIn("date_key", dynamic_columns)
         self.assertEqual(
             result.query_context.allowed_tables,
             frozenset(
                 {
                     "mart_sales.fct_sales_order_line",
                     "mart_sales.dim_sales_region",
-                    "mart_sales.dim_date",
                 }
             ),
         )
         self.assertTrue(all("table_name" in item for item in store.column_filters))
-        self.assertEqual(len(result.join_path.joins), 2)
+        self.assertEqual(
+            [edge.edge_id for edge in result.join_path.joins],
+            ["fk_region"],
+        )
+
+    def test_explicit_date_uses_metric_time_field_and_date_join(self) -> None:
+        tables = (
+            _table("table:fct", "fct_sales_order_line", 0.95),
+            _table("table:date", "dim_date", 0.85, page_content="完成日期维度"),
+        )
+        columns = {
+            "fct_sales_order_line": (
+                _column("fct_sales_order_line", "net_sales_amount_cny", 0.95),
+                _column("fct_sales_order_line", "sales_cost_amount_cny", 0.94),
+                _column("fct_sales_order_line", "completion_date_key", 0.93),
+                _column("fct_sales_order_line", "order_status", 0.92),
+            ),
+            "dim_date": (
+                _column("dim_date", "date_key", 0.90),
+                _column("dim_date", "full_date", 0.89),
+            ),
+        }
+        store = _FakeStore(
+            tables,
+            columns,
+            (_metric("毛利率", 0.97),),
+        )
+
+        result = OnlineRetriever(
+            _FakeRuntime(
+                _snapshot(
+                    store,
+                    _FakeEmbedding(),
+                    _sales_graph(include_region=False, include_date=True),
+                )
+            )
+        ).retrieve("查询 2025 年毛利率")
+
+        self.assertEqual(result.status, RetrievalStatus.SUCCESS)
+        self.assertEqual(
+            [edge.edge_id for edge in result.join_path.joins],
+            ["fk_completion_date"],
+        )
+        dynamic_schema = json.loads(result.dynamic_schema)
+        self.assertEqual(
+            {table["table_name"] for table in dynamic_schema["tables"]},
+            {"fct_sales_order_line", "dim_date"},
+        )
+        self.assertIn(
+            "full_date",
+            {column["column_name"] for column in dynamic_schema["columns"]},
+        )
+
+    def test_explicit_date_without_date_table_stops_before_context(self) -> None:
+        tables = (_table("table:fct", "fct_sales_order_line", 0.95),)
+        columns = {
+            "fct_sales_order_line": (
+                _column("fct_sales_order_line", "net_sales_amount_cny", 0.95),
+                _column("fct_sales_order_line", "sales_cost_amount_cny", 0.94),
+                _column("fct_sales_order_line", "completion_date_key", 0.93),
+                _column("fct_sales_order_line", "order_status", 0.92),
+            ),
+        }
+        store = _FakeStore(
+            tables,
+            columns,
+            (_metric("毛利率", 0.97),),
+        )
+
+        result = OnlineRetriever(
+            _FakeRuntime(
+                _snapshot(
+                    store,
+                    _FakeEmbedding(),
+                    _sales_graph(include_region=False, include_date=True),
+                )
+            )
+        ).retrieve("查询 2025 年毛利率")
+
+        self.assertEqual(result.status, RetrievalStatus.PARTIAL_UNREACHABLE)
+        self.assertIsNone(result.query_context)
+        self.assertIn("dim_date", result.warnings[0])
 
     def test_entity_query_can_continue_without_metric(self) -> None:
         tables = (_table("table:customer", "dim_customer", 0.90),)
@@ -464,7 +573,17 @@ class RetrievalTest(unittest.TestCase):
                                 "target_table": "dim_sales_region",
                                 "target_columns": ["sales_region_key"],
                             }
-                        ]
+                        ],
+                        "primary_keys": [
+                            {
+                                "relationship_type": "primary_key",
+                                "schema_name": "mart_sales",
+                                "table_name": "dim_sales_region",
+                                "column_names": ["sales_region_key"],
+                                "constraint_name": "pk_dim_sales_region",
+                            }
+                        ],
+                        "unique_constraints": [],
                     },
                 )
             ),
@@ -515,7 +634,17 @@ class RetrievalTest(unittest.TestCase):
                                 "target_table": "dim_product",
                                 "target_columns": ["product_key"],
                             }
-                        ]
+                        ],
+                        "primary_keys": [
+                            {
+                                "relationship_type": "primary_key",
+                                "schema_name": "mart_sales",
+                                "table_name": "dim_product",
+                                "column_names": ["product_key"],
+                                "constraint_name": "pk_dim_product",
+                            }
+                        ],
+                        "unique_constraints": [],
                     },
                 )
             )
@@ -635,7 +764,7 @@ class RetrievalTest(unittest.TestCase):
             RequestShape.EXPLICIT_MULTI,
         )
         self.assertEqual(len(result.query_context.metric_constraints), 3)
-        self.assertEqual(len(result.query_context.join_constraints), 2)
+        self.assertEqual(len(result.query_context.join_constraints), 1)
         self.assertTrue(
             all(
                 item.direction == "forward"
@@ -647,7 +776,7 @@ class RetrievalTest(unittest.TestCase):
                 item.uniqueness_basis
                 for item in result.query_context.join_constraints
             },
-            {"primary_key:pk_dim_customer", "primary_key:pk_dim_date"},
+            {"primary_key:pk_dim_customer"},
         )
         fact_columns = result.query_context.allowed_columns[
             "mart_sales.fct_sales_order_line"

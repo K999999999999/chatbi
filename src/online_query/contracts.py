@@ -217,7 +217,7 @@ class JoinEdge:
 
 @dataclass(frozen=True, slots=True)
 class JoinConstraint:
-    """多指标 SQL 允许使用的一条安全 Join 约束。"""
+    """SQL 允许使用的一条安全 Join 约束。"""
 
     source_table: str
     source_columns: tuple[str, ...]
@@ -241,7 +241,7 @@ class QueryContext:
 
 @dataclass(frozen=True, slots=True)
 class JoinPath:
-    """从 Anchor 到目标表的一条最短合法路径。"""
+    """从 Anchor 到目标表的一条直接合法路径。"""
 
     tables: tuple[str, ...]
     edges: tuple[JoinEdge, ...]

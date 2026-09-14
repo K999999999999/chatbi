@@ -316,7 +316,7 @@ SELECT c.customer_type,
        SUM(f.net_sales_amount_cny) AS net_sales_cny,
        COUNT(DISTINCT f.order_id) AS completed_order_count
 FROM mart_sales.fct_sales_order_line AS f
-JOIN mart_sales.dim_customer AS c
+LEFT JOIN mart_sales.dim_customer AS c
   ON f.customer_key = c.customer_key
 WHERE f.order_status = 'completed'
 GROUP BY c.customer_type

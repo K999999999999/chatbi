@@ -58,6 +58,8 @@ def validate_sql(candidate: str, context: QueryContext) -> ValidatedSQL:
     _validate_columns(expression, context)
     if len(context.metric_constraints) >= 2:
         _validate_multi_metric_expression(expression, context)
+    elif expression.args.get("joins"):
+        _validate_join_constraints(expression, context)
 
     return ValidatedSQL(sql=sql)
 
@@ -175,8 +177,8 @@ def _validate_multi_metric_joins(
     for join in joins:
         side = str(join.args.get("side") or "").upper()
         kind = str(join.args.get("kind") or "").upper()
-        if side in {"RIGHT", "FULL"} or kind == "CROSS":
-            raise SQLRejectedError("多指标 SQL 只允许从事实表正向安全 Join")
+        if side != "LEFT" or kind == "CROSS":
+            raise SQLRejectedError("多指标 SQL 只允许使用 LEFT JOIN")
         joined_table = join.args.get("this")
         if not isinstance(joined_table, exp.Table):
             raise SQLRejectedError("多指标 SQL 只能 Join 物理表")
@@ -206,6 +208,61 @@ def _validate_multi_metric_joins(
         for table in table_refs
     ):
         raise SQLRejectedError("多指标 SQL 的 Join 目标不在认证关系中")
+
+
+def _validate_join_constraints(
+    expression: exp.Select,
+    context: QueryContext,
+) -> None:
+    """校验实体/单指标查询使用的直接认证 Join。"""
+
+    joins = tuple(expression.args.get("joins") or ())
+    constraints = tuple(
+        constraint
+        for constraint in context.join_constraints
+        if constraint.direction.casefold() == "forward"
+    )
+    if not joins or not constraints:
+        raise SQLRejectedError("SQL Join 缺少认证的 Relationship Graph 事实")
+
+    from_clause = expression.args.get("from_")
+    if from_clause is None or not isinstance(from_clause.this, exp.Table):
+        raise SQLRejectedError("SQL Join 必须从事实表 Anchor 开始")
+    base_table = _qualified_table_ref(from_clause.this)
+    source_tables = {constraint.source_table.casefold() for constraint in constraints}
+    if len(source_tables) != 1 or base_table.casefold() not in source_tables:
+        raise SQLRejectedError("SQL Join 的主表不是认证事实表 Anchor")
+
+    bindings = _table_bindings(expression)
+    table_refs = tuple(
+        _qualified_table_ref(table)
+        for table in expression.find_all(exp.Table)
+    )
+    if len(table_refs) != 1 + len(joins):
+        raise SQLRejectedError("SQL 表必须通过显式认证 Join 连接")
+
+    used: set[int] = set()
+    for join in joins:
+        side = str(join.args.get("side") or "").upper()
+        kind = str(join.args.get("kind") or "").upper()
+        if side != "LEFT" or kind == "CROSS":
+            raise SQLRejectedError("事实表到维表只允许使用 LEFT JOIN")
+        joined_table = join.args.get("this")
+        condition = join.args.get("on")
+        if not isinstance(joined_table, exp.Table) or condition is None:
+            raise SQLRejectedError("SQL Join 必须是带 ON 的物理表连接")
+        target_table = _qualified_table_ref(joined_table)
+        actual_pairs = _join_pairs(condition, bindings, context)
+        matches = [
+            (index, constraint)
+            for index, constraint in enumerate(constraints)
+            if index not in used
+            and constraint.target_table.casefold() == target_table.casefold()
+            and actual_pairs == _constraint_pairs(constraint)
+        ]
+        if len(matches) != 1:
+            raise SQLRejectedError("SQL Join 使用了未认证或错误的直接关系")
+        used.add(matches[0][0])
 
 
 def _validate_multi_metric_filters(

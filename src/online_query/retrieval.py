@@ -43,7 +43,7 @@ from .relationship_graph import (
     parse_edges as _graph_edges,
     resolve_join_paths as _resolve_join_paths,
     validate_time_edge as _validate_time_edge,
-    validated_multi_joins as _validated_multi_joins,
+    validated_join_constraints as _validated_join_constraints,
 )
 from .resource_retrieval import (
     ResourceRetrievalContractError,
@@ -60,11 +60,15 @@ from .resource_retrieval import (
     _required_columns_many,
     _table_hits,
 )
-from .retrieval_context import _synthetic_table_hit, assemble_context
+from .retrieval_context import assemble_context
 
 
 class RetrievalContractError(RuntimeError):
     """检索结果或已发布资产不满足在线契约。"""
+
+
+class RequiredCandidateUnavailableError(RetrievalContractError):
+    """当前问题所需的业务候选资源不可用，属于可拒答而非技术故障。"""
 
 
 _GENERIC_GROUPING_TERMS = frozenset(
@@ -315,7 +319,11 @@ class OnlineRetriever:
             )
 
         try:
-            time_field = _parse_time_field(selected_tuple[0]) if selected_tuple else None
+            time_field = (
+                _parse_time_field(selected_tuple[0])
+                if selected_tuple and _requires_date_context(question)
+                else None
+            )
             required = (
                 _required_columns_many(selected_tuple, time_field)
                 if selected_tuple
@@ -379,6 +387,17 @@ class OnlineRetriever:
                 str(exc),
                 asset_version=snapshot.asset_version,
                 evidence=evidence,
+                request=request,
+                metric_constraints=constraints,
+            )
+        except RequiredCandidateUnavailableError as exc:
+            return _result(
+                RetrievalStatus.PARTIAL_UNREACHABLE,
+                snapshot.asset_version,
+                tables=table_hits,
+                metrics=selected_tuple,
+                evidence=evidence,
+                warnings=(str(exc),),
                 request=request,
                 metric_constraints=constraints,
             )
@@ -452,14 +471,10 @@ class OnlineRetriever:
                     time_edge=time_field.edge_id if time_field else None,
                     time_target=time_field.target_table if time_field else None,
                 )
-                join_constraints = (
-                    _validated_multi_joins(
-                        anchor,
-                        resolution,
-                        snapshot.relationship_graph,
-                    )
-                    if len(selected_tuple) >= 2
-                    else ()
+                join_constraints = _validated_join_constraints(
+                    anchor,
+                    resolution,
+                    snapshot.relationship_graph,
                 )
                 _safe_enrich_current(
                     self._trace_recorder,
@@ -785,25 +800,42 @@ def _candidate_table_hits(
     # “按……”是 V1 唯一的轻量维度提示；其他 TABLE 命中只保留为证据，
     # 避免把向量误召回的表强行带入 Relationship Graph。
     grouping_text = _grouping_text(question)
-    names.update(_grouping_table_names(grouping_text, table_hits, metric_table))
+    grouping_names = _grouping_table_names(
+        grouping_text,
+        table_hits,
+        metric_table,
+    )
+    if grouping_text and not grouping_names:
+        raise RequiredCandidateUnavailableError(
+            "用户请求的分组维度没有被 TABLE 候选命中"
+        )
+    names.update(grouping_names)
 
     by_name = {hit.qualified_name: hit for hit in table_hits}
     candidates: list[TableHit] = []
     for name in sorted(names):
         existing = by_name.get(name)
-        if existing is not None:
-            candidates.append(existing)
-        else:
-            schema, table = name.split(".", maxsplit=1)
-            candidates.append(
-                _synthetic_table_hit(
-                    schema,
-                    table,
-                    table_role="relationship_bridge",
-                    page_content=f"关系图必需表：{name}",
-                )
+        if existing is None:
+            raise RequiredCandidateUnavailableError(
+                f"必需表没有被 TABLE 候选命中：{name}"
             )
+        if _is_intermediate_table(existing):
+            raise RequiredCandidateUnavailableError(
+                f"V1 不支持中间表或桥接表：{name}"
+            )
+        candidates.append(existing)
     return tuple(candidates)
+
+
+def _is_intermediate_table(table: TableHit) -> bool:
+    role = table.table_role.strip().casefold().replace("-", "_")
+    return role in {
+        "bridge",
+        "bridge_table",
+        "intermediate",
+        "intermediate_table",
+        "relationship_bridge",
+    }
 
 
 def _grouping_table_names(
@@ -827,6 +859,16 @@ def _grouping_text(question: str) -> str:
         question,
     )
     return match.group("grouping").strip() if match is not None else ""
+
+
+def _requires_date_context(question: str) -> bool:
+    """只有问题明确涉及日期过滤或分组时才启用指标 time_field。"""
+
+    return re.search(
+        r"(?:20\d{2}\s*年|\d{1,2}\s*月|第[一二三四1-4]\s*季度|"
+        r"日期|时间|今年|去年|本月|上月|今日|昨天|截止)",
+        question,
+    ) is not None
 
 
 def _table_content_matches(question: str, page_content: str) -> bool:

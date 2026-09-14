@@ -85,46 +85,10 @@ def _final_table_hits(
     final: list[TableHit] = []
     for name in sorted(name for name in names if name):
         existing = by_name.get(name)
-        if existing is not None:
-            final.append(existing)
-            continue
-        schema, table = name.split(".", maxsplit=1)
-        final.append(
-            _synthetic_table_hit(
-                schema,
-                table,
-                table_role="relationship_bridge",
-                page_content=f"关系图桥接表：{name}",
-            )
-        )
+        if existing is None:
+            raise ValueError(f"关系图返回了未被 TABLE 候选命中的表：{name}")
+        final.append(existing)
     return tuple(final)
-
-
-def _synthetic_table_hit(
-    schema_name: str,
-    table_name: str,
-    *,
-    table_role: str,
-    page_content: str,
-) -> TableHit:
-    qualified_name = f"{schema_name}.{table_name}"
-    return TableHit(
-        document_id=f"graph:{qualified_name}",
-        schema_name=schema_name,
-        table_name=table_name,
-        table_role=table_role,
-        score=0.0,
-        rank=0,
-        metadata=MappingProxyType(
-            {
-                "doc_type": "TABLE",
-                "schema_name": schema_name,
-                "table_name": table_name,
-                "table_type": table_role,
-            }
-        ),
-        page_content=page_content,
-    )
 
 
 def _final_column_hits(
@@ -154,7 +118,7 @@ def _final_column_hits(
             for column in columns:
                 by_identity.setdefault(
                     (table, column),
-                    _synthetic_column(table, column, edge.edge_id),
+                    _graph_join_column(table, column, edge.edge_id),
                 )
     return tuple(
         sorted(
@@ -164,7 +128,7 @@ def _final_column_hits(
     )
 
 
-def _synthetic_column(table: str, column: str, edge_id: str) -> ColumnHit:
+def _graph_join_column(table: str, column: str, edge_id: str) -> ColumnHit:
     schema, table_name = table.split(".", maxsplit=1)
     return ColumnHit(
         document_id=f"graph:{table}.{column}",
