@@ -36,6 +36,21 @@ class LLMTest(unittest.TestCase):
             use_responses_api=False,
         )
 
+    @patch("src.online_query.llm.ChatOpenAI")
+    def test_from_env_caps_timeout_at_thirty_seconds(
+        self,
+        chat_open_ai: Mock,
+    ) -> None:
+        LangChainSQLGenerator.from_env(
+            {
+                "LLM_API_KEY": "test-key",
+                "LLM_MODEL": "test-model",
+                "LLM_TIMEOUT_SECONDS": "60",
+            }
+        )
+
+        self.assertEqual(chat_open_ai.call_args.kwargs["timeout"], 30.0)
+
     def test_generate_returns_trimmed_sql(self) -> None:
         model = Mock()
         model.invoke.return_value = SimpleNamespace(content="  SELECT 1;  ")
@@ -102,6 +117,15 @@ class LLMTest(unittest.TestCase):
                     "LLM_API_KEY": "test-key",
                     "LLM_MODEL": "test-model",
                     "LLM_TIMEOUT_SECONDS": "not-a-number",
+                }
+            )
+
+        with self.assertRaisesRegex(LLMError, "配置无效"):
+            LangChainSQLGenerator.from_env(
+                {
+                    "LLM_API_KEY": "test-key",
+                    "LLM_MODEL": "test-model",
+                    "LLM_TIMEOUT_SECONDS": "nan",
                 }
             )
 

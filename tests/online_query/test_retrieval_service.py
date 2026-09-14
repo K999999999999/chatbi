@@ -78,6 +78,24 @@ class RetrievalServiceTest(unittest.TestCase):
         self.generator.generate.assert_not_called()
         self.executor.execute.assert_not_called()
 
+    def test_missing_relationship_or_candidate_returns_cannot_answer_before_llm(self) -> None:
+        provider = Mock()
+        service = self._service(provider)
+
+        for status in (
+            RetrievalStatus.NO_TABLE_HIT,
+            RetrievalStatus.NO_METRIC_HIT,
+            RetrievalStatus.PARTIAL_UNREACHABLE,
+            RetrievalStatus.AMBIGUOUS,
+        ):
+            with self.subTest(status=status):
+                provider.retrieve.return_value = OnlineRetrievalResult(status=status)
+                result = service.query(QueryRequest(question="查询订单"))
+                self._assert_failure(result, QueryErrorCode.CANNOT_ANSWER)
+
+        self.generator.generate.assert_not_called()
+        self.executor.execute.assert_not_called()
+
     def test_technical_retrieval_failure_returns_context_error(self) -> None:
         provider = Mock()
         provider.retrieve.return_value = OnlineRetrievalResult(
@@ -98,6 +116,20 @@ class RetrievalServiceTest(unittest.TestCase):
         self.executor.execute.assert_not_called()
         self.assertIn("status=RETRIEVAL_UNAVAILABLE", logs.output[0])
         self.assertIn("reason=qdrant unavailable", logs.output[0])
+
+    def test_asset_snapshot_failure_returns_context_error_without_llm(self) -> None:
+        provider = Mock()
+        provider.retrieve.return_value = OnlineRetrievalResult(
+            status=RetrievalStatus.ASSET_UNAVAILABLE,
+            warnings=("asset snapshot invalid",),
+        )
+        service = self._service(provider)
+
+        result = service.query(QueryRequest(question="查询订单"))
+
+        self._assert_failure(result, QueryErrorCode.CONTEXT_ERROR)
+        self.generator.generate.assert_not_called()
+        self.executor.execute.assert_not_called()
 
     def test_online_retrieval_failure_does_not_use_static_context(self) -> None:
         provider = Mock()
