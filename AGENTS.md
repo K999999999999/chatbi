@@ -16,11 +16,11 @@
 
 ### Issue tracker
 
-Issues and specs for this repo live as GitHub issues; use the `gh` CLI for all operations. See `docs/agents/issue-tracker.md`.
+本仓库的 Issue 和 Spec 统一存放在 GitHub Issues 中，所有操作使用 `gh` CLI。详见 `docs/agents/issue-tracker.md`。
 
 ### Domain docs
 
-This is a single-context repo. Read `CONTEXT.md` and relevant ADRs under `docs/adr/` before domain-sensitive work. See `docs/agents/domain.md`.
+本仓库采用 single-context 结构。处理领域相关任务前，读取 `CONTEXT.md` 和 `docs/adr/` 下相关 ADR。详见 `docs/agents/domain.md`。
 
 ## 1. Core Principles
 
