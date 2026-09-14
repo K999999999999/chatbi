@@ -199,7 +199,7 @@ class T2ObservabilityTest(unittest.TestCase):
         )
         self.assertEqual(root.attributes["chatbi.outcome"], TraceOutcome.TECHNICAL_FAILURE.value)
 
-    def test_retrieval_allow_static_records_fallback_without_changing_result(self) -> None:
+    def test_retrieval_technical_failure_is_fail_closed_without_static_fallback(self) -> None:
         provider = Mock()
         provider.retrieve.return_value = OnlineRetrievalResult(
             status=RetrievalStatus.RETRIEVAL_UNAVAILABLE,
@@ -210,7 +210,9 @@ class T2ObservabilityTest(unittest.TestCase):
             QueryRequest(question="查询订单", request_id="req-fallback")
         )
 
-        self.assertIsInstance(result, QuerySuccess)
+        self._assert_failure(result, QueryErrorCode.CONTEXT_ERROR)
+        self.generator.generate.assert_not_called()
+        self.executor.execute.assert_not_called()
         retrieval = next(
             span
             for span in self.exporter.get_finished_spans()
@@ -222,17 +224,13 @@ class T2ObservabilityTest(unittest.TestCase):
         )
         self.assertEqual(
             retrieval.attributes["chatbi.retrieval.fallback_policy"],
-            FallbackPolicy.ALLOW_STATIC.value,
+            FallbackPolicy.FAIL_CLOSED.value,
         )
         self.assertEqual(retrieval.attributes["chatbi.retrieval.status"], "RETRIEVAL_UNAVAILABLE")
-        self.assertTrue(retrieval.attributes["chatbi.retrieval.fallback_used"])
-        self.assertEqual(
-            retrieval.attributes["chatbi.retrieval.context_source"],
-            "static_fallback",
-        )
+        self.assertFalse(retrieval.attributes["chatbi.retrieval.fallback_used"])
         self.assertEqual(
             retrieval.attributes["chatbi.outcome"],
-            TraceOutcome.FALLBACK_SUCCESS.value,
+            TraceOutcome.TECHNICAL_FAILURE.value,
         )
         self.assertNotIn("provider detail must not enter trace", repr(retrieval))
 

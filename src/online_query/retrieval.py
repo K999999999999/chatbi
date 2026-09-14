@@ -1,6 +1,6 @@
 """Online Retrieval（在线检索）三路检索、关系解析和上下文组装。"""
 
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import replace
 import re
@@ -8,7 +8,6 @@ from typing import Any
 
 from src.observability.contracts import TraceRecorder
 from src.observability.tracing import create_trace_recorder
-from src.rag_offline.documents import COLUMN_COLLECTION, METRIC_COLLECTION, TABLE_COLLECTION
 from src.rag_offline.embedding import EmbeddingError
 from src.rag_offline.qdrant_store import QdrantStoreError, SearchHit
 
@@ -53,7 +52,7 @@ from .resource_retrieval import (
     _column_hits,
     _column_query,
     _contains_required_columns,
-    _is_metric_request,
+    _has_metric_intent,
     _metric_data_source,
     _metric_hits,
     _missing_required_column_details,
@@ -125,6 +124,7 @@ class OnlineRetriever:
         except Exception as exc:
             return _failure(RetrievalStatus.ASSET_UNAVAILABLE, str(exc))
 
+        metric_intent = _has_metric_intent(question, snapshot.metric_catalog)
         try:
             query_embedding = self._embed_query(snapshot, question)
             table_hits = _table_hits(
@@ -141,17 +141,21 @@ class OnlineRetriever:
                     **kwargs,
                 ),
             )
-            metric_hits = _metric_hits(
-                snapshot,
-                query_embedding,
-                self._config,
-                search=lambda collection_name, query, **kwargs: self._search(
-                    "metric.search",
+            metric_hits = (
+                _metric_hits(
                     snapshot,
-                    collection_name,
-                    query,
-                    **kwargs,
-                ),
+                    query_embedding,
+                    self._config,
+                    search=lambda collection_name, query, **kwargs: self._search(
+                        "metric.search",
+                        snapshot,
+                        collection_name,
+                        query,
+                        **kwargs,
+                    ),
+                )
+                if metric_intent
+                else ()
             )
         except EmbeddingError as exc:
             return _failure(RetrievalStatus.EMBEDDING_UNAVAILABLE, str(exc), asset_version=snapshot.asset_version)
@@ -169,7 +173,7 @@ class OnlineRetriever:
             return _result(RetrievalStatus.NO_TABLE_HIT, snapshot.asset_version, evidence=evidence, warnings=("TABLE 检索没有超过阈值的有效候选",))
 
         metric = None
-        if _is_metric_request(question, metric_hits):
+        if metric_intent:
             metric, metric_error = _select_metric(question, metric_hits)
             if metric_error is not None:
                 return _result(metric_error, snapshot.asset_version, tables=table_hits, evidence=evidence, warnings=("METRIC 候选无法唯一确定",))
@@ -1042,7 +1046,7 @@ def _result(
         fallback_policy=(
             request.fallback_policy
             if request is not None
-            else FallbackPolicy.ALLOW_STATIC
+            else FallbackPolicy.FAIL_CLOSED
         ),
         internal_reason=internal_reason,
         asset_version=asset_version,

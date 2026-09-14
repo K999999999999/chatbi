@@ -78,7 +78,7 @@ class RetrievalServiceTest(unittest.TestCase):
         self.generator.generate.assert_not_called()
         self.executor.execute.assert_not_called()
 
-    def test_technical_retrieval_failure_falls_back_to_static_context(self) -> None:
+    def test_technical_retrieval_failure_returns_context_error(self) -> None:
         provider = Mock()
         provider.retrieve.return_value = OnlineRetrievalResult(
             status=RetrievalStatus.RETRIEVAL_UNAVAILABLE,
@@ -93,11 +93,45 @@ class RetrievalServiceTest(unittest.TestCase):
         with self.assertLogs("src.online_query.service", level="WARNING") as logs:
             result = service.query(QueryRequest(question="查询订单"))
 
-        self.assertIsInstance(result, QuerySuccess)
-        prompt = self.generator.generate.call_args.args[0]
-        self.assertIn("STATIC CONTEXT", prompt)
+        self._assert_failure(result, QueryErrorCode.CONTEXT_ERROR)
+        self.generator.generate.assert_not_called()
+        self.executor.execute.assert_not_called()
         self.assertIn("status=RETRIEVAL_UNAVAILABLE", logs.output[0])
         self.assertIn("reason=qdrant unavailable", logs.output[0])
+
+    def test_online_retrieval_failure_does_not_use_static_context(self) -> None:
+        provider = Mock()
+        provider.retrieve.return_value = OnlineRetrievalResult(
+            status=RetrievalStatus.RETRIEVAL_UNAVAILABLE,
+            asset_version="build-v2",
+            warnings=("qdrant unavailable",),
+        )
+        service = self._service(provider)
+
+        result = service.query(QueryRequest(question="查询订单"))
+
+        self._assert_failure(result, QueryErrorCode.CONTEXT_ERROR)
+        self.generator.generate.assert_not_called()
+        self.executor.execute.assert_not_called()
+
+    def test_online_retrieval_does_not_load_static_context(self) -> None:
+        provider = Mock()
+        provider.retrieve.return_value = OnlineRetrievalResult(
+            status=RetrievalStatus.SUCCESS,
+            query_context=self.dynamic_context,
+        )
+        loader = Mock(side_effect=AssertionError("在线模式不应加载静态上下文"))
+        service = OnlineQueryService(
+            self.generator,
+            self.executor,
+            context_loader=loader,
+            retrieval_provider=provider,
+        )
+
+        result = service.query(QueryRequest(question="查询客户"))
+
+        self.assertIsInstance(result, QuerySuccess)
+        loader.assert_not_called()
 
     def test_multi_metric_technical_failure_does_not_fallback_to_static_context(self) -> None:
         provider = Mock()
@@ -136,7 +170,7 @@ class RetrievalServiceTest(unittest.TestCase):
         self.generator.generate.assert_not_called()
         self.executor.execute.assert_not_called()
 
-    def test_multi_metric_success_without_constraints_stops_before_llm(self) -> None:
+    def test_successful_provider_context_is_used_without_service_side_shape_branch(self) -> None:
         provider = Mock()
         provider.retrieve.return_value = OnlineRetrievalResult(
             status=RetrievalStatus.SUCCESS,
@@ -149,9 +183,9 @@ class RetrievalServiceTest(unittest.TestCase):
             QueryRequest(question="按客户类型统计销售额和毛利率")
         )
 
-        self._assert_failure(result, QueryErrorCode.CANNOT_ANSWER)
-        self.generator.generate.assert_not_called()
-        self.executor.execute.assert_not_called()
+        self.assertIsInstance(result, QuerySuccess)
+        self.generator.generate.assert_called_once()
+        self.executor.execute.assert_called_once()
 
     def test_multi_metric_success_runs_guard_before_database(self) -> None:
         provider = Mock()

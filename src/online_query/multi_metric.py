@@ -42,21 +42,16 @@ class _ListItem:
 
 
 def build_retrieval_request(question: str) -> RetrievalRequest:
-    """在读取发布资产前确定请求形态和技术失败回退策略。"""
+    """在读取发布资产前确定请求形态；在线技术故障统一 fail-closed。"""
 
     if not isinstance(question, str) or not question.strip():
         raise ValueError("检索问题不能为空")
     normalized = question.strip()
     shape = classify_request_shape(normalized)
-    policy = (
-        FallbackPolicy.ALLOW_STATIC
-        if shape == RequestShape.BASELINE
-        else FallbackPolicy.FAIL_CLOSED
-    )
     return RetrievalRequest(
         question=normalized,
         request_shape=shape,
-        fallback_policy=policy,
+        fallback_policy=FallbackPolicy.FAIL_CLOSED,
     )
 
 

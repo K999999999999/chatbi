@@ -29,6 +29,27 @@ class ResourceRetrievalContractError(RuntimeError):
 
 
 _METRIC_EXPRESSIONS = ("金额", "数量", "总额", "平均值", "占比", "率", "统计")
+_METRIC_INTENT_TERMS = (
+    "已完成订单数",
+    "已完成订单数量",
+    "完成订单数",
+    "销售额",
+    "净销售额",
+    "营收",
+    "销售成本",
+    "人民币成本",
+    "毛利率",
+    "毛利润率",
+    "毛利",
+    "毛利润",
+    "成本",
+    "金额",
+    "数量",
+    "总额",
+    "平均值",
+    "占比",
+    "统计",
+)
 _TIME_FIELD_PATTERN = re.compile(r"^\s*(?P<source>[^\s]+)\s*->\s*(?P<target>[^\s]+)\s*$")
 
 
@@ -39,6 +60,26 @@ class _TimeField:
     target_table: str
     filter_column: str
     edge_id: str = ""
+
+
+def _has_metric_intent(
+    question: str,
+    catalog: Any | None = None,
+) -> bool:
+    """判断是否需要进入 METRIC 路线，不把普通实体查询误判为指标查询。"""
+
+    normalized_question = _normalize(question)
+    if any(
+        _contains_normalized(normalized_question, term)
+        for term in _METRIC_INTENT_TERMS
+    ):
+        return True
+    entries = getattr(catalog, "entries", ())
+    return any(
+        _contains_normalized(normalized_question, label)
+        for entry in entries
+        for label in (entry.metric_name, *entry.aliases)
+    )
 
 def _table_hits(
     snapshot: AssetSnapshot,
@@ -109,17 +150,12 @@ def _column_hits(
     embed_query: Callable[[str], Any] | None = None,
     search: Callable[..., Iterable[SearchHit]] | None = None,
 ) -> tuple[ColumnHit, ...]:
-    # Metric formula/time_field 补充文本需要单独向量化；同一请求仍只保留一条列检索路线。
+    # 所有字段只能来自候选表范围内的一次语义路线；不做业务字段补充。
+    del required, grouping_query, grouping_tables
     embed = embed_query or snapshot.embedding_provider.embed_query
     search_hits = search or snapshot.qdrant_store.search
     embedded_query = embed(column_query)
-    grouping_embedding = (
-        embed(grouping_query)
-        if grouping_query and grouping_tables
-        else None
-    )
     raw: list[ColumnHit] = []
-    grouping_priority: list[ColumnHit] = []
     seen: set[str] = set()
     for table in table_hits:
         hits = search_hits(
@@ -136,49 +172,11 @@ def _column_hits(
             if column.document_id not in seen:
                 seen.add(column.document_id)
                 raw.append(column)
-        if grouping_embedding is not None and table.qualified_name in grouping_tables:
-            grouped_hits = search_hits(
-                snapshot.collection_names[COLUMN_COLLECTION],
-                grouping_embedding,
-                limit=min(2, config.column_top_k),
-                filter_payload={
-                    "schema_name": table.schema_name,
-                    "table_name": table.table_name,
-                },
-            )
-            for hit in _filtered_hits(grouped_hits, config.column_score_threshold)[:2]:
-                column = _to_column_hit(hit, 0)
-                if column.document_id not in seen:
-                    seen.add(column.document_id)
-                    raw.append(column)
-                grouping_priority.append(column)
-        for required_column in required.get(table.qualified_name, frozenset()):
-            exact_hits = search_hits(
-                snapshot.collection_names[COLUMN_COLLECTION],
-                embedded_query,
-                limit=1,
-                filter_payload={
-                    "schema_name": table.schema_name,
-                    "table_name": table.table_name,
-                    "column_name": required_column,
-                },
-            )
-            for hit in _filtered_hits(exact_hits, config.column_score_threshold):
-                column = _to_column_hit(hit, 0)
-                if column.document_id not in seen:
-                    seen.add(column.document_id)
-                    raw.append(column)
     raw.sort(key=lambda item: (-item.score, item.document_id))
     selected = {
         (hit.qualified_table, hit.column_name): hit
         for hit in raw[: config.column_top_k]
     }
-    for hit in raw:
-        key = (hit.qualified_table, hit.column_name)
-        if hit.column_name in required.get(hit.qualified_table, frozenset()):
-            selected[key] = hit
-    for hit in grouping_priority:
-        selected[(hit.qualified_table, hit.column_name)] = hit
     ordered = sorted(selected.values(), key=lambda item: (-item.score, item.document_id))
     return tuple(_re_rank_column(hit, rank) for rank, hit in enumerate(ordered, 1))
 

@@ -135,9 +135,9 @@ class RetrievalStatus(StrEnum):
 class RetrievalConfig:
     """V1 在线 Dense Retrieval（稠密检索）配置。"""
 
-    table_top_k: int = 3
-    column_top_k: int = 12
-    metric_top_k: int = 3
+    table_top_k: int = 5
+    column_top_k: int = 10
+    metric_top_k: int = 5
     table_score_threshold: float = 0.30
     column_score_threshold: float = 0.25
     metric_score_threshold: float = 0.30
@@ -284,7 +284,7 @@ class OnlineRetrievalResult:
 
     status: RetrievalStatus
     request_shape: RequestShape = RequestShape.BASELINE
-    fallback_policy: FallbackPolicy = FallbackPolicy.ALLOW_STATIC
+    fallback_policy: FallbackPolicy = FallbackPolicy.FAIL_CLOSED
     internal_reason: str | None = None
     asset_version: str | None = None
     tables: tuple[TableHit, ...] = ()

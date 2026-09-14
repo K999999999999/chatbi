@@ -181,7 +181,7 @@ class MultiMetricPlanningTest(unittest.TestCase):
         plan = plan_multi_metric_request(request, _catalog(_entry("毛利率")))
 
         self.assertEqual(plan.status, MetricPlanStatus.NOT_MULTI)
-        self.assertEqual(request.fallback_policy, FallbackPolicy.ALLOW_STATIC)
+        self.assertEqual(request.fallback_policy, FallbackPolicy.FAIL_CLOSED)
 
 
 def _entry(

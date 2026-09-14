@@ -429,7 +429,39 @@ class RetrievalTest(unittest.TestCase):
         self.assertEqual(result.metrics, ())
         self.assertEqual(result.indicator_context, "")
 
-    def test_grouping_column_is_preserved_when_fact_columns_fill_global_top_k(self) -> None:
+    def test_entity_query_skips_metric_collection(self) -> None:
+        tables = (_table("table:customer", "dim_customer", 0.90),)
+        columns = {
+            "dim_customer": (_column("dim_customer", "customer_id", 0.90),)
+        }
+        store = _CombinedMetricStore(
+            tables,
+            columns,
+            (_metric("人民币净销售额", 0.95),),
+        )
+
+        result = OnlineRetriever(
+            _FakeRuntime(_snapshot(store, _FakeEmbedding(), {"foreign_keys": []}))
+        ).retrieve("列出所有客户")
+
+        self.assertEqual(result.status, RetrievalStatus.SUCCESS)
+        self.assertEqual(store.metric_query_count, 0)
+
+    def test_metric_intent_with_no_metric_hit_stops_before_context(self) -> None:
+        tables = (_table("table:customer", "dim_customer", 0.90),)
+        columns = {
+            "dim_customer": (_column("dim_customer", "customer_id", 0.90),)
+        }
+        store = _CombinedMetricStore(tables, columns, ())
+
+        result = OnlineRetriever(
+            _FakeRuntime(_snapshot(store, _FakeEmbedding(), {"foreign_keys": []}))
+        ).retrieve("查询退货金额")
+
+        self.assertEqual(result.status, RetrievalStatus.NO_METRIC_HIT)
+        self.assertIsNone(result.query_context)
+
+    def test_column_candidates_use_global_limit_without_grouping_supplement(self) -> None:
         tables = (
             _table("table:fct", "fct_sales_order_line", 0.95),
             _table(
@@ -476,9 +508,12 @@ class RetrievalTest(unittest.TestCase):
 
         self.assertEqual(result.status, RetrievalStatus.SUCCESS)
         assert result.query_context is not None
-        self.assertIn(
+        self.assertNotIn(
             "sales_region_name",
-            result.query_context.allowed_columns["mart_sales.dim_sales_region"],
+            result.query_context.allowed_columns.get(
+                "mart_sales.dim_sales_region",
+                frozenset(),
+            ),
         )
 
     def test_grouping_table_is_added_by_dimension_query_when_main_top_k_misses_it(self) -> None:
