@@ -1,48 +1,8 @@
 """Online Query（在线查询）的稳定类型契约。"""
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Protocol, TypeAlias
-
-from .application.contracts import (
-    CollectionKind,
-    ContextSource,
-    PublishedRetrievalSnapshot,
-    RawRetrievalHit,
-    SanitizedColumnPayload,
-    SanitizedMetricPayload,
-    SanitizedPayload,
-    SanitizedTablePayload,
-)
-from .domain.models import (
-    AggregateSpec,
-    CardinalityProof,
-    CardinalityProofKind,
-    ColumnCatalogEntry,
-    ColumnRef,
-    EmbeddingFingerprint,
-    FormulaShape,
-    FormulaStructure,
-    JoinEdge,
-    MetricDefinition,
-    MetricMention,
-    MetricPlan,
-    MetricPlanStatus,
-    NormalizedFilterCondition,
-    OpaqueSnapshotIdentity,
-    ProvisionalMetricRequest,
-    ProvisionalMetricRequestStatus,
-    RelationshipGraphFacts,
-    RequestShape,
-    SnapshotBinding,
-    SnapshotBoundMetricDefinition,
-    SnapshotResourceCatalog,
-    TableCatalogEntry,
-    TableRef,
-    TimeFieldRef,
-    ZeroDivisionGuard,
-)
+from typing import Any, Mapping, Protocol, TypeAlias
 
 
 class QueryErrorCode(StrEnum):
@@ -83,6 +43,14 @@ class QueryFailure:
 QueryResult: TypeAlias = QuerySuccess | QueryFailure
 
 
+class RequestShape(StrEnum):
+    """读取在线资产前可确定的请求形态。"""
+
+    BASELINE = "BASELINE"
+    EXPLICIT_MULTI = "EXPLICIT_MULTI"
+    POSSIBLE_MULTI = "POSSIBLE_MULTI"
+
+
 class FallbackPolicy(StrEnum):
     """技术故障时是否允许使用静态上下文。"""
 
@@ -100,6 +68,17 @@ class RetrievalRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class MetricMention:
+    """用户问题中一个已映射的指标提及。"""
+
+    requested_text: str
+    start: int
+    end: int
+    document_id: str
+    metric_name: str
+
+
+@dataclass(frozen=True, slots=True)
 class MetricConstraint:
     """一个请求指标的认证业务约束。"""
 
@@ -112,8 +91,18 @@ class MetricConstraint:
     time_field: str
     filters: tuple[str, ...]
     depends_on: tuple[str, ...]
-    snapshot_identity: OpaqueSnapshotIdentity | None = None
-    asset_version: str | None = None
+
+
+class MetricPlanStatus(StrEnum):
+    """确定性多指标计划结果。"""
+
+    NOT_MULTI = "NOT_MULTI"
+    SUCCESS = "SUCCESS"
+    AMBIGUOUS = "AMBIGUOUS"
+    NO_METRIC = "NO_METRIC"
+    TOO_MANY = "TOO_MANY"
+    UNSUPPORTED_COMBINATION = "UNSUPPORTED_COMBINATION"
+    INVALID_ASSET = "INVALID_ASSET"
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,8 +114,6 @@ class MetricRequestPlan:
     mentions: tuple[MetricMention, ...] = ()
     constraints: tuple[MetricConstraint, ...] = ()
     reason: str = ""
-    snapshot_identity: OpaqueSnapshotIdentity | None = None
-    asset_version: str | None = None
 
 
 class RetrievalStatus(StrEnum):
@@ -179,8 +166,6 @@ class TableHit:
     rank: int
     metadata: Mapping[str, Any]
     page_content: str = ""
-    snapshot_identity: OpaqueSnapshotIdentity | None = None
-    asset_version: str | None = None
 
     @property
     def qualified_name(self) -> str:
@@ -200,8 +185,6 @@ class ColumnHit:
     rank: int
     metadata: Mapping[str, Any]
     page_content: str = ""
-    snapshot_identity: OpaqueSnapshotIdentity | None = None
-    asset_version: str | None = None
 
     @property
     def qualified_table(self) -> str:
@@ -218,8 +201,19 @@ class MetricHit:
     rank: int
     metadata: Mapping[str, Any]
     page_content: str
-    snapshot_identity: OpaqueSnapshotIdentity | None = None
-    asset_version: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class JoinEdge:
+    """Relationship Graph（关系图）中的一条可解释 Join 边。"""
+
+    edge_id: str
+    source_table: str
+    target_table: str
+    source_columns: tuple[str, ...]
+    target_columns: tuple[str, ...]
+    constraint_name: str
+    direction: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -232,11 +226,6 @@ class JoinConstraint:
     target_columns: tuple[str, ...]
     uniqueness_basis: str
     direction: str
-    snapshot_identity: OpaqueSnapshotIdentity | None = None
-    asset_version: str | None = None
-    edge_id: str | None = None
-    constraint_name: str | None = None
-    cardinality_proof: CardinalityProof | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -249,10 +238,6 @@ class QueryContext:
     request_shape: RequestShape = RequestShape.BASELINE
     metric_constraints: tuple[MetricConstraint, ...] = ()
     join_constraints: tuple[JoinConstraint, ...] = ()
-    context_source: ContextSource = ContextSource.STATIC_FALLBACK
-    snapshot_identity: OpaqueSnapshotIdentity | None = None
-    asset_version: str | None = None
-    metric_definitions: tuple[MetricDefinition, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -261,8 +246,6 @@ class JoinPath:
 
     tables: tuple[str, ...]
     edges: tuple[JoinEdge, ...]
-    snapshot_identity: OpaqueSnapshotIdentity | None = None
-    asset_version: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -273,17 +256,6 @@ class JoinResolution:
     paths: tuple[JoinPath, ...]
     joins: tuple[JoinEdge, ...]
     unreachable_tables: tuple[str, ...]
-    snapshot_identity: OpaqueSnapshotIdentity | None = None
-    asset_version: str | None = None
-    anchor_reason: str | None = None
-    required_tables: frozenset[str] = frozenset()
-    optional_tables: frozenset[str] = frozenset()
-    unreachable_required_tables: frozenset[str] = frozenset()
-    dropped_optional_tables: frozenset[str] = frozenset()
-    selected_paths: tuple[JoinPath, ...] = ()
-    selected_edges: tuple[JoinEdge, ...] = ()
-    cardinality_requirement: str | None = None
-    cardinality_proof: tuple[CardinalityProof, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -291,10 +263,8 @@ class MetricRetrievalEvidence:
     """一个用户指标项在一次综合 METRIC 检索中的覆盖证据。"""
 
     requested_text: str
-    target_document_id: str | None
+    target_document_id: str
     hits: tuple[MetricHit, ...]
-    snapshot_identity: OpaqueSnapshotIdentity | None = None
-    asset_version: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -306,9 +276,6 @@ class RetrievalEvidence:
     metric_hits: tuple[MetricHit, ...] = ()
     metric_queries: tuple[MetricRetrievalEvidence, ...] = ()
     join_paths: tuple[JoinPath, ...] = ()
-    snapshot_identity: OpaqueSnapshotIdentity | None = None
-    asset_version: str | None = None
-    join_resolution: JoinResolution | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -331,7 +298,6 @@ class OnlineRetrievalResult:
     query_context: QueryContext | None = None
     metric_constraints: tuple[MetricConstraint, ...] = ()
     join_constraints: tuple[JoinConstraint, ...] = ()
-    snapshot_identity: OpaqueSnapshotIdentity | None = None
 
     def to_query_context(self) -> QueryContext:
         """返回成功检索生成的动态 QueryContext。"""
@@ -373,65 +339,3 @@ class SQLGenerator(Protocol):
 class QueryExecutor(Protocol):
     def execute(self, sql: ValidatedSQL) -> QueryData:
         """执行已经通过校验的 SQL。"""
-
-
-__all__ = [
-    "AggregateSpec",
-    "CardinalityProof",
-    "CardinalityProofKind",
-    "CollectionKind",
-    "ColumnCatalogEntry",
-    "ColumnHit",
-    "ColumnRef",
-    "ContextSource",
-    "EmbeddingFingerprint",
-    "FallbackPolicy",
-    "FormulaShape",
-    "FormulaStructure",
-    "JoinConstraint",
-    "JoinEdge",
-    "JoinPath",
-    "JoinResolution",
-    "MetricConstraint",
-    "MetricDefinition",
-    "MetricHit",
-    "MetricMention",
-    "MetricPlan",
-    "MetricPlanStatus",
-    "MetricRequestPlan",
-    "MetricRetrievalEvidence",
-    "NormalizedFilterCondition",
-    "OnlineRetrievalResult",
-    "OpaqueSnapshotIdentity",
-    "ProvisionalMetricRequest",
-    "ProvisionalMetricRequestStatus",
-    "PublishedRetrievalSnapshot",
-    "QueryContext",
-    "QueryData",
-    "QueryErrorCode",
-    "QueryFailure",
-    "QueryRequest",
-    "QueryResult",
-    "QuerySuccess",
-    "RawRetrievalHit",
-    "RelationshipGraphFacts",
-    "RequestShape",
-    "RetrievalConfig",
-    "RetrievalEvidence",
-    "RetrievalProvider",
-    "RetrievalStatus",
-    "SQLGenerator",
-    "SanitizedColumnPayload",
-    "SanitizedMetricPayload",
-    "SanitizedPayload",
-    "SanitizedTablePayload",
-    "SnapshotBinding",
-    "SnapshotBoundMetricDefinition",
-    "SnapshotResourceCatalog",
-    "TableCatalogEntry",
-    "TableHit",
-    "TableRef",
-    "TimeFieldRef",
-    "ValidatedSQL",
-    "ZeroDivisionGuard",
-]
