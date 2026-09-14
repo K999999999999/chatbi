@@ -6,6 +6,22 @@
 
 具体 Architecture（架构）、Domain（领域）、Spec（规格）和当前状态，以对应 Source of Truth（事实源）为准。
 
+## Language
+
+- 默认使用中文生成 Spec、Ticket、ADR、Code Review 和工程报告。
+- English 技术术语、Skill 名称、命令名、API、类名、函数名、文件路径和代码保持原样。
+- 需要引用原始英文内容时，保留原文并补充中文解释。
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs for this repo live as GitHub issues; use the `gh` CLI for all operations. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+This is a single-context repo. Read `CONTEXT.md` and relevant ADRs under `docs/adr/` before domain-sensitive work. See `docs/agents/domain.md`.
+
 ## 1. Core Principles
 
 ChatBI = Domain AI Engine（领域 AI 引擎）
