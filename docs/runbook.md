@@ -229,6 +229,10 @@ uv run --env-file .env --with pytest python -m pytest -q
 
 本命令会接触本地 PostgreSQL，本次交付不代替用户重新执行；运行前需再次确认数据库状态，并以终端输出作为当前证据。当前不依赖外部服务的全量回归结果为 `248 passed, 6 skipped, 85 subtests passed`；其中真实 LLM、数据库等外部集成测试仍按显式开关单独执行，不能用纯软件测试替代。
 
+### 7.3 GitHub Actions CI
+
+`.github/workflows/ci.yml` 在 `master` 的 Push、Pull Request 和手动触发时执行锁文件检查及纯软件回归。CI 使用 Python 3.12 和锁定的 `uv` 版本，执行确定性测试，不启动 PostgreSQL、Qdrant，不调用真实 LLM，也不替代 Integration Test（集成测试）、AI Evaluation（AI 评测）或 Business Acceptance（业务验收）。
+
 ## 8. 运行真实 LLM Evaluation
 
 真实评测会向配置的外部 LLM 发送 20 条测试问题以及结构和指标上下文。执行前必须确认：
