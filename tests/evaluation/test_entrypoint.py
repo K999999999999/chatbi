@@ -168,6 +168,91 @@ class EvaluationEntrypointTest(unittest.TestCase):
         self.assertEqual(len(provider.requests), 1)
         self.assertIsInstance(provider.requests[0], RetrievalRequest)
 
+    def test_returns_nonzero_when_evaluation_has_failed_case(self) -> None:
+        from src.evaluation.__main__ import run_cli
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            cases_path, context_file, context, _ = self._files(root)
+            output_dir = root / "reports"
+            data = QueryData(
+                columns=("value",),
+                rows=((1,),),
+                truncated=False,
+            )
+            stdout = StringIO()
+
+            exit_code = run_cli(
+                [
+                    "--cases",
+                    str(cases_path),
+                    "--output-dir",
+                    str(output_dir),
+                ],
+                environ={"LLM_MODEL": "test-model"},
+                context_loader=lambda: context,
+                generator_factory=lambda environ: _FakeGenerator("CANNOT_ANSWER"),
+                executor_factory=lambda environ: _FakeExecutor(data),
+                git_state_reader=lambda project_root: ("abcdef123456", False),
+                context_paths={"context": context_file},
+                stdout=stdout,
+                stderr=StringIO(),
+            )
+
+            report_path = next(output_dir.glob("*.json"))
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(report["summary"]["passed"], 0)
+        self.assertEqual(report["summary"]["failed"], 1)
+        self.assertIn("Execution Accuracy: 0.00%", stdout.getvalue())
+
+    def test_returns_nonzero_when_evaluation_has_invalid_case(self) -> None:
+        from src.evaluation.__main__ import run_cli
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            cases_path, context_file, context, sql = self._files(root)
+            records = json.loads(cases_path.read_text(encoding="utf-8"))
+            del records[0]["description"]
+            cases_path.write_text(
+                json.dumps(records),
+                encoding="utf-8",
+            )
+            output_dir = root / "reports"
+            stdout = StringIO()
+
+            exit_code = run_cli(
+                [
+                    "--cases",
+                    str(cases_path),
+                    "--output-dir",
+                    str(output_dir),
+                ],
+                environ={"LLM_MODEL": "test-model"},
+                context_loader=lambda: context,
+                generator_factory=lambda environ: _FakeGenerator(sql),
+                executor_factory=lambda environ: _FakeExecutor(
+                    QueryData(
+                        columns=("value",),
+                        rows=((1,),),
+                        truncated=False,
+                    )
+                ),
+                git_state_reader=lambda project_root: ("abcdef123456", False),
+                context_paths={"context": context_file},
+                stdout=stdout,
+                stderr=StringIO(),
+            )
+
+            report_path = next(output_dir.glob("*.json"))
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(report["summary"]["failed"], 0)
+        self.assertEqual(report["summary"]["invalid_cases"], 1)
+        self.assertIn("Execution Accuracy: N/A", stdout.getvalue())
+
     def test_loads_explicit_baseline(self) -> None:
         from src.evaluation.__main__ import run_cli
 

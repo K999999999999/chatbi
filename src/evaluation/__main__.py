@@ -133,7 +133,7 @@ def run_cli(
         write_report(report, report_path)
         write_markdown_report(report, summary_path)
         _print_summary(report, report_path, summary_path, output)
-        return 0
+        return 0 if run.summary.failed == 0 and run.summary.invalid_cases == 0 else 1
     except (
         ContextLoadError,
         DatabaseError,

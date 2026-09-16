@@ -264,6 +264,8 @@ reports/evaluation/<run_id>.md
 
 评测结果属于 AI Evaluation（AI 评测），不能与 Software Test（软件测试）或 Business Acceptance（业务验收）混为一类。
 
+评测命令在存在 `FAIL` 或 `INVALID_CASE` 时返回非零退出码；只有所有案例有效且通过时才返回 `0`，可直接作为 CI 门禁。
+
 ## 9. 典型故障处理
 
 ### API 无法启动
