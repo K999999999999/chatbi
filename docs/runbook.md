@@ -37,7 +37,7 @@ Streamlit（127.0.0.1:8501）
 ### 3.1 环境要求
 
 - Windows PowerShell。
-- Python 3.11 或更高版本。
+- Python 3.11。
 - `uv`。
 - Docker Desktop。
 - 可用的 LLM 配置，用于 Online Query 和真实 Evaluation。
@@ -231,7 +231,7 @@ uv run --env-file .env --with pytest python -m pytest -q
 
 ### 7.3 GitHub Actions CI
 
-`.github/workflows/ci.yml` 在 `master` 的 Push、Pull Request 和手动触发时执行锁文件检查及纯软件回归。CI 使用 Python 3.12 和锁定的 `uv` 版本，执行确定性测试，不启动 PostgreSQL、Qdrant，不调用真实 LLM，也不替代 Integration Test（集成测试）、AI Evaluation（AI 评测）或 Business Acceptance（业务验收）。
+`.github/workflows/ci.yml` 在 `master` 的 Push、Pull Request 和手动触发时执行锁文件检查及纯软件回归。CI 使用 Python 3.11 和锁定的 `uv` 版本，执行确定性测试，不启动 PostgreSQL、Qdrant，不调用真实 LLM，也不替代 Integration Test（集成测试）、AI Evaluation（AI 评测）或 Business Acceptance（业务验收）。
 
 ## 8. 运行真实 LLM Evaluation
 
