@@ -231,7 +231,7 @@ uv run --env-file .env --with pytest python -m pytest -q
 
 ### 7.3 GitHub Actions CI
 
-`.github/workflows/ci.yml` 在 `master` 的 Push、Pull Request 和手动触发时执行锁文件检查及纯软件回归。CI 使用 Python 3.11 和锁定的 `uv` 版本，执行确定性测试，不启动 PostgreSQL、Qdrant，不调用真实 LLM，也不替代 Integration Test（集成测试）、AI Evaluation（AI 评测）或 Business Acceptance（业务验收）。
+`.github/workflows/ci.yml` 在 `master` 的 Push、Pull Request 和手动触发时执行锁文件检查、纯软件回归、PostgreSQL 集成测试和 API/Streamlit 启动 Smoke Test（冒烟测试）。CI 使用 Python 3.11 和锁定的 `uv` 版本；PostgreSQL 集成测试使用 `database/ci/bootstrap.sql` 中的 CI-only 合成 Fixture（测试夹具），不使用本地业务数据。CI 不调用真实 LLM，也不替代 AI Evaluation（AI 评测）或 Business Acceptance（业务验收）。
 
 ## 8. 运行真实 LLM Evaluation
 
