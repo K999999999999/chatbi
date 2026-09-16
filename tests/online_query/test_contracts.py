@@ -46,8 +46,8 @@ class ContractTest(unittest.TestCase):
         config = RetrievalConfig()
 
         self.assertEqual(config.table_top_k, 5)
-        self.assertEqual(config.column_top_k, 10)
-        self.assertEqual(config.metric_top_k, 5)
+        self.assertEqual(config.column_top_k, 20)
+        self.assertEqual(config.metric_top_k, 10)
         self.assertEqual(config.table_score_threshold, 0.30)
         self.assertEqual(config.column_score_threshold, 0.25)
         self.assertEqual(config.metric_score_threshold, 0.30)

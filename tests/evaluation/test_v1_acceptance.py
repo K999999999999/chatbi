@@ -57,15 +57,15 @@ class V1AcceptanceTest(unittest.TestCase):
 
         run = run_evaluation(cases, service, executor, context)
 
-        self.assertEqual(run.summary.total_cases, 20)
-        self.assertEqual(run.summary.valid_cases, 20)
-        self.assertEqual(run.summary.passed, 20)
+        self.assertEqual(run.summary.total_cases, 21)
+        self.assertEqual(run.summary.valid_cases, 21)
+        self.assertEqual(run.summary.passed, 21)
         self.assertEqual(run.summary.failed, 0)
         self.assertEqual(run.summary.invalid_cases, 0)
         self.assertEqual(run.summary.execution_accuracy, 1.0)
         self.assertTrue(all(case.status == CaseStatus.PASS for case in run.cases))
-        self.assertEqual(generator.calls, 20)
-        self.assertEqual(len(executor.calls), 40)
+        self.assertEqual(generator.calls, 21)
+        self.assertEqual(len(executor.calls), 42)
         self.assertEqual(len(context.join_constraints), 9)
 
 

@@ -1,6 +1,6 @@
 # 基础 Multi-Metric Retrieval（多指标在线检索）规格
 
-> 当前多指标行为以 [Online Retrieval V1 Feature Contract（在线检索 V1 功能契约）](../../.scratch/online-retrieval-v1/spec.md) 为唯一有效口径。本文保留为历史规格和决策记录；当前覆盖旧描述的关键规则是：实体类、单指标和多指标共用 `metrics=0/1/N` 一条流水线；用户指标最多 3 个；只支持直接 FK→PK、`LEFT JOIN`，不使用中间表、多跳 Join、公式字段自动补入或指标二次查询。
+> 当前多指标行为以 [Online Retrieval V1 Feature Contract（在线检索 V1 功能契约）](../../.scratch/online-retrieval-v1/spec.md) 为唯一有效口径。本文保留为历史规格和决策记录；当前覆盖旧描述的关键规则是：实体类、单指标和多指标共用 `metrics=0/1/N` 一条流水线；用户指标最多 5 个；只支持直接 FK→PK、`LEFT JOIN`，不使用中间表、多跳 Join 或指标二次查询。
 
 状态：历史规格记录，内容保留用于追溯；当前行为以仓库根目录 `.scratch/online-retrieval-v1/spec.md` 为准。当前 V1 已完成确定性验收，但仍不代表 Production Ready（生产可用）。
 
@@ -101,7 +101,7 @@ docs/product-scope.md、docs/specs/online-query.md、docs/architecture.md 和本
 
 - METRIC 不受 TABLE 候选表过滤。
 - 综合查询只使用完整用户问题，不为每个指标重新生成向量查询。
-- 多指标分支的单次 METRIC Top-K 必须至少覆盖请求指标数，且不低于 V1 上限 5；不能用原有单指标 `metric_top_k=3` 截断合法的五指标请求。
+- 多指标分支的单次 METRIC Top-K 必须至少覆盖请求指标数，当前配置为 10；不能用较小的 `metric_top_k` 截断合法的四指标或五指标请求。
 - 每个请求指标都必须在这一次综合检索结果中有效命中相同 document_id，且满足指标阈值。
 - 名称/别名目录匹配证明用户想查谁，综合向量检索证明这些权威文档确实进入了在线候选；目录匹配不能替代 METRIC 有效命中。
 - 任一请求指标未进入综合 Top-K 或未达到阈值，整体返回 `NO_METRIC_HIT`，不替换为相似指标，不交给 LLM 猜测补齐。
@@ -235,7 +235,7 @@ Prompt 必须明确：按用户请求顺序输出全部去重指标，不能少�
 | MM02 | 只查毛利率 | 一个指标，不误选毛利 |
 | MM03 | 毛利和毛利率 | 两个指标，长名称不吞掉独立短名称 |
 | MM04 | 销售额、人民币销售额 | 按指标身份去重 |
-| MM05 | C04 四指标及五指标请求 | 一次综合 METRIC 检索的 Top-K 覆盖全部请求指标，不受原 metric_top_k=3 限制 |
+| MM05 | C04 四指标及 C06 五指标请求 | 一次综合 METRIC 检索的 Top-K 覆盖全部请求指标，不受较小 Top-K 限制 |
 | MM06 | 名称映射多义、指标列举片段含未知项 | 停止，LLM/数据库调用数均为 0 |
 | MM07 | 一次综合召回只包含两个所需指标、第三个未命中 | 停止，不返回部分结果，且不发起逐指标补检索 |
 | MM08 | 某指标公式字段未召回 | NO_REQUIRED_COLUMN_HIT；不能用其他指标命中掩盖 |

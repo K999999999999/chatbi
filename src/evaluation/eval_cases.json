@@ -158,5 +158,13 @@
     "question": "按客户类型统计已完成订单数、人民币销售额和毛利率。",
     "description": "客户维度 Join、订单去重、金额聚合和派生指标组合。",
     "expected_sql": "SELECT c.customer_type,\n       COUNT(DISTINCT f.order_id) AS completed_order_count,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny)\n         / NULLIF(SUM(f.net_sales_amount_cny), 0) AS gross_margin\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_customer AS c\n  ON c.customer_key = f.customer_key\nWHERE f.order_status = 'completed'\nGROUP BY c.customer_type\nORDER BY c.customer_type;"
+  },
+  {
+    "id": "C06",
+    "schema_name": "mart_sales",
+    "category": "complex",
+    "question": "按客户类型统计已完成订单数、人民币销售额、人民币销售成本、人民币毛利和毛利率。",
+    "description": "客户维度 Join、五个指标完整返回、派生指标和除零保护。",
+    "expected_sql": "SELECT c.customer_type,\n       COUNT(DISTINCT f.order_id) AS completed_order_count,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny,\n       SUM(f.sales_cost_amount_cny) AS sales_cost_cny,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) AS gross_profit_cny,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny)\n         / NULLIF(SUM(f.net_sales_amount_cny), 0) AS gross_margin\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_customer AS c\n  ON c.customer_key = f.customer_key\nWHERE f.order_status = 'completed'\nGROUP BY c.customer_type\nORDER BY c.customer_type;"
   }
 ]

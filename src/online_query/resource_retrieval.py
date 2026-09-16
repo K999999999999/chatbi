@@ -146,34 +146,90 @@ def _column_hits(
     embed_query: Callable[[str], Any] | None = None,
     search: Callable[..., Iterable[SearchHit]] | None = None,
 ) -> tuple[ColumnHit, ...]:
-    # 所有字段只能来自候选表范围内的一次语义路线；不做业务字段补充。
-    del required, grouping_query, grouping_tables
+    # 只在候选表范围内恢复明确依赖字段和用户明确请求的分组字段。
+    # 恢复结果与普通语义结果共用全局 column_top_k 预算，避免扩大 Schema 暴露范围。
     embed = embed_query or snapshot.embedding_provider.embed_query
     search_hits = search or snapshot.qdrant_store.search
     embedded_query = embed(column_query)
-    raw: list[ColumnHit] = []
-    seen: set[str] = set()
+    grouping_embedding = (
+        embed(grouping_query)
+        if grouping_query and grouping_tables
+        else None
+    )
+    required_hits: dict[tuple[str, str], ColumnHit] = {}
+    grouping_hits: dict[tuple[str, str], ColumnHit] = {}
+    semantic_hits: dict[tuple[str, str], ColumnHit] = {}
+
+    def collect(
+        target: dict[tuple[str, str], ColumnHit],
+        hits: Iterable[SearchHit],
+        *,
+        apply_threshold: bool = True,
+    ) -> None:
+        filtered = (
+            _filtered_hits(hits, config.column_score_threshold)
+            if apply_threshold
+            else tuple(sorted(hits, key=lambda item: (-item.score, item.document_id)))
+        )
+        for hit in filtered:
+            column = _to_column_hit(hit, 0)
+            identity = (column.qualified_table, column.column_name)
+            previous = target.get(identity)
+            if previous is None or column.score > previous.score:
+                target[identity] = column
+
     for table in table_hits:
+        table_filter = {
+            "schema_name": table.schema_name,
+            "table_name": table.table_name,
+        }
         hits = search_hits(
             snapshot.collection_names[COLUMN_COLLECTION],
             embedded_query,
             limit=config.column_top_k,
-            filter_payload={
-                "schema_name": table.schema_name,
-                "table_name": table.table_name,
-            },
+            filter_payload=table_filter,
         )
-        for hit in _filtered_hits(hits, config.column_score_threshold):
-            column = _to_column_hit(hit, 0)
-            if column.document_id not in seen:
-                seen.add(column.document_id)
-                raw.append(column)
-    raw.sort(key=lambda item: (-item.score, item.document_id))
-    selected = {
-        (hit.qualified_table, hit.column_name): hit
-        for hit in raw[: config.column_top_k]
-    }
-    ordered = sorted(selected.values(), key=lambda item: (-item.score, item.document_id))
+        collect(semantic_hits, hits)
+
+        if grouping_embedding is not None and table.qualified_name in grouping_tables:
+            grouped_hits = search_hits(
+                snapshot.collection_names[COLUMN_COLLECTION],
+                grouping_embedding,
+                limit=min(2, config.column_top_k),
+                filter_payload=table_filter,
+            )
+            collect(grouping_hits, grouped_hits)
+
+        for required_column in sorted(required.get(table.qualified_name, frozenset())):
+            exact_hits = search_hits(
+                snapshot.collection_names[COLUMN_COLLECTION],
+                embedded_query,
+                limit=1,
+                filter_payload={
+                    **table_filter,
+                    "column_name": required_column,
+                },
+            )
+            # 物理字段已由 METRIC / time_field 权威事实确定；精确 Metadata
+            # 过滤命中即可恢复，不再用语义分数把它丢掉。
+            collect(required_hits, exact_hits, apply_threshold=False)
+
+    ordered: list[ColumnHit] = []
+    seen: set[tuple[str, str]] = set()
+    for bucket in (required_hits, grouping_hits, semantic_hits):
+        for hit in sorted(
+            bucket.values(),
+            key=lambda item: (-item.score, item.document_id),
+        ):
+            identity = (hit.qualified_table, hit.column_name)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            ordered.append(hit)
+            if len(ordered) == config.column_top_k:
+                break
+        if len(ordered) == config.column_top_k:
+            break
     return tuple(_re_rank_column(hit, rank) for rank, hit in enumerate(ordered, 1))
 
 

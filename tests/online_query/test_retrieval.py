@@ -92,6 +92,27 @@ class _GroupingTableStore(_FakeStore):
         )
 
 
+class _RequiredColumnRecoveryStore(_FakeStore):
+    def search(self, collection_name, query, *, limit=5, filter_payload=None):
+        if filter_payload is not None and "column_name" in filter_payload:
+            table_name = filter_payload["table_name"]
+            column_name = filter_payload["column_name"]
+            return tuple(
+                hit
+                for hit in self.columns.get(table_name, ())
+                if hit.payload["metadata"]["column_name"] == column_name
+            )
+        if filter_payload is not None and collection_name == "column":
+            table_name = filter_payload["table_name"]
+            return tuple(self.columns.get(table_name, ()))[:1]
+        return super().search(
+            collection_name,
+            query,
+            limit=limit,
+            filter_payload=filter_payload,
+        )
+
+
 class _GroupingEmbedding(_FakeEmbedding):
     def embed_query(self, text: str) -> EmbeddedText:
         self.queries.append(text)
@@ -269,6 +290,22 @@ def _multi_metrics():
                 "SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) "
                 "/ NULLIF(SUM(f.net_sales_amount_cny), 0)"
             ),
+        ),
+    )
+
+
+def _five_metrics():
+    return (
+        *_multi_metrics(),
+        _metric(
+            "人民币销售成本",
+            0.95,
+            formula="SUM(f.sales_cost_amount_cny)",
+        ),
+        _metric(
+            "人民币毛利",
+            0.94,
+            formula="SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny)",
         ),
     )
 
@@ -535,7 +572,7 @@ class RetrievalTest(unittest.TestCase):
         self.assertEqual(result.status, RetrievalStatus.NO_METRIC_HIT)
         self.assertIsNone(result.query_context)
 
-    def test_column_candidates_use_global_limit_without_grouping_supplement(self) -> None:
+    def test_column_candidates_recover_explicit_grouping_field(self) -> None:
         tables = (
             _table("table:fct", "fct_sales_order_line", 0.95),
             _table(
@@ -592,12 +629,41 @@ class RetrievalTest(unittest.TestCase):
 
         self.assertEqual(result.status, RetrievalStatus.SUCCESS)
         assert result.query_context is not None
-        self.assertNotIn(
+        self.assertIn(
             "sales_region_name",
             result.query_context.allowed_columns.get(
                 "mart_sales.dim_sales_region",
                 frozenset(),
             ),
+        )
+
+    def test_required_columns_are_recovered_when_semantic_top_k_misses_them(self) -> None:
+        store = _RequiredColumnRecoveryStore(
+            _multi_tables(),
+            _multi_columns(),
+            _multi_metrics(),
+        )
+
+        result = OnlineRetriever(
+            _FakeRuntime(_snapshot(store, _FakeEmbedding(), _multi_graph()))
+        ).retrieve(
+            build_retrieval_request(
+                "按客户类型统计已完成订单数、人民币销售额和毛利率"
+            )
+        )
+
+        self.assertEqual(result.status, RetrievalStatus.SUCCESS)
+        assert result.query_context is not None
+        self.assertTrue(
+            {
+                "order_id",
+                "net_sales_amount_cny",
+                "sales_cost_amount_cny",
+                "order_status",
+            }
+            <= result.query_context.allowed_columns[
+                "mart_sales.fct_sales_order_line"
+            ]
         )
 
     def test_grouping_table_is_added_by_dimension_query_when_main_top_k_misses_it(self) -> None:
@@ -745,7 +811,7 @@ class RetrievalTest(unittest.TestCase):
             ["已完成订单数", "人民币净销售额", "毛利率"],
         )
         self.assertEqual(store.metric_query_count, 1)
-        self.assertEqual(store.metric_limits, [5])
+        self.assertEqual(store.metric_limits, [10])
         self.assertEqual(len(result.evidence.metric_queries), 3)
         self.assertEqual(
             [item.target_document_id for item in result.evidence.metric_queries],
@@ -791,8 +857,8 @@ class RetrievalTest(unittest.TestCase):
             <= fact_columns
         )
 
-    def test_multi_metric_rejects_more_than_three_before_column_search(self) -> None:
-        metrics = (*_multi_metrics(), _metric("订单折扣额", 0.95))
+    def test_multi_metric_supports_five_requested_metrics(self) -> None:
+        metrics = _five_metrics()
         store = _CombinedMetricStore(
             _multi_tables(),
             _multi_columns(),
@@ -803,14 +869,57 @@ class RetrievalTest(unittest.TestCase):
             _FakeRuntime(_snapshot(store, _FakeEmbedding(), _multi_graph()))
         ).retrieve(
             build_retrieval_request(
-                "按客户类型统计已完成订单数、人民币销售额、毛利率和订单折扣额"
+                "按客户类型统计已完成订单数、人民币销售额、人民币销售成本、人民币毛利和毛利率"
+            )
+        )
+
+        self.assertEqual(result.status, RetrievalStatus.SUCCESS)
+        self.assertEqual(len(result.metrics), 5)
+        self.assertEqual(store.metric_query_count, 1)
+        self.assertEqual(store.metric_limits, [10])
+        self.assertIsNotNone(result.query_context)
+
+    def test_multi_metric_rejects_more_than_five_before_column_search(self) -> None:
+        metrics = (
+            *_multi_metrics(),
+            _metric("订单折扣额", 0.95),
+            _metric("订单返利额", 0.94),
+        )
+        store = _CombinedMetricStore(
+            _multi_tables(),
+            _multi_columns(),
+            metrics,
+        )
+
+        result = OnlineRetriever(
+            _FakeRuntime(_snapshot(store, _FakeEmbedding(), _multi_graph()))
+        ).retrieve(
+            build_retrieval_request(
+                "按客户类型统计已完成订单数、人民币销售额、毛利率、订单折扣额和订单返利额"
+            )
+        )
+
+        self.assertEqual(result.status, RetrievalStatus.SUCCESS)
+        self.assertEqual(len(result.metrics), 5)
+
+        too_many = (*metrics, _metric("订单税额", 0.93))
+        store = _CombinedMetricStore(
+            _multi_tables(),
+            _multi_columns(),
+            too_many,
+        )
+        result = OnlineRetriever(
+            _FakeRuntime(_snapshot(store, _FakeEmbedding(), _multi_graph()))
+        ).retrieve(
+            build_retrieval_request(
+                "按客户类型统计已完成订单数、人民币销售额、毛利率、订单折扣额、订单返利额和订单税额"
             )
         )
 
         self.assertEqual(result.status, RetrievalStatus.AMBIGUOUS)
         self.assertEqual(result.internal_reason, "TOO_MANY_METRICS")
         self.assertEqual(store.metric_query_count, 1)
-        self.assertEqual(store.metric_limits, [5])
+        self.assertEqual(store.metric_limits, [10])
         self.assertEqual(store.column_filters, [])
         self.assertIsNone(result.query_context)
 
@@ -834,7 +943,7 @@ class RetrievalTest(unittest.TestCase):
         self.assertEqual(result.internal_reason, "NO_METRIC_HIT")
         self.assertEqual(result.fallback_policy, FallbackPolicy.FAIL_CLOSED)
         self.assertEqual(store.metric_query_count, 1)
-        self.assertEqual(store.metric_limits, [5])
+        self.assertEqual(store.metric_limits, [10])
         self.assertEqual(len(result.evidence.metric_queries), 2)
         self.assertTrue(
             all(

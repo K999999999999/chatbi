@@ -14,7 +14,7 @@
 - FastAPI 提供 Query API（查询接口）。
 - Streamlit 是当前 POC 页面。
 - BGE-M3 和 Qdrant 用于离线检索资产构建、评测，以及 Online Retrieval V1 的在线查询向量和上下文检索。
-- 已发布 RAG 资产默认接入 Online Query V1：实体类、单指标和多指标问题统一走 `metrics=0/1/N` 动态检索上下文；在线 RAG 技术故障 Fail Closed（失败关闭）并返回 `CONTEXT_ERROR`，不回退静态全量 Schema。多指标最多 3 个，直接关系只使用认证 FK→PK 和 `LEFT JOIN`。
+- 已发布 RAG 资产默认接入 Online Query V1：实体类、单指标和多指标问题统一走 `metrics=0/1/N` 动态检索上下文；在线 RAG 技术故障 Fail Closed（失败关闭）并返回 `CONTEXT_ERROR`，不回退静态全量 Schema。多指标最多 5 个，直接关系只使用认证 FK→PK 和 `LEFT JOIN`。
 
 ## 2. 系统拓扑
 
@@ -227,7 +227,7 @@ $env:RUN_DATABASE_TESTS = '1'
 uv run --env-file .env --with pytest python -m pytest -q
 ```
 
-本命令会接触本地 PostgreSQL，本次交付不代替用户重新执行；运行前需再次确认数据库状态，并以终端输出作为当前证据。当前不依赖外部服务的全量回归结果为 `248 passed, 6 skipped, 85 subtests passed`；其中真实 LLM、数据库等外部集成测试仍按显式开关单独执行，不能用纯软件测试替代。
+本命令会接触本地 PostgreSQL，本次交付不代替用户重新执行；运行前需再次确认数据库状态，并以终端输出作为当前证据。当前不依赖外部服务的全量回归结果为 `251 passed, 6 skipped, 85 subtests passed`；其中真实 LLM、数据库等外部集成测试仍按显式开关单独执行，不能用纯软件测试替代。
 
 ### 7.3 GitHub Actions CI
 
@@ -235,7 +235,7 @@ uv run --env-file .env --with pytest python -m pytest -q
 
 ## 8. 运行真实 LLM Evaluation
 
-真实评测会向配置的外部 LLM 发送 20 条测试问题以及结构和指标上下文。执行前必须确认：
+真实评测会向配置的外部 LLM 发送 21 条测试问题以及结构和指标上下文。执行前必须确认：
 
 - 当前网络和 LLM 配置可用。
 - 允许发送这些测试数据。

@@ -135,8 +135,8 @@ class RetrievalConfig:
     """V1 在线 Dense Retrieval（稠密检索）配置。"""
 
     table_top_k: int = 5
-    column_top_k: int = 10
-    metric_top_k: int = 5
+    column_top_k: int = 20
+    metric_top_k: int = 10
     table_score_threshold: float = 0.30
     column_score_threshold: float = 0.25
     metric_score_threshold: float = 0.30

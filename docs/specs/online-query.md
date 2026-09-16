@@ -144,7 +144,7 @@ QueryRequest
 
 ### AI Evaluation（AI 评测）
 
-- 20 条标准测试全部能够通过同一条 Online Query 链路运行并统计 Execution Accuracy（执行准确率）。
+- 21 条标准测试全部能够通过同一条 Online Query 链路运行并统计 Execution Accuracy（执行准确率）。
 - 第一轮只建立真实模型 Baseline（基线），暂不设置准确率门槛。
 
 ## 实现设计阶段再决定

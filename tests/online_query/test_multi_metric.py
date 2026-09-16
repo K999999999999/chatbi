@@ -120,7 +120,7 @@ class MultiMetricPlanningTest(unittest.TestCase):
         self.assertEqual(plan.status, MetricPlanStatus.NO_METRIC)
         self.assertIn("未登记退货率", plan.reason)
 
-    def test_more_than_three_distinct_metrics_is_rejected(self) -> None:
+    def test_more_than_five_distinct_metrics_is_rejected(self) -> None:
         entries = tuple(_entry(f"测试指标{index}数") for index in range(1, 7))
         catalog = _catalog(*entries)
         request = build_retrieval_request(

@@ -51,7 +51,7 @@ flowchart TB
     Database -->|"结果集"| Result
 
     subgraph EvaluationFlow["Evaluation（离线评测模块）"]
-        Cases["20 条标准测试集"] --> Runner["Evaluation Runner"]
+        Cases["21 条标准测试集"] --> Runner["Evaluation Runner"]
         Runner -->|"调用同一正式入口"| Service
         Runner --> Reference["标准 SQL<br/>同一 Guard 与 Executor"]
         ReferenceResult["标准结果"]
@@ -130,7 +130,7 @@ flowchart TB
     subgraph Evaluation["src/evaluation：离线评测代码"]
         EInit["__init__.py<br/>评测模块公开入口"]
         Entry["__main__.py<br/>评测命令行入口<br/>组装真实 LLM 和数据库"]
-        Cases["eval_cases.json<br/>20 条标准测试案例"]
+        Cases["eval_cases.json<br/>21 条标准测试案例"]
         Evaluator["evaluator.py<br/>加载案例、比较查询结果"]
         Runner["runner.py<br/>逐条运行、隔离失败、统计准确率"]
         Reporting["reporting.py<br/>生成指纹、JSON 和 Markdown 报告<br/>可选基线比较"]
@@ -256,7 +256,7 @@ RAG Offline Build 已实现：
 - `src/rag_offline/` 负责校验事实、生成文档、向量化、写入 Qdrant、构建关系图和发布完整资产。
 - `data/rag/current.json` 是当前发布指针，版本目录保存 manifest 和关系图。
 
-Online Retrieval V1 已接入 Online Query：实体类、单指标和多指标问题统一使用同一条 `metrics=0/1/N` 检索流程，并从已发布 RAG 资产组装最小动态上下文。在线 RAG 技术故障统一 Fail Closed（失败关闭）并返回 `CONTEXT_ERROR`；静态上下文只在显式静态评测/基础模式下使用。直接关系只允许认证的 FK→PK 和 `LEFT JOIN`；多指标最多 3 个，真实在线 RAG 的既有 20/20 结果和业务验收记录继续保留为历史证据。
+Online Retrieval V1 已接入 Online Query：实体类、单指标和多指标问题统一使用同一条 `metrics=0/1/N` 检索流程，并从已发布 RAG 资产组装最小动态上下文。在线 RAG 技术故障统一 Fail Closed（失败关闭）并返回 `CONTEXT_ERROR`；静态上下文只在显式静态评测/基础模式下使用。直接关系只允许认证的 FK→PK 和 `LEFT JOIN`；多指标最多 5 个，真实在线 RAG 结果以当前分支重新执行的报告为准。
 
 ## 在线主链路
 
@@ -305,8 +305,8 @@ Online Retrieval V1 已接入 Online Query：实体类、单指标和多指标�
 - Online Query 已实现，Software Test 与真实 PostgreSQL 集成测试已通过。
 - Query API Adapter 已实现，提供 `/health` 和 `/api/v1/query`；API 确定性测试已通过。
 - Streamlit 页面已实现，提供问题输入、结果展示和受控错误提示，并通过三条手工业务验收。
-- Evaluation 已实现并复用正式 Online Query 链路；当前全量确定性软件测试为 248 passed、6 skipped、85 subtests。既有真实在线 RAG 评测 20/20、C05 和 M08 业务验收记录作为独立历史证据保留，JSON 数据报告和 Markdown 总结报告按本地策略忽略。
+- Evaluation 已实现并复用正式 Online Query 链路；当前全量确定性软件测试为 251 passed、6 skipped、85 subtests；当前分支真实在线 RAG 评测为 21/21，C04 四指标和 C06 五指标均通过，JSON 数据报告和 Markdown 总结报告按本地策略忽略。
 - 旧版扁平 POC 链路及其重复测试已删除。
 - RAG Offline Build 已实现并发布 BGE-M3 / Qdrant 离线资产；TABLE=7、COLUMN=69、METRIC=5、关系边=9，固定检索评测 5/5 通过。
-- Online Retrieval、Schema Linking 和关系图在线路径查找已完成 V1 实现；统一 `metrics=0/1/N`、直接 FK→PK、最多 3 个指标和 Fail Closed 边界已通过确定性验收。既有真实 Qdrant、LLM 和 PostgreSQL 20/20 及 C05/M08 记录继续作为独立业务证据；跨事实表、经营分析等复杂多指标组合仍属于后续边界。
+- Online Retrieval、Schema Linking 和关系图在线路径查找已完成 V1 实现；统一 `metrics=0/1/N`、直接 FK→PK、最多 5 个指标和 Fail Closed 边界已通过确定性验收。真实 Qdrant、LLM 和 PostgreSQL 的当前结果需要在本次字段恢复改动后重新建立；跨事实表、经营分析等复杂多指标组合仍属于后续边界。
 - 正式前端 UI 不是当前下一步必做项，继续使用 Streamlit，待生产化需求明确后再决定。

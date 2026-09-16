@@ -32,7 +32,7 @@ _TEXT_MATCH_MARKERS = (
     "字符串中包含",
 )
 _TRIM_CHARS = " 。！？；;：:"
-_MAX_REQUEST_METRICS = 3
+_MAX_REQUEST_METRICS = 5
 
 
 @dataclass(frozen=True, slots=True)

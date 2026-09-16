@@ -150,7 +150,7 @@ Execution Accuracy
 
 ### AI Evaluation（AI 评测）
 
-- 使用 `uv run --env-file .env python -m src.evaluation --online-retrieval`，20 条标准案例能够顺序运行完成，单条失败不影响其余案例。
+- 使用 `uv run --env-file .env python -m src.evaluation --online-retrieval`，21 条标准案例能够顺序运行完成，单条失败不影响其余案例。
 - 生成包含单条结果的 JSON 数据报告，以及包含总体结论、准确率和失败摘要的 Markdown 总结报告。
 - 后续报告能够识别相对上一份有效报告的回退和改善案例。
 
