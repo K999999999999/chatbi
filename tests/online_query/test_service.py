@@ -1,8 +1,8 @@
 """OnlineQueryService（在线查询服务）编排与错误边界测试。"""
 
-from uuid import UUID
 import unittest
 from unittest.mock import Mock, patch
+from uuid import UUID
 
 import src.online_query.sql_guard as sql_guard
 from src.online_query.context import ContextLoadError
@@ -123,6 +123,29 @@ class ServiceTest(unittest.TestCase):
         guard.assert_not_called()
         self.generator.generate.assert_called_once()
         self.executor.execute.assert_not_called()
+
+    def test_query_understanding_reason_reaches_controlled_failure(self) -> None:
+        query_understanding = Mock()
+        query_understanding.understand.side_effect = LLMError(
+            "Query Understanding 返回的不是合法 JSON",
+            reason="RESPONSE_NOT_JSON",
+        )
+        retrieval_provider = Mock()
+        service = OnlineQueryService(
+            self.generator,
+            self.executor,
+            context_loader=lambda: self.context,
+            retrieval_provider=retrieval_provider,
+            query_understanding=query_understanding,
+        )
+
+        result = service.query(QueryRequest(question="查询订单"))
+
+        self._assert_failure(result, QueryErrorCode.LLM_ERROR)
+        assert isinstance(result, QueryFailure)
+        self.assertEqual(result.failure_stage, "query_understanding")
+        self.assertEqual(result.internal_reason, "RESPONSE_NOT_JSON")
+        retrieval_provider.retrieve.assert_not_called()
 
     def test_llm_timeout_is_an_error_without_retry(self) -> None:
         self.generator.generate.side_effect = TimeoutError("provider detail")

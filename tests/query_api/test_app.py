@@ -51,6 +51,8 @@ class _FailureService:
             request_id=request.request_id or "generated-request-id",
             error_code=self.error_code,
             error_message=f"错误：{self.error_code.value}",
+            failure_stage="query_understanding",
+            internal_reason="QUERY_TYPE_UNKNOWN",
         )
 
 
@@ -147,6 +149,8 @@ class QueryApiAppTest(TestCase):
                         "error_message": f"错误：{error_code.value}",
                     },
                 )
+                self.assertNotIn("failure_stage", response.json())
+                self.assertNotIn("internal_reason", response.json())
                 self.assertNotIn("detail", response.json())
 
     def test_blank_question_returns_invalid_request(self) -> None:

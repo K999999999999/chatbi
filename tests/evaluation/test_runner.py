@@ -100,6 +100,8 @@ class EvaluationRunnerTest(unittest.TestCase):
                     request_id="evaluation-S01",
                     error_code=QueryErrorCode.SQL_REJECTED,
                     error_message="生成的 SQL 未通过安全校验",
+                    failure_stage="sql_guard",
+                    internal_reason="SQL_REJECTED",
                 ),
                 "成功问题": self._success("evaluation-S02", rows=((1,),)),
             }
@@ -109,6 +111,8 @@ class EvaluationRunnerTest(unittest.TestCase):
 
         self.assertEqual(run.cases[0].status, CaseStatus.FAIL)
         self.assertEqual(run.cases[0].query_error_code, "SQL_REJECTED")
+        self.assertEqual(run.cases[0].failure_stage, "sql_guard")
+        self.assertEqual(run.cases[0].internal_reason, "SQL_REJECTED")
         self.assertEqual(run.cases[1].status, CaseStatus.PASS)
         self.assertEqual(len(service.calls), 2)
 

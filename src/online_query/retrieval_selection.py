@@ -3,6 +3,7 @@
 import re
 
 from .contracts import MetricHit, TableHit
+from .query_understanding import ValidatedSemanticQuery
 from .resource_retrieval import _TimeField, _metric_data_source
 from .retrieval_errors import (
     RequiredCandidateUnavailableError,
@@ -44,7 +45,7 @@ def target_tables(
 
 
 def candidate_table_hits(
-    question: str,
+    dimensions: tuple[str, ...],
     table_hits: tuple[TableHit, ...],
     metric_table: str | None,
     time_field: _TimeField | None,
@@ -59,13 +60,12 @@ def candidate_table_hits(
     if time_field is not None:
         names.add(time_field.target_table)
 
-    grouping_text = grouping_text_from_question(question)
     grouping_names = grouping_table_names(
-        grouping_text,
+        dimensions,
         table_hits,
         metric_table,
     )
-    if grouping_text and not grouping_names:
+    if dimensions and not grouping_names:
         raise RequiredCandidateUnavailableError(
             "用户请求的分组维度没有被 TABLE 候选命中"
         )
@@ -99,36 +99,31 @@ def is_intermediate_table(table: TableHit) -> bool:
 
 
 def grouping_table_names(
-    grouping_text: str,
+    dimensions: tuple[str, ...],
     table_hits: tuple[TableHit, ...],
     metric_table: str | None,
 ) -> frozenset[str]:
-    if not grouping_text:
+    if not dimensions:
         return frozenset()
     return frozenset(
         hit.qualified_name
         for hit in table_hits
         if hit.qualified_name != metric_table
-        and table_content_matches(grouping_text, hit.page_content)
+        and any(
+            table_content_matches(dimension, hit.page_content)
+            for dimension in dimensions
+        )
     )
 
 
-def grouping_text_from_question(question: str) -> str:
-    match = re.search(
-        r"按(?P<grouping>.+?)(?:统计|分析|比较|查询|查看|的)",
-        question,
-    )
-    return match.group("grouping").strip() if match is not None else ""
+def grouping_text_from_dimensions(dimensions: tuple[str, ...]) -> str:
+    return "、".join(dimension.strip() for dimension in dimensions if dimension.strip())
 
 
-def requires_date_context(question: str) -> bool:
-    """只有问题明确涉及日期过滤或分组时才启用指标 time_field。"""
+def requires_date_context(query: ValidatedSemanticQuery) -> bool:
+    """只有结构化查询存在已标准化时间条件时才启用指标 time_field。"""
 
-    return re.search(
-        r"(?:20\d{2}\s*年|\d{1,2}\s*月|第[一二三四1-4]\s*季度|"
-        r"日期|时间|今年|去年|本月|上月|今日|昨天|截止)",
-        question,
-    ) is not None
+    return query.time is not None
 
 
 def table_content_matches(question: str, page_content: str) -> bool:

@@ -14,6 +14,7 @@ from src.online_query.contracts import (
     RetrievalStatus,
     ValidatedSQL,
 )
+from src.online_query.query_understanding import candidate_from_payload
 
 
 class _FakeGenerator:
@@ -46,6 +47,35 @@ class _FakeRetrievalProvider:
         return OnlineRetrievalResult(
             status=RetrievalStatus.SUCCESS,
             query_context=self._context,
+        )
+
+
+class _FakeQueryUnderstanding:
+    def understand(self, question: str):
+        return candidate_from_payload(
+            {
+                "query_type": "entity_lookup",
+                "subjects": ["测试主题"],
+                "metrics": [],
+                "dimensions": [],
+                "time": None,
+                "filters": [],
+            }
+        )
+
+
+class _FakeSemanticQueryUnderstanding:
+    def understand(self, question: str):
+        del question
+        return candidate_from_payload(
+            {
+                "query_type": "metric_analysis",
+                "subjects": [],
+                "metrics": ["销售额"],
+                "dimensions": [],
+                "time": None,
+                "filters": [],
+            }
         )
 
 
@@ -158,6 +188,7 @@ class EvaluationEntrypointTest(unittest.TestCase):
                 generator_factory=lambda environ: _FakeGenerator(sql),
                 executor_factory=lambda environ: _FakeExecutor(data),
                 retrieval_factory=lambda: provider,
+                query_understanding_factory=lambda environ: _FakeQueryUnderstanding(),
                 git_state_reader=lambda project_root: ("abcdef123456", False),
                 context_paths={"context": context_file},
                 stdout=StringIO(),
@@ -167,6 +198,67 @@ class EvaluationEntrypointTest(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(len(provider.requests), 1)
         self.assertIsInstance(provider.requests[0], RetrievalRequest)
+
+    def test_query_understanding_mode_writes_semantic_report_without_sql_chain(
+        self,
+    ) -> None:
+        from src.evaluation.__main__ import run_cli
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            cases_path = root / "query-understanding-cases.json"
+            cases_path.write_text(
+                json.dumps(
+                    [
+                        {
+                            "id": "Q01",
+                            "question": "查询销售额",
+                            "expected": {
+                                "query_type": "metric_analysis",
+                                "metrics": ["销售额"],
+                                "dimensions": [],
+                                "time": None,
+                            },
+                        }
+                    ],
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            output_dir = root / "reports"
+            stdout = StringIO()
+
+            exit_code = run_cli(
+                [
+                    "--query-understanding",
+                    "--query-understanding-cases",
+                    str(cases_path),
+                    "--output-dir",
+                    str(output_dir),
+                ],
+                environ={"LLM_MODEL": "test-model"},
+                context_loader=lambda: (_ for _ in ()).throw(
+                    AssertionError("semantic mode must not load SQL context")
+                ),
+                generator_factory=lambda environ: (_ for _ in ()).throw(
+                    AssertionError("semantic mode must not create SQL generator")
+                ),
+                executor_factory=lambda environ: (_ for _ in ()).throw(
+                    AssertionError("semantic mode must not create executor")
+                ),
+                query_understanding_factory=lambda environ: _FakeSemanticQueryUnderstanding(),
+                git_state_reader=lambda project_root: ("abcdef123456", False),
+                stdout=stdout,
+                stderr=StringIO(),
+            )
+
+            reports = list(output_dir.glob("*.json"))
+            report = json.loads(reports[0].read_text(encoding="utf-8"))
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(report["summary"]["passed"], 1)
+        self.assertEqual(report["summary"]["failed"], 0)
+        self.assertIn("Query Understanding Accuracy: 100.00%", stdout.getvalue())
 
     def test_returns_nonzero_when_evaluation_has_failed_case(self) -> None:
         from src.evaluation.__main__ import run_cli

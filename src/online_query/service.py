@@ -1,8 +1,8 @@
 """Online Query（在线查询）主链路编排。"""
 
+import logging
 from collections.abc import Callable
 from hashlib import sha256
-import logging
 from typing import Any
 from uuid import uuid4
 
@@ -14,6 +14,7 @@ from ..observability.contracts import (
 from ..observability.tracing import create_trace_recorder
 from .context import load_query_context
 from .contracts import (
+    FallbackPolicy,
     QueryContext,
     QueryErrorCode,
     QueryExecutor,
@@ -21,21 +22,34 @@ from .contracts import (
     QueryRequest,
     QueryResult,
     QuerySuccess,
+    RequestShape,
     RetrievalProvider,
+    RetrievalRequest,
     RetrievalStatus,
     SQLGenerator,
 )
 from .database import DatabaseError, DatabaseQueryTimeout
-from .multi_metric import build_retrieval_request
 from .prompt import build_prompt
 from .query_trace import (
     enrich_failure_span as _enrich_failure_span,
+)
+from .query_trace import (
     enrich_query_result as _enrich_query_result,
+)
+from .query_trace import (
     safe_enrich as _safe_enrich,
+)
+from .query_trace import (
     safe_trace_scope as _safe_trace_scope,
 )
+from .query_understanding import (
+    SemanticQueryCannotAnswer,
+    SemanticQueryStructureError,
+    ValidatedSemanticQuery,
+    validate_candidate,
+)
+from .query_understanding_llm import QueryUnderstandingAdapter
 from .sql_guard import _new_validation_session
-
 
 _ERROR_MESSAGES = {
     QueryErrorCode.INVALID_REQUEST: "查询问题不能为空或格式错误",
@@ -57,6 +71,18 @@ _BUSINESS_RETRIEVAL_FAILURES = {
     RetrievalStatus.AMBIGUOUS,
 }
 
+_QUERY_UNDERSTANDING_ERROR_MESSAGE = "暂时无法理解这个查询，请稍后重试"
+_QUERY_UNDERSTANDING_MISSING_MESSAGE = "查询理解服务尚未配置，请稍后重试"
+_FAILURE_STAGES = {
+    QueryErrorCode.INVALID_REQUEST: "request_validation",
+    QueryErrorCode.CONTEXT_ERROR: "retrieval",
+    QueryErrorCode.LLM_ERROR: "sql_generation",
+    QueryErrorCode.CANNOT_ANSWER: "retrieval",
+    QueryErrorCode.SQL_REJECTED: "sql_guard",
+    QueryErrorCode.DATABASE_ERROR: "database",
+    QueryErrorCode.QUERY_TIMEOUT: "database",
+}
+
 
 class OnlineQueryService:
     """同步执行一次自然语言查询完整链路。"""
@@ -68,6 +94,7 @@ class OnlineQueryService:
         *,
         context_loader: Callable[[], QueryContext] = load_query_context,
         retrieval_provider: RetrievalProvider | None = None,
+        query_understanding: QueryUnderstandingAdapter | None = None,
         trace_recorder: TraceRecorder | None = None,
     ) -> None:
         self._sql_generator = sql_generator
@@ -75,6 +102,7 @@ class OnlineQueryService:
         self._context: QueryContext | None = None
         self._context_failed = False
         self._retrieval_provider = retrieval_provider
+        self._query_understanding = query_understanding
         self._trace_recorder = trace_recorder or create_trace_recorder()
         if retrieval_provider is None:
             try:
@@ -122,18 +150,38 @@ class OnlineQueryService:
                 return result
             _safe_enrich(self._trace_recorder, outcome=TraceOutcome.SUCCESS)
 
-        context, context_error = self._resolve_context(
+        semantic_query, understanding_error = self._understand_query(
             request.question.strip(),
             request_id,
         )
+        if understanding_error is not None:
+            return understanding_error
+
+        context, context_error, context_reason = self._resolve_context(
+            request.question.strip(),
+            request_id,
+            semantic_query,
+        )
         if context_error is not None:
-            return _failure(request_id, context_error)
+            return _failure(
+                request_id,
+                context_error,
+                internal_reason=context_reason,
+            )
         if context is None:
             return _failure(request_id, QueryErrorCode.CONTEXT_ERROR)
 
         with _safe_trace_scope(self._trace_recorder, name="prompt.build"):
             try:
-                prompt = build_prompt(request.question.strip(), context)
+                prompt = build_prompt(
+                    semantic_query
+                    if semantic_query is not None
+                    else request.question.strip(),
+                    context,
+                    original_question=(
+                        request.question.strip() if semantic_query is not None else None
+                    ),
+                )
             except Exception:
                 result = _failure(request_id, QueryErrorCode.CONTEXT_ERROR)
                 _enrich_failure_span(
@@ -261,23 +309,32 @@ class OnlineQueryService:
         self,
         question: str,
         request_id: str,
-    ) -> tuple[QueryContext | None, QueryErrorCode | None]:
+        semantic_query: ValidatedSemanticQuery | None,
+    ) -> tuple[QueryContext | None, QueryErrorCode | None, str | None]:
         if self._retrieval_provider is None:
             if self._context_failed or self._context is None:
-                return None, QueryErrorCode.CONTEXT_ERROR
-            return self._context, None
+                return (
+                    None,
+                    QueryErrorCode.CONTEXT_ERROR,
+                    "STATIC_CONTEXT_UNAVAILABLE",
+                )
+            return self._context, None, None
 
         with _safe_trace_scope(self._trace_recorder, name="retrieval.plan"):
-            try:
-                retrieval_request = build_retrieval_request(question)
-            except Exception:
+            if semantic_query is None:
                 error = QueryErrorCode.CONTEXT_ERROR
                 _enrich_failure_span(
                     self._trace_recorder,
                     error,
                     ErrorType.RETRIEVAL,
                 )
-                return None, error
+                return None, error, "SEMANTIC_QUERY_MISSING"
+            retrieval_request = RetrievalRequest(
+                question=question,
+                request_shape=_request_shape(semantic_query),
+                fallback_policy=FallbackPolicy.FAIL_CLOSED,
+                semantic_query=semantic_query,
+            )
             _safe_enrich(
                 self._trace_recorder,
                 attributes={
@@ -307,6 +364,7 @@ class OnlineQueryService:
                     retrieval_request,
                     status=RetrievalStatus.RETRIEVAL_UNAVAILABLE,
                     attributes=base_attributes,
+                    internal_reason="PROVIDER_EXCEPTION",
                 )
 
             retrieval_attributes = {
@@ -325,7 +383,7 @@ class OnlineQueryService:
                         attributes=retrieval_attributes,
                         outcome=TraceOutcome.SUCCESS,
                     )
-                    return resolved_context, None
+                    return resolved_context, None, None
                 except ValueError as exc:
                     _LOGGER.warning(
                         "Online Retrieval fallback: request_id=%s status=SUCCESS "
@@ -339,6 +397,7 @@ class OnlineQueryService:
                         retrieval_request,
                         status=result.status,
                         attributes=retrieval_attributes,
+                        internal_reason="QUERY_CONTEXT_BUILD_FAILED",
                     )
             if result.status in _BUSINESS_RETRIEVAL_FAILURES:
                 error = QueryErrorCode.CANNOT_ANSWER
@@ -349,7 +408,11 @@ class OnlineQueryService:
                     error_type=ErrorType.RETRIEVAL,
                     error_code=error.value,
                 )
-                return None, error
+                return (
+                    None,
+                    error,
+                    result.internal_reason or result.status.value,
+                )
             _LOGGER.warning(
                 "Online Retrieval technical failure: request_id=%s status=%s asset_version=%s "
                 "reason=%s",
@@ -363,7 +426,143 @@ class OnlineQueryService:
                 retrieval_request,
                 status=result.status,
                 attributes=retrieval_attributes,
+                internal_reason=result.internal_reason or result.status.value,
             )
+
+    def _understand_query(
+        self,
+        question: str,
+        request_id: str,
+    ) -> tuple[ValidatedSemanticQuery | None, QueryFailure | None]:
+        """在线模式下先完成 Query Understanding，再允许进入 Retrieval。"""
+
+        if self._retrieval_provider is None:
+            return None, None
+
+        with _safe_trace_scope(self._trace_recorder, name="query.understanding"):
+            if self._query_understanding is None:
+                result = _failure(
+                    request_id,
+                    QueryErrorCode.LLM_ERROR,
+                    message=_QUERY_UNDERSTANDING_MISSING_MESSAGE,
+                    stage="query_understanding",
+                    internal_reason="ADAPTER_NOT_CONFIGURED",
+                )
+                _safe_enrich(
+                    self._trace_recorder,
+                    attributes={
+                        "chatbi.query_understanding.reason": "ADAPTER_NOT_CONFIGURED",
+                    },
+                    outcome=TraceOutcome.TECHNICAL_FAILURE,
+                    error_type=ErrorType.LLM,
+                    error_code=result.error_code.value,
+                )
+                return None, result
+
+            try:
+                candidate = self._query_understanding.understand(question)
+            except Exception as exc:
+                result = _failure(
+                    request_id,
+                    QueryErrorCode.LLM_ERROR,
+                    message=_QUERY_UNDERSTANDING_ERROR_MESSAGE,
+                    stage="query_understanding",
+                    internal_reason=_exception_reason(
+                        exc,
+                        "UNDERSTANDING_FAILED",
+                    ),
+                )
+                _safe_enrich(
+                    self._trace_recorder,
+                    attributes={
+                        "chatbi.query_understanding.reason": _exception_reason(
+                            exc,
+                            "UNDERSTANDING_FAILED",
+                        ),
+                    },
+                    outcome=TraceOutcome.TECHNICAL_FAILURE,
+                    error_type=ErrorType.LLM,
+                    error_code=result.error_code.value,
+                )
+                return None, result
+
+            try:
+                validated = validate_candidate(
+                    candidate,
+                    original_question=question,
+                )
+            except SemanticQueryCannotAnswer as exc:
+                result = _failure(
+                    request_id,
+                    QueryErrorCode.CANNOT_ANSWER,
+                    message=str(exc),
+                    stage="query_understanding",
+                    internal_reason=exc.reason,
+                )
+                _safe_enrich(
+                    self._trace_recorder,
+                    attributes={
+                        "chatbi.query_understanding.reason": exc.reason,
+                    },
+                    outcome=TraceOutcome.BUSINESS_REJECTION,
+                    error_type=ErrorType.RETRIEVAL,
+                    error_code=result.error_code.value,
+                )
+                return None, result
+            except SemanticQueryStructureError as exc:
+                result = _failure(
+                    request_id,
+                    QueryErrorCode.LLM_ERROR,
+                    message=_QUERY_UNDERSTANDING_ERROR_MESSAGE,
+                    stage="query_understanding",
+                    internal_reason=exc.reason,
+                )
+                _safe_enrich(
+                    self._trace_recorder,
+                    attributes={
+                        "chatbi.query_understanding.reason": exc.reason,
+                    },
+                    outcome=TraceOutcome.TECHNICAL_FAILURE,
+                    error_type=ErrorType.LLM,
+                    error_code=result.error_code.value,
+                )
+                return None, result
+            except Exception as exc:
+                result = _failure(
+                    request_id,
+                    QueryErrorCode.LLM_ERROR,
+                    message=_QUERY_UNDERSTANDING_ERROR_MESSAGE,
+                    stage="query_understanding",
+                    internal_reason=_exception_reason(
+                        exc,
+                        "VALIDATION_FAILED",
+                    ),
+                )
+                _safe_enrich(
+                    self._trace_recorder,
+                    attributes={
+                        "chatbi.query_understanding.reason": _exception_reason(
+                            exc,
+                            "VALIDATION_FAILED",
+                        ),
+                    },
+                    outcome=TraceOutcome.TECHNICAL_FAILURE,
+                    error_type=ErrorType.LLM,
+                    error_code=result.error_code.value,
+                )
+                return None, result
+
+            _safe_enrich(
+                self._trace_recorder,
+                attributes={
+                    "chatbi.query_understanding.query_type": validated.query_type.value,
+                    "chatbi.query_understanding.metric_count": len(validated.metrics),
+                    "chatbi.query_understanding.filter_count": len(validated.filters),
+                    "chatbi.query_understanding.has_time": validated.time is not None,
+                },
+                outcome=TraceOutcome.SUCCESS,
+            )
+            return validated, None
 
     def _retrieval_failure_or_error(
         self,
@@ -372,7 +571,8 @@ class OnlineQueryService:
         *,
         status: RetrievalStatus,
         attributes: dict[str, object],
-    ) -> tuple[QueryContext | None, QueryErrorCode | None]:
+        internal_reason: str | None = None,
+    ) -> tuple[QueryContext | None, QueryErrorCode | None, str | None]:
         del request_id, retrieval_request
         error = QueryErrorCode.CONTEXT_ERROR
         _safe_enrich(
@@ -386,7 +586,7 @@ class OnlineQueryService:
             error_type=ErrorType.RETRIEVAL,
             error_code=error.value,
         )
-        return None, error
+        return None, error, internal_reason or status.value
 
 
 def _resolve_request_id(request_id: str | None) -> tuple[str, bool]:
@@ -407,9 +607,35 @@ def _fallback_reason(warnings: tuple[str, ...]) -> str:
     return reason[:256] or "unspecified"
 
 
-def _failure(request_id: str, error_code: QueryErrorCode) -> QueryFailure:
+def _failure(
+    request_id: str,
+    error_code: QueryErrorCode,
+    *,
+    message: str | None = None,
+    stage: str | None = None,
+    internal_reason: str | None = None,
+) -> QueryFailure:
     return QueryFailure(
         request_id=request_id,
         error_code=error_code,
-        error_message=_ERROR_MESSAGES[error_code],
+        error_message=message or _ERROR_MESSAGES[error_code],
+        failure_stage=stage or _FAILURE_STAGES[error_code],
+        internal_reason=internal_reason or error_code.value,
     )
+
+
+def _request_shape(query: ValidatedSemanticQuery) -> RequestShape:
+    if len(query.metrics) >= 2:
+        return RequestShape.EXPLICIT_MULTI
+    return RequestShape.BASELINE
+
+
+def _exception_reason(exc: Exception, fallback: str) -> str:
+    reason = getattr(exc, "reason", None)
+    if (
+        isinstance(reason, str)
+        and reason.strip()
+        and reason.strip() != "LLM_ERROR"
+    ):
+        return reason.strip()[:128]
+    return fallback

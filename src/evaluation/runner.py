@@ -41,6 +41,8 @@ class CaseEvaluation:
     duration_ms: int
     request_id: str | None = None
     trace_id: str | None = None
+    failure_stage: str | None = None
+    internal_reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,6 +132,8 @@ def run_evaluation(
                         case,
                         result.error_message,
                         query_error_code=result.error_code.value,
+                        failure_stage=result.failure_stage,
+                        internal_reason=result.internal_reason,
                         duration_ms=duration_ms,
                         request_id=request_id,
                         trace_id=trace_id,
@@ -251,6 +255,8 @@ def _failed(
     reason: str,
     *,
     query_error_code: str | None = None,
+    failure_stage: str | None = None,
+    internal_reason: str | None = None,
     duration_ms: int = 0,
     request_id: str | None = None,
     trace_id: str | None = None,
@@ -265,6 +271,8 @@ def _failed(
         duration_ms=duration_ms,
         request_id=request_id,
         trace_id=trace_id,
+        failure_stage=failure_stage,
+        internal_reason=internal_reason,
     )
 
 

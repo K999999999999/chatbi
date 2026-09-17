@@ -1,0 +1,68 @@
+[
+  {
+    "id": "current-context-no-time",
+    "question": "当前已完成订单的人民币销售额是多少？",
+    "expected": {
+      "query_type": "metric_analysis",
+      "metrics": ["人民币销售额"],
+      "dimensions": [],
+      "time": null
+    }
+  },
+  {
+    "id": "today-explicit-time",
+    "question": "今天已完成订单的人民币销售额是多少？",
+    "expected": {
+      "query_type": "metric_analysis",
+      "metrics": ["人民币销售额"],
+      "dimensions": [],
+      "time": {"text": "今天", "granularity": "day"}
+    }
+  },
+  {
+    "id": "month-explicit-time",
+    "question": "本月已完成订单的人民币销售额是多少？",
+    "expected": {
+      "query_type": "metric_analysis",
+      "metrics": ["人民币销售额"],
+      "dimensions": [],
+      "time": {"text": "本月", "granularity": "month"}
+    }
+  },
+  {
+    "id": "absolute-year-explicit-time",
+    "question": "2025 年已完成订单的人民币销售额是多少？",
+    "expected": {
+      "query_type": "metric_analysis",
+      "metrics": ["人民币销售额"],
+      "dimensions": [],
+      "time": {"text": "2025 年", "granularity": "year"}
+    }
+  },
+  {
+    "id": "recent-days-explicit-time",
+    "question": "最近 7 天已完成订单的人民币销售额是多少？",
+    "expected": {
+      "query_type": "metric_analysis",
+      "metrics": ["人民币销售额"],
+      "dimensions": [],
+      "time": {"text": "最近 7 天", "granularity": "day"}
+    }
+  },
+  {
+    "id": "five-metric-no-time",
+    "question": "按客户类型统计已完成订单数、人民币销售额、人民币销售成本、人民币毛利和毛利率。",
+    "expected": {
+      "query_type": "metric_analysis",
+      "metrics": [
+        "已完成订单数",
+        "人民币销售额",
+        "人民币销售成本",
+        "人民币毛利",
+        "毛利率"
+      ],
+      "dimensions": ["客户类型"],
+      "time": null
+    }
+  }
+]
