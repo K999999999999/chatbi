@@ -5,7 +5,7 @@ import re
 from sqlglot import exp, parse_one
 from sqlglot.errors import SqlglotError
 
-from .contracts import (
+from ..contracts import (
     MetricConstraint,
     MetricHit,
     MetricMention,

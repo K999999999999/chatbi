@@ -167,7 +167,7 @@ class ServiceTest(unittest.TestCase):
 
     def test_query_reuses_one_parse_between_scope_and_sql_guard(self) -> None:
         with patch(
-            "src.online_query.sql_guard._parse_single_select",
+            "src.online_query.sql_guard.sql_guard._parse_single_select",
             wraps=sql_guard._parse_single_select,
         ) as parse:
             result = self._service().query(QueryRequest(question="查询订单"))
@@ -179,7 +179,7 @@ class ServiceTest(unittest.TestCase):
         service = self._service()
 
         with patch(
-            "src.online_query.sql_guard._parse_single_select",
+            "src.online_query.sql_guard.sql_guard._parse_single_select",
             wraps=sql_guard._parse_single_select,
         ) as parse:
             first = service.query(QueryRequest(question="第一次查询"))

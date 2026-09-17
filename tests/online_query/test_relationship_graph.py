@@ -2,7 +2,7 @@
 
 import unittest
 
-from src.online_query.relationship_graph import (
+from src.online_query.retrieval.relationship_graph import (
     RelationshipGraphAmbiguousError,
     RelationshipGraphUnreachableError,
     resolve_join_paths,
@@ -10,7 +10,7 @@ from src.online_query.relationship_graph import (
     validate_time_edge,
     validated_join_constraints,
 )
-from src.online_query.resource_retrieval import _TimeField
+from src.online_query.retrieval.resource_retrieval import _TimeField
 
 
 class RelationshipGraphDirectJoinTest(unittest.TestCase):

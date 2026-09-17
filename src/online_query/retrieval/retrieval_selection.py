@@ -2,8 +2,8 @@
 
 import re
 
-from .contracts import MetricHit, TableHit
-from .query_understanding import ValidatedSemanticQuery
+from ..contracts import MetricHit, TableHit
+from ..query_understanding import ValidatedSemanticQuery
 from .resource_retrieval import _TimeField, _metric_data_source
 from .retrieval_errors import (
     RequiredCandidateUnavailableError,

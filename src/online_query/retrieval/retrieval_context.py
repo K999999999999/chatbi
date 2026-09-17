@@ -7,7 +7,7 @@ import json
 from types import MappingProxyType
 from typing import Any
 
-from .contracts import (
+from ..contracts import (
     ColumnHit,
     JoinConstraint,
     JoinResolution,

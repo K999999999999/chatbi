@@ -27,7 +27,7 @@ QueryRequest
 
 ## 最小代码结构
 
-代码放在 `src/online_query/`。保留模块目录是因为以后还会有 Evaluation（评测）模块，但模块内部不再继续分层建目录。
+代码放在 `src/online_query/`。根目录保留查询核心、共享 Contract 和外部能力适配；Retrieval 与 SQL Guard 按真实子域分别放入子包，便于新人从目录建立模块地图。该目录调整只改变文件位置和 import，不改变业务行为或公共 Contract。
 
 | 文件 | 职责 |
 |---|---|
@@ -35,9 +35,11 @@ QueryRequest
 | `context.py` | 读取五个 JSON 文件，生成 Prompt 上下文及允许的表字段集合，并缓存结果 |
 | `prompt.py` | 把用户问题、数据库结构、字段值、关系和指标组装成 Prompt |
 | `llm.py` | 使用 LangChain `ChatOpenAI` 调用模型，只返回 SQL 文本或 `CANNOT_ANSWER` |
-| `sql_guard.py` | 使用 SQLGlot 对 PostgreSQL SQL 做确定性安全校验 |
+| `sql_guard/sql_guard.py` | 使用 SQLGlot 对 PostgreSQL SQL 做确定性安全校验；AST 作用域辅助位于同目录 `sql_guard_scope.py`，`sql_guard/__init__.py` 保留公共入口 |
 | `database.py` | 使用 psycopg 进行只读查询、超时控制和结果截断 |
-| `service.py` | 串联完整链路并统一转换错误 |
+| `service.py` | 保留 Query Understanding、请求校验、Retrieval、Prompt、LLM、SQL Guard、Database 主链路并统一转换错误 |
+| `retrieval/` | Online Retrieval 的运行时、资源检索、关系解析、上下文组装和请求规划 |
+| `sql_guard/` | SQL Guard 核心、Join 校验、多指标校验和异常类型 |
 | `__init__.py` | 只导出公共请求、结果和 Service |
 
 ## 核心 Contract（契约）

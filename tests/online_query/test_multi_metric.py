@@ -14,7 +14,7 @@ from src.online_query.query_understanding import (
     QueryType,
     ValidatedSemanticQuery,
 )
-from src.online_query.multi_metric import (
+from src.online_query.retrieval.multi_metric import (
     plan_retrieved_metrics,
 )
 

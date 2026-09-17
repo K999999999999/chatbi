@@ -29,7 +29,7 @@ from src.online_query.query_understanding_llm import (
     LangChainQueryUnderstanding,
     QueryUnderstandingAdapter,
 )
-from src.online_query.rag_runtime import RagRuntime
+from src.online_query.retrieval.rag_runtime import RagRuntime
 from src.online_query.retrieval import OnlineRetriever
 from src.online_query.service import OnlineQueryService
 

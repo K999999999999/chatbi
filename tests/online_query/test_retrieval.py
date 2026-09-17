@@ -18,7 +18,7 @@ from src.online_query.query_understanding import (
     candidate_from_payload,
     validate_candidate,
 )
-from src.online_query.rag_runtime import (
+from src.online_query.retrieval.rag_runtime import (
     AssetSnapshot,
     RetrievalUnavailableError,
 )
