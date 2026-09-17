@@ -1,8 +1,8 @@
 """QueryUnderstandingAdapter（查询理解适配器）测试。"""
 
 import json
-from types import SimpleNamespace
 import unittest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock, patch
 
 from src.online_query.llm import LLMError
@@ -83,6 +83,7 @@ class QueryUnderstandingLLMTest(unittest.TestCase):
 
         self.assertIsInstance(raised.exception.__cause__, TimeoutError)
         self.assertNotIn("provider detail", str(raised.exception))
+        self.assertEqual(raised.exception.reason, "PROVIDER_CALL_FAILED")
         self.assertEqual(model.invoke.call_count, 2)
 
     def test_empty_non_text_and_invalid_json_are_controlled_errors(self) -> None:
@@ -102,6 +103,13 @@ class QueryUnderstandingLLMTest(unittest.TestCase):
                     adapter.understand("查询销售额")
                 model.invoke.assert_called_once()
 
+        model = Mock()
+        model.invoke.return_value = SimpleNamespace(content="not-json")
+        adapter = LangChainQueryUnderstanding(model)
+        with self.assertRaises(LLMError) as raised:
+            adapter.understand("查询销售额")
+        self.assertEqual(raised.exception.reason, "RESPONSE_NOT_JSON")
+
     def test_invalid_candidate_shape_is_llm_error(self) -> None:
         payload = _payload()
         payload["formula"] = "SUM(amount)"
@@ -115,6 +123,7 @@ class QueryUnderstandingLLMTest(unittest.TestCase):
             adapter.understand("查询销售额")
 
         self.assertNotIn("SUM(amount)", str(raised.exception))
+        self.assertEqual(raised.exception.reason, "CANDIDATE_FIELD_EXTRA")
 
     def test_trace_uses_dedicated_span(self) -> None:
         model = Mock()

@@ -99,6 +99,7 @@ def create_report(
             "execution_accuracy": run.summary.execution_accuracy,
             "category_accuracy": dict(run.summary.category_accuracy),
             "failure_stage_counts": _failure_stage_counts(run),
+            "internal_reason_counts": _internal_reason_counts(run),
         },
         "cases": [
             {
@@ -169,6 +170,22 @@ def render_markdown_report(report: Mapping[str, object]) -> str:
         for stage, count in sorted(stage_counts.items()):
             lines.append(f"| {_markdown_cell(stage)} | {_markdown_cell(count)} |")
 
+    lines.extend(["", "## 内部原因分布", ""])
+    reason_counts = _object_mapping(summary.get("internal_reason_counts"))
+    if reason_counts is None:
+        raise ReportingError("报告内部原因汇总结构无效")
+    if not reason_counts:
+        lines.append("没有记录内部原因。")
+    else:
+        lines.extend(
+            [
+                "| 内部原因 | 案例数 |",
+                "|---|---:|",
+            ]
+        )
+        for reason, count in sorted(reason_counts.items()):
+            lines.append(f"| {_markdown_cell(reason)} | {_markdown_cell(count)} |")
+
     lines.extend(
         [
             "",
@@ -221,17 +238,23 @@ def render_markdown_report(report: Mapping[str, object]) -> str:
     else:
         lines.extend(
             [
-                "| 案例 | 分类 | 状态 | 阶段 | 原因 |",
-                "|---|---|---|---|---|",
+                "| 案例 | 分类 | 状态 | 阶段 | 内部原因 | 原因 |",
+                "|---|---|---|---|---|---|",
             ]
         )
         for case in non_pass_cases:
             lines.append(
-                "| {case_id} | {category} | {status} | {stage} | {reason} |".format(
+                (
+                    "| {case_id} | {category} | {status} | {stage} | "
+                    "{internal_reason} | {reason} |"
+                ).format(
                     case_id=_markdown_cell(case.get("case_id")),
                     category=_markdown_cell(case.get("category")),
                     status=_markdown_cell(case.get("status")),
                     stage=_markdown_cell(case.get("failure_stage") or "未说明"),
+                    internal_reason=_markdown_cell(
+                        case.get("internal_reason") or "未说明"
+                    ),
                     reason=_markdown_cell(case.get("failure_reason") or "未说明"),
                 )
             )
@@ -328,6 +351,15 @@ def _failure_stage_counts(run: EvaluationRun) -> dict[str, int]:
         if case.status == CaseStatus.PASS or not case.failure_stage:
             continue
         counts[case.failure_stage] = counts.get(case.failure_stage, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _internal_reason_counts(run: EvaluationRun) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in run.cases:
+        if case.status == CaseStatus.PASS or not case.internal_reason:
+            continue
+        counts[case.internal_reason] = counts.get(case.internal_reason, 0) + 1
     return dict(sorted(counts.items()))
 
 

@@ -1,8 +1,8 @@
 """Online Query（在线查询）主链路编排。"""
 
+import logging
 from collections.abc import Callable
 from hashlib import sha256
-import logging
 from typing import Any
 from uuid import uuid4
 
@@ -23,8 +23,8 @@ from .contracts import (
     QueryResult,
     QuerySuccess,
     RequestShape,
-    RetrievalRequest,
     RetrievalProvider,
+    RetrievalRequest,
     RetrievalStatus,
     SQLGenerator,
 )
@@ -32,11 +32,16 @@ from .database import DatabaseError, DatabaseQueryTimeout
 from .prompt import build_prompt
 from .query_trace import (
     enrich_failure_span as _enrich_failure_span,
+)
+from .query_trace import (
     enrich_query_result as _enrich_query_result,
+)
+from .query_trace import (
     safe_enrich as _safe_enrich,
+)
+from .query_trace import (
     safe_trace_scope as _safe_trace_scope,
 )
-from .sql_guard import _new_validation_session
 from .query_understanding import (
     SemanticQueryCannotAnswer,
     SemanticQueryStructureError,
@@ -44,7 +49,7 @@ from .query_understanding import (
     validate_candidate,
 )
 from .query_understanding_llm import QueryUnderstandingAdapter
-
+from .sql_guard import _new_validation_session
 
 _ERROR_MESSAGES = {
     QueryErrorCode.INVALID_REQUEST: "查询问题不能为空或格式错误",
@@ -627,6 +632,10 @@ def _request_shape(query: ValidatedSemanticQuery) -> RequestShape:
 
 def _exception_reason(exc: Exception, fallback: str) -> str:
     reason = getattr(exc, "reason", None)
-    if isinstance(reason, str) and reason.strip():
+    if (
+        isinstance(reason, str)
+        and reason.strip()
+        and reason.strip() != "LLM_ERROR"
+    ):
         return reason.strip()[:128]
     return fallback

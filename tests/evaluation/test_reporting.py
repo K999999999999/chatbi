@@ -112,8 +112,11 @@ class EvaluationReportingTest(unittest.TestCase):
             "有效案例执行准确率 50.00%。",
             markdown,
         )
-        self.assertIn("| C2 | simple | FAIL | 未说明 | 失败 |", markdown)
-        self.assertIn("| C3 | simple | INVALID_CASE | 未说明 | 失败 |", markdown)
+        self.assertIn("| C2 | simple | FAIL | 未说明 | 未说明 | 失败 |", markdown)
+        self.assertIn(
+            "| C3 | simple | INVALID_CASE | 未说明 | 未说明 | 失败 |",
+            markdown,
+        )
         self.assertIn("本次未执行自动基线比较", markdown)
 
     def test_report_exposes_query_understanding_failure_stage(self) -> None:
@@ -139,11 +142,15 @@ class EvaluationReportingTest(unittest.TestCase):
             {"query_understanding": 1},
         )
         self.assertEqual(
+            report["summary"]["internal_reason_counts"],
+            {"QUERY_TYPE_UNKNOWN": 1},
+        )
+        self.assertEqual(
             report["cases"][0]["internal_reason"],
             "QUERY_TYPE_UNKNOWN",
         )
         self.assertIn(
-            "| C1 | simple | FAIL | query_understanding | 失败 |",
+            "| C1 | simple | FAIL | query_understanding | QUERY_TYPE_UNKNOWN | 失败 |",
             markdown,
         )
 

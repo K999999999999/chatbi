@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Callable, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
 
@@ -24,12 +25,12 @@ from src.online_query.contracts import (
 )
 from src.online_query.database import DatabaseError, PsycopgQueryExecutor
 from src.online_query.llm import LangChainSQLGenerator, LLMError
-from src.online_query.rag_runtime import RagRuntime
-from src.online_query.retrieval import OnlineRetriever
 from src.online_query.query_understanding_llm import (
     LangChainQueryUnderstanding,
     QueryUnderstandingAdapter,
 )
+from src.online_query.rag_runtime import RagRuntime
+from src.online_query.retrieval import OnlineRetriever
 from src.online_query.service import OnlineQueryService
 
 from .evaluator import EvaluationLoadError, load_evaluation_cases
@@ -42,9 +43,19 @@ from .reporting import (
     write_report,
 )
 from .runner import run_evaluation
+from .semantic_evaluation import (
+    SemanticEvaluationLoadError,
+    create_query_understanding_report,
+    evaluate_query_understanding,
+    load_query_understanding_cases,
+    write_query_understanding_report,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CASES_PATH = PROJECT_ROOT / "src" / "evaluation" / "eval_cases.json"
+DEFAULT_QUERY_UNDERSTANDING_CASES_PATH = (
+    PROJECT_ROOT / "src" / "evaluation" / "query_understanding_cases.json"
+)
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "reports" / "evaluation"
 
 
@@ -82,6 +93,17 @@ def run_cli(
         except Exception:
             # Trace 失败不能阻断 Evaluation；下游仍按原有业务链路运行。
             trace_recorder = None
+
+        if args.query_understanding:
+            state_reader = _read_git_state if git_state_reader is None else git_state_reader
+            return _run_query_understanding_cli(
+                args,
+                source,
+                trace_recorder=trace_recorder,
+                query_understanding_factory=query_understanding_factory,
+                git_state_reader=state_reader,
+                stdout=output,
+            )
 
         cases = load_evaluation_cases(args.cases)
         baseline = load_report(args.baseline) if args.baseline else None
@@ -158,6 +180,7 @@ def run_cli(
         EvaluationLoadError,
         LLMError,
         ReportingError,
+        SemanticEvaluationLoadError,
     ) as exc:
         print(f"ERROR: {exc}", file=error_output)
         return 1
@@ -187,12 +210,82 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         help="明确指定的上一份有效报告",
     )
-    parser.add_argument(
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
         "--online-retrieval",
         action="store_true",
         help="启用与生产入口一致的在线 RAG 检索链路",
     )
+    mode_group.add_argument(
+        "--query-understanding",
+        action="store_true",
+        help="只运行 Query Understanding 语义评测",
+    )
+    parser.add_argument(
+        "--query-understanding-cases",
+        type=Path,
+        default=DEFAULT_QUERY_UNDERSTANDING_CASES_PATH,
+        help="Query Understanding 语义评测集路径",
+    )
     return parser
+
+
+def _run_query_understanding_cli(
+    args: argparse.Namespace,
+    environ: Mapping[str, str],
+    *,
+    trace_recorder: TraceRecorder | None,
+    query_understanding_factory: Callable[
+        [Mapping[str, str]], QueryUnderstandingAdapter
+    ]
+    | None,
+    git_state_reader: Callable[[Path], tuple[str, bool]],
+    stdout: TextIO,
+) -> int:
+    cases = load_query_understanding_cases(args.query_understanding_cases)
+    adapter = (
+        LangChainQueryUnderstanding.from_env(
+            environ,
+            trace_recorder=trace_recorder,
+        )
+        if query_understanding_factory is None
+        else query_understanding_factory(environ)
+    )
+    results = evaluate_query_understanding(cases, adapter)
+    git_commit, git_dirty = git_state_reader(PROJECT_ROOT)
+    report = create_query_understanding_report(
+        results,
+        git_commit=git_commit,
+        git_dirty=git_dirty,
+        model=environ.get("LLM_MODEL", ""),
+        cases_path=args.query_understanding_cases,
+        created_at=datetime.now(UTC),
+    )
+    metadata = report["metadata"]
+    if not isinstance(metadata, Mapping):
+        raise SemanticEvaluationLoadError("语义评测报告元数据结构无效")
+    run_id = metadata.get("run_id")
+    if not isinstance(run_id, str) or not run_id:
+        raise SemanticEvaluationLoadError("语义评测报告缺少 Run ID")
+    json_path = args.output_dir / f"{run_id}.json"
+    markdown_path = args.output_dir / f"{run_id}.md"
+    write_query_understanding_report(report, json_path, markdown_path)
+    summary = report["summary"]
+    if not isinstance(summary, Mapping):
+        raise SemanticEvaluationLoadError("语义评测报告汇总结构无效")
+    accuracy = summary.get("accuracy")
+    accuracy_text = "N/A" if accuracy is None else f"{float(accuracy):.2%}"
+    print(f"Query Understanding Accuracy: {accuracy_text}", file=stdout)
+    print(
+        "PASS: {passed}, FAIL: {failed}".format(
+            passed=summary.get("passed", 0),
+            failed=summary.get("failed", 0),
+        ),
+        file=stdout,
+    )
+    print(f"Report: {json_path}", file=stdout)
+    print(f"Summary Report: {markdown_path}", file=stdout)
+    return 0 if summary.get("failed") == 0 else 1
 
 
 def _build_online_retrieval_provider(

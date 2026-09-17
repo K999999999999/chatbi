@@ -1,10 +1,10 @@
 """Query Understanding LLM Adapter（查询理解大模型适配器）。"""
 
+import json
+import os
 from collections.abc import Mapping
 from contextlib import contextmanager
-import json
 from math import isfinite
-import os
 from typing import Iterator, Protocol, runtime_checkable
 
 from langchain_openai import ChatOpenAI
@@ -17,7 +17,6 @@ from .query_understanding import (
     SemanticQueryStructureError,
     candidate_from_payload,
 )
-
 
 _MAX_LLM_TIMEOUT_SECONDS = 30.0
 _QUERY_UNDERSTANDING_MAX_ATTEMPTS = 2
@@ -104,23 +103,36 @@ class LangChainQueryUnderstanding:
 
             content = getattr(response, "content", None)
             if not isinstance(content, str):
-                raise LLMError("Query Understanding 未返回文本")
+                raise LLMError(
+                    "Query Understanding 未返回文本",
+                    reason="RESPONSE_NOT_TEXT",
+                )
             content = content.strip()
             if not content:
-                raise LLMError("Query Understanding 返回空响应")
+                raise LLMError(
+                    "Query Understanding 返回空响应",
+                    reason="RESPONSE_EMPTY",
+                )
 
             try:
                 payload = json.loads(content)
             except (TypeError, json.JSONDecodeError) as exc:
                 raise LLMError(
-                    "Query Understanding 返回的不是合法 JSON"
+                    "Query Understanding 返回的不是合法 JSON",
+                    reason="RESPONSE_NOT_JSON",
                 ) from exc
             if not isinstance(payload, Mapping):
-                raise LLMError("Query Understanding JSON 必须是对象")
+                raise LLMError(
+                    "Query Understanding JSON 必须是对象",
+                    reason="RESPONSE_NOT_OBJECT",
+                )
             try:
                 return candidate_from_payload(payload)
             except SemanticQueryStructureError as exc:
-                raise LLMError("Query Understanding 结构化输出无效") from exc
+                raise LLMError(
+                    "Query Understanding 结构化输出无效",
+                    reason=exc.reason,
+                ) from exc
 
     def _invoke_with_retry(self, prompt: str) -> object:
         """仅重试 Provider 调用异常，不重试模型响应或 Contract 错误。"""
@@ -130,7 +142,10 @@ class LangChainQueryUnderstanding:
                 return self._model.invoke(prompt)
             except Exception as exc:
                 if attempt == _QUERY_UNDERSTANDING_MAX_ATTEMPTS - 1:
-                    raise LLMError("Query Understanding LLM 调用失败") from exc
+                    raise LLMError(
+                        "Query Understanding LLM 调用失败",
+                        reason="PROVIDER_CALL_FAILED",
+                    ) from exc
 
         raise RuntimeError("Query Understanding 调用次数配置无效")
 
@@ -149,6 +164,9 @@ class LangChainQueryUnderstanding:
             except LLMError as exc:
                 safe_enrich(
                     self._trace_recorder,
+                    attributes={
+                        "chatbi.query_understanding.reason": exc.reason,
+                    },
                     outcome=TraceOutcome.TECHNICAL_FAILURE,
                     error_type=ErrorType.LLM,
                     error_code="LLM_ERROR",
