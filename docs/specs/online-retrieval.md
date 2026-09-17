@@ -1,7 +1,9 @@
 
 # Online Retrieval Module Spec
 
-状态：Online Retrieval V1（实体类、单指标、TABLE/COLUMN/METRIC 检索、确定性关系图和动态上下文）已实现并通过验收。基础 Multi-Metric Retrieval（多指标在线检索）为独立增量规格，见 `docs/specs/multi-metric-retrieval.md`，尚未实现。
+> 当前实现、测试和验收以 [Online Retrieval V1 Feature Contract（在线检索 V1 功能契约）](../../.scratch/online-retrieval-v1/spec.md) 为唯一有效口径。本文保留为历史基线规格参考；其中关于 BFS、多跳/中间表补入、独立多指标流水线、静态全量 Schema fallback 或普通 `JOIN` 的旧描述，不得用于当前实现、测试和验收。
+
+状态：历史基线规格，内容保留用于追溯。当前 Online Retrieval V1（实体类、单指标、多指标、TABLE/COLUMN/METRIC 检索、确定性关系图和动态上下文）的行为、测试和验收以仓库根目录 `.scratch/online-retrieval-v1/spec.md` 为准。
 
 ## 1. 模块目标
 
@@ -728,7 +730,7 @@ fallback 必须记录实际状态和原因，不允许静默吞掉异常。
 - 多日期关系保留正确性。
 - Dense-only 与后续 Hybrid 的效果差异。
 
-现有离线检索评测必须继续通过。Online Retrieval 接入后，使用现有 20 条标准问题与静态上下文基线进行前后对比，至少记录：
+现有离线检索评测必须继续通过。Online Retrieval 接入后，使用现有 21 条标准问题与静态上下文基线进行前后对比，至少记录：
 
 - SQL Execution Accuracy。
 - 业务结果正确性。

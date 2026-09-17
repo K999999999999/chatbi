@@ -1,0 +1,173 @@
+name: Real E2E
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: real-e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  real-e2e:
+    name: Real E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: chatbi_mvp
+          POSTGRES_USER: chatbi_migrator
+          POSTGRES_PASSWORD: ci-migrator-password
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U chatbi_migrator -d chatbi_mvp"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+      qdrant:
+        image: qdrant/qdrant:v1.18.3
+        env:
+          QDRANT__SERVICE__API_KEY: ci-qdrant-api-key
+        ports:
+          - 6333:6333
+          - 6334:6334
+
+    env:
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: "5433"
+      POSTGRES_DB: chatbi_mvp
+      POSTGRES_APP_USER: chatbi_app
+      POSTGRES_APP_PASSWORD: ci-app-password
+      QDRANT_API_KEY: ci-qdrant-api-key
+      RAG_QDRANT_URL: http://127.0.0.1:6333
+      RAG_QDRANT_API_KEY: ci-qdrant-api-key
+      RAG_OUTPUT_DIR: data/rag
+      RAG_MODEL_NAME_OR_PATH: BAAI/bge-m3
+      RAG_EMBEDDING_DIMENSION: "1024"
+      RAG_EMBEDDING_BATCH_SIZE: "4"
+      RAG_EMBEDDING_USE_FP16: "false"
+      RAG_EMBEDDING_DEVICE: cpu
+      RAG_QDRANT_TIMEOUT_SECONDS: "30"
+      RAG_COLLECTION_PREFIX: chatbi
+      RAG_ONLINE_RETRIEVAL_ENABLED: "true"
+      CHATBI_RUNTIME_ENV: ci
+      CHATBI_TRACE_CONTENT_ENABLED: "false"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.2"
+
+      - name: Install Python
+        run: uv python install 3.11
+
+      - name: Verify lockfile
+        run: uv lock --check
+
+      - name: Prepare real E2E runtime dependencies
+        run: uv run --python 3.11 --locked python -c "print('runtime dependencies ready')"
+
+      - name: Validate required LLM configuration
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}
+        run: |
+          set -euo pipefail
+
+          for variable in LLM_API_KEY LLM_BASE_URL LLM_MODEL; do
+            if [ -z "${!variable}" ]; then
+              echo "::error::Required GitHub Secret ${variable} is not configured."
+              exit 1
+            fi
+          done
+
+      - name: Wait for Qdrant
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for _ in $(seq 1 60); do
+            if curl --fail --silent --show-error \
+              --header "api-key: ${QDRANT_API_KEY}" \
+              http://127.0.0.1:6333/healthz > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo '::error::Qdrant did not become ready within 120 seconds.'
+          exit 1
+
+      - name: Bootstrap isolated PostgreSQL fixture
+        env:
+          PGPASSWORD: ci-migrator-password
+        run: >-
+          docker run --rm --network host
+          -e PGPASSWORD
+          -v "${GITHUB_WORKSPACE}/database:/database:ro"
+          postgres:16-alpine
+          psql --set ON_ERROR_STOP=1
+          --host 127.0.0.1 --port 5433
+          --username chatbi_migrator --dbname chatbi_mvp
+          --file /database/ci/bootstrap.sql
+
+      - name: Build real BGE-M3 and Qdrant assets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          build_id="ci-${GITHUB_SHA:0:12}"
+          uv run --python 3.11 --locked --no-sync \
+            python -m src.rag_offline --build-id "$build_id"
+
+      - name: Run 21-case real online evaluation
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}
+          LLM_TEMPERATURE: "0.1"
+          LLM_MAX_TOKENS: "1200"
+          LLM_TIMEOUT_SECONDS: "30"
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          uv run --python 3.11 --locked --no-sync \
+            python -m src.evaluation \
+            --online-retrieval \
+            --output-dir "${RUNNER_TEMP}/chatbi-real-evaluation"
+
+      - name: Assert 21/21 real E2E acceptance
+        if: ${{ success() }}
+        env:
+          REPORT_DIR: ${{ runner.temp }}/chatbi-real-evaluation
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          report_count=$(find "$REPORT_DIR" -maxdepth 1 -type f -name '*.json' | wc -l)
+          test "$report_count" -eq 1
+          report_path=$(find "$REPORT_DIR" -maxdepth 1 -type f -name '*.json' -print -quit)
+
+          uv run --python 3.11 --locked --no-sync python -c \
+            "import json, sys; summary = json.load(open(sys.argv[1], encoding='utf-8'))['summary']; expected = {'total_cases': 21, 'valid_cases': 21, 'passed': 21, 'failed': 0, 'invalid_cases': 0}; mismatches = {key: (summary.get(key), value) for key, value in expected.items() if summary.get(key) != value}; accuracy = summary.get('execution_accuracy'); mismatches['execution_accuracy'] = (accuracy, 1.0) if accuracy != 1.0 else mismatches.get('execution_accuracy'); mismatches = {key: value for key, value in mismatches.items() if value is not None}; assert not mismatches, f'Real E2E acceptance failed: {mismatches}'; print('Real E2E acceptance: 21/21 passed, Execution Accuracy=100%')" \
+            "$report_path"
+
+      - name: Upload Real E2E reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: real-e2e-reports-${{ github.run_id }}
+          path: ${{ runner.temp }}/chatbi-real-evaluation
+          if-no-files-found: warn
+          retention-days: 14

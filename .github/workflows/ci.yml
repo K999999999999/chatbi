@@ -1,0 +1,190 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deterministic-tests:
+    name: Deterministic tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.2"
+
+      - name: Install Python
+        run: uv python install 3.11
+
+      - name: Verify lockfile
+        run: uv lock --check
+
+      - name: Run deterministic tests
+        run: uv run --python 3.11 --locked --with pytest python -m pytest -q
+
+  postgres-integration:
+    name: PostgreSQL integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: chatbi_mvp
+          POSTGRES_USER: chatbi_migrator
+          POSTGRES_PASSWORD: ci-migrator-password
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U chatbi_migrator -d chatbi_mvp"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.2"
+
+      - name: Install Python
+        run: uv python install 3.11
+
+      - name: Verify lockfile
+        run: uv lock --check
+
+      - name: Bootstrap CI database
+        env:
+          PGPASSWORD: ci-migrator-password
+        run: >-
+          docker run --rm --network host
+          -e PGPASSWORD
+          -v "${GITHUB_WORKSPACE}/database:/database:ro"
+          postgres:16-alpine
+          psql --set ON_ERROR_STOP=1
+          --host 127.0.0.1 --port 5433
+          --username chatbi_migrator --dbname chatbi_mvp
+          --file /database/ci/bootstrap.sql
+
+      - name: Run PostgreSQL integration tests
+        env:
+          POSTGRES_HOST: 127.0.0.1
+          POSTGRES_PORT: "5433"
+          POSTGRES_DB: chatbi_mvp
+          POSTGRES_APP_USER: chatbi_app
+          POSTGRES_APP_PASSWORD: ci-app-password
+          RUN_DATABASE_TESTS: "1"
+        run: >-
+          uv run --python 3.11 --locked --with pytest python -m pytest -q
+          tests/online_query/test_database_integration.py
+          tests/online_query/test_service_integration.py::ServiceDatabaseIntegrationTest
+
+  application-smoke:
+    name: Application startup smoke
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.2"
+
+      - name: Install Python
+        run: uv python install 3.11
+
+      - name: Verify lockfile
+        run: uv lock --check
+
+      - name: Prepare runtime environment
+        run: uv run --python 3.11 --locked python -c "print('runtime dependencies ready')"
+
+      - name: Start API and Streamlit smoke services
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > .env.ci <<'EOF'
+          LLM_API_KEY=ci-test-key
+          LLM_BASE_URL=http://127.0.0.1:1/v1
+          LLM_MODEL=ci-test-model
+          LLM_TEMPERATURE=0.1
+          LLM_MAX_TOKENS=1200
+          LLM_TIMEOUT_SECONDS=1
+          POSTGRES_HOST=127.0.0.1
+          POSTGRES_PORT=5433
+          POSTGRES_DB=chatbi_mvp
+          POSTGRES_APP_USER=chatbi_app
+          POSTGRES_APP_PASSWORD=ci-app-password
+          RAG_ONLINE_RETRIEVAL_ENABLED=false
+          CHATBI_RUNTIME_ENV=ci
+          CHATBI_TRACE_CONTENT_ENABLED=false
+          EOF
+
+          uv run --python 3.11 --locked --no-sync --env-file .env.ci \
+            uvicorn src.query_api.main:app --host 127.0.0.1 --port 8000 \
+            > api.log 2>&1 &
+          api_pid=$!
+
+          uv run --python 3.11 --locked --no-sync --env-file .env.ci \
+            streamlit run src/streamlit_app.py \
+            --server.address 127.0.0.1 --server.port 8501 --server.headless true \
+            > streamlit.log 2>&1 &
+          streamlit_pid=$!
+
+          cleanup() {
+            status=$?
+            kill "$api_pid" "$streamlit_pid" 2>/dev/null || true
+            if [ "$status" -ne 0 ]; then
+              echo '=== API LOG ==='
+              cat api.log || true
+              echo '=== STREAMLIT LOG ==='
+              cat streamlit.log || true
+            fi
+            exit "$status"
+          }
+          trap cleanup EXIT
+
+          api_ready=0
+          streamlit_ready=0
+          for _ in $(seq 1 30); do
+            if [ "$api_ready" -eq 0 ] && curl --fail --silent http://127.0.0.1:8000/health > /dev/null; then
+              api_ready=1
+            fi
+            if [ "$streamlit_ready" -eq 0 ] && curl --fail --silent http://127.0.0.1:8501/_stcore/health | grep -qx 'ok'; then
+              streamlit_ready=1
+            fi
+            if [ "$api_ready" -eq 1 ] && [ "$streamlit_ready" -eq 1 ]; then
+              break
+            fi
+            sleep 1
+          done
+
+          test "$api_ready" -eq 1
+          test "$streamlit_ready" -eq 1
+
+          query_status=$(curl --silent --show-error --output query.json --write-out '%{http_code}' \
+            --request POST http://127.0.0.1:8000/api/v1/query \
+            --header 'Content-Type: application/json' --data '{}')
+          test "$query_status" = '400'

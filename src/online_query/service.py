@@ -17,7 +17,6 @@ from ..observability.contracts import (
 from ..observability.tracing import create_trace_recorder
 from .context import load_query_context
 from .contracts import (
-    FallbackPolicy,
     QueryContext,
     QueryErrorCode,
     QueryExecutor,
@@ -27,7 +26,6 @@ from .contracts import (
     QuerySuccess,
     RetrievalProvider,
     RetrievalStatus,
-    RequestShape,
     SQLGenerator,
 )
 from .database import DatabaseError, DatabaseQueryTimeout
@@ -75,10 +73,11 @@ class OnlineQueryService:
         self._context_failed = False
         self._retrieval_provider = retrieval_provider
         self._trace_recorder = trace_recorder or create_trace_recorder()
-        try:
-            self._context = context_loader()
-        except Exception:
-            self._context_failed = True
+        if retrieval_provider is None:
+            try:
+                self._context = context_loader()
+            except Exception:
+                self._context_failed = True
 
     def query(self, request: QueryRequest) -> QueryResult:
         request_id, request_id_valid = _resolve_request_id(request.request_id)
@@ -294,12 +293,12 @@ class OnlineQueryService:
                 result = self._retrieval_provider.retrieve(retrieval_request)
             except Exception as exc:
                 _LOGGER.warning(
-                    "Online Retrieval fallback: request_id=%s status=PROVIDER_EXCEPTION "
+                    "Online Retrieval technical failure: request_id=%s status=PROVIDER_EXCEPTION "
                     "error_type=%s",
                     request_id,
                     type(exc).__name__,
                 )
-                return self._retrieval_failure_or_static_fallback(
+                return self._retrieval_failure_or_error(
                     request_id,
                     retrieval_request,
                     status=RetrievalStatus.RETRIEVAL_UNAVAILABLE,
@@ -317,19 +316,6 @@ class OnlineQueryService:
             if result.status == RetrievalStatus.SUCCESS:
                 try:
                     resolved_context = result.to_query_context()
-                    if (
-                        retrieval_request.request_shape != RequestShape.BASELINE
-                        and len(resolved_context.metric_constraints) < 2
-                    ):
-                        error = QueryErrorCode.CANNOT_ANSWER
-                        _safe_enrich(
-                            self._trace_recorder,
-                            attributes=retrieval_attributes,
-                            outcome=TraceOutcome.BUSINESS_REJECTION,
-                            error_type=ErrorType.RETRIEVAL,
-                            error_code=error.value,
-                        )
-                        return None, error
                     _safe_enrich(
                         self._trace_recorder,
                         attributes=retrieval_attributes,
@@ -344,7 +330,7 @@ class OnlineQueryService:
                         result.asset_version,
                         type(exc).__name__,
                     )
-                    return self._retrieval_failure_or_static_fallback(
+                    return self._retrieval_failure_or_error(
                         request_id,
                         retrieval_request,
                         status=result.status,
@@ -361,21 +347,21 @@ class OnlineQueryService:
                 )
                 return None, error
             _LOGGER.warning(
-                "Online Retrieval fallback: request_id=%s status=%s asset_version=%s "
+                "Online Retrieval technical failure: request_id=%s status=%s asset_version=%s "
                 "reason=%s",
                 request_id,
                 result.status.value,
                 result.asset_version,
                 _fallback_reason(result.warnings),
             )
-            return self._retrieval_failure_or_static_fallback(
+            return self._retrieval_failure_or_error(
                 request_id,
                 retrieval_request,
                 status=result.status,
                 attributes=retrieval_attributes,
             )
 
-    def _retrieval_failure_or_static_fallback(
+    def _retrieval_failure_or_error(
         self,
         request_id: str,
         retrieval_request: Any,
@@ -383,56 +369,20 @@ class OnlineQueryService:
         status: RetrievalStatus,
         attributes: dict[str, object],
     ) -> tuple[QueryContext | None, QueryErrorCode | None]:
-        if retrieval_request.fallback_policy == FallbackPolicy.FAIL_CLOSED:
-            error = QueryErrorCode.CONTEXT_ERROR
-            _safe_enrich(
-                self._trace_recorder,
-                attributes={
-                    **attributes,
-                    "chatbi.retrieval.status": status.value,
-                    "chatbi.retrieval.fallback_used": False,
-                },
-                outcome=TraceOutcome.TECHNICAL_FAILURE,
-                error_type=ErrorType.RETRIEVAL,
-                error_code=error.value,
-            )
-            return None, error
-
-        context, error = self._static_context_or_error()
-        if error is not None or context is None:
-            error = QueryErrorCode.CONTEXT_ERROR
-            _safe_enrich(
-                self._trace_recorder,
-                attributes={
-                    **attributes,
-                    "chatbi.retrieval.status": status.value,
-                    "chatbi.retrieval.fallback_used": False,
-                },
-                outcome=TraceOutcome.TECHNICAL_FAILURE,
-                error_type=ErrorType.RETRIEVAL,
-                error_code=error.value,
-            )
-            return None, error
-
+        del request_id, retrieval_request
+        error = QueryErrorCode.CONTEXT_ERROR
         _safe_enrich(
             self._trace_recorder,
             attributes={
                 **attributes,
                 "chatbi.retrieval.status": status.value,
-                "chatbi.retrieval.fallback_used": True,
-                "chatbi.retrieval.context_source": "static_fallback",
+                "chatbi.retrieval.fallback_used": False,
             },
-            outcome=TraceOutcome.FALLBACK_SUCCESS,
+            outcome=TraceOutcome.TECHNICAL_FAILURE,
             error_type=ErrorType.RETRIEVAL,
+            error_code=error.value,
         )
-        return context, None
-
-    def _static_context_or_error(
-        self,
-    ) -> tuple[QueryContext | None, QueryErrorCode | None]:
-        if self._context_failed or self._context is None:
-            return None, QueryErrorCode.CONTEXT_ERROR
-        return self._context, None
+        return None, error
 
 
 def _resolve_request_id(request_id: str | None) -> tuple[str, bool]:

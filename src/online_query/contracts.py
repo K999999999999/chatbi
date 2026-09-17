@@ -94,9 +94,8 @@ class MetricConstraint:
 
 
 class MetricPlanStatus(StrEnum):
-    """确定性多指标计划结果。"""
+    """确定性指标请求计划结果。"""
 
-    NOT_MULTI = "NOT_MULTI"
     SUCCESS = "SUCCESS"
     AMBIGUOUS = "AMBIGUOUS"
     NO_METRIC = "NO_METRIC"
@@ -107,7 +106,7 @@ class MetricPlanStatus(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class MetricRequestPlan:
-    """多指标解析、去重和兼容检查的输出。"""
+    """指标解析、去重和兼容检查的输出。"""
 
     status: MetricPlanStatus
     request: RetrievalRequest
@@ -135,9 +134,9 @@ class RetrievalStatus(StrEnum):
 class RetrievalConfig:
     """V1 在线 Dense Retrieval（稠密检索）配置。"""
 
-    table_top_k: int = 3
-    column_top_k: int = 12
-    metric_top_k: int = 3
+    table_top_k: int = 5
+    column_top_k: int = 20
+    metric_top_k: int = 10
     table_score_threshold: float = 0.30
     column_score_threshold: float = 0.25
     metric_score_threshold: float = 0.30
@@ -218,7 +217,7 @@ class JoinEdge:
 
 @dataclass(frozen=True, slots=True)
 class JoinConstraint:
-    """多指标 SQL 允许使用的一条安全 Join 约束。"""
+    """SQL 允许使用的一条安全 Join 约束。"""
 
     source_table: str
     source_columns: tuple[str, ...]
@@ -242,7 +241,7 @@ class QueryContext:
 
 @dataclass(frozen=True, slots=True)
 class JoinPath:
-    """从 Anchor 到目标表的一条最短合法路径。"""
+    """从 Anchor 到目标表的一条直接合法路径。"""
 
     tables: tuple[str, ...]
     edges: tuple[JoinEdge, ...]
@@ -284,7 +283,7 @@ class OnlineRetrievalResult:
 
     status: RetrievalStatus
     request_shape: RequestShape = RequestShape.BASELINE
-    fallback_policy: FallbackPolicy = FallbackPolicy.ALLOW_STATIC
+    fallback_policy: FallbackPolicy = FallbackPolicy.FAIL_CLOSED
     internal_reason: str | None = None
     asset_version: str | None = None
     tables: tuple[TableHit, ...] = ()

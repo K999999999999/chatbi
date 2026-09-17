@@ -1,6 +1,6 @@
 # Online Query Module Spec
 
-状态：当前 Online Query 已接入并通过 Online Retrieval V1（在线检索 V1）验收；实体类和单指标基线行为以本文及 `docs/specs/online-retrieval.md` 为准。基础 Multi-Metric Retrieval（多指标在线检索）增量行为见 `docs/specs/multi-metric-retrieval.md`，已实现并通过真实在线 RAG 评测和 C05 业务验收。
+状态：当前 Online Query 已接入并通过 Online Retrieval V1（在线检索 V1）验收。Online Retrieval 的当前行为以 [V1 Feature Contract（V1 功能契约）](../../.scratch/online-retrieval-v1/spec.md) 为准；本文继续负责 Online Query 的输入、输出、执行和错误边界。
 
 ## 目标
 
@@ -78,12 +78,12 @@ QueryRequest
 
 ## 上下文规则
 
-- 应用仍可在启动时加载 `tables.json`、`columns.json`、`relationships.json` 和 `metrics.json`，作为静态上下文 fallback（回退）；字段典型值位于 `columns.json.value_examples`。
+- 应用可以在没有装配 Retrieval Provider（检索提供者）的显式静态模式下加载 `tables.json`、`columns.json`、`relationships.json` 和 `metrics.json`，用于确定性软件评测；字段典型值位于 `columns.json.value_examples`。在线 RAG 模式不把静态全量 Schema 作为技术故障 fallback。
 - 每次查询默认从同一已发布 `asset_version` 的 TABLE、COLUMN、METRIC 集合和 Relationship Graph（关系图）中按问题检索并组装最小动态上下文，不再默认使用完整结构和完整指标。
-- 对已确定为实体类或单指标基线的请求，Qdrant、Embedding 或资产加载等技术故障可以沿用静态上下文 fallback；业务资源缺失不得用静态上下文掩盖。多指标请求按多指标规格直接返回 `CONTEXT_ERROR`，不走静态 fallback。
+- 在线 RAG 的 Qdrant、Embedding、资产版本或关系图技术故障统一返回 `CONTEXT_ERROR`，不调用 LLM；业务资源缺失、关系不可达或关系歧义返回 `CANNOT_ANSWER`。实体类、单指标和多指标均遵循同一条 `metrics=0/1/N` 检索流程。
 - 静态事实文件修改后通过重启应用重新加载，当前不支持静态文件热更新；已发布 RAG 资产按 `current.json` 的新版本在后续请求中加载，不要求重启。
 - 发布资产或静态文件不存在、JSON 无法解析或内容完全为空时，不允许继续调用 LLM；无法建立合法上下文时返回 `CONTEXT_ERROR`。
-- 单指标基线不做任意 SQL 数学等价证明；基础多指标所需的有限公式、固定过滤和请求指标覆盖检查，以多指标规格的后置校验为准。
+- 多指标最多支持用户明确请求的 3 个指标；全部请求指标必须覆盖并兼容，否则返回 `CANNOT_ANSWER`。指标依赖不在线展开，公式字段不由程序静默补入。
 
 ## LLM 行为
 
@@ -95,7 +95,7 @@ QueryRequest
 ## SQL 安全规则
 
 - 只允许一条 SQL。
-- 只允许 `SELECT` 或 `WITH ... SELECT`。
+- V1 只允许单层 `SELECT`；事实表作为主表时，维表只能使用 Relationship Graph（关系图）认证的直接 `LEFT JOIN`，禁止中间表、多跳 Join、`RIGHT JOIN`、`FULL JOIN` 和 `CROSS JOIN`。
 - 只能访问 `mart_sales`。
 - 表和字段必须存在于当前结构目录。
 - 禁止 `INSERT`、`UPDATE`、`DELETE`、`DROP`、`ALTER`、`TRUNCATE` 和 `COPY`。
@@ -144,7 +144,7 @@ QueryRequest
 
 ### AI Evaluation（AI 评测）
 
-- 20 条标准测试全部能够通过同一条 Online Query 链路运行并统计 Execution Accuracy（执行准确率）。
+- 21 条标准测试全部能够通过同一条 Online Query 链路运行并统计 Execution Accuracy（执行准确率）。
 - 第一轮只建立真实模型 Baseline（基线），暂不设置准确率门槛。
 
 ## 实现设计阶段再决定

@@ -88,7 +88,10 @@ class T3ARetrievalObservabilityTest(unittest.TestCase):
         self.assertEqual(table_search.attributes["chatbi.retrieval.candidate_count"], 3)
         join = next(span for span in spans if span.name == "join.resolve")
         self.assertIn("fk_region", join.attributes["chatbi.retrieval.join.edge_ids"])
-        self.assertIn("fk_completion_date", join.attributes["chatbi.retrieval.join.edge_ids"])
+        self.assertNotIn(
+            "fk_completion_date",
+            join.attributes["chatbi.retrieval.join.edge_ids"],
+        )
 
         rendered = repr(spans)
         for forbidden in (

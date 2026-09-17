@@ -32,6 +32,7 @@ order_sensitive（可选，默认 false）
 - `question` 必须调用正式 `OnlineQueryService`。
 - `expected_sql` 只用于生成标准结果，不得替代系统生成 SQL。
 - 标准 SQL 仍须经过现有 SQL Guard（SQL 安全校验），并使用同一个只读数据库执行器。
+- 当前 Online Retrieval V1 的标准 Join 必须使用关系图认证的直接 `LEFT JOIN`；中间表、多跳 Join 和未认证 Join 不属于标准案例。
 
 ### 待评测系统
 
@@ -111,7 +112,7 @@ Execution Accuracy
 
 `Execution Accuracy = PASS 数量 / 有效案例数`。`INVALID_CASE` 不进入分母，但必须在报告中明确列出。
 
-每次运行同时生成两份同名报告：
+每次运行同时生成两份同名报告；报告只作为本地评测产物，不作为 GitHub Issue / PR 或远程交付内容：
 
 - JSON 数据报告：保留机器可读的运行元数据、汇总、单条结果和可选基线比较。
 - Markdown 总结报告：明确展示总体结论、成功/失败/无效数量、总体与分类准确率、失败案例及原因、基线比较状态和必要运行信息。
@@ -149,7 +150,7 @@ Execution Accuracy
 
 ### AI Evaluation（AI 评测）
 
-- 使用 `uv run --env-file .env python -m src.evaluation --online-retrieval`，20 条标准案例能够顺序运行完成，单条失败不影响其余案例。
+- 使用 `uv run --env-file .env python -m src.evaluation --online-retrieval`，21 条标准案例能够顺序运行完成，单条失败不影响其余案例。
 - 生成包含单条结果的 JSON 数据报告，以及包含总体结论、准确率和失败摘要的 Markdown 总结报告。
 - 后续报告能够识别相对上一份有效报告的回退和改善案例。
 

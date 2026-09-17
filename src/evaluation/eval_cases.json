@@ -45,7 +45,7 @@
     "category": "medium",
     "question": "按产品线统计已完成订单的人民币销售额。",
     "description": "两表 Join、维度分组、销售额聚合和状态过滤。",
-    "expected_sql": "SELECT p.product_line,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nJOIN mart_sales.dim_product AS p\n  ON p.product_key = f.product_key\nWHERE f.order_status = 'completed'\nGROUP BY p.product_line\nORDER BY p.product_line;"
+    "expected_sql": "SELECT p.product_line,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_product AS p\n  ON p.product_key = f.product_key\nWHERE f.order_status = 'completed'\nGROUP BY p.product_line\nORDER BY p.product_line;"
   },
   {
     "id": "M02",
@@ -53,7 +53,7 @@
     "category": "medium",
     "question": "按销售区域统计已完成订单数量。",
     "description": "两表 Join、维度分组、订单去重和状态过滤。",
-    "expected_sql": "SELECT r.sales_region_name,\n       COUNT(DISTINCT f.order_id) AS completed_order_count\nFROM mart_sales.fct_sales_order_line AS f\nJOIN mart_sales.dim_sales_region AS r\n  ON r.sales_region_key = f.sales_region_key\nWHERE f.order_status = 'completed'\nGROUP BY r.sales_region_name\nORDER BY r.sales_region_name;"
+    "expected_sql": "SELECT r.sales_region_name,\n       COUNT(DISTINCT f.order_id) AS completed_order_count\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_sales_region AS r\n  ON r.sales_region_key = f.sales_region_key\nWHERE f.order_status = 'completed'\nGROUP BY r.sales_region_name\nORDER BY r.sales_region_name;"
   },
   {
     "id": "M03",
@@ -61,7 +61,7 @@
     "category": "medium",
     "question": "按客户类型统计已完成订单的人民币销售额。",
     "description": "两表 Join、客户维度分组、销售额聚合和状态过滤。",
-    "expected_sql": "SELECT c.customer_type,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nJOIN mart_sales.dim_customer AS c\n  ON c.customer_key = f.customer_key\nWHERE f.order_status = 'completed'\nGROUP BY c.customer_type\nORDER BY c.customer_type;"
+    "expected_sql": "SELECT c.customer_type,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_customer AS c\n  ON c.customer_key = f.customer_key\nWHERE f.order_status = 'completed'\nGROUP BY c.customer_type\nORDER BY c.customer_type;"
   },
   {
     "id": "M04",
@@ -69,7 +69,7 @@
     "category": "medium",
     "question": "按产品类别统计已完成订单的人民币销售额。",
     "description": "两表 Join、产品类别分组、销售额聚合和状态过滤。",
-    "expected_sql": "SELECT p.product_category,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nJOIN mart_sales.dim_product AS p\n  ON p.product_key = f.product_key\nWHERE f.order_status = 'completed'\nGROUP BY p.product_category\nORDER BY p.product_category;"
+    "expected_sql": "SELECT p.product_category,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_product AS p\n  ON p.product_key = f.product_key\nWHERE f.order_status = 'completed'\nGROUP BY p.product_category\nORDER BY p.product_category;"
   },
   {
     "id": "M05",
@@ -77,7 +77,7 @@
     "category": "medium",
     "question": "按技术路线统计已完成订单的人民币毛利。",
     "description": "两表 Join、技术路线分组、派生金额计算和状态过滤。",
-    "expected_sql": "SELECT p.technology_route,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) AS gross_profit_cny\nFROM mart_sales.fct_sales_order_line AS f\nJOIN mart_sales.dim_product AS p\n  ON p.product_key = f.product_key\nWHERE f.order_status = 'completed'\nGROUP BY p.technology_route\nORDER BY p.technology_route;"
+    "expected_sql": "SELECT p.technology_route,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) AS gross_profit_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_product AS p\n  ON p.product_key = f.product_key\nWHERE f.order_status = 'completed'\nGROUP BY p.technology_route\nORDER BY p.technology_route;"
   },
   {
     "id": "M06",
@@ -85,7 +85,7 @@
     "category": "medium",
     "question": "按客户区域统计已完成订单数量。",
     "description": "两表 Join、客户区域分组、订单去重和状态过滤。",
-    "expected_sql": "SELECT c.customer_region,\n       COUNT(DISTINCT f.order_id) AS completed_order_count\nFROM mart_sales.fct_sales_order_line AS f\nJOIN mart_sales.dim_customer AS c\n  ON c.customer_key = f.customer_key\nWHERE f.order_status = 'completed'\nGROUP BY c.customer_region\nORDER BY c.customer_region;"
+    "expected_sql": "SELECT c.customer_region,\n       COUNT(DISTINCT f.order_id) AS completed_order_count\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_customer AS c\n  ON c.customer_key = f.customer_key\nWHERE f.order_status = 'completed'\nGROUP BY c.customer_region\nORDER BY c.customer_region;"
   },
   {
     "id": "M07",
@@ -93,7 +93,7 @@
     "category": "medium",
     "question": "按产品线统计已完成订单的人民币销售成本。",
     "description": "两表 Join、产品线分组、成本聚合和状态过滤。",
-    "expected_sql": "SELECT p.product_line,\n       SUM(f.sales_cost_amount_cny) AS sales_cost_cny\nFROM mart_sales.fct_sales_order_line AS f\nJOIN mart_sales.dim_product AS p\n  ON p.product_key = f.product_key\nWHERE f.order_status = 'completed'\nGROUP BY p.product_line\nORDER BY p.product_line;"
+    "expected_sql": "SELECT p.product_line,\n       SUM(f.sales_cost_amount_cny) AS sales_cost_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_product AS p\n  ON p.product_key = f.product_key\nWHERE f.order_status = 'completed'\nGROUP BY p.product_line\nORDER BY p.product_line;"
   },
   {
     "id": "M08",
@@ -101,7 +101,7 @@
     "category": "medium",
     "question": "按销售区域统计已完成订单的毛利率。",
     "description": "两表 Join、销售区域分组、毛利率计算和除零保护。",
-    "expected_sql": "SELECT r.sales_region_name,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny)\n         / NULLIF(SUM(f.net_sales_amount_cny), 0) AS gross_margin\nFROM mart_sales.fct_sales_order_line AS f\nJOIN mart_sales.dim_sales_region AS r\n  ON r.sales_region_key = f.sales_region_key\nWHERE f.order_status = 'completed'\nGROUP BY r.sales_region_name\nORDER BY r.sales_region_name;"
+    "expected_sql": "SELECT r.sales_region_name,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny)\n         / NULLIF(SUM(f.net_sales_amount_cny), 0) AS gross_margin\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_sales_region AS r\n  ON r.sales_region_key = f.sales_region_key\nWHERE f.order_status = 'completed'\nGROUP BY r.sales_region_name\nORDER BY r.sales_region_name;"
   },
   {
     "id": "M09",
@@ -109,7 +109,7 @@
     "category": "medium",
     "question": "按产品线统计已完成订单数量。",
     "description": "两表 Join、产品线分组、订单去重和状态过滤。",
-    "expected_sql": "SELECT p.product_line,\n       COUNT(DISTINCT f.order_id) AS completed_order_count\nFROM mart_sales.fct_sales_order_line AS f\nJOIN mart_sales.dim_product AS p\n  ON p.product_key = f.product_key\nWHERE f.order_status = 'completed'\nGROUP BY p.product_line\nORDER BY p.product_line;"
+    "expected_sql": "SELECT p.product_line,\n       COUNT(DISTINCT f.order_id) AS completed_order_count\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_product AS p\n  ON p.product_key = f.product_key\nWHERE f.order_status = 'completed'\nGROUP BY p.product_line\nORDER BY p.product_line;"
   },
   {
     "id": "T01",
@@ -117,7 +117,7 @@
     "category": "medium",
     "question": "2025 年第一季度已完成订单的人民币销售额是多少？",
     "description": "两表 Join、时间过滤和销售额聚合；按 completion_date_key 关联 dim_date.full_date，按完成日期统计。",
-    "expected_sql": "SELECT SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nJOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01';"
+    "expected_sql": "SELECT SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01';"
   },
   {
     "id": "C01",
@@ -125,7 +125,7 @@
     "category": "complex",
     "question": "按产品线统计已完成订单的毛利和毛利率。",
     "description": "同一分组内计算毛利和除零安全的毛利率。",
-    "expected_sql": "SELECT p.product_line,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) AS gross_profit_cny,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny)\n         / NULLIF(SUM(f.net_sales_amount_cny), 0) AS gross_margin\nFROM mart_sales.fct_sales_order_line AS f\nJOIN mart_sales.dim_product AS p\n  ON p.product_key = f.product_key\nWHERE f.order_status = 'completed'\nGROUP BY p.product_line\nORDER BY p.product_line;"
+    "expected_sql": "SELECT p.product_line,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) AS gross_profit_cny,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny)\n         / NULLIF(SUM(f.net_sales_amount_cny), 0) AS gross_margin\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_product AS p\n  ON p.product_key = f.product_key\nWHERE f.order_status = 'completed'\nGROUP BY p.product_line\nORDER BY p.product_line;"
   },
   {
     "id": "C02",
@@ -133,7 +133,7 @@
     "category": "complex",
     "question": "2025 年第一季度按产品线统计已完成订单的人民币销售额。",
     "description": "事实表、日期维度和产品维度三表 Join，带时间过滤和分组聚合；按 completion_date_key 关联 dim_date.full_date，按完成日期统计。",
-    "expected_sql": "SELECT p.product_line,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nJOIN mart_sales.dim_product AS p\n  ON p.product_key = f.product_key\nJOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\nGROUP BY p.product_line\nORDER BY p.product_line;"
+    "expected_sql": "SELECT p.product_line,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_product AS p\n  ON p.product_key = f.product_key\nLEFT JOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\nGROUP BY p.product_line\nORDER BY p.product_line;"
   },
   {
     "id": "C03",
@@ -141,7 +141,7 @@
     "category": "complex",
     "question": "2025 年第一季度按销售区域统计已完成订单的毛利和毛利率。",
     "description": "事实表、日期维度和区域维度三表 Join，带时间过滤、派生指标和除零保护；按 completion_date_key 关联 dim_date.full_date，按完成日期统计。",
-    "expected_sql": "SELECT r.sales_region_name,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) AS gross_profit_cny,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny)\n         / NULLIF(SUM(f.net_sales_amount_cny), 0) AS gross_margin\nFROM mart_sales.fct_sales_order_line AS f\nJOIN mart_sales.dim_sales_region AS r\n  ON r.sales_region_key = f.sales_region_key\nJOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\nGROUP BY r.sales_region_name\nORDER BY r.sales_region_name;"
+    "expected_sql": "SELECT r.sales_region_name,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) AS gross_profit_cny,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny)\n         / NULLIF(SUM(f.net_sales_amount_cny), 0) AS gross_margin\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_sales_region AS r\n  ON r.sales_region_key = f.sales_region_key\nLEFT JOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\nGROUP BY r.sales_region_name\nORDER BY r.sales_region_name;"
   },
   {
     "id": "C04",
@@ -149,7 +149,7 @@
     "category": "complex",
     "question": "按产品线统计已完成订单的销售额、销售成本、毛利和毛利率。",
     "description": "同一分组内同时计算多个指标，包含派生指标和除零保护。",
-    "expected_sql": "SELECT p.product_line,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny,\n       SUM(f.sales_cost_amount_cny) AS sales_cost_cny,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) AS gross_profit_cny,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny)\n         / NULLIF(SUM(f.net_sales_amount_cny), 0) AS gross_margin\nFROM mart_sales.fct_sales_order_line AS f\nJOIN mart_sales.dim_product AS p\n  ON p.product_key = f.product_key\nWHERE f.order_status = 'completed'\nGROUP BY p.product_line\nORDER BY p.product_line;"
+    "expected_sql": "SELECT p.product_line,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny,\n       SUM(f.sales_cost_amount_cny) AS sales_cost_cny,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) AS gross_profit_cny,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny)\n         / NULLIF(SUM(f.net_sales_amount_cny), 0) AS gross_margin\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_product AS p\n  ON p.product_key = f.product_key\nWHERE f.order_status = 'completed'\nGROUP BY p.product_line\nORDER BY p.product_line;"
   },
   {
     "id": "C05",
@@ -157,6 +157,14 @@
     "category": "complex",
     "question": "按客户类型统计已完成订单数、人民币销售额和毛利率。",
     "description": "客户维度 Join、订单去重、金额聚合和派生指标组合。",
-    "expected_sql": "SELECT c.customer_type,\n       COUNT(DISTINCT f.order_id) AS completed_order_count,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny)\n         / NULLIF(SUM(f.net_sales_amount_cny), 0) AS gross_margin\nFROM mart_sales.fct_sales_order_line AS f\nJOIN mart_sales.dim_customer AS c\n  ON c.customer_key = f.customer_key\nWHERE f.order_status = 'completed'\nGROUP BY c.customer_type\nORDER BY c.customer_type;"
+    "expected_sql": "SELECT c.customer_type,\n       COUNT(DISTINCT f.order_id) AS completed_order_count,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny)\n         / NULLIF(SUM(f.net_sales_amount_cny), 0) AS gross_margin\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_customer AS c\n  ON c.customer_key = f.customer_key\nWHERE f.order_status = 'completed'\nGROUP BY c.customer_type\nORDER BY c.customer_type;"
+  },
+  {
+    "id": "C06",
+    "schema_name": "mart_sales",
+    "category": "complex",
+    "question": "按客户类型统计已完成订单数、人民币销售额、人民币销售成本、人民币毛利和毛利率。",
+    "description": "客户维度 Join、五个指标完整返回、派生指标和除零保护。",
+    "expected_sql": "SELECT c.customer_type,\n       COUNT(DISTINCT f.order_id) AS completed_order_count,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny,\n       SUM(f.sales_cost_amount_cny) AS sales_cost_cny,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) AS gross_profit_cny,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny)\n         / NULLIF(SUM(f.net_sales_amount_cny), 0) AS gross_margin\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_customer AS c\n  ON c.customer_key = f.customer_key\nWHERE f.order_status = 'completed'\nGROUP BY c.customer_type\nORDER BY c.customer_type;"
   }
 ]

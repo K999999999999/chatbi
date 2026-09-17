@@ -86,7 +86,7 @@ QueryRequest
 | `test_service.py` | 成功链路、全部错误映射、上下文失败不调用 LLM、SQL 拒绝不访问数据库 |
 | `test_integration.py` | 使用真实 PostgreSQL 验证只读执行、空结果、100 行截断和至少一条完整查询链路 |
 
-真实模型的 20 条标准测试属于 AI Evaluation（AI 评测），后续通过同一个 `OnlineQueryService` 执行，不复制另一条查询链路。
+真实模型的 21 条标准测试属于 AI Evaluation（AI 评测），后续通过同一个 `OnlineQueryService` 执行，不复制另一条查询链路。
 
 ## 开发任务清单
 
@@ -128,4 +128,4 @@ Implementation Design（实现设计）已完成，无阻塞技术问题。
 - 5 个指标 SQL 模板和 20 条 Gold SQL 全部通过 SQL Guard。
 - 整体审查发现的未知自定义函数绕过已修复，并加入回归测试。
 - 独立只读代码审查未发现 P0、P1 或 P2 问题。
-- 真实 LLM 的 20 条标准测试仍属于后续 Evaluation 模块，不在本实现结果中宣称完成。
+- 真实 LLM 的 21 条标准测试仍属于后续 Evaluation 模块，不在本实现结果中宣称完成。

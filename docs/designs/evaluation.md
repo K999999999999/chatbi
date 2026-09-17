@@ -32,7 +32,7 @@ Evaluation（评测）实现为一个离线回归评测 Runner（运行器），
 
 | 文件 | 职责 |
 |---|---|
-| `eval_cases.json` | 已确认的 20 条标准案例 |
+| `eval_cases.json` | 已确认的 21 条标准案例 |
 | `evaluator.py` | 加载案例、比较结果、运行案例、汇总准确率和比较上一份报告 |
 | `__main__.py` | 创建现有 Online Query 依赖，可选装配在线 RAG、收集运行指纹、保存 JSON 报告并打印摘要 |
 | `__init__.py` | 只导出评测入口和结果类型 |
@@ -151,7 +151,7 @@ reference_result_hash
 - `model_endpoint_hash`：只记录地址指纹，不把真实 Endpoint（端点）写入报告。
 - `test_set_hash`：标准测试集内容指纹。
 - `context_hash`：五个结构和指标文件的整体内容指纹。
-- `reference_result_hash`：20 条标准 SQL 结果的整体指纹，用于识别相关数据库数据是否变化。
+- `reference_result_hash`：21 条标准 SQL 结果的整体指纹，用于识别相关数据库数据是否变化。
 - API Key、数据库密码和完整连接地址不得进入报告。
 
 `uv.lock`、Prompt 和代码都由 `git_commit` 定位，不再分别建立版本号。
@@ -229,7 +229,7 @@ uv run --env-file .env python -m src.evaluation --online-retrieval --baseline <r
 
 ### Real AI Evaluation（真实 AI 评测）
 
-- 使用配置的真实模型顺序运行 20 条案例。
+- 使用配置的真实模型顺序运行 21 条案例。
 - 生成第一份 Baseline 报告。
 - 真实运行结果不作为确定性单元测试，因为外部模型结果可能变化。
 
@@ -241,7 +241,7 @@ uv run --env-file .env python -m src.evaluation --online-retrieval --baseline <r
 | T2 Runner 与汇总 | 复用现有 Service 和 Executor 顺序运行案例 | 单条失败隔离、状态和准确率汇总测试通过 |
 | T3 报告与回归 | 生成运行指纹、JSON 报告并比较明确基线 | 指纹、Secret 防护、回退和改善测试通过 |
 | T4 运行入口 | 组装现有真实依赖并提供模块命令 | 不复制查询链路；假的依赖端到端测试通过 |
-| T5 真实 Baseline | 经明确授权后以在线 RAG 模式运行 20 条真实模型案例 | 报告生成并人工确认；随后按仓库整体版本规则决定是否创建 Tag |
+| T5 真实 Baseline | 经明确授权后以在线 RAG 模式运行 21 条真实模型案例 | 报告生成并人工确认；随后按仓库整体版本规则决定是否创建 Tag |
 
 T1 至 T4 是软件实现任务，完成后分别测试、审查和 Commit。T5 是有外部调用的评测运行，不在未授权情况下自动执行。
 

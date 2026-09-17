@@ -35,12 +35,12 @@ class EvaluationCaseLoadingTest(unittest.TestCase):
         self.assertFalse(cases[0].order_sensitive)
         self.assertTrue(cases[1].order_sensitive)
 
-    def test_loads_current_twenty_case_standard_set(self) -> None:
+    def test_loads_current_twenty_one_case_standard_set(self) -> None:
         from src.evaluation.evaluator import load_evaluation_cases
 
         cases = load_evaluation_cases(Path("src/evaluation/eval_cases.json"))
 
-        self.assertEqual(len(cases), 20)
+        self.assertEqual(len(cases), 21)
         self.assertTrue(all(case.is_valid for case in cases))
         self.assertEqual(
             {case.category for case in cases},

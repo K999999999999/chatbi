@@ -4,8 +4,8 @@
 
 - Module Spec（模块规格）：`docs/specs/rag-offline-build.md`
 - Runtime Mode（运行模式）：同步 Batch（批处理）
-- 当前状态：Metric Document 分层调整已实现、测试通过并已发布新资产，待提交
-- 最后更新：2026-09-06
+- 当前状态：Metric Document 分层调整已实现、测试通过并已发布新资产，相关实现已提交
+- 最后更新：2026-09-14
 
 ## 2. 变更背景与边界
 

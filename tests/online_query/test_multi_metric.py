@@ -5,15 +5,15 @@ import unittest
 
 from src.online_query.contracts import (
     FallbackPolicy,
+    MetricHit,
     MetricPlanStatus,
     RequestShape,
 )
 from src.online_query.multi_metric import (
     build_retrieval_request,
     classify_request_shape,
-    plan_multi_metric_request,
+    plan_retrieved_metrics,
 )
-from src.online_query.rag_runtime import MetricCatalog, MetricCatalogEntry
 
 
 class MultiMetricPlanningTest(unittest.TestCase):
@@ -65,7 +65,7 @@ class MultiMetricPlanningTest(unittest.TestCase):
             "按客户类型统计已完成订单数、人民币销售额和毛利率"
         )
 
-        plan = plan_multi_metric_request(request, catalog)
+        plan = plan_retrieved_metrics(request, catalog)
 
         self.assertEqual(plan.status, MetricPlanStatus.SUCCESS)
         self.assertEqual(
@@ -88,7 +88,7 @@ class MultiMetricPlanningTest(unittest.TestCase):
         )
         request = build_retrieval_request("毛利和毛利率")
 
-        plan = plan_multi_metric_request(request, catalog)
+        plan = plan_retrieved_metrics(request, catalog)
 
         self.assertEqual(plan.status, MetricPlanStatus.SUCCESS)
         self.assertEqual(
@@ -102,7 +102,7 @@ class MultiMetricPlanningTest(unittest.TestCase):
         )
         request = build_retrieval_request("查询销售额和人民币销售额")
 
-        plan = plan_multi_metric_request(request, catalog)
+        plan = plan_retrieved_metrics(request, catalog)
 
         self.assertEqual(plan.status, MetricPlanStatus.SUCCESS)
         self.assertEqual(len(plan.mentions), 2)
@@ -115,7 +115,7 @@ class MultiMetricPlanningTest(unittest.TestCase):
         )
         request = build_retrieval_request("查询销售额和未登记退货率")
 
-        plan = plan_multi_metric_request(request, catalog)
+        plan = plan_retrieved_metrics(request, catalog)
 
         self.assertEqual(plan.status, MetricPlanStatus.NO_METRIC)
         self.assertIn("未登记退货率", plan.reason)
@@ -127,7 +127,7 @@ class MultiMetricPlanningTest(unittest.TestCase):
             "查询" + "、".join(entry.metric_name for entry in entries)
         )
 
-        plan = plan_multi_metric_request(request, catalog)
+        plan = plan_retrieved_metrics(request, catalog)
 
         self.assertEqual(plan.status, MetricPlanStatus.TOO_MANY)
 
@@ -142,7 +142,7 @@ class MultiMetricPlanningTest(unittest.TestCase):
         )
         request = build_retrieval_request("查询指标一数和指标二数")
 
-        plan = plan_multi_metric_request(request, _catalog(first, second))
+        plan = plan_retrieved_metrics(request, _catalog(first, second))
 
         self.assertEqual(plan.status, MetricPlanStatus.SUCCESS)
 
@@ -157,7 +157,7 @@ class MultiMetricPlanningTest(unittest.TestCase):
         for conflicting in conflicts:
             with self.subTest(metric=conflicting):
                 request = build_retrieval_request("查询指标一数和指标二数")
-                plan = plan_multi_metric_request(
+                plan = plan_retrieved_metrics(
                     request,
                     _catalog(base, conflicting),
                 )
@@ -171,17 +171,18 @@ class MultiMetricPlanningTest(unittest.TestCase):
         second = _entry("指标二数", filters=("not valid =",))
         request = build_retrieval_request("查询指标一数和指标二数")
 
-        plan = plan_multi_metric_request(request, _catalog(first, second))
+        plan = plan_retrieved_metrics(request, _catalog(first, second))
 
         self.assertEqual(plan.status, MetricPlanStatus.INVALID_ASSET)
 
-    def test_baseline_request_does_not_create_multi_plan(self) -> None:
+    def test_baseline_request_can_resolve_one_metric_from_hits(self) -> None:
         request = build_retrieval_request("只查询毛利率")
 
-        plan = plan_multi_metric_request(request, _catalog(_entry("毛利率")))
+        plan = plan_retrieved_metrics(request, _catalog(_entry("毛利率")))
 
-        self.assertEqual(plan.status, MetricPlanStatus.NOT_MULTI)
-        self.assertEqual(request.fallback_policy, FallbackPolicy.ALLOW_STATIC)
+        self.assertEqual(plan.status, MetricPlanStatus.SUCCESS)
+        self.assertEqual(len(plan.constraints), 1)
+        self.assertEqual(request.fallback_policy, FallbackPolicy.FAIL_CLOSED)
 
 
 def _entry(
@@ -194,39 +195,32 @@ def _entry(
         "fct_sales_order_line.completion_date_key -> dim_date.full_date"
     ),
     filters: tuple[str, ...] = ("f.order_status = 'completed'",),
-) -> MetricCatalogEntry:
+) -> MetricHit:
     document_id = f"metric:{name}"
-    payload = MappingProxyType(
+    metadata = MappingProxyType(
         {
-            "document_id": document_id,
+            "doc_type": "METRIC",
             "metric_name": name,
+            "aliases": aliases,
+            "formula": formula,
+            "data_source": data_source,
+            "time_field": time_field,
+            "filters": filters,
+            "depends_on": (),
         }
     )
-    return MetricCatalogEntry(
+    return MetricHit(
         document_id=document_id,
         metric_name=name,
-        aliases=aliases,
-        formula=formula,
-        data_source=data_source,
-        time_field=time_field,
-        filters=filters,
-        depends_on=(),
+        score=0.9,
+        rank=1,
+        metadata=metadata,
         page_content=f"指标名：{name}",
-        payload=payload,
     )
 
 
-def _catalog(*entries: MetricCatalogEntry) -> MetricCatalog:
-    by_document = {entry.document_id: entry for entry in entries}
-    by_label = {}
-    for entry in entries:
-        for label in (entry.metric_name, *entry.aliases):
-            by_label[label.casefold()] = entry
-    return MetricCatalog(
-        entries=entries,
-        by_document_id=MappingProxyType(by_document),
-        by_label=MappingProxyType(by_label),
-    )
+def _catalog(*entries: MetricHit) -> tuple[MetricHit, ...]:
+    return entries
 
 
 if __name__ == "__main__":

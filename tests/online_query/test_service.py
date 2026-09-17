@@ -120,6 +120,16 @@ class ServiceTest(unittest.TestCase):
 
         self._assert_failure(result, QueryErrorCode.LLM_ERROR)
         guard.assert_not_called()
+        self.generator.generate.assert_called_once()
+        self.executor.execute.assert_not_called()
+
+    def test_llm_timeout_is_an_error_without_retry(self) -> None:
+        self.generator.generate.side_effect = TimeoutError("provider detail")
+
+        result = self._service().query(QueryRequest(question="查询订单"))
+
+        self._assert_failure(result, QueryErrorCode.LLM_ERROR)
+        self.generator.generate.assert_called_once()
         self.executor.execute.assert_not_called()
 
     def test_cannot_answer_stops_before_sql_guard_and_database(self) -> None:
@@ -149,6 +159,7 @@ class ServiceTest(unittest.TestCase):
         result = self._service().query(QueryRequest(question="查询订单"))
 
         self._assert_failure(result, QueryErrorCode.QUERY_TIMEOUT)
+        self.executor.execute.assert_called_once()
 
     def test_database_failure_maps_to_database_error(self) -> None:
         self.executor.execute.side_effect = DatabaseError("detail")

@@ -1,6 +1,6 @@
 # Observability V1 Implementation Design
 
-状态：T1～T4C 已完成并通过各自测试，已有独立提交；本地 API 与真实 Evaluation（评测）验收已完成。T5 Langfuse / Business Acceptance Gate（业务验收门禁）因 `.env` 未配置 OTLP/Langfuse Endpoint（端点）待补，不能记为 T5 PASS 或 Production Ready（生产可用）。
+状态：T1～T5 已完成并通过验收；T1～T4C 已有独立提交，本地 API、真实 Evaluation（评测）和阿里云 OTLP / Trace 外部验收均已完成。当前仍不能称为 Production Ready（生产可用）。
 
 ## 1. 结论
 
@@ -605,7 +605,7 @@ CHATBI_OTLP_TIMEOUT_SECONDS=5
 - Runbook 明确说明如何使用 Trace ID 定位节点，以及生产环境不查看原始异常内容；
 - T4C 测试独立通过。
 
-### T5：Langfuse / 业务验收 Gate
+### T5：Langfuse / 业务验收 Gate（已完成）
 
 范围：
 
@@ -641,14 +641,17 @@ CHATBI_OTLP_TIMEOUT_SECONDS=5
 
 ### 14.2 AI Evaluation
 
-- 使用原有 20 条案例和正式 Online Query 链路，报告 `reports/evaluation/20260912T145505Z-c60e073.json` 结果为 20/20，C05 为 PASS；
+- 使用原有 20 条案例和正式 Online Query 链路，评测运行标识为 `20260912T145505Z-c60e073`，结果为 20/20，C05 为 PASS；对应 JSON / Markdown 原始报告按仓库本地策略忽略；
 - Evaluation 报告已记录每个实际查询的 `request_id` 和 `trace_id`，C05 为 `request_id=evaluation-C05`、`trace_id=b88a9d4e50ffd73a7f05cd62c573e4fb`；
 - 只建立 Latency/Token Baseline，不预设优化结论。
 
 ### 14.3 Business Acceptance
 
 - 本地 API 已完成 C05 成功和空问题受控失败验收，均验证 `X-Trace-ID`；
-- 外部 Langfuse Endpoint 未配置，按 T5 完成条件要求的 Langfuse 链路查询、Generation 映射和外部业务验收 Gate 待补；当前不能宣称 T5 PASS 或 Production Ready。
+- 阿里云 Trace 控制台已确认 C05 成功链路和空问题受控失败链路可查询：C05 为 `eb14f55bbe07d6f15bdd69d48b440430`，失败请求为 `92d99ceb7aa39d25140b444379eba6d5`；
+- C05 HTTP 结果为 200、返回 3 行且未截断；受控失败 HTTP 结果为 400，错误码为 `INVALID_REQUEST`；
+- 独立 OTLP Endpoint 探针返回 `SUCCESS`，`llm.generate` 的 Generation 映射、节点耗时和失败定位已按阿里云控制台完成核对；
+- T5 Business Acceptance Gate 已通过，但不因此宣称 Production Ready（生产可用）。
 
 ## 15. 回滚
 

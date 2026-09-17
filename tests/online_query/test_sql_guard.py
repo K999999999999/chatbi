@@ -38,6 +38,16 @@ class SQLGuardTest(unittest.TestCase):
                     {"customer_key", "customer_name"}
                 ),
             },
+            join_constraints=(
+                JoinConstraint(
+                    source_table="mart_sales.fct_sales_order_line",
+                    source_columns=("customer_key",),
+                    target_table="mart_sales.dim_customer",
+                    target_columns=("customer_key",),
+                    uniqueness_basis="primary_key:pk_dim_customer",
+                    direction="forward",
+                ),
+            ),
         )
         cls.multi_context = _multi_metric_context()
 
@@ -52,6 +62,38 @@ class SQLGuardTest(unittest.TestCase):
         validated = validate_sql(sql, self.context)
 
         self.assertEqual(validated.sql, sql)
+
+    def test_valid_direct_left_join_uses_graph_constraint(self) -> None:
+        sql = (
+            "SELECT c.customer_name, SUM(f.net_sales_amount_cny) AS revenue "
+            "FROM mart_sales.fct_sales_order_line AS f "
+            "LEFT JOIN mart_sales.dim_customer AS c "
+            "ON f.customer_key = c.customer_key "
+            "GROUP BY c.customer_name"
+        )
+
+        validated = validate_sql(sql, self.context)
+
+        self.assertEqual(validated.sql, sql)
+
+    def test_direct_join_rejects_wrong_direction_or_unregistered_key(self) -> None:
+        candidates = (
+            (
+                "SELECT c.customer_name FROM mart_sales.fct_sales_order_line AS f "
+                "RIGHT JOIN mart_sales.dim_customer AS c "
+                "ON f.customer_key = c.customer_key"
+            ),
+            (
+                "SELECT c.customer_name FROM mart_sales.fct_sales_order_line AS f "
+                "LEFT JOIN mart_sales.dim_customer AS c "
+                "ON f.order_id = c.customer_key"
+            ),
+        )
+
+        for sql in candidates:
+            with self.subTest(sql=sql):
+                with self.assertRaises(SQLRejectedError):
+                    validate_sql(sql, self.context)
 
     def test_valid_multi_metric_select_passes_without_rewriting(self) -> None:
         sql = _valid_multi_metric_sql()
@@ -163,7 +205,7 @@ GROUP BY c.customer_type
                 with self.assertRaises(SQLRejectedError):
                     validate_sql(sql, self.multi_context)
 
-    def test_cte_join_and_output_alias_pass(self) -> None:
+    def test_cte_join_and_output_alias_is_rejected_by_v1_shape(self) -> None:
         sql = """
 WITH sales AS (
     SELECT customer_key, SUM(net_sales_amount_cny) AS revenue
@@ -177,9 +219,21 @@ JOIN mart_sales.dim_customer AS c
 ORDER BY s.revenue DESC
 """.strip()
 
-        validated = validate_sql(sql, self.context)
+        with self.assertRaises(SQLRejectedError):
+            validate_sql(sql, self.context)
 
-        self.assertEqual(validated.sql, sql)
+    def test_cte_without_join_is_rejected_by_v1_shape(self) -> None:
+        sql = """
+WITH sales AS (
+    SELECT order_id
+    FROM mart_sales.fct_sales_order_line
+)
+SELECT order_id
+FROM sales
+""".strip()
+
+        with self.assertRaises(SQLRejectedError):
+            validate_sql(sql, self.context)
 
     def test_all_metric_sql_templates_pass(self) -> None:
         root = Path(__file__).resolve().parents[2]
@@ -382,7 +436,7 @@ SELECT c.customer_type,
        SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny)
            / NULLIF(SUM(f.net_sales_amount_cny), 0) AS gross_margin
 FROM mart_sales.fct_sales_order_line AS f
-JOIN mart_sales.dim_customer AS c
+LEFT JOIN mart_sales.dim_customer AS c
   ON f.customer_key = c.customer_key
 WHERE f.order_status = 'completed'
 GROUP BY c.customer_type

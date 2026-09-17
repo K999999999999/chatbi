@@ -7,7 +7,12 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
-from .contracts import QueryContext
+from ..rag_offline.relationships import (
+    RelationshipGraphError,
+    build_relationship_graph,
+)
+from ..rag_offline.sources import Facts
+from .contracts import JoinConstraint, QueryContext
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -50,6 +55,8 @@ def load_query_context(
     if unknown_column_tables:
         raise ContextLoadError("columns 引用了 tables 中不存在的表")
 
+    join_constraints = _build_join_constraints(resources)
+
     allowed_columns = MappingProxyType(
         {
             table: frozenset(columns_by_table.get(table, set()))
@@ -62,6 +69,77 @@ def load_query_context(
         prompt_context=prompt_context,
         allowed_tables=allowed_tables,
         allowed_columns=allowed_columns,
+        join_constraints=join_constraints,
+    )
+
+
+def _build_join_constraints(
+    resources: dict[str, list[dict[str, Any]]],
+) -> tuple[JoinConstraint, ...]:
+    """把静态关系事实转换成 SQL Guard 可验证的直接 Join 约束。
+
+    静态上下文只用于显式装配的离线评测/基础模式；在线 RAG 入口仍只消费
+    当前 Asset Snapshot（资源快照）生成的动态上下文。这里复用离线关系图
+    校验，避免静态评测绕过和在线路径不同的 FK → PK 约束。
+    """
+
+    try:
+        graph = build_relationship_graph(
+            Facts(
+                tables=tuple(resources["tables"]),
+                columns=tuple(resources["columns"]),
+                relationships=tuple(resources["relationships"]),
+                metrics=tuple(resources["metrics"]),
+            )
+        ).to_dict()
+    except RelationshipGraphError as exc:
+        raise ContextLoadError(
+            f"relationships 无法构建安全关系图：{exc}"
+        ) from None
+
+    unique_keys: dict[tuple[str, tuple[str, ...]], str] = {}
+    for section, prefix in (
+        ("primary_keys", "primary_key"),
+        ("unique_constraints", "unique_constraint"),
+    ):
+        for record in graph[section]:
+            table = f"{record['schema_name']}.{record['table_name']}"
+            columns = tuple(record["column_names"])
+            unique_keys[(table, columns)] = (
+                f"{prefix}:{record['constraint_name']}"
+            )
+
+    constraints: list[JoinConstraint] = []
+    for edge in graph["foreign_keys"]:
+        source_table = f"{edge['source_schema']}.{edge['source_table']}"
+        target_table = f"{edge['target_schema']}.{edge['target_table']}"
+        source_columns = tuple(edge["source_columns"])
+        target_columns = tuple(edge["target_columns"])
+        uniqueness_basis = unique_keys.get((target_table, target_columns))
+        if uniqueness_basis is None:
+            raise ContextLoadError(
+                "relationships 外键目标缺少 Primary Key / Unique Constraint（主键/唯一约束）证明"
+            )
+        constraints.append(
+            JoinConstraint(
+                source_table=source_table,
+                source_columns=source_columns,
+                target_table=target_table,
+                target_columns=target_columns,
+                uniqueness_basis=uniqueness_basis,
+                direction="forward",
+            )
+        )
+    return tuple(
+        sorted(
+            constraints,
+            key=lambda item: (
+                item.source_table,
+                item.target_table,
+                item.source_columns,
+                item.target_columns,
+            ),
+        )
     )
 
 

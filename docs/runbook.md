@@ -14,7 +14,7 @@
 - FastAPI 提供 Query API（查询接口）。
 - Streamlit 是当前 POC 页面。
 - BGE-M3 和 Qdrant 用于离线检索资产构建、评测，以及 Online Retrieval V1 的在线查询向量和上下文检索。
-- 已发布 RAG 资产默认接入 Online Query V1：实体类和单指标问题走动态检索上下文；检索技术故障按基线规则回退静态上下文。基础多指标在线检索尚未实现。
+- 已发布 RAG 资产默认接入 Online Query V1：实体类、单指标和多指标问题统一走 `metrics=0/1/N` 动态检索上下文；在线 RAG 技术故障 Fail Closed（失败关闭）并返回 `CONTEXT_ERROR`，不回退静态全量 Schema。多指标最多 5 个，直接关系只使用认证 FK→PK 和 `LEFT JOIN`。
 
 ## 2. 系统拓扑
 
@@ -37,7 +37,7 @@ Streamlit（127.0.0.1:8501）
 ### 3.1 环境要求
 
 - Windows PowerShell。
-- Python 3.11 或更高版本。
+- Python 3.11。
 - `uv`。
 - Docker Desktop。
 - 可用的 LLM 配置，用于 Online Query 和真实 Evaluation。
@@ -227,17 +227,15 @@ $env:RUN_DATABASE_TESTS = '1'
 uv run --env-file .env --with pytest python -m pytest -q
 ```
 
-当前已验证结果：
+本命令会接触本地 PostgreSQL，本次交付不代替用户重新执行；运行前需再次确认数据库状态，并以终端输出作为当前证据。当前不依赖外部服务的全量回归结果为 `251 passed, 6 skipped, 85 subtests passed`；其中真实 LLM、数据库等外部集成测试仍按显式开关单独执行，不能用纯软件测试替代。
 
-```text
-133 passed, 1 skipped, 42 subtests passed
-```
+### 7.3 GitHub Actions CI
 
-剩余 1 个 Skip 是真实 LLM 端到端测试，不能用纯软件测试替代。
+`.github/workflows/ci.yml` 在 `master` 的 Push、Pull Request 和手动触发时执行锁文件检查、纯软件回归、PostgreSQL 集成测试和 API/Streamlit 启动 Smoke Test（冒烟测试）。CI 使用 Python 3.11 和锁定的 `uv` 版本；PostgreSQL 集成测试使用 `database/ci/bootstrap.sql` 中的 CI-only 合成 Fixture（测试夹具），不使用本地业务数据。CI 不调用真实 LLM，也不替代 AI Evaluation（AI 评测）或 Business Acceptance（业务验收）。
 
 ## 8. 运行真实 LLM Evaluation
 
-真实评测会向配置的外部 LLM 发送 20 条测试问题以及结构和指标上下文。执行前必须确认：
+真实评测会向配置的外部 LLM 发送 21 条测试问题以及结构和指标上下文。执行前必须确认：
 
 - 当前网络和 LLM 配置可用。
 - 允许发送这些测试数据。
@@ -255,7 +253,7 @@ uv run --env-file .env python -m src.evaluation --online-retrieval
 uv run --env-file .env python -m src.evaluation --online-retrieval --baseline reports/evaluation/<previous-report>.json
 ```
 
-`--online-retrieval` 是真实 RAG 验收的必要开关；不带该参数的入口只适合不依赖本地模型和 Qdrant 的确定性软件测试。
+`--online-retrieval` 是真实 RAG 验收的必要开关；不带该参数的入口只适合显式静态上下文的确定性软件测试，不代表在线 RAG 技术故障可以回退静态 Schema。
 
 报告输出到：
 
@@ -265,6 +263,8 @@ reports/evaluation/<run_id>.md
 ```
 
 评测结果属于 AI Evaluation（AI 评测），不能与 Software Test（软件测试）或 Business Acceptance（业务验收）混为一类。
+
+评测命令在存在 `FAIL` 或 `INVALID_CASE` 时返回非零退出码；只有所有案例有效且通过时才返回 `0`，可直接作为 CI 门禁。
 
 ## 9. 典型故障处理
 

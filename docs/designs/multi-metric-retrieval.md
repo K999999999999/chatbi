@@ -1,6 +1,8 @@
 # 基础 Multi-Metric Retrieval（多指标在线检索）实现设计
 
-状态：T1～T4 软件实现与确定性测试已完成；T5 修复 M08 分组粒度后真实在线 RAG 评测 20/20 通过，业务验收待确认
+> 本文是历史多指标 Implementation Design（实现设计）记录，不是当前行为事实源。当前实现以 [Online Retrieval V1 Feature Contract（在线检索 V1 功能契约）](../../.scratch/online-retrieval-v1/spec.md)、代码和测试为准；当前已收敛为 `metrics=0/1/N` 共用一条流水线、最多 5 个指标、直接 FK→PK 和 `LEFT JOIN`。
+
+状态：Historical Record（历史记录）；当前多指标行为以仓库根目录 `.scratch/online-retrieval-v1/spec.md` 和代码/测试为准；仍不代表 Production Ready（生产可用）
 
 ## 1. 目标
 
@@ -59,7 +61,7 @@
 
 ## 4. 当前实现事实与缺口
 
-T1～T3 已在现有单指标链路旁增加了受限、Fail Closed（失败关闭）的多指标检索分支；T4 已补齐多指标 Prompt、AST SQL Guard（语法树 SQL 安全校验）和 Service（服务层）闭环。T5 首轮真实 LLM、Qdrant、PostgreSQL 评测暴露了 M08 分组粒度波动，补充 Prompt 约束后正式报告达到 20/20；主验收问题 C05 通过，业务验收仍需用户确认，不能据此直接称为 Production Ready（生产可用）。
+T1～T3 已在现有单指标链路旁增加了受限、Fail Closed（失败关闭）的多指标检索分支；T4 已补齐多指标 Prompt、AST SQL Guard（语法树 SQL 安全校验）和 Service（服务层）闭环。T5 首轮真实 LLM、Qdrant、PostgreSQL 评测暴露了 M08 分组粒度波动，补充 Prompt 约束后正式报告达到 20/20；主验收问题 C05 和 M08 通过，正式 Business Acceptance（业务验收）已确认，不能据此直接称为 Production Ready（生产可用）。
 
 ## 5. 总体链路
 
@@ -432,13 +434,13 @@ Done When：多指标检索能成功产出完整 `QueryContext`，任何一路�
 
 Done When：合法 SQL 可执行，MM 规格中的所有违规 SQL 都被确定性拒绝，且不存在多指标静态回退。
 
-当前状态：已完成；全量确定性测试通过，真实评测和业务验收留在 T5。
+当前状态：已完成；全量确定性测试、真实评测和业务验收均已完成。
 
-### T5：真实评测与业务验收
+### T5：真实评测与业务验收（已完成）
 
-重跑 20 个真实问题，完成 C05 数据值核对、证据核对和验收记录。
+已重跑 20 个真实问题，完成 C04/C05 数据值核对、证据核对和验收记录。
 
-Done When：Software Test、AI Evaluation、Business Acceptance 三类证据分别记录，规格状态更新为已实现且已验收。
+完成条件已满足：Software Test、AI Evaluation、Business Acceptance 三类证据分别记录，规格状态已更新为已实现且已验收。
 
 ## 17. 影响与回滚
 

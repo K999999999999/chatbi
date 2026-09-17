@@ -1,6 +1,7 @@
 """使用 LangChain（语言链）调用 LLM（大模型）生成 SQL 候选。"""
 
 from collections.abc import Mapping
+from math import isfinite
 import os
 import re
 from typing import Protocol
@@ -12,6 +13,9 @@ from ..observability.contracts import TraceRecorder
 
 class LLMError(RuntimeError):
     """LLM 配置、调用或返回内容不满足最小契约。"""
+
+
+_MAX_LLM_TIMEOUT_SECONDS = 30.0
 
 
 class _InvokableModel(Protocol):
@@ -53,8 +57,9 @@ class LangChainSQLGenerator:
             timeout = float(source.get("LLM_TIMEOUT_SECONDS", "30"))
         except ValueError:
             raise LLMError("LLM 数字配置无效") from None
-        if max_tokens <= 0 or timeout <= 0:
+        if max_tokens <= 0 or not isfinite(timeout) or timeout <= 0:
             raise LLMError("LLM 数字配置无效")
+        timeout = min(timeout, _MAX_LLM_TIMEOUT_SECONDS)
 
         base_url = source.get("LLM_BASE_URL", "").strip() or None
         try:
