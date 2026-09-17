@@ -190,6 +190,20 @@ class QueryUnderstandingContractTest(unittest.TestCase):
             datetime(2026, 9, 18, tzinfo=QUERY_TIMEZONE),
         )
 
+    def test_current_context_words_do_not_create_time_filter(self) -> None:
+        for text in ("当前", "目前", "现在"):
+            payload = _payload()
+            payload["time"] = {"text": text, "granularity": "day"}
+
+            with self.subTest(text=text):
+                validated = validate_candidate(
+                    candidate_from_payload(payload),
+                    original_question=f"{text}已完成订单的销售额",
+                    now=NOW,
+                )
+
+                self.assertIsNone(validated.time)
+
     def test_week_starts_on_monday(self) -> None:
         payload = _payload()
         payload["time"] = {"text": "上周", "granularity": "week"}

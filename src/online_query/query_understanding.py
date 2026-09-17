@@ -29,6 +29,7 @@ _DATE_PATTERN = re.compile(
 _DATE_RANGE_PATTERN = re.compile(
     r"(.+?)(?:至|到|~)(.+)$"
 )
+_CURRENT_CONTEXT_TIME_TEXTS = frozenset({"当前", "目前", "现在"})
 
 
 class QueryType(StrEnum):
@@ -205,11 +206,13 @@ def validate_candidate(
             "METRIC_LIMIT_EXCEEDED",
         )
 
-    validated_time = (
-        _validate_time(candidate.time, now=now, timezone_name=timezone_name)
-        if candidate.time is not None
-        else None
-    )
+    validated_time: ValidatedTime | None = None
+    if candidate.time is not None and not _is_current_context_time(candidate.time):
+        validated_time = _validate_time(
+            candidate.time,
+            now=now,
+            timezone_name=timezone_name,
+        )
     validated_filters = tuple(
         ValidatedFilter(
             field_text=item.field_text,
@@ -227,6 +230,13 @@ def validate_candidate(
         filters=validated_filters,
         original_question=original_question.strip(),
     )
+
+
+def _is_current_context_time(candidate: TimeCandidate) -> bool:
+    """把 LLM 误放进 time 的当前状态词还原为无时间过滤。"""
+
+    compact_text = re.sub(r"\s+", "", candidate.text.strip())
+    return compact_text in _CURRENT_CONTEXT_TIME_TEXTS
 
 
 def _time_candidate(value: object) -> TimeCandidate | None:

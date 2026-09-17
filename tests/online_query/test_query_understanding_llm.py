@@ -54,6 +54,7 @@ class QueryUnderstandingLLMTest(unittest.TestCase):
         self.assertIn("明细行数", prompt)
         self.assertIn("已完成订单数量", prompt)
         self.assertIn("最小指标表达式", prompt)
+        self.assertIn("当前数据状态", prompt)
         self.assertIn("不要输出物理表名、物理字段名", prompt)
 
     def test_provider_exception_retries_once_then_returns_candidate(self) -> None:

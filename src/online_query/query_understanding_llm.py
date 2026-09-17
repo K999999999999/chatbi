@@ -174,7 +174,7 @@ def build_query_understanding_prompt(question: str) -> str:
 2. 顶层字段必须严格包含 query_type、subjects、metrics、dimensions、time、filters。
 3. subjects、metrics、dimensions 必须是字符串数组，没有内容时返回空数组。
 4. query_type 只能是 entity_lookup、metric_analysis 或 unknown。
-5. time 没有时间条件时返回 null；有时间条件时返回 text 和 granularity。
+5. time 没有时间条件时返回 null；有时间条件时返回 text 和 granularity。“当前”、“目前”、“现在”表示当前数据状态，不是时间条件，必须返回 null；只有明确说“今天”、“本月”、“今年”等日期范围时才填写 time。
 6. filters 没有过滤条件时返回空数组；每个过滤对象包含 field_text、operator、values。
 7. operator 只能是 equals、in、gt、gte、lt 或 lte；values 必须是字符串数组。
 8. metrics 中每个字符串必须是最小指标表达式，不要把主体、维度、时间或普通筛选上下文拼入指标；例如“已完成订单的人民币销售额”输出“人民币销售额”，“已完成订单的毛利”输出“毛利”。
