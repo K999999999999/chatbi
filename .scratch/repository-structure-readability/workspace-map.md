@@ -40,21 +40,23 @@
 | `pyproject.toml` / `uv.lock` | Python 项目元数据、依赖声明和锁定依赖 | tracked；`pyproject.toml` 是当前声明版本来源，`uv.lock` 是依赖复现来源 |
 | `docker-compose.yml` | 本地 PostgreSQL / Qdrant 基础设施编排 | tracked；启动边界由 `docs/runbook.md` 说明 |
 
-当前顶层规模快照：`src` 43 个文件、`tests` 40 个文件、`docs` 23 个文件、`database` 3 个文件、`scripts` 2 个文件；本地 `data`、`models` 和 `.venv` 的文件量较大，不应与产品源码数量混计。
+Ticket 01 基线规模快照：`src` 43 个文件、`tests` 40 个文件、`docs` 23 个文件、`database` 3 个文件、`scripts` 2 个文件；本地 `data`、`models` 和 `.venv` 的文件量较大，不应与产品源码数量混计。完成 Ticket 03～07 后，实际 tracked / source 文件为：`src` 51 个、`tests` 40 个、`docs` 23 个、`database` 3 个、`scripts` 6 个；新增文件均属于已确认的内部职责拆分，不是新的一级 Module。
 
 ## 3. 源码、模块和验证入口
 
 | Module / 区域 | 代码入口与主要职责 | 对应验证和文档 |
 | --- | --- | --- |
-| `src/online_query/` Online Query | `OnlineQueryService.query()` 负责查询编排；`OnlineRetriever.retrieve()` 负责 Online Retrieval；`contracts.py` 定义请求、结果、检索和执行 Contract；`sql_guard.py` 负责候选 SQL 的确定性校验 | `tests/online_query/`；`docs/specs/online-query.md`、`docs/specs/online-retrieval.md`、`docs/designs/online-query.md`、`docs/designs/online-retrieval.md`；`docs/acceptance/online-retrieval-20260907.md` |
+| `src/online_query/` Online Query | `OnlineQueryService.query()` 负责查询编排；`OnlineRetriever.retrieve()` 负责 Online Retrieval；`retrieval_selection.py` 负责候选范围；`retrieval_context.py` 负责最终上下文；`sql_guard.py`、`sql_guard_join.py`、`sql_guard_multi_metric.py` 分别负责 SQL 范围、认证 Join 和 Multi-Metric 校验；`query_trace.py` 负责查询链路标记 | `tests/online_query/`；`docs/specs/online-query.md`、`docs/specs/online-retrieval.md`、`docs/designs/online-query.md`、`docs/designs/online-retrieval.md`；`docs/acceptance/online-retrieval-20260907.md` |
 | `src/query_api/` Query API Adapter | `main.py` 组装真实服务；`app.py` 提供 HTTP `query` 和 `health` 入口；只适配 Online Query，不复制查询业务逻辑 | `tests/query_api/`；`docs/specs/query-api.md`、`docs/designs/query-api.md`；启动命令在 `docs/runbook.md` |
 | `src/streamlit_app.py` Streamlit | `main()` 和 `query_api()` 提供当前验证页面，通过 HTTP 调用 Query API，不直接访问 LLM 或 PostgreSQL | `tests/streamlit/`；`docs/architecture.md`、`docs/runbook.md`；属于明确的 POC / 内部入口，不代表整个 ChatBI 是 POC |
 | `src/rag_offline/` RAG Offline Build | `python -m src.rag_offline` 是 CLI；`build_offline_assets()` 组织事实加载、文档构建、Embedding、Qdrant、Relationship Graph 和资产发布 | `tests/rag_offline/`；`docs/specs/rag-offline-build.md`、`docs/designs/rag-offline-build.md`；构建命令在 `docs/runbook.md` |
 | `src/evaluation/` Evaluation | `python -m src.evaluation` 是评测入口；加载案例，调用正式查询入口，比较结果并生成报告 | `tests/evaluation/`；`docs/specs/evaluation.md`、`docs/designs/evaluation.md`；真实 LLM Evaluation 与 Software Test 分开记录 |
-| `src/observability/` Observability | `TraceRecorder` Contract、配置、No-op 实现、OpenTelemetry 实现和安全属性处理 | `tests/observability/`，以及 `tests/online_query/`、`tests/evaluation/` 中的链路测试；`docs/specs/observability.md`、`docs/designs/observability.md`、`docs/acceptance/observability-t5-20260914.md` |
+| `src/observability/` Observability | `contracts.py` 定义 Trace Contract；`tracing.py` 负责 Scope、Recorder 和 Provider；`tracing_safety.py` 负责安全属性 / Trace ID；`tracing_export.py` 负责 Exporter Fail-open | `tests/observability/`，以及 `tests/online_query/`、`tests/evaluation/` 中的链路测试；`docs/specs/observability.md`、`docs/designs/observability.md`、`docs/acceptance/observability-t5-20260914.md` |
 | `src/structure/generated/` | `tables.json`、`columns.json`、`relationships.json`，是当前结构事实和离线构建输入 | 被 `Online Query` 上下文和 `RAG Offline Build` 使用；属于生成事实资产，不能用旧文件反向修改 Contract |
 | `src/semantic/metrics.json` | 当前指标事实输入 | 被上下文加载和离线事实加载使用；不是独立业务模块入口 |
 | `src/runtime/` | 当前为空目录，没有可确认的运行时代码入口 | 不在当前 Feature 中强行补模块或删除目录 |
+
+结构整理后的内部文件职责已与实际目录同步：Online Query、Observability 和 Metadata Export 的公共入口仍保持原路径，新增文件都是内部实现组织，不升级为新的一级 Module 或公共 API。
 
 当前主要模块关系：
 
@@ -112,13 +114,13 @@ README（当前缺失，Ticket 02）
 
 下表只记录基于实际文件大小和现有声明的候选，不表示必须拆分。每个候选都保留现有公共入口，先以对应 Ticket 的 targeted tests（针对性测试）和完整 deterministic tests（确定性测试）证明兼容性。
 
-| 文件 | 基线大小 | 当前公共入口 / 责任 | 后续 Ticket 与验证 |
+| 文件 | Ticket 01 基线 → 当前大小 | 当前公共入口 / 责任 | 对应 Ticket 与验证 |
 | --- | ---: | --- | --- |
-| `src/online_query/retrieval.py` | 34,243 bytes | `OnlineRetriever.retrieve()` 编排 Retrieval、候选闭包、关系解析和 Trace 记录；已有 `resource_retrieval.py`、`relationship_graph.py`、`retrieval_context.py` 辅助实现 | Ticket 03；优先验证 `tests/online_query/test_retrieval*.py`、检索 Contract 和完整确定性测试 |
-| `src/online_query/sql_guard.py` | 25,129 bytes | `validate_candidate_scope()`、`validate_sql()`、`validate_multi_metric_sql()`；同时包含 Parse、Scope、Join、字段、危险函数和多指标校验 | Ticket 04；验证 `tests/online_query/test_sql_guard.py` 及 SQL 安全拒绝语义 |
-| `src/online_query/service.py` | 19,514 bytes | `OnlineQueryService.query()` 编排请求解析、上下文、LLM、SQL Guard、数据库执行、错误和 Trace | Ticket 05；验证 `tests/online_query/test_service*.py`、Query API 和请求 ID Contract |
-| `src/observability/tracing.py` | 24,961 bytes | No-op、OpenTelemetry、Borrowed Scope、Safe Exporter、Recorder 和安全属性处理集中在同一实现文件 | Ticket 06；验证 `tests/observability/` 及相关链路测试，重点保持 No-op 和安全边界 |
-| `scripts/metadata/export_schema.py` | 24,289 bytes | 配置读取、数据库访问、结构转换、文件生成和 CLI 入口集中在脚本中 | Ticket 07；验证 `tests/metadata/test_export_schema.py`，不改变数据库内容和输出事实语义 |
+| `src/online_query/retrieval.py` | 34,243 → 29,602 bytes | `OnlineRetriever.retrieve()` 编排 Retrieval、候选闭包、关系解析和 Trace 记录；候选范围已移至 `retrieval_selection.py`，异常已移至 `retrieval_errors.py` | Ticket 03；`tests/online_query/test_retrieval*.py` 和完整确定性测试 |
+| `src/online_query/sql_guard.py` | 25,129 → 12,250 bytes | `validate_candidate_scope()`、`validate_sql()`、`validate_multi_metric_sql()` 保留公共入口；认证 Join 和 Multi-Metric 校验已分别移至独立模块 | Ticket 04；`tests/online_query/test_sql_guard.py` 和 SQL 安全回归 |
+| `src/online_query/service.py` | 19,514 → 15,801 bytes | `OnlineQueryService.query()` 保留请求、上下文、LLM、SQL Guard 和数据库主编排；Trace 辅助已移至 `query_trace.py` | Ticket 05；服务、Query API、请求 ID 和完整确定性测试 |
+| `src/observability/tracing.py` | 24,961 → 14,883 bytes | Scope、Recorder 和 Provider 生命周期保留；安全属性 / Trace ID 和 Exporter 已分别移至独立模块 | Ticket 06；Observability 和相关链路测试 |
+| `scripts/metadata/export_schema.py` | 24,289 → 3,153 bytes | 保留配置、只读读取、结构投影、文件写入的 CLI 总编排；具体职责已拆到 `export_schema_*` 内部模块 | Ticket 07；`tests/metadata/test_export_schema.py` 和完整确定性测试 |
 
 观察到但当前没有对应拆分 Ticket 的较大文件包括 `src/rag_offline/build.py`、`src/evaluation/reporting.py`、`tests/online_query/test_retrieval.py` 和若干大型 Design / Spec 文档。它们不在 Ticket 03～07 的已确认范围内，本 Feature 不因文件大小单独扩张 Scope。
 

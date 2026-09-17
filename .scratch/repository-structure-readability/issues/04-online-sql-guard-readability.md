@@ -19,7 +19,7 @@
 - [x] 不改变拒绝错误的外部语义。
 - [x] 现有 SQL Guard 测试和必要的回归测试通过。
 - [x] Python import / compile 检查通过。
-- [ ] 完整 deterministic tests（确定性测试）通过。
+- [x] 完整 deterministic tests（确定性测试）通过。
 
 ## Result
 
@@ -29,7 +29,7 @@
 
 - `tests/online_query/test_sql_guard.py`、`test_service.py`、`test_service_integration.py`、`test_observability_t2.py`：`43 passed, 2 skipped, 47 subtests passed`；
 - `uv run python -m compileall -q src/online_query` 通过；
-- 完整 deterministic tests 将在 Ticket 08 的最终验收阶段执行。
+- Ticket 08 最终验收的完整 deterministic tests：`255 passed, 6 skipped, 85 subtests passed`。
 
 ## Comments
 

@@ -19,7 +19,7 @@
 - [x] 现有调用方式保持兼容。
 - [x] 相关 targeted tests（针对性测试）通过。
 - [x] Python import / compile 检查通过。
-- [ ] 完整 deterministic tests（确定性测试）通过。
+- [x] 完整 deterministic tests（确定性测试）通过。
 
 ## Result
 
@@ -30,7 +30,7 @@
 - `tests/online_query/test_retrieval.py`、`test_retrieval_observability_t3a.py`、`test_retrieval_service.py`：`38 passed, 4 subtests passed`；
 - `uv run python -m compileall -q src/online_query` 通过。
 
-完整 deterministic tests 将在 Ticket 08 的最终验收阶段执行。
+Ticket 08 最终验收的完整 deterministic tests：`255 passed, 6 skipped, 85 subtests passed`。
 
 ## Comments
 

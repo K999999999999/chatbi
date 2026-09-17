@@ -19,7 +19,7 @@
 - [x] 不改变现有 Trace Contract 和 No-op 行为。
 - [x] 相关 Observability 测试通过。
 - [x] Python import / compile 检查通过。
-- [ ] 完整 deterministic tests（确定性测试）通过。
+- [x] 完整 deterministic tests（确定性测试）通过。
 
 ## Result
 
@@ -29,7 +29,7 @@
 
 - `tests/observability/`、`tests/online_query/test_observability_t2.py`、`test_retrieval_observability_t3a.py`、`tests/evaluation/test_observability_t4b.py`：`31 passed, 18 subtests passed`；
 - `uv run python -m compileall -q src/observability src/online_query` 通过；
-- 完整 deterministic tests 将在 Ticket 08 的最终验收阶段执行。
+- Ticket 08 最终验收的完整 deterministic tests：`255 passed, 6 skipped, 85 subtests passed`。
 
 ## Comments
 

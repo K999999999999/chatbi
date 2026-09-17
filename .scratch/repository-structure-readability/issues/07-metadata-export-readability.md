@@ -19,7 +19,7 @@
 - [x] 不改变生成结构事实的语义和输出 Contract。
 - [x] 脚本测试通过。
 - [x] Python import / compile 检查通过。
-- [ ] 完整 deterministic tests（确定性测试）通过。
+- [x] 完整 deterministic tests（确定性测试）通过。
 
 ## Result
 
@@ -31,7 +31,7 @@
 - `uv run python -m compileall -q scripts/metadata` 通过；
 - CLI 模块导入、`ROOT`、`TARGET_SCHEMA` 和 `OUTPUT_FILES` 入口核对通过；
 - 未连接数据库，未修改数据库内容；
-- 完整 deterministic tests 将在 Ticket 08 的最终验收阶段执行。
+- Ticket 08 最终验收的完整 deterministic tests：`255 passed, 6 skipped, 85 subtests passed`。
 
 ## Comments
 

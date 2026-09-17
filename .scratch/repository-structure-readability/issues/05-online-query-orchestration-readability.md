@@ -19,7 +19,7 @@
 - [x] 内部文件职责和 import 关系清晰。
 - [x] 相关 targeted tests（针对性测试）通过。
 - [x] Python import / compile 检查通过。
-- [ ] 完整 deterministic tests（确定性测试）通过。
+- [x] 完整 deterministic tests（确定性测试）通过。
 
 ## Result
 
@@ -29,7 +29,7 @@
 
 - `tests/online_query/test_service.py`、`test_retrieval_service.py`、`tests/query_api/test_app.py`、`test_main.py`、`tests/evaluation/test_observability_t4b.py`：`40 passed, 14 subtests passed`；
 - `uv run python -m compileall -q src/online_query src/query_api` 通过；
-- 完整 deterministic tests 将在 Ticket 08 的最终验收阶段执行。
+- Ticket 08 最终验收的完整 deterministic tests：`255 passed, 6 skipped, 85 subtests passed`。
 
 ## Comments
 
