@@ -103,7 +103,9 @@ src/online_query/
 │  ├─ retrieval_selection.py
 │  ├─ relationship_graph.py
 │  ├─ rag_runtime.py
-│  └─ multi_metric.py
+│  ├─ multi_metric.py
+│  ├─ retrieval_trace.py
+│  └─ retrieval_results.py
 └─ sql_guard/         # SQL 安全校验内部职责和公共入口
    ├─ sql_guard.py
    ├─ sql_guard_join.py

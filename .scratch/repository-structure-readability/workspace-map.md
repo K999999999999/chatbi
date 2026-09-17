@@ -116,7 +116,7 @@ README（当前缺失，Ticket 02）
 
 | 文件 | Ticket 01 基线 → 当前大小 | 当前公共入口 / 责任 | 对应 Ticket 与验证 |
 | --- | ---: | --- | --- |
-| `src/online_query/retrieval/retrieval.py` | 34,243 → 29,602 bytes | `OnlineRetriever.retrieve()` 编排 Retrieval、候选闭包、关系解析和 Trace 记录；候选范围位于同一子包的 `retrieval_selection.py`，异常位于 `retrieval_errors.py` | Ticket 03；`tests/online_query/test_retrieval*.py` 和完整确定性测试 |
+| `src/online_query/retrieval/retrieval.py` | 34,243 → 23,748 bytes | `OnlineRetriever.retrieve()` 编排 Retrieval、候选闭包和关系解析；候选范围位于同一子包的 `retrieval_selection.py`，Trace 辅助和结果构造分别位于 `retrieval_trace.py`、`retrieval_results.py` | Ticket 03；`tests/online_query/test_retrieval*.py` 和完整确定性测试 |
 | `src/online_query/sql_guard/sql_guard.py` | 25,129 → 12,250 bytes | `validate_candidate_scope()`、`validate_sql()`、`validate_multi_metric_sql()` 由 `sql_guard/__init__.py` 保留公共入口；认证 Join 和 Multi-Metric 校验位于同一子包 | Ticket 04；`tests/online_query/test_sql_guard.py` 和 SQL 安全回归 |
 | `src/online_query/service.py` | 19,514 → 15,801 bytes | `OnlineQueryService.query()` 保留请求、上下文、LLM、SQL Guard 和数据库主编排；Trace 辅助已移至 `query_trace.py` | Ticket 05；服务、Query API、请求 ID 和完整确定性测试 |
 | `src/observability/tracing.py` | 24,961 → 14,883 bytes | Scope、Recorder 和 Provider 生命周期保留；安全属性 / Trace ID 和 Exporter 已分别移至独立模块 | Ticket 06；Observability 和相关链路测试 |
