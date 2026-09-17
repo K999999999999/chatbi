@@ -14,6 +14,7 @@ from src.online_query.contracts import (
     RetrievalStatus,
     ValidatedSQL,
 )
+from src.online_query.query_understanding import candidate_from_payload
 
 
 class _FakeGenerator:
@@ -46,6 +47,20 @@ class _FakeRetrievalProvider:
         return OnlineRetrievalResult(
             status=RetrievalStatus.SUCCESS,
             query_context=self._context,
+        )
+
+
+class _FakeQueryUnderstanding:
+    def understand(self, question: str):
+        return candidate_from_payload(
+            {
+                "query_type": "entity_lookup",
+                "subjects": ["测试主题"],
+                "metrics": [],
+                "dimensions": [],
+                "time": None,
+                "filters": [],
+            }
         )
 
 
@@ -158,6 +173,7 @@ class EvaluationEntrypointTest(unittest.TestCase):
                 generator_factory=lambda environ: _FakeGenerator(sql),
                 executor_factory=lambda environ: _FakeExecutor(data),
                 retrieval_factory=lambda: provider,
+                query_understanding_factory=lambda environ: _FakeQueryUnderstanding(),
                 git_state_reader=lambda project_root: ("abcdef123456", False),
                 context_paths={"context": context_file},
                 stdout=StringIO(),

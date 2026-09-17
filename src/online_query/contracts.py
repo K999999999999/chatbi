@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Mapping, Protocol, TypeAlias
 
+from .query_understanding import ValidatedSemanticQuery
+
 
 class QueryErrorCode(StrEnum):
     """Module Spec（模块规格）定义的公开错误码。"""
@@ -65,6 +67,7 @@ class RetrievalRequest:
     question: str
     request_shape: RequestShape
     fallback_policy: FallbackPolicy
+    semantic_query: ValidatedSemanticQuery | None = None
 
 
 @dataclass(frozen=True, slots=True)

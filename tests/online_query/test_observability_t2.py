@@ -21,6 +21,7 @@ from src.online_query.contracts import (
 )
 from src.online_query.database import DatabaseError, DatabaseQueryTimeout
 from src.online_query.service import OnlineQueryService
+from src.online_query.query_understanding import candidate_from_payload
 
 
 class T2ObservabilityTest(unittest.TestCase):
@@ -46,6 +47,8 @@ class T2ObservabilityTest(unittest.TestCase):
             rows=(("SO-001",),),
             truncated=False,
         )
+        self.query_understanding = Mock()
+        self.query_understanding.understand.side_effect = _candidate_for_question
         self.recorder, self.exporter = create_in_memory_recorder()
 
     def test_success_chain_has_one_root_shared_request_and_trace_id(self) -> None:
@@ -289,6 +292,7 @@ class T2ObservabilityTest(unittest.TestCase):
             self.executor,
             context_loader=lambda: self.context,
             retrieval_provider=provider,
+            query_understanding=self.query_understanding,
             trace_recorder=self.recorder if trace_recorder is None else trace_recorder,
         )
 
@@ -296,6 +300,30 @@ class T2ObservabilityTest(unittest.TestCase):
         self.assertIsInstance(result, QueryFailure)
         assert isinstance(result, QueryFailure)
         self.assertEqual(result.error_code, error_code)
+
+
+def _candidate_for_question(question: str):
+    if "统计" in question and "和" in question:
+        return candidate_from_payload(
+            {
+                "query_type": "metric_analysis",
+                "subjects": ["业务主题"],
+                "metrics": ["指标一", "指标二"],
+                "dimensions": [],
+                "time": None,
+                "filters": [],
+            }
+        )
+    return candidate_from_payload(
+        {
+            "query_type": "entity_lookup",
+            "subjects": ["业务主题"],
+            "metrics": [],
+            "dimensions": [],
+            "time": None,
+            "filters": [],
+        }
+    )
 
 
 if __name__ == "__main__":

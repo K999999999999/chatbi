@@ -26,6 +26,10 @@ from src.online_query.database import DatabaseError, PsycopgQueryExecutor
 from src.online_query.llm import LangChainSQLGenerator, LLMError
 from src.online_query.rag_runtime import RagRuntime
 from src.online_query.retrieval import OnlineRetriever
+from src.online_query.query_understanding_llm import (
+    LangChainQueryUnderstanding,
+    QueryUnderstandingAdapter,
+)
 from src.online_query.service import OnlineQueryService
 
 from .evaluator import EvaluationLoadError, load_evaluation_cases
@@ -54,6 +58,10 @@ def run_cli(
         PsycopgQueryExecutor.from_env
     ),
     retrieval_factory: Callable[[], RetrievalProvider] | None = None,
+    query_understanding_factory: Callable[
+        [Mapping[str, str]], QueryUnderstandingAdapter
+    ]
+    | None = None,
     git_state_reader: Callable[[Path], tuple[str, bool]] | None = None,
     context_paths: Mapping[str, Path] | None = None,
     stdout: TextIO | None = None,
@@ -88,6 +96,7 @@ def run_cli(
             else generator_factory(source)
         )
         retrieval_provider = None
+        query_understanding = None
         if args.online_retrieval:
             if not _rag_online_retrieval_enabled(source):
                 raise ReportingError(
@@ -100,11 +109,20 @@ def run_cli(
             else:
                 provider_factory = retrieval_factory
             retrieval_provider = provider_factory()
+            query_understanding = (
+                LangChainQueryUnderstanding.from_env(
+                    source,
+                    trace_recorder=trace_recorder,
+                )
+                if query_understanding_factory is None
+                else query_understanding_factory(source)
+            )
         service = OnlineQueryService(
             generator,
             executor,
             context_loader=lambda: context,
             retrieval_provider=retrieval_provider,
+            query_understanding=query_understanding,
             trace_recorder=trace_recorder,
         )
         state_reader = _read_git_state if git_state_reader is None else git_state_reader
