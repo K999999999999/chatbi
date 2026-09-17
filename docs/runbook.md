@@ -233,6 +233,38 @@ uv run --env-file .env --with pytest python -m pytest -q
 
 `.github/workflows/ci.yml` 在 `master` 的 Push、Pull Request 和手动触发时执行锁文件检查、纯软件回归、PostgreSQL 集成测试和 API/Streamlit 启动 Smoke Test（冒烟测试）。CI 使用 Python 3.11 和锁定的 `uv` 版本；PostgreSQL 集成测试使用 `database/ci/bootstrap.sql` 中的 CI-only 合成 Fixture（测试夹具），不使用本地业务数据。CI 不调用真实 LLM，也不替代 AI Evaluation（AI 评测）或 Business Acceptance（业务验收）。
 
+### 7.4 PR 前本地验收流程
+
+PR（Pull Request，合并请求）不按固定 commit 数量创建。一个 PR 对应一个清晰目标；多个相关 commit 可以属于同一个 PR，较大功能按逻辑边界拆分。开发过程中先运行针对性测试，准备提交 PR 的最终 candidate commit（候选提交）再进行一次完整本地验收。
+
+推荐顺序：
+
+```text
+逻辑阶段 commit
+→ 运行 targeted tests（针对性测试）
+→ Agent 判断是否已经形成 candidate commit
+→ Agent 提醒用户准备 PR
+→ 用户确认
+→ 确认 git_dirty=false
+→ 必要时更新本地 RAG asset（资产）
+→ 运行完整 Real E2E
+→ 21/21 通过且 Execution Accuracy=100%
+→ Push 并创建或更新 PR
+```
+
+用户确认前，Agent 不 Push、不创建 PR。确认后如果完整 E2E 失败，不提交 PR；修复后必须重新形成 candidate commit 并重新验证。完整 E2E 通过后又修改 Retrieval、Prompt、RAG、LLM 或 Evaluation cases 等行为代码时，必须重新运行。
+
+最终 candidate commit 的本地检查可以使用：
+
+```powershell
+git status --short --branch
+uv run --with pytest python -m pytest -q
+uv run --env-file .env python -m src.evaluation --online-retrieval
+git status --short --branch
+```
+
+如果改动影响结构 Metadata、`metrics.json`、离线构建逻辑、Embedding 配置或已发布集合，先按本地 RAG Offline Build 流程更新资产，再运行上述 Evaluation。文档、注释、纯 CI 或不影响运行行为的修改不要求完整 Real E2E。
+
 ## 8. 运行真实 LLM Evaluation
 
 真实评测会向配置的外部 LLM 发送 21 条测试问题以及结构和指标上下文。执行前必须确认：

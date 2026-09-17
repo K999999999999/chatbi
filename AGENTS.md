@@ -150,6 +150,47 @@ LLM 输出始终视为 Untrusted Candidate（不可信候选）。LLM 可以提�
 - 只有 Contract、相关验证和 Diff 检查完成后才提交；无法确认修改归属或验证失败时不提交。
 - Commit Message 使用 `<type>(<scope>): <中文摘要>`，完成报告使用中文说明提交内容、验证结果和剩余问题。
 
+## AI Agent Commit & Pull Request Workflow
+
+本节定义 Agent（智能代理）在本仓库中的提交与 Pull Request（合并请求）协作流程。它是项目协作约定，不把 PR 或完整 Real E2E（真实端到端）绑定到固定的 commit 数量。
+
+### Commit 数量与目标判断
+
+- 一个 PR 只承载一个清晰、已确认的业务目标或工程目标；不以“几个 commit”作为拆分标准。
+- Agent 根据 Scope、改动风险、逻辑完整性和是否已经形成可运行的 candidate commit（候选提交）判断是否适合进入 PR 阶段。
+- 多个相关的小 commit 可以放在同一个 PR；较大的功能应按 Contract、实现、测试等逻辑边界形成多个 commit，只有能够独立验收且边界清楚时才拆成多个 PR。
+- 开发过程中的每个逻辑阶段运行对应的 targeted tests（针对性测试）；不因为每个 commit 都完成就机械运行完整 Real E2E。
+
+### PR 前的 Agent 门禁
+
+Agent 判断当前改动已经形成适合提交 PR 的 candidate commit 后，必须先向用户发送明确提醒，说明：
+
+- 当前 PR 的目标和包含的 commit 范围；
+- 当前改动是否属于需要完整 Real E2E 的高风险范围；
+- 仍然缺少哪些验证。
+
+Agent 只能在用户明确确认后进入 PR 前验收。确认后的顺序固定为：
+
+```text
+用户确认
+→ 确认最终 candidate commit 和 git_dirty=false
+→ 按风险运行 targeted tests
+→ 高风险改动运行本地完整 Real E2E
+→ 检查 21/21、Execution Accuracy 和评测报告
+→ 验证通过后 Push / 创建或更新 PR
+```
+
+- 如果最终本地 E2E 失败，Agent 不得声称可以提交 PR；应报告失败案例和原因，修复后重新形成 candidate commit 并验证。
+- 本地 E2E 通过后如果又修改了会影响行为的代码，必须重新验证；只修改文档、注释或不影响运行行为的内容时，可以按风险重新判断。
+- Push、创建或更新 PR 需要用户确认作为外部状态变更；Agent 不自动合并 PR，也不自动部署生产环境。
+
+### 风险与验证级别
+
+- Retrieval、Prompt、Semantic、RAG Offline Build、Embedding、Qdrant、LLM 配置、Evaluation cases 或 SQL 生成链路的改动，默认属于高风险，需要在最终 candidate commit 上运行本地完整 Real E2E。
+- 文档、注释、纯测试、纯 CI 或不影响运行行为的整理，运行相关 targeted tests，不要求完整 Real E2E。
+- 完整 Real E2E 使用本地 `.env`、本地 PostgreSQL、Qdrant、BGE-M3 和真实 LLM；不提交 `.env`，不在日志或报告中暴露 Secret。
+- GitHub Actions 的快速 CI 在 Push / Pull Request 更新后自动运行；独立 Real E2E workflow 只按需手动触发，不作为普通 PR 的自动步骤。
+
 ## Final Principle
 
 > Contract 内自主执行，Contract 外停止扩张。
