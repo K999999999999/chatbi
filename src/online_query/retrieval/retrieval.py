@@ -9,19 +9,15 @@ from src.rag_offline.embedding import EmbeddingError
 from src.rag_offline.qdrant_store import QdrantStoreError, SearchHit
 
 from ..contracts import (
-    ColumnHit,
-    JoinConstraint,
     MetricConstraint,
     MetricHit,
     MetricPlanStatus,
     MetricRetrievalEvidence,
     OnlineRetrievalResult,
-    QueryContext,
     RetrievalConfig,
     RetrievalEvidence,
     RetrievalRequest,
     RetrievalStatus,
-    TableHit,
 )
 from .multi_metric import plan_retrieved_metrics
 from .rag_runtime import (

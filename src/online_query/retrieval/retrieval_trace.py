@@ -85,9 +85,7 @@ def candidate_trace_attributes(
             "chatbi.retrieval.candidate.document_ids": tuple(
                 hit.document_id for hit in evidence
             ),
-            "chatbi.retrieval.candidate.ranks": tuple(
-                range(1, len(evidence) + 1)
-            ),
+            "chatbi.retrieval.candidate.ranks": tuple(range(1, len(evidence) + 1)),
             "chatbi.retrieval.candidate.scores": tuple(
                 float(hit.score) for hit in evidence
             ),
@@ -136,12 +134,10 @@ def join_trace_attributes(resolution: JoinResolution) -> dict[str, object]:
     paths = resolution.paths[:_TRACE_EVIDENCE_LIMIT]
     return {
         "chatbi.retrieval.join.edge_ids": tuple(
-            edge.edge_id
-            for edge in resolution.joins[:_TRACE_EVIDENCE_LIMIT]
+            edge.edge_id for edge in resolution.joins[:_TRACE_EVIDENCE_LIMIT]
         ),
         "chatbi.retrieval.join.path_ids": tuple(
-            f"path:{index}"
-            for index, _ in enumerate(paths, 1)
+            f"path:{index}" for index, _ in enumerate(paths, 1)
         ),
         "chatbi.retrieval.join.path_count": len(resolution.paths),
     }

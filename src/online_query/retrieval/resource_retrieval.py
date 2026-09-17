@@ -26,6 +26,18 @@ from .metric_requirements import (
 )
 from .rag_runtime import AssetSnapshot
 
+__all__ = [
+    "ResourceRetrievalContractError",
+    "_TimeField",
+    "_column_query",
+    "_contains_required_columns",
+    "_metric_data_source",
+    "_missing_required_column_details",
+    "_multi_column_query",
+    "_parse_time_field",
+    "_required_columns_many",
+]
+
 
 def _table_query(query: ValidatedSemanticQuery) -> str:
     """将已确认的业务主题、维度、指标和过滤字段拼成 TABLE 查询。"""

@@ -31,8 +31,7 @@ def validate_join_constraints(
 
     bindings = _table_bindings(expression)
     table_refs = tuple(
-        _qualified_table_ref(table)
-        for table in expression.find_all(exp.Table)
+        _qualified_table_ref(table) for table in expression.find_all(exp.Table)
     )
     if len(table_refs) != 1 + len(joins):
         raise SQLRejectedError("SQL 表必须通过显式认证 Join 连接")
@@ -83,7 +82,9 @@ def _join_pairs(
     return implementation(condition, bindings, context)
 
 
-def _constraint_pairs(constraint: object) -> frozenset[tuple[tuple[str, str], tuple[str, str]]]:
+def _constraint_pairs(
+    constraint: object,
+) -> frozenset[tuple[tuple[str, str], tuple[str, str]]]:
     from .sql_guard import _constraint_pairs as implementation
 
     return implementation(constraint)

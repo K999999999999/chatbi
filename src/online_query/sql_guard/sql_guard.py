@@ -20,6 +20,25 @@ from .sql_guard_scope import (
     _validate_columns,
     _validate_physical_tables,
 )
+
+__all__ = [
+    "ALLOWED_SCHEMA",
+    "SQLRejectedError",
+    "_canonical_expression_sql",
+    "_column_identity",
+    "_constraint_pairs",
+    "_join_pairs",
+    "_multi_conjuncts",
+    "_physical_tables",
+    "_qualified_table_ref",
+    "_table_bindings",
+    "_validate_columns",
+    "_validate_physical_tables",
+    "validate_candidate_scope",
+    "validate_multi_metric_sql",
+    "validate_sql",
+]
+
 _FORBIDDEN_NODE_TYPES = (
     exp.DDL,
     exp.DML,

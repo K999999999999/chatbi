@@ -14,6 +14,8 @@ from .sql_guard import (
 __all__ = [
     "ALLOWED_SCHEMA",
     "SQLRejectedError",
+    "_new_validation_session",
+    "_parse_single_select",
     "validate_candidate_scope",
     "validate_multi_metric_sql",
     "validate_sql",
