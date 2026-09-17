@@ -1,24 +1,18 @@
 """基于本地 OpenTelemetry SDK 的安全、Fail-open Trace Adapter。"""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
-import logging
-import math
-import re
-import secrets
 from typing import Any
 
 from opentelemetry import trace
 from opentelemetry.trace import Span as OTelSpan
-from opentelemetry.trace import Status, StatusCode, use_span
+from opentelemetry.trace import use_span
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import (
     BatchSpanProcessor,
     SimpleSpanProcessor,
-    SpanExportResult,
-    SpanExporter,
 )
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
@@ -37,101 +31,26 @@ from .contracts import (
     TraceRecorder,
     TraceScope,
 )
+from .tracing_export import SafeExporter
+from .tracing_safety import (
+    _LOGGER,
+    _SAFE_ERROR_TYPES,
+    _SAFE_OUTCOMES,
+    is_safe_error_code as _is_safe_error_code,
+    new_trace_id as _new_trace_id,
+    safe_attributes as _safe_attributes,
+    safe_enum_value as _safe_enum_value,
+    safe_set_attribute as _safe_set_attribute,
+    safe_set_status as _safe_set_status,
+    safe_source as _safe_source,
+    safe_span_name as _safe_span_name,
+    safe_warning as _safe_warning,
+    trace_id_from_span as _trace_id_from_span,
+    valid_trace_id as _valid_trace_id,
+)
 
-
-_LOGGER = logging.getLogger(__name__)
-_TRACE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
-_ERROR_CODE_RE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
-_SAFE_OUTCOMES = frozenset(item.value for item in TraceOutcome)
-_SAFE_ERROR_TYPES = frozenset(item.value for item in ErrorType)
-_SAFE_WARNING_STAGES = frozenset(
-    {
-        "attribute",
-        "exporter_configuration",
-        "exporter_export",
-        "exporter_force_flush",
-        "exporter_initialization",
-        "exporter_shutdown",
-        "instrumentation",
-        "provider_shutdown",
-        "query_trace",
-        "safe_enrich_current",
-        "safe_query_trace",
-        "safe_shutdown",
-        "safe_span",
-        "scope_context_exit",
-        "scope_context_reset",
-        "scope_end",
-        "scope_enter",
-        "span",
-        "span_start",
-        "status",
-    }
-)
-_SAFE_GEN_AI_ATTRIBUTE_RULES: dict[str, str] = {
-    "gen_ai.operation.name": "gen_ai_operation",
-    "gen_ai.request.model": "gen_ai_model",
-    "gen_ai.response.model": "gen_ai_model",
-    "gen_ai.usage.input_tokens": "gen_ai_count",
-    "gen_ai.usage.output_tokens": "gen_ai_count",
-    "gen_ai.usage.total_tokens": "gen_ai_count",
-}
-_SAFE_ATTRIBUTE_RULES: dict[str, str] = {
-    "evaluation.case_id": "identifier",
-    "chatbi.request.source": "source",
-    "chatbi.request.id": "identifier",
-    "chatbi.content_capture.enabled": "boolean",
-    "chatbi.outcome": "outcome",
-    "chatbi.error.type": "error_type",
-    "chatbi.error_code": "error_code",
-    "chatbi.status": "status",
-    "chatbi.result.status": "status",
-    "chatbi.retrieval.status": "status",
-    "chatbi.retrieval.request_shape": "status",
-    "chatbi.retrieval.fallback_policy": "status",
-    "chatbi.retrieval.fallback_used": "boolean",
-    "chatbi.retrieval.context_source": "identifier",
-    "chatbi.retrieval.asset_version": "version",
-    "chatbi.retrieval.candidate_id": "identifier",
-    "chatbi.retrieval.candidate_type": "identifier",
-    "chatbi.retrieval.candidate.document_ids": "identifier_list",
-    "chatbi.retrieval.candidate.ranks": "count_list",
-    "chatbi.retrieval.candidate.scores": "number_list",
-    "chatbi.retrieval.candidate.qualified_tables": "identifier_list",
-    "chatbi.retrieval.search.qualified_table": "identifier",
-    "chatbi.retrieval.table_count": "count",
-    "chatbi.retrieval.column_count": "count",
-    "chatbi.retrieval.metric_count": "count",
-    "chatbi.retrieval.join.edge_ids": "identifier_list",
-    "chatbi.retrieval.join.path_ids": "identifier_list",
-    "chatbi.retrieval.join.path_count": "count",
-    "chatbi.prompt.length": "count",
-    "chatbi.prompt.question_length": "count",
-    "chatbi.prompt.context_length": "count",
-    "chatbi.sql.sha256": "hash",
-    "chatbi.database.row_count": "count",
-    "chatbi.database.truncated": "boolean",
-    "chatbi.trace.version": "version",
-    "chatbi.schema.version": "version",
-    "chatbi.retry_count": "count",
-    "chatbi.retrieval.candidate_count": "count",
-    "chatbi.result.row_count": "count",
-    "chatbi.duration_ms": "count",
-    **_SAFE_GEN_AI_ATTRIBUTE_RULES,
-}
-_SAFE_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
-_SAFE_HASH_RE = re.compile(r"^[0-9a-fA-F]{32,128}$")
-_SAFE_VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$")
-_SAFE_GEN_AI_MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+@-]{0,127}$")
-_UNSAFE_GEN_AI_MODEL_RE = re.compile(
-    r"(?:api[-_ ]?key|authorization|bearer|password|secret|"
-    r"access[-_ ]?token|prompt|sql|raw(?:[-_ ]?response)?)",
-    re.IGNORECASE,
-)
-_SENSITIVE_VALUE_RE = re.compile(
-    r"(?:raw[-_ ]?secret|password|authorization|api[-_ ]?key|bearer|access[-_ ]?token)",
-    re.IGNORECASE,
-)
+# 保留现有测试和内部诊断使用的兼容名称；实现归属已移至 tracing_export.py。
+_SafeExporter = SafeExporter
 _ACTIVE_ROOT: ContextVar["_RootState | None"] = ContextVar(
     "chatbi_observability_active_root",
     default=None,
@@ -266,42 +185,6 @@ class _BorrowedScope(_NoopScope):
 
     def __init__(self, trace_id: str) -> None:
         super().__init__(trace_id, owns_root=False)
-
-
-class _SafeExporter(SpanExporter):
-    """Exporter 边界的 fail-open 包装器；不把供应商异常交给 Batch Processor。"""
-
-    def __init__(self, delegate: SpanExporter) -> None:
-        self._delegate = delegate
-
-    def export(self, spans: Sequence[Any]) -> SpanExportResult:
-        try:
-            result = self._delegate.export(spans)
-            return (
-                result
-                if isinstance(result, SpanExportResult)
-                else SpanExportResult.SUCCESS
-            )
-        except Exception:
-            _safe_warning("exporter_export")
-            return SpanExportResult.FAILURE
-
-    def shutdown(self) -> None:
-        try:
-            self._delegate.shutdown()
-        except Exception:
-            _safe_warning("exporter_shutdown")
-
-    def force_flush(self, timeout_millis: int = 30000) -> bool:
-        try:
-            force_flush = getattr(self._delegate, "force_flush", None)
-            if not callable(force_flush):
-                return True
-            result = force_flush(timeout_millis)
-            return result is not False
-        except Exception:
-            _safe_warning("exporter_force_flush")
-            return False
 
 
 class OtelTraceRecorder:
@@ -516,7 +399,7 @@ def _build_provider(config: ObservabilityConfig) -> TracerProvider:
         )
         # Export 开启时允许 SDK 记录 Span；关闭模式保持 AlwaysOff。
         provider = TracerProvider(resource=resource, sampler=ALWAYS_ON)
-        provider.add_span_processor(BatchSpanProcessor(_SafeExporter(exporter)))
+        provider.add_span_processor(BatchSpanProcessor(SafeExporter(exporter)))
     except Exception:
         _safe_warning("exporter_initialization")
         provider = TracerProvider(resource=resource, sampler=ALWAYS_OFF)
@@ -531,156 +414,6 @@ def _resource_for(config: ObservabilityConfig) -> Resource:
     if config.deployment_environment:
         attributes["deployment.environment.name"] = config.deployment_environment
     return Resource.create(attributes)
-
-
-def _safe_attributes(attributes: Attributes | None) -> dict[str, Any]:
-    if not isinstance(attributes, Mapping):
-        return {}
-    result: dict[str, Any] = {}
-    for raw_key, value in attributes.items():
-        if not isinstance(raw_key, str):
-            continue
-        rule = _SAFE_ATTRIBUTE_RULES.get(raw_key)
-        if rule is None:
-            continue
-        safe_value = _safe_attribute_value(value, rule)
-        if safe_value is not None:
-            result[raw_key] = safe_value
-    return result
-
-
-def _safe_attribute_value(value: Any, rule: str) -> Any:
-    if rule == "boolean":
-        return value if isinstance(value, bool) else None
-    if rule in {"count", "gen_ai_count"}:
-        return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
-    if rule in {"identifier_list", "count_list", "number_list"}:
-        if not isinstance(value, (list, tuple)):
-            return None
-        safe_values: list[Any] = []
-        for item in value[:10]:
-            if rule == "identifier_list":
-                if (
-                    isinstance(item, str)
-                    and _SAFE_IDENTIFIER_RE.fullmatch(item)
-                    and not _SENSITIVE_VALUE_RE.search(item)
-                ):
-                    safe_values.append(item)
-            elif rule == "count_list":
-                if isinstance(item, int) and not isinstance(item, bool) and item >= 0:
-                    safe_values.append(item)
-            elif (
-                isinstance(item, (int, float))
-                and not isinstance(item, bool)
-                and math.isfinite(float(item))
-            ):
-                safe_values.append(item)
-        return tuple(safe_values) or None
-    if not isinstance(value, str):
-        return None
-    if len(value) > 128 or "\n" in value or "\r" in value:
-        return None
-    if _SENSITIVE_VALUE_RE.search(value):
-        return None
-    if rule == "gen_ai_operation":
-        return value if value == "chat" else None
-    if rule == "gen_ai_model":
-        if _UNSAFE_GEN_AI_MODEL_RE.search(value) is not None:
-            return None
-        return value if _SAFE_GEN_AI_MODEL_RE.fullmatch(value) else None
-    if rule == "source":
-        return value if value in {item.value for item in QuerySource} else None
-    if rule == "outcome":
-        return value if value in _SAFE_OUTCOMES else None
-    if rule == "error_type":
-        return value if value in _SAFE_ERROR_TYPES else None
-    if rule == "error_code":
-        return value if _is_safe_error_code(value) else None
-    if rule == "identifier":
-        return value if _SAFE_IDENTIFIER_RE.fullmatch(value) else None
-    if rule == "hash":
-        return value if _SAFE_HASH_RE.fullmatch(value) else None
-    if rule == "version":
-        return value if _SAFE_VERSION_RE.fullmatch(value) else None
-    if rule == "status":
-        return value if _SAFE_IDENTIFIER_RE.fullmatch(value) else None
-    return None
-
-
-def _safe_span_name(name: str) -> str | None:
-    if not isinstance(name, str):
-        return None
-    normalized = name.strip()
-    if not normalized or len(normalized) > 128 or "\n" in normalized:
-        return None
-    return normalized
-
-
-def _safe_source(source: QuerySource | str) -> str:
-    if isinstance(source, QuerySource):
-        return source.value
-    if isinstance(source, str) and source.strip().upper() in {
-        item.value for item in QuerySource
-    }:
-        return source.strip().upper()
-    return QuerySource.INTERNAL.value
-
-
-def _safe_enum_value(value: Any, allowed: frozenset[str]) -> str | None:
-    candidate = value.value if isinstance(value, (TraceOutcome, ErrorType)) else value
-    if isinstance(candidate, str) and candidate in allowed:
-        return candidate
-    return None
-
-
-def _is_safe_error_code(value: str | None) -> bool:
-    return isinstance(value, str) and _ERROR_CODE_RE.fullmatch(value) is not None
-
-
-def _safe_set_attribute(span: OTelSpan, key: str, value: Any) -> None:
-    try:
-        span.set_attribute(key, value)
-    except Exception:
-        _safe_warning("attribute")
-
-
-def _safe_set_status(span: OTelSpan, outcome: str) -> None:
-    try:
-        status_code = (
-            StatusCode.OK
-            if outcome in {
-                TraceOutcome.SUCCESS.value,
-                TraceOutcome.FALLBACK_SUCCESS.value,
-            }
-            else StatusCode.ERROR
-            if outcome
-            in {
-                TraceOutcome.TECHNICAL_FAILURE.value,
-                TraceOutcome.TIMEOUT.value,
-            }
-            else StatusCode.UNSET
-        )
-        span.set_status(Status(status_code))
-    except Exception:
-        _safe_warning("status")
-
-
-def _trace_id_from_span(span: OTelSpan) -> str:
-    try:
-        return _valid_trace_id(f"{span.get_span_context().trace_id:032x}")
-    except Exception:
-        return _new_trace_id()
-
-
-def _valid_trace_id(value: str) -> str:
-    if _TRACE_ID_RE.fullmatch(value) and int(value, 16) != 0:
-        return value
-    return _new_trace_id()
-
-
-def _new_trace_id() -> str:
-    value = secrets.token_hex(16)
-    return value if int(value, 16) != 0 else "0" * 31 + "1"
 
 
 def _current_trace_id() -> str:
@@ -706,14 +439,3 @@ def _new_noop_root_scope() -> TraceScope:
         owns_root=True,
         root_state=_RootState(trace_id, None),
     )
-
-
-def _safe_warning(stage: str) -> None:
-    try:
-        safe_stage = stage if stage in _SAFE_WARNING_STAGES else "instrumentation"
-        _LOGGER.warning(
-            "Observability degraded: component=trace stage=%s error_type=INSTRUMENTATION",
-            safe_stage,
-        )
-    except Exception:
-        pass
