@@ -622,4 +622,3 @@ class OnlineRetriever:
                 _candidate_trace_attributes(hits, scope_table=qualified_table),
             )
             return hits
-
