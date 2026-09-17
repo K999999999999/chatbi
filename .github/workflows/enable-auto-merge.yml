@@ -35,8 +35,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          auto_merge_request=$(gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest')
-          if [ "$auto_merge_request" != "null" ]; then
+          auto_merge_enabled=$(gh pr view "$PR_URL" --json autoMergeRequest \
+            --jq 'if .autoMergeRequest == null then "false" else "true" end')
+          if [ "$auto_merge_enabled" = "true" ]; then
             echo 'Auto-merge is already enabled.'
             exit 0
           fi
