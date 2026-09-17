@@ -27,7 +27,7 @@ from .contracts import (
     RetrievalStatus,
     TableHit,
 )
-from .multi_metric import build_retrieval_request, plan_retrieved_metrics
+from .multi_metric import plan_retrieved_metrics
 from .rag_runtime import (
     AssetSnapshot,
     AssetUnavailableError,
@@ -50,13 +50,13 @@ from .resource_retrieval import (
     _column_hits,
     _column_query,
     _contains_required_columns,
-    _has_metric_intent,
     _metric_data_source,
     _metric_hits,
     _missing_required_column_details,
     _multi_column_query,
     _parse_time_field,
     _required_columns_many,
+    _table_query,
     _table_hits,
 )
 from .retrieval_context import assemble_context
@@ -67,7 +67,7 @@ from .retrieval_errors import (
 from .retrieval_selection import (
     candidate_table_hits,
     grouping_table_names,
-    grouping_text_from_question,
+    grouping_text_from_dimensions,
     requires_date_context,
     select_anchor,
     target_tables,
@@ -95,15 +95,11 @@ class OnlineRetriever:
             except Exception:
                 self._trace_recorder = None
 
-    def retrieve(self, question: str | RetrievalRequest) -> OnlineRetrievalResult:
-        """执行统一的 TABLE、COLUMN、METRIC 和关系解析流水线。"""
+    def retrieve(self, request: RetrievalRequest) -> OnlineRetrievalResult:
+        """消费结构化查询，执行 TABLE、COLUMN、METRIC 和关系解析流水线。"""
 
-        if isinstance(question, RetrievalRequest):
-            request = question
-        else:
-            if not isinstance(question, str) or not question.strip():
-                raise ValueError("检索问题不能为空")
-            request = build_retrieval_request(question)
+        if not isinstance(request, RetrievalRequest):
+            raise TypeError("OnlineRetriever.retrieve 需要 RetrievalRequest")
         return self._retrieve_request(request)
 
     def _retrieve_request(
@@ -112,10 +108,12 @@ class OnlineRetriever:
     ) -> OnlineRetrievalResult:
         """在同一条链路中处理 metrics = 0 / 1 / N。"""
 
+        if request.semantic_query is None:
+            raise ValueError("RetrievalRequest 缺少 ValidatedSemanticQuery")
         if not isinstance(request.question, str) or not request.question.strip():
             raise ValueError("检索问题不能为空")
-        question = request.question.strip()
-        grouping_text = grouping_text_from_question(question)
+        semantic_query = request.semantic_query
+        grouping_text = grouping_text_from_dimensions(semantic_query.dimensions)
         try:
             with _safe_span(self._trace_recorder, "asset.resolve"):
                 snapshot = self._runtime.get_snapshot()
@@ -148,20 +146,16 @@ class OnlineRetriever:
                 request=request,
             )
 
-        metric_intent = (
-            request.request_shape != RequestShape.BASELINE
-            or _has_metric_intent(question)
-        )
         metric_queries: tuple[MetricRetrievalEvidence, ...] = ()
         selected_tuple: tuple[MetricHit, ...] = ()
         constraints: tuple[MetricConstraint, ...] = ()
         try:
-            query_embedding = self._embed_query(snapshot, question)
+            query_embedding = self._embed_query(snapshot, _table_query(semantic_query))
             table_hits = _table_hits(
                 snapshot,
                 query_embedding,
                 self._config,
-                extra_queries=(grouping_text,) if grouping_text else (),
+                extra_queries=semantic_query.dimensions,
                 embed_query=lambda text: self._embed_query(snapshot, text),
                 search=lambda collection_name, query, **kwargs: self._search(
                     "table.search",
@@ -171,10 +165,10 @@ class OnlineRetriever:
                     **kwargs,
                 ),
             )
-            metric_hits = (
+            metric_hits_by_query = tuple(
                 _metric_hits(
                     snapshot,
-                    query_embedding,
+                    self._embed_query(snapshot, metric_text),
                     self._config,
                     search=lambda collection_name, query, **kwargs: self._search(
                         "metric.search",
@@ -184,9 +178,9 @@ class OnlineRetriever:
                         **kwargs,
                     ),
                 )
-                if metric_intent
-                else ()
+                for metric_text in semantic_query.metrics
             )
+            metric_hits = _merge_metric_hits(metric_hits_by_query)
         except EmbeddingError as exc:
             return _failure(
                 RetrievalStatus.EMBEDDING_UNAVAILABLE,
@@ -220,15 +214,19 @@ class OnlineRetriever:
             metric_hits=metric_hits,
         )
 
-        if metric_intent:
-            plan = plan_retrieved_metrics(request, metric_hits)
+        if semantic_query.metrics:
+            plan = plan_retrieved_metrics(request, metric_hits_by_query)
             metric_queries = tuple(
                 MetricRetrievalEvidence(
-                    requested_text=mention.requested_text,
-                    target_document_id=mention.document_id,
-                    hits=metric_hits,
+                    requested_text=requested_text,
+                    target_document_id=(
+                        plan.mentions[index].document_id
+                        if index < len(plan.mentions)
+                        else ""
+                    ),
+                    hits=metric_hits_by_query[index],
                 )
-                for mention in plan.mentions
+                for index, requested_text in enumerate(semantic_query.metrics)
             )
             evidence = RetrievalEvidence(
                 table_hits=table_hits,
@@ -319,7 +317,7 @@ class OnlineRetriever:
         try:
             time_field = (
                 _parse_time_field(selected_tuple[0])
-                if selected_tuple and requires_date_context(question)
+                if selected_tuple and requires_date_context(semantic_query)
                 else None
             )
             required = (
@@ -328,22 +326,22 @@ class OnlineRetriever:
                 else {}
             )
             candidate_tables = candidate_table_hits(
-                question,
+                semantic_query.dimensions,
                 table_hits,
                 metric_table,
                 time_field,
             )
             grouping_tables = grouping_table_names(
-                grouping_text,
+                semantic_query.dimensions,
                 table_hits,
                 metric_table,
             )
             if not selected_tuple:
-                column_query = question
+                column_query = _column_query(semantic_query, None)
             elif len(selected_tuple) == 1:
-                column_query = _column_query(question, selected_tuple[0])
+                column_query = _column_query(semantic_query, selected_tuple[0])
             else:
-                column_query = _multi_column_query(question, selected_tuple)
+                column_query = _multi_column_query(semantic_query, selected_tuple)
             column_hits = _column_hits(
                 snapshot,
                 candidate_tables,
@@ -753,6 +751,20 @@ def _join_trace_attributes(resolution: JoinResolution) -> dict[str, object]:
         ),
         "chatbi.retrieval.join.path_count": len(resolution.paths),
     }
+
+
+def _merge_metric_hits(
+    metric_hits_by_query: tuple[tuple[MetricHit, ...], ...],
+) -> tuple[MetricHit, ...]:
+    best_by_document: dict[str, MetricHit] = {}
+    for hits in metric_hits_by_query:
+        for hit in hits:
+            previous = best_by_document.get(hit.document_id)
+            if previous is None or hit.score > previous.score:
+                best_by_document[hit.document_id] = hit
+    return tuple(
+        sorted(best_by_document.values(), key=lambda item: (-item.score, item.document_id))
+    )
 
 
 def _result(

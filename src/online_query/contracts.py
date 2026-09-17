@@ -50,7 +50,6 @@ class RequestShape(StrEnum):
 
     BASELINE = "BASELINE"
     EXPLICIT_MULTI = "EXPLICIT_MULTI"
-    POSSIBLE_MULTI = "POSSIBLE_MULTI"
 
 
 class FallbackPolicy(StrEnum):
@@ -67,7 +66,7 @@ class RetrievalRequest:
     question: str
     request_shape: RequestShape
     fallback_policy: FallbackPolicy
-    semantic_query: ValidatedSemanticQuery | None = None
+    semantic_query: ValidatedSemanticQuery
 
 
 @dataclass(frozen=True, slots=True)
@@ -314,9 +313,9 @@ class RetrievalProvider(Protocol):
 
     def retrieve(
         self,
-        question: str | RetrievalRequest,
+        request: RetrievalRequest,
     ) -> OnlineRetrievalResult:
-        """根据用户问题或已判定的内部请求返回检索结果。"""
+        """根据已判定的内部请求返回检索结果。"""
 
 
 @dataclass(frozen=True, slots=True)
