@@ -52,7 +52,7 @@ Ticket 05：Prompt 和 SQL Generation 接入已确认语义
 - Retrieval 失败将内部原因传递到 `QueryFailure` 和 Evaluation 报告；对外仍返回受控中文提示。
 - 在权威指标目录增加“已完成订单明细行数”指标，并重建、发布新的 BGE-M3 / Qdrant 资产；未修改评测集。
 - 收紧 Query Understanding 的指标表达规则：普通上下文不拼入指标，决定口径的修饰词保留，避免把“已完成订单数量”压缩成“订单数量”。
-- 本次验证：定向测试 `41 passed, 26 subtests passed`；全量确定性测试 `288 passed, 6 skipped, 102 subtests passed`；最近一次真实在线 RAG Evaluation 为 `20/21`，Execution Accuracy 为 `95.24%`。唯一失败为一次 S02 的 `Query Understanding LLM_ERROR`，同问题单例真实调用已成功；不将该结果表述为 21/21 或 Production Readiness。
+- 本次验证：定向测试 `41 passed, 26 subtests passed`；全量确定性测试 `288 passed, 6 skipped, 102 subtests passed`；candidate commit 上最近一次真实在线 RAG Evaluation 为 `20/21`，Execution Accuracy 为 `95.24%`。唯一失败为一次 S04 的 `Query Understanding LLM_ERROR`，同问题单例真实调用已成功；此前 S02 单例真实调用也已成功；不将该结果表述为 21/21 或 Production Readiness。
 
 ## Comments
 
