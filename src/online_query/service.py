@@ -2,8 +2,6 @@
 
 from collections.abc import Callable
 from hashlib import sha256
-import logging
-from typing import Any
 from uuid import uuid4
 
 from ..observability.contracts import (
@@ -22,7 +20,6 @@ from .contracts import (
     QueryResult,
     QuerySuccess,
     RetrievalProvider,
-    RetrievalStatus,
     SQLGenerator,
 )
 from .database import DatabaseError, DatabaseQueryTimeout
@@ -33,7 +30,7 @@ from .query_trace import (
     safe_enrich as _safe_enrich,
     safe_trace_scope as _safe_trace_scope,
 )
-from .retrieval.multi_metric import build_retrieval_request
+from .service_retrieval import resolve_retrieval_context as _resolve_retrieval_context
 from .sql_guard import _new_validation_session
 
 
@@ -46,17 +43,6 @@ _ERROR_MESSAGES = {
     QueryErrorCode.DATABASE_ERROR: "数据库连接或执行失败",
     QueryErrorCode.QUERY_TIMEOUT: "数据库查询超时",
 }
-
-_LOGGER = logging.getLogger(__name__)
-
-_BUSINESS_RETRIEVAL_FAILURES = {
-    RetrievalStatus.NO_TABLE_HIT,
-    RetrievalStatus.NO_REQUIRED_COLUMN_HIT,
-    RetrievalStatus.NO_METRIC_HIT,
-    RetrievalStatus.PARTIAL_UNREACHABLE,
-    RetrievalStatus.AMBIGUOUS,
-}
-
 
 class OnlineQueryService:
     """同步执行一次自然语言查询完整链路。"""
@@ -262,132 +248,17 @@ class OnlineQueryService:
         question: str,
         request_id: str,
     ) -> tuple[QueryContext | None, QueryErrorCode | None]:
-        if self._retrieval_provider is None:
+        provider = self._retrieval_provider
+        if provider is None:
             if self._context_failed or self._context is None:
                 return None, QueryErrorCode.CONTEXT_ERROR
             return self._context, None
-
-        with _safe_trace_scope(self._trace_recorder, name="retrieval.plan"):
-            try:
-                retrieval_request = build_retrieval_request(question)
-            except Exception:
-                error = QueryErrorCode.CONTEXT_ERROR
-                _enrich_failure_span(
-                    self._trace_recorder,
-                    error,
-                    ErrorType.RETRIEVAL,
-                )
-                return None, error
-            _safe_enrich(
-                self._trace_recorder,
-                attributes={
-                    "chatbi.retrieval.request_shape": retrieval_request.request_shape.value,
-                    "chatbi.retrieval.fallback_policy": retrieval_request.fallback_policy.value,
-                },
-                outcome=TraceOutcome.SUCCESS,
-            )
-
-        with _safe_trace_scope(self._trace_recorder, name="retrieval.execute"):
-            base_attributes = {
-                "chatbi.retrieval.request_shape": retrieval_request.request_shape.value,
-                "chatbi.retrieval.fallback_policy": retrieval_request.fallback_policy.value,
-                "chatbi.retrieval.fallback_used": False,
-            }
-            try:
-                result = self._retrieval_provider.retrieve(retrieval_request)
-            except Exception as exc:
-                _LOGGER.warning(
-                    "Online Retrieval technical failure: request_id=%s status=PROVIDER_EXCEPTION "
-                    "error_type=%s",
-                    request_id,
-                    type(exc).__name__,
-                )
-                return self._retrieval_failure_or_error(
-                    request_id,
-                    retrieval_request,
-                    status=RetrievalStatus.RETRIEVAL_UNAVAILABLE,
-                    attributes=base_attributes,
-                )
-
-            retrieval_attributes = {
-                **base_attributes,
-                "chatbi.retrieval.status": result.status.value,
-                "chatbi.retrieval.asset_version": result.asset_version,
-                "chatbi.retrieval.table_count": len(result.tables),
-                "chatbi.retrieval.column_count": len(result.fields),
-                "chatbi.retrieval.metric_count": len(result.metrics),
-            }
-            if result.status == RetrievalStatus.SUCCESS:
-                try:
-                    resolved_context = result.to_query_context()
-                    _safe_enrich(
-                        self._trace_recorder,
-                        attributes=retrieval_attributes,
-                        outcome=TraceOutcome.SUCCESS,
-                    )
-                    return resolved_context, None
-                except ValueError as exc:
-                    _LOGGER.warning(
-                        "Online Retrieval fallback: request_id=%s status=SUCCESS "
-                        "asset_version=%s error_type=%s",
-                        request_id,
-                        result.asset_version,
-                        type(exc).__name__,
-                    )
-                    return self._retrieval_failure_or_error(
-                        request_id,
-                        retrieval_request,
-                        status=result.status,
-                        attributes=retrieval_attributes,
-                    )
-            if result.status in _BUSINESS_RETRIEVAL_FAILURES:
-                error = QueryErrorCode.CANNOT_ANSWER
-                _safe_enrich(
-                    self._trace_recorder,
-                    attributes=retrieval_attributes,
-                    outcome=TraceOutcome.BUSINESS_REJECTION,
-                    error_type=ErrorType.RETRIEVAL,
-                    error_code=error.value,
-                )
-                return None, error
-            _LOGGER.warning(
-                "Online Retrieval technical failure: request_id=%s status=%s asset_version=%s "
-                "reason=%s",
-                request_id,
-                result.status.value,
-                result.asset_version,
-                _fallback_reason(result.warnings),
-            )
-            return self._retrieval_failure_or_error(
-                request_id,
-                retrieval_request,
-                status=result.status,
-                attributes=retrieval_attributes,
-            )
-
-    def _retrieval_failure_or_error(
-        self,
-        request_id: str,
-        retrieval_request: Any,
-        *,
-        status: RetrievalStatus,
-        attributes: dict[str, object],
-    ) -> tuple[QueryContext | None, QueryErrorCode | None]:
-        del request_id, retrieval_request
-        error = QueryErrorCode.CONTEXT_ERROR
-        _safe_enrich(
+        return _resolve_retrieval_context(
+            provider,
             self._trace_recorder,
-            attributes={
-                **attributes,
-                "chatbi.retrieval.status": status.value,
-                "chatbi.retrieval.fallback_used": False,
-            },
-            outcome=TraceOutcome.TECHNICAL_FAILURE,
-            error_type=ErrorType.RETRIEVAL,
-            error_code=error.value,
+            question,
+            request_id,
         )
-        return None, error
-
 
 def _resolve_request_id(request_id: str | None) -> tuple[str, bool]:
     if request_id is None:
@@ -396,15 +267,6 @@ def _resolve_request_id(request_id: str | None) -> tuple[str, bool]:
         return str(uuid4()), False
     normalized = request_id.strip()
     return (normalized or str(uuid4())), True
-
-
-def _fallback_reason(warnings: tuple[str, ...]) -> str:
-    """只保留已有 warning 的短摘要，避免日志写入完整 Prompt 或 Secret。"""
-
-    if not warnings:
-        return "unspecified"
-    reason = warnings[0].replace("\r", " ").replace("\n", " ").strip()
-    return reason[:256] or "unspecified"
 
 
 def _failure(request_id: str, error_code: QueryErrorCode) -> QueryFailure:

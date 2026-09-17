@@ -37,7 +37,7 @@ QueryRequest
 | `llm.py` | 使用 LangChain `ChatOpenAI` 调用模型，只返回 SQL 文本或 `CANNOT_ANSWER` |
 | `sql_guard/sql_guard.py` | 使用 SQLGlot 对 PostgreSQL SQL 做确定性安全校验；`sql_guard/__init__.py` 保留公共入口 |
 | `database.py` | 使用 psycopg 进行只读查询、超时控制和结果截断 |
-| `service.py` | 串联完整链路并统一转换错误 |
+| `service.py` | 保留请求校验、Prompt、LLM、SQL Guard、Database 主链路并统一转换错误；Retrieval 上下文解析由同目录 `service_retrieval.py` 承担 |
 | `retrieval/` | Online Retrieval 的运行时、资源检索、关系解析、上下文组装和请求规划 |
 | `sql_guard/` | SQL Guard 核心、Join 校验、多指标校验和异常类型 |
 | `__init__.py` | 只导出公共请求、结果和 Service |

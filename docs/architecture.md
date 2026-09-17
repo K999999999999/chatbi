@@ -90,6 +90,7 @@ flowchart TB
         OInit["__init__.py<br/>模块公开入口"]
         Contracts["contracts.py<br/>请求、响应、错误码<br/>SQLGenerator / QueryExecutor 接口"]
         Service["service.py<br/>查询主流程总编排"]
+        ServiceRetrieval["service_retrieval.py<br/>Retrieval 上下文解析和失败映射"]
         QueryTrace["query_trace.py<br/>查询 Trace scope 和结果标记"]
         Context["context.py<br/>加载结构和指标文件"]
         Retrieval["retrieval.py<br/>OnlineRetriever 公共编排入口"]
@@ -109,6 +110,7 @@ flowchart TB
         OInit --> Service
         Contracts -. "统一数据类型" .-> Service
         Service --> QueryTrace
+        Service --> ServiceRetrieval
         Service -->|"1. 加载上下文 / Retrieval"| Context
         Context --> Retrieval
         Retrieval --> RetrievalSelection
