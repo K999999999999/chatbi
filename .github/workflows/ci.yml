@@ -45,6 +45,35 @@ jobs:
       - name: Run deterministic tests
         run: uv run --python 3.11 --locked --with pytest python -m pytest -q
 
+  code-quality:
+    name: Code quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.2"
+
+      - name: Install Python
+        run: uv python install 3.11
+
+      - name: Verify lockfile
+        run: uv lock --check
+
+      - name: Check formatting
+        run: >-
+          uv run --python 3.11 --locked --with ruff==0.16.8
+          ruff format --check src tests
+
+      - name: Run lint
+        run: >-
+          uv run --python 3.11 --locked --with ruff==0.16.8
+          ruff check --select E4,E7,E9,F src tests
+
   sql-guard-tests:
     name: SQL Guard tests
     runs-on: ubuntu-latest
