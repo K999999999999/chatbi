@@ -68,6 +68,15 @@ _BUSINESS_RETRIEVAL_FAILURES = {
 
 _QUERY_UNDERSTANDING_ERROR_MESSAGE = "暂时无法理解这个查询，请稍后重试"
 _QUERY_UNDERSTANDING_MISSING_MESSAGE = "查询理解服务尚未配置，请稍后重试"
+_FAILURE_STAGES = {
+    QueryErrorCode.INVALID_REQUEST: "request_validation",
+    QueryErrorCode.CONTEXT_ERROR: "retrieval",
+    QueryErrorCode.LLM_ERROR: "sql_generation",
+    QueryErrorCode.CANNOT_ANSWER: "retrieval",
+    QueryErrorCode.SQL_REJECTED: "sql_guard",
+    QueryErrorCode.DATABASE_ERROR: "database",
+    QueryErrorCode.QUERY_TIMEOUT: "database",
+}
 
 
 class OnlineQueryService:
@@ -416,6 +425,8 @@ class OnlineQueryService:
                     request_id,
                     QueryErrorCode.LLM_ERROR,
                     message=_QUERY_UNDERSTANDING_MISSING_MESSAGE,
+                    stage="query_understanding",
+                    internal_reason="ADAPTER_NOT_CONFIGURED",
                 )
                 _safe_enrich(
                     self._trace_recorder,
@@ -435,6 +446,11 @@ class OnlineQueryService:
                     request_id,
                     QueryErrorCode.LLM_ERROR,
                     message=_QUERY_UNDERSTANDING_ERROR_MESSAGE,
+                    stage="query_understanding",
+                    internal_reason=_exception_reason(
+                        exc,
+                        "UNDERSTANDING_FAILED",
+                    ),
                 )
                 _safe_enrich(
                     self._trace_recorder,
@@ -460,6 +476,8 @@ class OnlineQueryService:
                     request_id,
                     QueryErrorCode.CANNOT_ANSWER,
                     message=str(exc),
+                    stage="query_understanding",
+                    internal_reason=exc.reason,
                 )
                 _safe_enrich(
                     self._trace_recorder,
@@ -476,6 +494,8 @@ class OnlineQueryService:
                     request_id,
                     QueryErrorCode.LLM_ERROR,
                     message=_QUERY_UNDERSTANDING_ERROR_MESSAGE,
+                    stage="query_understanding",
+                    internal_reason=exc.reason,
                 )
                 _safe_enrich(
                     self._trace_recorder,
@@ -492,6 +512,11 @@ class OnlineQueryService:
                     request_id,
                     QueryErrorCode.LLM_ERROR,
                     message=_QUERY_UNDERSTANDING_ERROR_MESSAGE,
+                    stage="query_understanding",
+                    internal_reason=_exception_reason(
+                        exc,
+                        "VALIDATION_FAILED",
+                    ),
                 )
                 _safe_enrich(
                     self._trace_recorder,
@@ -566,11 +591,15 @@ def _failure(
     error_code: QueryErrorCode,
     *,
     message: str | None = None,
+    stage: str | None = None,
+    internal_reason: str | None = None,
 ) -> QueryFailure:
     return QueryFailure(
         request_id=request_id,
         error_code=error_code,
         error_message=message or _ERROR_MESSAGES[error_code],
+        failure_stage=stage or _FAILURE_STAGES[error_code],
+        internal_reason=internal_reason or error_code.value,
     )
 
 

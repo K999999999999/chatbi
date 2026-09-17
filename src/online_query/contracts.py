@@ -40,6 +40,8 @@ class QueryFailure:
     request_id: str
     error_code: QueryErrorCode
     error_message: str
+    failure_stage: str | None = None
+    internal_reason: str | None = None
 
 
 QueryResult: TypeAlias = QuerySuccess | QueryFailure
