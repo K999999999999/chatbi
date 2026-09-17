@@ -26,7 +26,6 @@ from .contracts import (
     SQLGenerator,
 )
 from .database import DatabaseError, DatabaseQueryTimeout
-from .multi_metric import build_retrieval_request
 from .prompt import build_prompt
 from .query_trace import (
     enrich_failure_span as _enrich_failure_span,
@@ -34,6 +33,7 @@ from .query_trace import (
     safe_enrich as _safe_enrich,
     safe_trace_scope as _safe_trace_scope,
 )
+from .retrieval.multi_metric import build_retrieval_request
 from .sql_guard import _new_validation_session
 
 

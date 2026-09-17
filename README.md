@@ -36,7 +36,7 @@ Natural Language
 
 | 模块 | 代码入口 | 当前职责 | 状态和证据 |
 | --- | --- | --- | --- |
-| Online Query | [`src/online_query/`](src/online_query/)；`OnlineQueryService.query()`、`OnlineRetriever.retrieve()` | 查询编排、上下文、Online Retrieval、SQL Guard 和数据库执行 | 已实现；见 [`docs/specs/online-query.md`](docs/specs/online-query.md)、[`docs/specs/online-retrieval.md`](docs/specs/online-retrieval.md) 和 [`tests/online_query/`](tests/online_query/) |
+| Online Query | [`src/online_query/`](src/online_query/)；`service.py` 的 `OnlineQueryService.query()`、`retrieval/` 的 `OnlineRetriever.retrieve()`、`sql_guard/` 的 SQL 校验入口 | 查询编排、上下文、Online Retrieval、SQL Guard 和数据库执行；根目录保留核心 Contract 与外部能力适配，复杂子域按目录组织 | 已实现；见 [`docs/specs/online-query.md`](docs/specs/online-query.md)、[`docs/specs/online-retrieval.md`](docs/specs/online-retrieval.md) 和 [`tests/online_query/`](tests/online_query/) |
 | Query API Adapter | [`src/query_api/`](src/query_api/)；`src/query_api/main.py` | HTTP `POST /api/v1/query` 和 `GET /health`，只适配 Online Query | 已实现；见 [`docs/specs/query-api.md`](docs/specs/query-api.md) 和 [`tests/query_api/`](tests/query_api/) |
 | Streamlit | [`src/streamlit_app.py`](src/streamlit_app.py) | 通过 HTTP 调用 Query API 的当前验证页面和内部入口 | POC / 内部入口；见 [`tests/streamlit/`](tests/streamlit/) |
 | RAG Offline Build | [`src/rag_offline/`](src/rag_offline/)；`python -m src.rag_offline` | 事实校验、文档构建、Embedding、Qdrant、关系图和资产发布 | 已实现；见 [`docs/specs/rag-offline-build.md`](docs/specs/rag-offline-build.md) 和 [`tests/rag_offline/`](tests/rag_offline/) |

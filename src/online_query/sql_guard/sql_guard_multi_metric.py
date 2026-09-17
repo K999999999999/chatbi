@@ -3,7 +3,7 @@
 from sqlglot import exp, parse_one
 from sqlglot.errors import SqlglotError
 
-from .contracts import QueryContext
+from ..contracts import QueryContext
 from .sql_guard_errors import SQLRejectedError
 
 

@@ -40,7 +40,7 @@
 
 当前 T1～T3 已使用列表类型保存并验证多个指标，T4 再把这些结构化约束传入 Prompt 与 SQL Guard。因此本能力不是简单把 metric 字段改成 metrics 数组，而是完整的指标覆盖、口径和输出完整性语义。
 
-src/online_query/resource_retrieval.py 的 _select_metric 当前在整个问题中选取名称或别名匹配长度最大的候选；最长候选并列时返回 AMBIGUOUS。它没有按每个独立提及片段识别全部请求指标。
+src/online_query/retrieval/resource_retrieval.py 的 _select_metric 当前在整个问题中选取名称或别名匹配长度最大的候选；最长候选并列时返回 AMBIGUOUS。它没有按每个独立提及片段识别全部请求指标。
 
 历史报告 reports/evaluation/20260907T085515Z-0cd49f8-online-rag.json 记录 19/20 执行结果通过、C05 返回 CANNOT_ANSWER。这是已有结果证据。C01、C03、C04 也请求多个指标，结果通过不等于检索上下文逐个提供了全部指标定义。该报告没有逐指标覆盖证据，不能据此认定多指标语义契约完整通过。
 

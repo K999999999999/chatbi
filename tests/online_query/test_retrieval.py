@@ -12,8 +12,8 @@ from src.online_query.contracts import (
     RetrievalConfig,
     RetrievalStatus,
 )
-from src.online_query.multi_metric import build_retrieval_request
-from src.online_query.rag_runtime import (
+from src.online_query.retrieval.multi_metric import build_retrieval_request
+from src.online_query.retrieval.rag_runtime import (
     AssetSnapshot,
     RetrievalUnavailableError,
 )

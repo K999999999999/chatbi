@@ -7,7 +7,7 @@ from .config import load_local_environment
 from src.observability.tracing import create_trace_recorder
 from src.online_query.database import PsycopgQueryExecutor
 from src.online_query.llm import LangChainSQLGenerator
-from src.online_query.rag_runtime import RagRuntime
+from src.online_query.retrieval.rag_runtime import RagRuntime
 from src.online_query.retrieval import OnlineRetriever
 from src.online_query.service import OnlineQueryService
 

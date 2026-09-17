@@ -281,7 +281,7 @@ Evaluation 外层拥有自己创建的 Root Trace；`OnlineQueryService` 只借�
 
 ### 7.2 Retrieval 内部
 
-`src/online_query/retrieval.py` 在现有调用位置记录：
+`src/online_query/retrieval/retrieval.py` 在现有调用位置记录：
 
 | Span | 边界 |
 |---|---|

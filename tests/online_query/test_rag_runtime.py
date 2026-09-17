@@ -7,7 +7,7 @@ from unittest.mock import Mock
 from src.rag_offline.build import COLLECTIONS, PublishedAsset, PublishedAssetError
 from src.rag_offline.config import OfflineBuildConfig
 from src.rag_offline.qdrant_store import QdrantStoreError
-from src.online_query.rag_runtime import (
+from src.online_query.retrieval.rag_runtime import (
     AssetUnavailableError,
     EmbeddingUnavailableError,
     RagRuntime,

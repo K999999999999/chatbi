@@ -70,7 +70,7 @@ Architecture / Domain / Existing Contract
 | 结构化 Relationship Graph | data/rag/{build_id}/relationship_graph.json | BFS Join Path |
 | 静态 QueryContext | src/online_query/context.py | 技术故障 fallback |
 | 表列 allowlist | src/online_query/contracts.py | Dynamic Schema 和候选范围校验 |
-| PostgreSQL AST SQL Guard | src/online_query/sql_guard.py | 继续作为 SQL 最终安全边界 |
+| PostgreSQL AST SQL Guard | src/online_query/sql_guard/sql_guard.py | 继续作为 SQL 最终安全边界 |
 | 现有 SQL 生成、数据库执行和服务编排 | src/online_query/ | 不改变职责，只替换上下文来源 |
 
 当前已发布真实资产：
@@ -84,21 +84,30 @@ Architecture / Domain / Existing Contract
 
 ## 4. 总体实现结论
 
-不新建大型分层结构。代码继续放在 src/online_query/，通过一个在线检索编排对象连接离线资产和现有 Online Query。
+不新建通用的 `domain`、`application`、`infrastructure` 或 `ports` 分层。代码继续放在 `src/online_query/`，只把已经形成稳定边界的 Retrieval 和 SQL Guard 分别组织为子包，通过在线检索编排对象连接离线资产和现有 Online Query。
 
 建议的最小结构：
 
 ~~~
 src/online_query/
-├─ contracts.py       # 补充 Retrieval Contract 和 Dynamic Context 类型
-├─ retrieval.py       # OnlineRetriever 公共 Seam、顺序编排和失败映射
-├─ resource_retrieval.py # TABLE、COLUMN、METRIC 候选资源和必需字段
-├─ relationship_graph.py # Relationship Graph 和 Join Resolution
-├─ retrieval_context.py # 最终资源闭包和 QueryContext 组装
-├─ rag_runtime.py     # 发布资产快照、Qdrant、Embedding 运行时适配
-├─ prompt.py          # 增加 Dynamic Schema 资源限制
-├─ service.py         # 按请求取得动态上下文，保留静态 fallback
-└─ sql_guard.py       # 复用动态表列 allowlist，补充候选范围测试
+├─ contracts.py       # 共享 Query、Retrieval 和 SQL Guard 类型
+├─ service.py         # 按请求取得上下文，串联 Prompt、LLM、SQL Guard 和数据库
+├─ context.py         # 静态上下文加载
+├─ prompt.py          # Dynamic Schema 资源限制
+├─ database.py        # PostgreSQL 只读执行适配
+├─ llm.py             # LLM SQL 生成适配
+├─ retrieval/         # OnlineRetriever 和在线检索内部职责
+│  ├─ retrieval.py
+│  ├─ resource_retrieval.py
+│  ├─ retrieval_context.py
+│  ├─ retrieval_selection.py
+│  ├─ relationship_graph.py
+│  ├─ rag_runtime.py
+│  └─ multi_metric.py
+└─ sql_guard/         # SQL 安全校验内部职责和公共入口
+   ├─ sql_guard.py
+   ├─ sql_guard_join.py
+   └─ sql_guard_multi_metric.py
 ~~~
 
 不新增 ports、infrastructure、agent、workflow 等目录。Qdrant 和 BGE-M3 适配器直接复用 src/rag_offline/ 已有实现，Online Retrieval 只负责在线编排。
@@ -468,11 +477,11 @@ RAG_ONLINE_RETRIEVAL_ENABLED=true
 
 | Task | 目标 | 主要文件 | 完成标准 | 依赖 |
 |---|---|---|---|---|
-| T1 运行时资产快照 | 加载 current、Manifest、Graph、集合和 Embedding 配置 | src/online_query/rag_runtime.py、contracts.py | 同一 asset_version 快照可创建；版本、集合、模型不一致受控失败 | 无 |
-| T2 TABLE / METRIC Retrieval | 实现两路独立 Dense 检索、阈值处理和最终指标选择 | src/online_query/resource_retrieval.py、src/online_query/retrieval.py | TABLE、METRIC 只访问对应集合；指标多候选时不交给 LLM 选择 | T1 |
-| T3 COLUMN Retrieval | 在候选表内做精确过滤检索，并校验公式/日期必需字段 | src/online_query/resource_retrieval.py、src/online_query/retrieval.py | 不查询候选范围外字段；必需公式字段缺失时停止；结果合并排序稳定 | T1、T2 |
-| T4 Graph Join Resolver | 实现 Anchor、BFS、平行边、多日期和不可达处理 | src/online_query/relationship_graph.py、src/online_query/retrieval.py | 最短合法路径、Join Key、time_field 映射、不可达和歧义测试通过 | T2、T3 |
-| T5 Dynamic Context | 组装 Dynamic Schema、Indicator Context 和 QueryContext | src/online_query/retrieval_context.py、src/online_query/retrieval.py、contracts.py | 只输出最终资源；allowlist 完整；指标公式和 time_field 保留 | T3、T4 |
+| T1 运行时资产快照 | 加载 current、Manifest、Graph、集合和 Embedding 配置 | src/online_query/retrieval/rag_runtime.py、contracts.py | 同一 asset_version 快照可创建；版本、集合、模型不一致受控失败 | 无 |
+| T2 TABLE / METRIC Retrieval | 实现两路独立 Dense 检索、阈值处理和最终指标选择 | src/online_query/retrieval/resource_retrieval.py、src/online_query/retrieval/retrieval.py | TABLE、METRIC 只访问对应集合；指标多候选时不交给 LLM 选择 | T1 |
+| T3 COLUMN Retrieval | 在候选表内做精确过滤检索，并校验公式/日期必需字段 | src/online_query/retrieval/resource_retrieval.py、src/online_query/retrieval/retrieval.py | 不查询候选范围外字段；必需公式字段缺失时停止；结果合并排序稳定 | T1、T2 |
+| T4 Graph Join Resolver | 实现 Anchor、BFS、平行边、多日期和不可达处理 | src/online_query/retrieval/relationship_graph.py、src/online_query/retrieval/retrieval.py | 最短合法路径、Join Key、time_field 映射、不可达和歧义测试通过 | T2、T3 |
+| T5 Dynamic Context | 组装 Dynamic Schema、Indicator Context 和 QueryContext | src/online_query/retrieval/retrieval_context.py、src/online_query/retrieval/retrieval.py、contracts.py | 只输出最终资源；allowlist 完整；指标公式和 time_field 保留 | T3、T4 |
 | T6 Prompt / Service 接入 | 增加 Prompt 资源限制、检索依赖和静态 fallback | src/online_query/prompt.py、service.py、query_api/main.py | 真实 API 默认走 RAG；技术失败 fallback；静态单元测试路径不回归 | T5 |
 | T7 软件测试 | 覆盖契约、路由、图、状态和 SQL 范围校验 | tests/online_query/ | 新增测试和全仓回归通过 | T1-T6 |
 | T8 真实资产验证 | 使用当前 BGE-M3、Qdrant 和标准问题验证 | tests 或 scripts/evaluation | 资产可加载、真实 Dense 检索可运行、评测证据可复现 | T7 |

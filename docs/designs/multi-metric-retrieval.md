@@ -450,11 +450,11 @@ Done When：合法 SQL 可执行，MM 规格中的所有违规 SQL 都被确定�
 
 - `src/rag_offline/qdrant_store.py`
 - `src/online_query/contracts.py`
-- `src/online_query/rag_runtime.py`
-- `src/online_query/retrieval.py`
-- 新增纯规则模块 `src/online_query/multi_metric.py`
+- `src/online_query/retrieval/rag_runtime.py`
+- `src/online_query/retrieval/retrieval.py`
+- 新增纯规则模块 `src/online_query/retrieval/multi_metric.py`
 - `src/online_query/prompt.py`
-- `src/online_query/sql_guard.py`
+- `src/online_query/sql_guard/sql_guard.py`
 - `src/online_query/service.py`
 - 对应 `tests/online_query/` 测试
 - 实现完成后的规格、Runbook 和验收记录

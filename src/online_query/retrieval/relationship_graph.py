@@ -5,7 +5,7 @@ from dataclasses import replace
 from types import MappingProxyType
 from typing import Any
 
-from .contracts import JoinConstraint, JoinEdge, JoinPath, JoinResolution
+from ..contracts import JoinConstraint, JoinEdge, JoinPath, JoinResolution
 
 
 class RelationshipGraphContractError(RuntimeError):

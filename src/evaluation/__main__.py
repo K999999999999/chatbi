@@ -24,7 +24,7 @@ from src.online_query.contracts import (
 )
 from src.online_query.database import DatabaseError, PsycopgQueryExecutor
 from src.online_query.llm import LangChainSQLGenerator, LLMError
-from src.online_query.rag_runtime import RagRuntime
+from src.online_query.retrieval.rag_runtime import RagRuntime
 from src.online_query.retrieval import OnlineRetriever
 from src.online_query.service import OnlineQueryService
 

@@ -9,7 +9,7 @@ from src.online_query.contracts import (
     MetricPlanStatus,
     RequestShape,
 )
-from src.online_query.multi_metric import (
+from src.online_query.retrieval.multi_metric import (
     build_retrieval_request,
     classify_request_shape,
     plan_retrieved_metrics,

@@ -4,7 +4,7 @@ import unittest
 
 from src.observability.contracts import QuerySource
 from src.observability.tracing import create_in_memory_recorder
-from src.online_query.multi_metric import build_retrieval_request
+from src.online_query.retrieval.multi_metric import build_retrieval_request
 from src.online_query.retrieval import OnlineRetriever
 from src.online_query.contracts import RetrievalStatus
 

@@ -69,7 +69,7 @@ class SQLGuardTest(unittest.TestCase):
         sql = "SELECT order_id FROM mart_sales.fct_sales_order_line"
 
         with patch(
-            "src.online_query.sql_guard._parse_single_select",
+            "src.online_query.sql_guard.sql_guard._parse_single_select",
             wraps=sql_guard._parse_single_select,
         ) as parse:
             validated = validate_sql(sql, self.context)

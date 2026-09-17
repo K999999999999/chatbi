@@ -2,7 +2,7 @@
 
 from sqlglot import exp
 
-from .contracts import QueryContext
+from ..contracts import QueryContext
 from .sql_guard_errors import SQLRejectedError
 
 

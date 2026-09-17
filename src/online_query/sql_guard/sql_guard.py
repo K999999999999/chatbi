@@ -7,7 +7,7 @@ from sqlglot.errors import SqlglotError
 from sqlglot.optimizer.qualify import qualify
 from sqlglot.optimizer.scope import traverse_scope
 
-from .contracts import JoinConstraint, QueryContext, ValidatedSQL
+from ..contracts import JoinConstraint, QueryContext, ValidatedSQL
 from .sql_guard_errors import SQLRejectedError
 from .sql_guard_join import validate_join_constraints
 from .sql_guard_multi_metric import validate_multi_metric_expression

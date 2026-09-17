@@ -9,7 +9,7 @@ from src.observability.tracing import create_trace_recorder
 from src.rag_offline.embedding import EmbeddingError
 from src.rag_offline.qdrant_store import QdrantStoreError, SearchHit
 
-from .contracts import (
+from ..contracts import (
     ColumnHit,
     FallbackPolicy,
     JoinConstraint,

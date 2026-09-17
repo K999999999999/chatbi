@@ -13,7 +13,7 @@ from sqlglot.errors import SqlglotError
 from src.rag_offline.documents import COLUMN_COLLECTION, METRIC_COLLECTION, TABLE_COLLECTION
 from src.rag_offline.qdrant_store import SearchHit
 
-from .contracts import ColumnHit, MetricHit, RetrievalConfig, TableHit
+from ..contracts import ColumnHit, MetricHit, RetrievalConfig, TableHit
 from .rag_runtime import AssetSnapshot
 
 
