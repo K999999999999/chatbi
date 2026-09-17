@@ -20,6 +20,7 @@ from .query_understanding import (
 
 
 _MAX_LLM_TIMEOUT_SECONDS = 30.0
+_QUERY_UNDERSTANDING_MAX_ATTEMPTS = 2
 
 
 class _InvokableModel(Protocol):
@@ -36,7 +37,7 @@ class QueryUnderstandingAdapter(Protocol):
 
 
 class LangChainQueryUnderstanding:
-    """使用 LangChain Chat Model（聊天模型）执行一次 Query Understanding。"""
+    """使用 LangChain Chat Model（聊天模型）执行 Query Understanding。"""
 
     def __init__(
         self,
@@ -99,10 +100,7 @@ class LangChainQueryUnderstanding:
         prompt = build_query_understanding_prompt(question)
 
         with self._stage_trace():
-            try:
-                response = self._model.invoke(prompt)
-            except Exception as exc:
-                raise LLMError("Query Understanding LLM 调用失败") from exc
+            response = self._invoke_with_retry(prompt)
 
             content = getattr(response, "content", None)
             if not isinstance(content, str):
@@ -123,6 +121,18 @@ class LangChainQueryUnderstanding:
                 return candidate_from_payload(payload)
             except SemanticQueryStructureError as exc:
                 raise LLMError("Query Understanding 结构化输出无效") from exc
+
+    def _invoke_with_retry(self, prompt: str) -> object:
+        """仅重试 Provider 调用异常，不重试模型响应或 Contract 错误。"""
+
+        for attempt in range(_QUERY_UNDERSTANDING_MAX_ATTEMPTS):
+            try:
+                return self._model.invoke(prompt)
+            except Exception as exc:
+                if attempt == _QUERY_UNDERSTANDING_MAX_ATTEMPTS - 1:
+                    raise LLMError("Query Understanding LLM 调用失败") from exc
+
+        raise RuntimeError("Query Understanding 调用次数配置无效")
 
     @contextmanager
     def _stage_trace(self) -> Iterator[None]:

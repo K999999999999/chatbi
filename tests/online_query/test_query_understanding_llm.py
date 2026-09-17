@@ -56,9 +56,25 @@ class QueryUnderstandingLLMTest(unittest.TestCase):
         self.assertIn("最小指标表达式", prompt)
         self.assertIn("不要输出物理表名、物理字段名", prompt)
 
-    def test_provider_exception_is_controlled_and_not_retried(self) -> None:
+    def test_provider_exception_retries_once_then_returns_candidate(self) -> None:
         model = Mock()
-        model.invoke.side_effect = TimeoutError("provider detail")
+        model.invoke.side_effect = [
+            TimeoutError("provider detail"),
+            SimpleNamespace(content=json.dumps(_payload(), ensure_ascii=False)),
+        ]
+        adapter = LangChainQueryUnderstanding(model)
+
+        result = adapter.understand("查询销售额")
+
+        self.assertIsInstance(result, SemanticQueryCandidate)
+        self.assertEqual(model.invoke.call_count, 2)
+
+    def test_provider_exception_retries_once_then_is_controlled(self) -> None:
+        model = Mock()
+        model.invoke.side_effect = [
+            TimeoutError("first provider detail"),
+            TimeoutError("second provider detail"),
+        ]
         adapter = LangChainQueryUnderstanding(model)
 
         with self.assertRaisesRegex(LLMError, "Query Understanding LLM 调用失败") as raised:
@@ -66,7 +82,7 @@ class QueryUnderstandingLLMTest(unittest.TestCase):
 
         self.assertIsInstance(raised.exception.__cause__, TimeoutError)
         self.assertNotIn("provider detail", str(raised.exception))
-        model.invoke.assert_called_once()
+        self.assertEqual(model.invoke.call_count, 2)
 
     def test_empty_non_text_and_invalid_json_are_controlled_errors(self) -> None:
         cases = (
@@ -115,7 +131,7 @@ class QueryUnderstandingLLMTest(unittest.TestCase):
         )
 
     @patch("src.online_query.query_understanding_llm.ChatOpenAI")
-    def test_from_env_reuses_llm_settings_without_retries(
+    def test_from_env_keeps_provider_internal_retries_disabled(
         self,
         chat_open_ai: Mock,
     ) -> None:

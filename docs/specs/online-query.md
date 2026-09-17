@@ -90,7 +90,7 @@ QueryRequest
 - 能回答时只返回一条 PostgreSQL SQL，不返回解释、Markdown、分析过程或多个候选。
 - 无法根据当前结构和指标回答时，触发 `CANNOT_ANSWER`，不得编造表、字段或指标。
 - 不使用 Few-shot、对话历史、自动修复、第二轮反思或多模型投票。
-- 当前不自动重试 LLM 调用。
+- Query Understanding 的 Provider 调用异常或超时最多重试一次；非法 JSON、结构化 Contract 错误和 `CANNOT_ANSWER` 不重试。SQLGenerator 保持不自动重试。
 
 ## SQL 安全规则
 
@@ -108,7 +108,7 @@ QueryRequest
 - LLM 调用超时：30 秒，超时返回 `LLM_ERROR`。
 - 数据库查询超时：10 秒，超时返回 `QUERY_TIMEOUT`。
 - 最多返回 100 行；执行端最多读取 101 行用于判断是否截断。
-- 当前不支持用户分页和自动重试。
+- 当前不支持用户分页；除 Query Understanding 的一次受控 Provider 重试外，SQL 生成、SQL Guard 和数据库执行不自动重试。
 
 ## 业务规则
 
