@@ -155,7 +155,15 @@ class OnlineQueryService:
 
         with _safe_trace_scope(self._trace_recorder, name="prompt.build"):
             try:
-                prompt = build_prompt(request.question.strip(), context)
+                prompt = build_prompt(
+                    semantic_query
+                    if semantic_query is not None
+                    else request.question.strip(),
+                    context,
+                    original_question=(
+                        request.question.strip() if semantic_query is not None else None
+                    ),
+                )
             except Exception:
                 result = _failure(request_id, QueryErrorCode.CONTEXT_ERROR)
                 _enrich_failure_span(

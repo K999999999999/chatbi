@@ -92,6 +92,8 @@ class QueryUnderstandingServiceTest(unittest.TestCase):
         self.assertEqual(retrieval_request.semantic_query.metrics, ("销售额", "毛利率"))
         self.assertEqual(retrieval_request.question, "完全不同的用户原话")
         self.assertEqual(retrieval_request.request_shape, RequestShape.EXPLICIT_MULTI)
+        prompt = self.generator.generate.call_args.args[0]
+        self.assertIn('"metrics":["销售额","毛利率"]', prompt)
 
     def test_query_understanding_failure_stops_before_retrieval_sql_and_database(self) -> None:
         provider = Mock()

@@ -8,6 +8,10 @@ from src.online_query.contracts import (
     RequestShape,
 )
 from src.online_query.prompt import build_prompt
+from src.online_query.query_understanding import (
+    candidate_from_payload,
+    validate_candidate,
+)
 
 
 class PromptTest(unittest.TestCase):
@@ -55,6 +59,74 @@ class PromptTest(unittest.TestCase):
         self.assertIn("共享同一组用户日期、分组字段和普通筛选条件", prompt)
         self.assertIn("不得为了补齐指标自行加入其他资源", prompt)
         self.assertIn("不要使用 CTE、子查询、窗口函数、HAVING、集合运算或 OR", prompt)
+
+    def test_structured_prompt_contains_validated_time_and_filters(self) -> None:
+        question = "请查询指定期间的客户销售情况"
+        candidate = candidate_from_payload(
+            {
+                "query_type": "metric_analysis",
+                "subjects": ["客户销售"],
+                "metrics": ["销售额"],
+                "dimensions": ["客户类型"],
+                "time": {"text": "2025 年", "granularity": "year"},
+                "filters": [
+                    {
+                        "field_text": "订单状态",
+                        "operator": "equals",
+                        "values": ["已完成"],
+                    }
+                ],
+            }
+        )
+        semantic_query = validate_candidate(
+            candidate,
+            original_question=question,
+        )
+
+        prompt = build_prompt(semantic_query, self._context(), question)
+
+        self.assertIn('"query_type":"metric_analysis"', prompt)
+        self.assertIn('"metrics":["销售额"]', prompt)
+        self.assertIn('"dimensions":["客户类型"]', prompt)
+        self.assertIn('"start":"2025-01-01T00:00:00+08:00"', prompt)
+        self.assertIn('"end":"2026-01-01T00:00:00+08:00"', prompt)
+        self.assertIn('"operator":"equals"', prompt)
+        self.assertIn('"values":["已完成"]', prompt)
+        self.assertIn(question, prompt)
+
+    def test_structured_prompt_does_not_reparse_or_replace_semantic_fields(self) -> None:
+        candidate = candidate_from_payload(
+            {
+                "query_type": "entity_lookup",
+                "subjects": ["客户"],
+                "metrics": [],
+                "dimensions": ["客户类型"],
+                "time": None,
+                "filters": [],
+            }
+        )
+        semantic_query = validate_candidate(
+            candidate,
+            original_question="原始问题",
+        )
+
+        prompt = build_prompt(
+            semantic_query,
+            self._context(),
+            "这段原始问题包含销售额，但结构化结果明确没有指标",
+        )
+
+        self.assertIn('"metrics":[]', prompt)
+        self.assertIn('"query_type":"entity_lookup"', prompt)
+
+    def _context(self) -> QueryContext:
+        return QueryContext(
+            prompt_context="DYNAMIC CONTEXT",
+            allowed_tables=frozenset({"mart_sales.fct_sales_order_line"}),
+            allowed_columns={
+                "mart_sales.fct_sales_order_line": frozenset({"order_id"})
+            },
+        )
 
 
 def _metric_constraint(ordinal: int, name: str) -> MetricConstraint:

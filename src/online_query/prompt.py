@@ -1,13 +1,43 @@
 """构造直接生成 SQL 的完整 Prompt（提示词）。"""
 
+import json
+from typing import Any
+
 from .contracts import QueryContext
+from .query_understanding import ValidatedSemanticQuery
 
 
-def build_prompt(question: str, context: QueryContext) -> str:
-    """把确定的结构、字段值、关系、指标和用户问题放入同一 Prompt。"""
+def build_prompt(
+    semantic_query: ValidatedSemanticQuery | str,
+    context: QueryContext,
+    original_question: str | None = None,
+) -> str:
+    """把已确认语义、物理上下文和原始问题放入同一 Prompt。
+
+    ``str`` 形式只为即将删除的静态模式保留兼容入口；在线模式必须传入
+    ``ValidatedSemanticQuery``，Prompt 不再承担自然语言解析职责。
+    """
+
+    structured_context = ""
+    if isinstance(semantic_query, ValidatedSemanticQuery):
+        question = (
+            original_question.strip()
+            if isinstance(original_question, str) and original_question.strip()
+            else semantic_query.original_question
+        )
+        structured_context = f"""
+程序已完成校验的 Semantic Query（只读，不得重新解析）：
+<semantic_query>
+{_semantic_query_json(semantic_query)}
+</semantic_query>
+"""
+        requested_metric_count = len(semantic_query.metrics)
+    else:
+        question = semantic_query
+        requested_metric_count = len(context.metric_constraints)
 
     multi_metric_rules = ""
-    if len(context.metric_constraints) >= 2:
+    if requested_metric_count >= 2:
         multi_metric_rules = """
 
 多指标规则：
@@ -32,6 +62,7 @@ def build_prompt(question: str, context: QueryContext) -> str:
 9. 做分组统计时，SELECT 和 GROUP BY 只能使用用户明确请求的分组维度；不得自动追加编码、名称或其他层级字段。
 10. 事实表作为主表时只能使用已列出的直接 LEFT JOIN；禁止 RIGHT JOIN、FULL JOIN、CROSS JOIN 或猜测 Join Key。
 {multi_metric_rules}
+{structured_context}
 
 数据库结构与业务指标上下文：
 <context>
@@ -40,6 +71,32 @@ def build_prompt(question: str, context: QueryContext) -> str:
 
 用户问题：
 <question>
-{question}
+{question.strip()}
 </question>
 """
+
+
+def _semantic_query_json(query: ValidatedSemanticQuery) -> str:
+    payload: dict[str, Any] = {
+        "query_type": query.query_type.value,
+        "subjects": list(query.subjects),
+        "metrics": list(query.metrics),
+        "dimensions": list(query.dimensions),
+        "time": None,
+        "filters": [
+            {
+                "field_text": item.field_text,
+                "operator": item.operator.value,
+                "values": list(item.values),
+            }
+            for item in query.filters
+        ],
+    }
+    if query.time is not None:
+        payload["time"] = {
+            "text": query.time.text,
+            "granularity": query.time.granularity.value,
+            "start": query.time.start.isoformat(),
+            "end": query.time.end.isoformat(),
+        }
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
