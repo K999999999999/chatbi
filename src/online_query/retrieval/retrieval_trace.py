@@ -7,7 +7,7 @@ from typing import Any
 from src.observability.contracts import TraceRecorder
 from src.rag_offline.qdrant_store import SearchHit
 
-from ..contracts import JoinResolution
+from ..contracts import JoinResolution, MetricHit
 
 
 _TRACE_EVIDENCE_LIMIT = 10
@@ -145,3 +145,21 @@ def join_trace_attributes(resolution: JoinResolution) -> dict[str, object]:
         ),
         "chatbi.retrieval.join.path_count": len(resolution.paths),
     }
+
+
+def merge_metric_hits(
+    metric_hits_by_query: tuple[tuple[MetricHit, ...], ...],
+) -> tuple[MetricHit, ...]:
+    """合并多次指标检索结果，并为每个文档保留最高分命中。"""
+
+    best_by_document: dict[str, MetricHit] = {}
+    for hits in metric_hits_by_query:
+        for hit in hits:
+            previous = best_by_document.get(hit.document_id)
+            if previous is None or hit.score > previous.score:
+                best_by_document[hit.document_id] = hit
+    return tuple(
+        sorted(
+            best_by_document.values(), key=lambda item: (-item.score, item.document_id)
+        )
+    )

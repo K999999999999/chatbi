@@ -1,46 +1,22 @@
-"""指标意图、查询文本和必需物理字段处理。"""
+"""指标语义查询和必需物理字段推导。"""
 
 from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
 import re
 from types import MappingProxyType
-from typing import Any
 
 from sqlglot import exp, parse_one
 from sqlglot.errors import SqlglotError
 
 from ..contracts import ColumnHit, MetricHit
+from ..query_understanding import ValidatedSemanticQuery
 
 
 class ResourceRetrievalContractError(RuntimeError):
     """候选资源或指标必需字段不满足在线 Contract。"""
 
 
-_METRIC_INTENT_TERMS = (
-    "已完成订单数",
-    "已完成订单数量",
-    "完成订单数",
-    "销售额",
-    "净销售额",
-    "营收",
-    "销售成本",
-    "人民币成本",
-    "毛利率",
-    "毛利润率",
-    "毛利",
-    "毛利润",
-    "成本",
-    "金额",
-    "数量",
-    "总额",
-    "平均值",
-    "占比",
-    "统计",
-)
-_METRIC_INTENT_PATTERN = re.compile(
-    r"(?:数量|金额|总额|均价|单价|成本|利润|占比|率|数|额)"
-)
 _TIME_FIELD_PATTERN = re.compile(
     r"^\s*(?P<source>[^\s]+)\s*->\s*(?P<target>[^\s]+)\s*$"
 )
@@ -55,43 +31,47 @@ class _TimeField:
     edge_id: str = ""
 
 
-def _has_metric_intent(question: str) -> bool:
-    """判断是否需要进入 METRIC 路线，不把普通实体查询误判为指标查询。"""
-
-    normalized_question = _normalize(question)
-    if any(
-        _contains_normalized(normalized_question, term)
-        for term in _METRIC_INTENT_TERMS
-    ):
-        return True
-    return _METRIC_INTENT_PATTERN.search(normalized_question) is not None
-
-
 def _metric_data_source(metric: MetricHit) -> str:
-    value = metric.metadata.get("data_source")
-    if not isinstance(value, str) or not value.strip():
-        raise ResourceRetrievalContractError(
-            f"{metric.document_id} 缺少有效 data_source"
+    return _required_metadata_text(metric.metadata, "data_source", metric.document_id)
+
+
+def _column_query(query: ValidatedSemanticQuery, metric: MetricHit | None) -> str:
+    base_query = _semantic_query_text(
+        (
+            *query.dimensions,
+            *(item.field_text for item in query.filters),
+            *query.subjects,
         )
-    return value.strip()
-
-
-def _column_query(question: str, metric: MetricHit | None) -> str:
-    if metric is None:
-        return question
-    formula = metric.metadata.get("formula", "")
-    time_field = metric.metadata.get("time_field", "")
+    )
+    formula = metric.metadata.get("formula", "") if metric else ""
+    time_field = metric.metadata.get("time_field", "") if metric else ""
     return "\n".join(
         value
-        for value in (question, metric.page_content, str(formula), str(time_field))
+        for value in (
+            base_query,
+            metric.page_content if metric else "",
+            str(formula),
+            str(time_field),
+        )
         if value
     )
 
 
-def _multi_column_query(question: str, metrics: tuple[MetricHit, ...]) -> str:
+def _multi_column_query(
+    query: ValidatedSemanticQuery,
+    metrics: tuple[MetricHit, ...],
+) -> str:
     """合并全部指标的语义文本和认证字段事实，形成一次 COLUMN 查询。"""
 
-    values: list[str] = [question]
+    values: list[str] = [
+        _semantic_query_text(
+            (
+                *query.dimensions,
+                *(item.field_text for item in query.filters),
+                *query.subjects,
+            )
+        )
+    ]
     for metric in metrics:
         values.extend(
             (
@@ -108,10 +88,14 @@ def _parse_time_field(metric: MetricHit | None) -> _TimeField | None:
         return None
     raw = metric.metadata.get("time_field")
     if not isinstance(raw, str) or not raw.strip():
-        raise ResourceRetrievalContractError(f"指标 {metric.metric_name} 缺少有效 time_field")
+        raise ResourceRetrievalContractError(
+            f"指标 {metric.metric_name} 缺少有效 time_field"
+        )
     match = _TIME_FIELD_PATTERN.fullmatch(raw)
     if match is None:
-        raise ResourceRetrievalContractError(f"指标 {metric.metric_name} 的 time_field 格式无效")
+        raise ResourceRetrievalContractError(
+            f"指标 {metric.metric_name} 的 time_field 格式无效"
+        )
     source_table, source_column = _split_field_ref(match.group("source"), metric)
     target_table, filter_column = _split_field_ref(match.group("target"), metric)
     return _TimeField(source_table, source_column, target_table, filter_column)
@@ -123,13 +107,17 @@ def _split_field_ref(value: str, metric: MetricHit) -> tuple[str, str]:
         return f"{_metric_schema(metric)}.{parts[0]}", parts[1]
     if len(parts) == 3:
         return f"{parts[0]}.{parts[1]}", parts[2]
-    raise ResourceRetrievalContractError(f"指标 {metric.metric_name} 的字段引用格式无效：{value}")
+    raise ResourceRetrievalContractError(
+        f"指标 {metric.metric_name} 的字段引用格式无效：{value}"
+    )
 
 
 def _metric_schema(metric: MetricHit) -> str:
     source = _metric_data_source(metric).split(".")
     if len(source) != 2:
-        raise ResourceRetrievalContractError(f"指标 {metric.metric_name} 的 data_source 格式无效")
+        raise ResourceRetrievalContractError(
+            f"指标 {metric.metric_name} 的 data_source 格式无效"
+        )
     return source[0]
 
 
@@ -141,7 +129,9 @@ def _required_columns(
         return MappingProxyType({})
     formula = metric.metadata.get("formula")
     if not isinstance(formula, str) or not formula.strip():
-        raise ResourceRetrievalContractError(f"指标 {metric.metric_name} 缺少有效 formula")
+        raise ResourceRetrievalContractError(
+            f"指标 {metric.metric_name} 缺少有效 formula"
+        )
     try:
         expression = parse_one(f"SELECT {formula}", read="postgres")
     except (SqlglotError, ValueError, TypeError) as exc:
@@ -158,7 +148,9 @@ def _required_columns(
         result[data_source].add(column.name)
     filters = metric.metadata.get("filters", ())
     if not isinstance(filters, (list, tuple)):
-        raise ResourceRetrievalContractError(f"指标 {metric.metric_name} 的 filters 格式无效")
+        raise ResourceRetrievalContractError(
+            f"指标 {metric.metric_name} 的 filters 格式无效"
+        )
     for index, filter_expression in enumerate(filters, 1):
         if not isinstance(filter_expression, str) or not filter_expression.strip():
             raise ResourceRetrievalContractError(
@@ -198,10 +190,7 @@ def _required_columns_many(
         for table, columns in _required_columns(metric, time_field).items():
             merged[table].update(columns)
     return MappingProxyType(
-        {
-            table: frozenset(columns)
-            for table, columns in sorted(merged.items())
-        }
+        {table: frozenset(columns) for table, columns in sorted(merged.items())}
     )
 
 
@@ -225,10 +214,7 @@ def _missing_required_column_details(
 ) -> tuple[str, ...]:
     """记录每个缺失物理字段及依赖它的请求指标。"""
 
-    available = {
-        (hit.qualified_table, hit.column_name)
-        for hit in column_hits
-    }
+    available = {(hit.qualified_table, hit.column_name) for hit in column_hits}
     dependents: defaultdict[tuple[str, str], set[str]] = defaultdict(set)
     for metric in metrics:
         for table, columns in _required_columns(metric, time_field).items():
@@ -241,14 +227,16 @@ def _missing_required_column_details(
     )
 
 
-def _normalize(value: str) -> str:
-    return "".join(
-        char
-        for char in value.casefold()
-        if char.isalnum() or "\u4e00" <= char <= "\u9fff"
-    )
+def _semantic_query_text(values: tuple[str, ...]) -> str:
+    return "、".join(value.strip() for value in values if value.strip())
 
 
-def _contains_normalized(text: str, candidate: str) -> bool:
-    normalized = _normalize(candidate)
-    return bool(normalized) and normalized in text
+def _required_metadata_text(
+    metadata: Mapping[str, object],
+    key: str,
+    document_id: str,
+) -> str:
+    value = metadata.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise ResourceRetrievalContractError(f"{document_id} 缺少有效 {key}")
+    return value.strip()

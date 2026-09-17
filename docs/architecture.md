@@ -92,16 +92,20 @@ flowchart TB
         Service["service.py<br/>查询主流程总编排"]
         QueryTrace["query_trace.py<br/>查询 Trace scope 和结果标记"]
         Context["context.py<br/>加载结构和指标文件"]
-        Retrieval["retrieval.py<br/>OnlineRetriever 公共编排入口"]
-        RetrievalSelection["retrieval_selection.py<br/>候选范围、分组和 Anchor"]
-        RetrievalContext["retrieval_context.py<br/>最终资源闭包和 QueryContext"]
-        RetrievalResource["resource_retrieval.py<br/>TABLE / COLUMN / METRIC 检索"]
-        RetrievalGraph["relationship_graph.py<br/>确定性关系图路径"]
+        Retrieval["retrieval/retrieval.py<br/>OnlineRetriever 公共编排入口"]
+        RetrievalSelection["retrieval/retrieval_selection.py<br/>候选范围、分组和 Anchor"]
+        RetrievalContext["retrieval/retrieval_context.py<br/>最终资源闭包和 QueryContext"]
+        RetrievalResource["retrieval/resource_retrieval.py<br/>TABLE / COLUMN / METRIC 检索"]
+        MetricRequirements["retrieval/metric_requirements.py<br/>指标字段依赖推导"]
+        RetrievalTrace["retrieval/retrieval_trace.py<br/>有限 Trace 和候选证据"]
+        RetrievalResults["retrieval/retrieval_results.py<br/>结果和失败构造"]
+        RetrievalGraph["retrieval/relationship_graph.py<br/>确定性关系图路径"]
         Prompt["prompt.py<br/>把问题和上下文组成 Prompt"]
         LLM["llm.py<br/>通过 LangChain 调用 LLM 生成 SQL"]
-        Guard["sql_guard.py<br/>候选解析、范围和危险函数边界"]
-        GuardJoin["sql_guard_join.py<br/>认证 Relationship Graph Join 校验"]
-        GuardMetric["sql_guard_multi_metric.py<br/>多指标结构、公式和过滤校验"]
+        Guard["sql_guard/sql_guard.py<br/>候选解析、范围和危险函数边界"]
+        GuardScope["sql_guard/sql_guard_scope.py<br/>AST 作用域和表绑定辅助"]
+        GuardJoin["sql_guard/sql_guard_join.py<br/>认证 Relationship Graph Join 校验"]
+        GuardMetric["sql_guard/sql_guard_multi_metric.py<br/>多指标结构、公式和过滤校验"]
         Database["database.py<br/>使用 chatbi_app 只读执行 SQL"]
 
         OInit --> Service
@@ -111,6 +115,9 @@ flowchart TB
         Context --> Retrieval
         Retrieval --> RetrievalSelection
         Retrieval --> RetrievalResource
+        Retrieval --> MetricRequirements
+        Retrieval --> RetrievalTrace
+        Retrieval --> RetrievalResults
         Retrieval --> RetrievalGraph
         Retrieval --> RetrievalContext
         Service -->|"2. 提供上下文"| Prompt
@@ -118,6 +125,7 @@ flowchart TB
         LLM -->|"4. 返回 SQL 候选"| Guard
         Guard --> GuardJoin
         Guard --> GuardMetric
+        Guard --> GuardScope
         Guard -->|"5. 返回安全 SQL"| Database
         Database -->|"6. 返回数据或错误"| Service
     end
