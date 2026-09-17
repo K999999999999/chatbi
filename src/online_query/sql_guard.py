@@ -2,12 +2,15 @@
 
 from collections.abc import Iterable
 
-from sqlglot import exp, parse, parse_one
+from sqlglot import exp, parse
 from sqlglot.errors import SqlglotError
 from sqlglot.optimizer.qualify import qualify
 from sqlglot.optimizer.scope import traverse_scope
 
 from .contracts import JoinConstraint, QueryContext, ValidatedSQL
+from .sql_guard_errors import SQLRejectedError
+from .sql_guard_join import validate_join_constraints
+from .sql_guard_multi_metric import validate_multi_metric_expression
 
 
 ALLOWED_SCHEMA = "mart_sales"
@@ -21,49 +24,78 @@ _FORBIDDEN_NODE_TYPES = (
 )
 
 
-class SQLRejectedError(RuntimeError):
-    """SQL 候选不满足只读白名单契约。"""
+class _ValidationSession:
+    """保存一次 SQL 校验调用内可复用的 AST 和范围校验事实。"""
+
+    def __init__(self, candidate: str, context: QueryContext) -> None:
+        self._candidate = candidate.strip()
+        self._context = context
+        self._expression: exp.Select | None = None
+        self._scope_validated = False
+
+    def validate_candidate_scope(self) -> None:
+        """执行 Candidate Scope Check，并缓存本次调用的范围校验结果。"""
+
+        self._ensure_candidate()
+        self._validate_scope(self._parse())
+
+    def validate_sql(self) -> ValidatedSQL:
+        """执行完整 SQL Guard；已完成范围校验时复用其 AST 和事实。"""
+
+        self._ensure_candidate()
+        expression = self._parse()
+        if any(expression.find(node_type) for node_type in _FORBIDDEN_NODE_TYPES):
+            raise SQLRejectedError("SQL 包含禁止的写入、结构修改或锁定操作")
+        if expression.find(exp.With) is not None:
+            raise SQLRejectedError("V1 SQL 不支持 CTE")
+
+        _reject_dangerous_functions(expression)
+        if not self._scope_validated:
+            self._validate_scope(expression)
+        if len(self._context.metric_constraints) >= 2:
+            validate_multi_metric_expression(expression, self._context)
+        elif expression.args.get("joins"):
+            validate_join_constraints(expression, self._context)
+
+        return ValidatedSQL(sql=self._candidate)
+
+    def _ensure_candidate(self) -> None:
+        if not self._candidate or self._candidate == "CANNOT_ANSWER":
+            raise SQLRejectedError("SQL 候选为空或不是 SQL")
+
+    def _parse(self) -> exp.Select:
+        if self._expression is None:
+            self._expression = _parse_single_select(self._candidate)
+        return self._expression
+
+    def _validate_scope(self, expression: exp.Select) -> None:
+        physical_tables = _physical_tables(expression)
+        if not physical_tables:
+            raise SQLRejectedError("SQL 必须读取 mart_sales 物理表")
+        _validate_physical_tables(physical_tables, self._context)
+        _validate_columns(expression, self._context)
+        self._scope_validated = True
+
+
+def _new_validation_session(
+    candidate: str,
+    context: QueryContext,
+) -> _ValidationSession:
+    """创建只供当前 Online Query 调用使用的内部校验会话。"""
+
+    return _ValidationSession(candidate, context)
 
 
 def validate_candidate_scope(candidate: str, context: QueryContext) -> None:
     """在 AST SQL Guard（SQL 安全校验）前拒绝动态范围外的表和字段。"""
 
-    sql = candidate.strip()
-    if not sql or sql == "CANNOT_ANSWER":
-        raise SQLRejectedError("SQL 候选为空或不是 SQL")
-    expression = _parse_single_select(sql)
-    physical_tables = _physical_tables(expression)
-    if not physical_tables:
-        raise SQLRejectedError("SQL 必须读取 mart_sales 物理表")
-    _validate_physical_tables(physical_tables, context)
-    _validate_columns(expression, context)
+    _new_validation_session(candidate, context).validate_candidate_scope()
 
 
 def validate_sql(candidate: str, context: QueryContext) -> ValidatedSQL:
     """校验 SQL 候选，不改写原始 SQL。"""
 
-    sql = candidate.strip()
-    if not sql or sql == "CANNOT_ANSWER":
-        raise SQLRejectedError("SQL 候选为空或不是 SQL")
-
-    expression = _parse_single_select(sql)
-    if any(expression.find(node_type) for node_type in _FORBIDDEN_NODE_TYPES):
-        raise SQLRejectedError("SQL 包含禁止的写入、结构修改或锁定操作")
-    if expression.find(exp.With) is not None:
-        raise SQLRejectedError("V1 SQL 不支持 CTE")
-
-    _reject_dangerous_functions(expression)
-    physical_tables = _physical_tables(expression)
-    if not physical_tables:
-        raise SQLRejectedError("SQL 必须读取 mart_sales 物理表")
-    _validate_physical_tables(physical_tables, context)
-    _validate_columns(expression, context)
-    if len(context.metric_constraints) >= 2:
-        _validate_multi_metric_expression(expression, context)
-    elif expression.args.get("joins"):
-        _validate_join_constraints(expression, context)
-
-    return ValidatedSQL(sql=sql)
+    return _new_validation_session(candidate, context).validate_sql()
 
 
 def validate_multi_metric_sql(candidate: str, context: QueryContext) -> None:
@@ -74,335 +106,7 @@ def validate_multi_metric_sql(candidate: str, context: QueryContext) -> None:
     sql = candidate.strip()
     if not sql or sql == "CANNOT_ANSWER":
         raise SQLRejectedError("SQL 候选为空或不是 SQL")
-    _validate_multi_metric_expression(_parse_single_select(sql), context)
-
-
-def _validate_multi_metric_expression(
-    expression: exp.Select,
-    context: QueryContext,
-) -> None:
-    constraints = context.metric_constraints
-    metric_table = _multi_metric_table(constraints)
-    bindings = _table_bindings(expression)
-    _reject_multi_metric_structure(expression)
-    _validate_multi_metric_from(expression, context, metric_table)
-    _validate_multi_metric_joins(expression, context, bindings, metric_table)
-    _validate_multi_metric_filters(expression, context, bindings, metric_table)
-    _validate_multi_metric_output(expression, context, bindings, metric_table)
-
-
-def _reject_multi_metric_structure(expression: exp.Select) -> None:
-    for node_type, label in (
-        (exp.With, "CTE"),
-        (exp.Subquery, "子查询"),
-        (exp.Window, "窗口函数"),
-        (exp.SetOperation, "集合运算"),
-        (exp.Having, "HAVING"),
-    ):
-        if expression.find(node_type) is not None:
-            raise SQLRejectedError(f"多指标 SQL 不支持{label}")
-    if expression.args.get("distinct") is not None:
-        raise SQLRejectedError("多指标 SQL 不支持顶层 DISTINCT")
-
-
-def _multi_metric_table(constraints: tuple) -> str:
-    sources = {
-        constraint.data_source.strip().casefold()
-        for constraint in constraints
-        if isinstance(constraint.data_source, str)
-        and constraint.data_source.strip()
-    }
-    if len(sources) != 1:
-        raise SQLRejectedError("多指标必须共享一个事实表")
-    return constraints[0].data_source.strip()
-
-
-def _validate_multi_metric_from(
-    expression: exp.Select,
-    context: QueryContext,
-    metric_table: str,
-) -> None:
-    from_clause = expression.args.get("from_")
-    if from_clause is None or not isinstance(from_clause.this, exp.Table):
-        raise SQLRejectedError("多指标 SQL 必须从共同事实表开始")
-    if from_clause.expressions:
-        raise SQLRejectedError("多指标 SQL 不支持逗号隐式 Join")
-
-    base_table = _qualified_table_ref(from_clause.this)
-    if base_table.casefold() != metric_table.casefold():
-        raise SQLRejectedError("多指标 SQL 必须以共同事实表为主表")
-
-    table_refs = tuple(
-        _qualified_table_ref(table)
-        for table in expression.find_all(exp.Table)
-    )
-    if len(table_refs) != len(set(table_refs)):
-        raise SQLRejectedError("多指标 SQL 不支持同一物理表的重复引用")
-    if sum(
-        table.casefold() == metric_table.casefold()
-        for table in table_refs
-    ) != 1:
-        raise SQLRejectedError("多指标 SQL 必须只包含一个共同事实表")
-
-    certified_tables = {
-        metric_table.casefold(),
-        *(
-            table.casefold()
-            for constraint in context.join_constraints
-            for table in (constraint.source_table, constraint.target_table)
-        ),
-    }
-    if any(table.casefold() not in certified_tables for table in table_refs):
-        raise SQLRejectedError("多指标 SQL 引用了未认证的关联表")
-
-
-def _validate_multi_metric_joins(
-    expression: exp.Select,
-    context: QueryContext,
-    bindings: dict[str, set[str]],
-    metric_table: str,
-) -> None:
-    joins = tuple(expression.args.get("joins") or ())
-    table_refs = tuple(
-        _qualified_table_ref(table)
-        for table in expression.find_all(exp.Table)
-    )
-    if len(table_refs) != 1 + len(joins):
-        raise SQLRejectedError("多指标 SQL 的表必须通过显式认证 Join 连接")
-
-    constraints = tuple(
-        constraint
-        for constraint in context.join_constraints
-        if constraint.direction.casefold() == "forward"
-    )
-    used: set[int] = set()
-    for join in joins:
-        side = str(join.args.get("side") or "").upper()
-        kind = str(join.args.get("kind") or "").upper()
-        if side != "LEFT" or kind == "CROSS":
-            raise SQLRejectedError("多指标 SQL 只允许使用 LEFT JOIN")
-        joined_table = join.args.get("this")
-        if not isinstance(joined_table, exp.Table):
-            raise SQLRejectedError("多指标 SQL 只能 Join 物理表")
-        target_table = _qualified_table_ref(joined_table)
-        condition = join.args.get("on")
-        if condition is None:
-            raise SQLRejectedError("多指标 SQL 的 Join 必须包含认证 ON 条件")
-        actual_pairs = _join_pairs(condition, bindings, context)
-        matches = [
-            (index, constraint)
-            for index, constraint in enumerate(constraints)
-            if index not in used
-            and constraint.target_table.casefold() == target_table.casefold()
-            and actual_pairs == _constraint_pairs(constraint)
-        ]
-        if len(matches) != 1:
-            raise SQLRejectedError("多指标 SQL 使用了未认证或错误的 Join")
-        used.add(matches[0][0])
-
-    if any(
-        table.casefold() != metric_table.casefold()
-        and table.casefold()
-        not in {
-            constraint.target_table.casefold()
-            for constraint in constraints
-        }
-        for table in table_refs
-    ):
-        raise SQLRejectedError("多指标 SQL 的 Join 目标不在认证关系中")
-
-
-def _validate_join_constraints(
-    expression: exp.Select,
-    context: QueryContext,
-) -> None:
-    """校验实体/单指标查询使用的直接认证 Join。"""
-
-    joins = tuple(expression.args.get("joins") or ())
-    constraints = tuple(
-        constraint
-        for constraint in context.join_constraints
-        if constraint.direction.casefold() == "forward"
-    )
-    if not joins or not constraints:
-        raise SQLRejectedError("SQL Join 缺少认证的 Relationship Graph 事实")
-
-    from_clause = expression.args.get("from_")
-    if from_clause is None or not isinstance(from_clause.this, exp.Table):
-        raise SQLRejectedError("SQL Join 必须从事实表 Anchor 开始")
-    base_table = _qualified_table_ref(from_clause.this)
-    source_tables = {constraint.source_table.casefold() for constraint in constraints}
-    if base_table.casefold() not in source_tables:
-        raise SQLRejectedError("SQL Join 的主表不是认证事实表 Anchor")
-
-    bindings = _table_bindings(expression)
-    table_refs = tuple(
-        _qualified_table_ref(table)
-        for table in expression.find_all(exp.Table)
-    )
-    if len(table_refs) != 1 + len(joins):
-        raise SQLRejectedError("SQL 表必须通过显式认证 Join 连接")
-
-    used: set[int] = set()
-    for join in joins:
-        side = str(join.args.get("side") or "").upper()
-        kind = str(join.args.get("kind") or "").upper()
-        if side != "LEFT" or kind == "CROSS":
-            raise SQLRejectedError("事实表到维表只允许使用 LEFT JOIN")
-        joined_table = join.args.get("this")
-        condition = join.args.get("on")
-        if not isinstance(joined_table, exp.Table) or condition is None:
-            raise SQLRejectedError("SQL Join 必须是带 ON 的物理表连接")
-        target_table = _qualified_table_ref(joined_table)
-        actual_pairs = _join_pairs(condition, bindings, context)
-        matches = [
-            (index, constraint)
-            for index, constraint in enumerate(constraints)
-            if index not in used
-            and constraint.target_table.casefold() == target_table.casefold()
-            and actual_pairs == _constraint_pairs(constraint)
-        ]
-        if len(matches) != 1:
-            raise SQLRejectedError("SQL Join 使用了未认证或错误的直接关系")
-        used.add(matches[0][0])
-
-
-def _validate_multi_metric_filters(
-    expression: exp.Select,
-    context: QueryContext,
-    bindings: dict[str, set[str]],
-    metric_table: str,
-) -> None:
-    where = expression.args.get("where")
-    condition = where.this if where is not None else None
-    if condition is not None and any(
-        isinstance(node, exp.Or) for node in condition.walk()
-    ):
-        raise SQLRejectedError("多指标 SQL 的 WHERE 不允许 OR")
-
-    actual_filters = {
-        _canonical_expression_sql(
-            item,
-            bindings=bindings,
-            context=context,
-        )
-        for item in _multi_conjuncts(condition)
-    }
-    expected_filters: set[str] = set()
-    for constraint in context.metric_constraints:
-        for raw_filter in constraint.filters:
-            try:
-                parsed = parse_one(
-                    f"SELECT 1 WHERE {raw_filter}",
-                    dialect="postgres",
-                )
-            except SqlglotError:
-                raise SQLRejectedError("指标固定过滤条件无法解析") from None
-            parsed_where = parsed.args.get("where")
-            if not isinstance(parsed_where, exp.Where):
-                raise SQLRejectedError("指标固定过滤条件无法解析")
-            expected_filters.update(
-                _canonical_expression_sql(
-                    item,
-                    bindings={},
-                    context=context,
-                    default_table=metric_table,
-                    aliases_are_default=True,
-                )
-                for item in _multi_conjuncts(parsed_where.this)
-            )
-
-    if not expected_filters.issubset(actual_filters):
-        raise SQLRejectedError("多指标 SQL 缺少认证固定过滤条件")
-
-
-def _validate_multi_metric_output(
-    expression: exp.Select,
-    context: QueryContext,
-    bindings: dict[str, set[str]],
-    metric_table: str,
-) -> None:
-    projections = tuple(expression.expressions)
-    if not projections:
-        raise SQLRejectedError("多指标 SQL 没有输出字段")
-
-    metric_projections: list[exp.Expression] = []
-    dimension_projections: list[exp.Expression] = []
-    metric_aggregate_ids: set[int] = set()
-    for projection in projections:
-        value = projection.this if isinstance(projection, exp.Alias) else projection
-        if any(isinstance(node, exp.Star) for node in value.walk()):
-            raise SQLRejectedError("多指标 SQL 不允许 SELECT *")
-        aggregates = tuple(
-            node for node in value.walk() if isinstance(node, exp.AggFunc)
-        )
-        if aggregates:
-            metric_projections.append(value)
-            metric_aggregate_ids.update(id(node) for node in aggregates)
-        else:
-            if not isinstance(value, exp.Column):
-                raise SQLRejectedError("多指标 SQL 的非聚合输出必须是分组字段")
-            dimension_projections.append(value)
-
-    if len(metric_projections) != len(context.metric_constraints):
-        raise SQLRejectedError("多指标 SQL 输出的指标数量不完整")
-
-    for node in expression.walk():
-        if (
-            isinstance(node, exp.AggFunc)
-            and id(node) not in metric_aggregate_ids
-        ):
-            raise SQLRejectedError("多指标 SQL 包含额外聚合表达式")
-
-    group = expression.args.get("group")
-    group_expressions = tuple(group.expressions) if group is not None else ()
-    if dimension_projections and not group_expressions:
-        raise SQLRejectedError("多指标 SQL 的分组字段必须出现在 GROUP BY")
-    if not dimension_projections and group_expressions:
-        raise SQLRejectedError("多指标 SQL 不能包含未输出的分组字段")
-    dimension_signatures = {
-        _canonical_expression_sql(
-            item,
-            bindings=bindings,
-            context=context,
-        )
-        for item in dimension_projections
-    }
-    group_signatures = {
-        _canonical_expression_sql(
-            item,
-            bindings=bindings,
-            context=context,
-        )
-        for item in group_expressions
-    }
-    if dimension_signatures != group_signatures:
-        raise SQLRejectedError("多指标 SQL 的输出分组与 GROUP BY 不一致")
-
-    for projection, constraint in zip(
-        metric_projections,
-        context.metric_constraints,
-    ):
-        try:
-            expected = parse_one(constraint.formula, dialect="postgres")
-        except SqlglotError:
-            raise SQLRejectedError("指标认证公式无法解析") from None
-        actual_signature = _canonical_expression_sql(
-            projection,
-            bindings=bindings,
-            context=context,
-        )
-        expected_signature = _canonical_expression_sql(
-            expected,
-            bindings={},
-            context=context,
-            default_table=metric_table,
-            aliases_are_default=True,
-        )
-        if actual_signature != expected_signature:
-            raise SQLRejectedError(
-                f"多指标 SQL 未按认证公式实现：{constraint.metric_name}"
-            )
+    validate_multi_metric_expression(_parse_single_select(sql), context)
 
 
 def _table_bindings(expression: exp.Select) -> dict[str, set[str]]:

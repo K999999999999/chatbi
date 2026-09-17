@@ -8,7 +8,7 @@ ChatBI 是面向业务数据查询的 Domain AI Engine（领域 AI 引擎），�
 
 ### Online Query（在线查询）
 
-负责把自然语言问题转换为安全 SQL、执行数据库查询并返回结果。这是当前第一个需要设计和实现的业务模块。
+负责把自然语言问题转换为安全 SQL、执行数据库查询并返回结果，是当前 ChatBI 的核心查询模块。
 
 ### Query API Adapter（查询接口适配层）
 
@@ -89,19 +89,35 @@ flowchart TB
     subgraph OnlineQuery["src/online_query：在线查询代码"]
         OInit["__init__.py<br/>模块公开入口"]
         Contracts["contracts.py<br/>请求、响应、错误码<br/>SQLGenerator / QueryExecutor 接口"]
-        Service["service.py<br/>查询主流程总指挥"]
+        Service["service.py<br/>查询主流程总编排"]
+        QueryTrace["query_trace.py<br/>查询 Trace scope 和结果标记"]
         Context["context.py<br/>加载结构和指标文件"]
+        Retrieval["retrieval.py<br/>OnlineRetriever 公共编排入口"]
+        RetrievalSelection["retrieval_selection.py<br/>候选范围、分组和 Anchor"]
+        RetrievalContext["retrieval_context.py<br/>最终资源闭包和 QueryContext"]
+        RetrievalResource["resource_retrieval.py<br/>TABLE / COLUMN / METRIC 检索"]
+        RetrievalGraph["relationship_graph.py<br/>确定性关系图路径"]
         Prompt["prompt.py<br/>把问题和上下文组成 Prompt"]
         LLM["llm.py<br/>通过 LangChain 调用 LLM 生成 SQL"]
-        Guard["sql_guard.py<br/>检查 SQL 是否安全、合法"]
+        Guard["sql_guard.py<br/>候选解析、范围和危险函数边界"]
+        GuardJoin["sql_guard_join.py<br/>认证 Relationship Graph Join 校验"]
+        GuardMetric["sql_guard_multi_metric.py<br/>多指标结构、公式和过滤校验"]
         Database["database.py<br/>使用 chatbi_app 只读执行 SQL"]
 
         OInit --> Service
         Contracts -. "统一数据类型" .-> Service
-        Service -->|"1. 加载上下文"| Context
-        Context -->|"2. 提供上下文"| Prompt
+        Service --> QueryTrace
+        Service -->|"1. 加载上下文 / Retrieval"| Context
+        Context --> Retrieval
+        Retrieval --> RetrievalSelection
+        Retrieval --> RetrievalResource
+        Retrieval --> RetrievalGraph
+        Retrieval --> RetrievalContext
+        Service -->|"2. 提供上下文"| Prompt
         Prompt -->|"3. 生成提示词"| LLM
         LLM -->|"4. 返回 SQL 候选"| Guard
+        Guard --> GuardJoin
+        Guard --> GuardMetric
         Guard -->|"5. 返回安全 SQL"| Database
         Database -->|"6. 返回数据或错误"| Service
     end
@@ -161,6 +177,29 @@ flowchart TB
         RAGStore --> RAGBuild
         RAGRelations --> RAGBuild
         RAGBuild --> RAGEval
+    end
+
+    subgraph Observability["src/observability：可观测性代码"]
+        ObsContracts["contracts.py<br/>Trace Contract"]
+        ObsTracing["tracing.py<br/>Scope、Recorder 和 Provider"]
+        ObsSafety["tracing_safety.py<br/>属性白名单、Secret 过滤、Trace ID"]
+        ObsExport["tracing_export.py<br/>Exporter Fail-open 边界"]
+        ObsContracts --> ObsTracing
+        ObsTracing --> ObsSafety
+        ObsTracing --> ObsExport
+        Service -. "记录" .-> ObsTracing
+    end
+
+    subgraph MetadataExport["scripts/metadata：结构导出工具"]
+        ExportCLI["export_schema.py<br/>CLI 和总编排"]
+        ExportModels["export_schema_models.py<br/>模型和常量"]
+        ExportInput["export_schema_input.py<br/>配置和字段示例"]
+        ExportDatabase["export_schema_database.py<br/>只读目录读取"]
+        ExportOutput["export_schema_output.py<br/>投影和 JSON 写入"]
+        ExportCLI --> ExportModels
+        ExportCLI --> ExportInput
+        ExportCLI --> ExportDatabase
+        ExportCLI --> ExportOutput
     end
 
     subgraph Tests["tests：正确性证据"]
