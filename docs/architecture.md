@@ -95,7 +95,8 @@ flowchart TB
         Retrieval["retrieval.py<br/>OnlineRetriever 公共编排入口"]
         RetrievalSelection["retrieval_selection.py<br/>候选范围、分组和 Anchor"]
         RetrievalContext["retrieval_context.py<br/>最终资源闭包和 QueryContext"]
-        RetrievalResource["resource_retrieval.py<br/>TABLE / COLUMN / METRIC 检索"]
+        RetrievalResource["resource_retrieval.py<br/>TABLE / COLUMN / METRIC 检索与转换"]
+        RetrievalMetric["metric_requirements.py<br/>指标字段依赖和时间字段"]
         RetrievalGraph["relationship_graph.py<br/>确定性关系图路径"]
         Prompt["prompt.py<br/>把问题和上下文组成 Prompt"]
         LLM["llm.py<br/>通过 LangChain 调用 LLM 生成 SQL"]
@@ -111,6 +112,7 @@ flowchart TB
         Context --> Retrieval
         Retrieval --> RetrievalSelection
         Retrieval --> RetrievalResource
+        Retrieval --> RetrievalMetric
         Retrieval --> RetrievalGraph
         Retrieval --> RetrievalContext
         Service -->|"2. 提供上下文"| Prompt

@@ -99,6 +99,7 @@ src/online_query/
 ├─ retrieval/         # OnlineRetriever 和在线检索内部职责
 │  ├─ retrieval.py
 │  ├─ resource_retrieval.py
+│  ├─ metric_requirements.py
 │  ├─ retrieval_context.py
 │  ├─ retrieval_selection.py
 │  ├─ relationship_graph.py
@@ -211,7 +212,8 @@ manifest
 
 内部职责按以下 Module 组织：
 
-- `resource_retrieval.py`：TABLE、COLUMN、METRIC 候选检索、指标选择、公式/filters/time_field 必需字段。
+- `resource_retrieval.py`：TABLE、COLUMN、METRIC 候选检索和 SearchHit 到领域结果的转换。
+- `metric_requirements.py`：指标意图、公式/filters/time_field 解析，以及必需物理字段推导。
 - `relationship_graph.py`：Relationship Graph 事实解析、time_field 关系校验、BFS 最短路径和安全 Join 约束。
 - `retrieval_context.py`：最终表/字段闭包、关系键补充、Dynamic Schema、Indicator Context、QueryContext 和 allowlist。
 
