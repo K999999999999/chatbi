@@ -71,13 +71,17 @@ class RetrievalServiceTest(unittest.TestCase):
     def test_business_retrieval_failure_returns_cannot_answer_before_llm(self) -> None:
         provider = Mock()
         provider.retrieve.return_value = OnlineRetrievalResult(
-            status=RetrievalStatus.NO_REQUIRED_COLUMN_HIT
+            status=RetrievalStatus.NO_REQUIRED_COLUMN_HIT,
+            internal_reason="NO_REQUIRED_COLUMN_HIT",
         )
         service = self._service(provider)
 
         result = service.query(QueryRequest(question="查询不存在的字段"))
 
         self._assert_failure(result, QueryErrorCode.CANNOT_ANSWER)
+        assert isinstance(result, QueryFailure)
+        self.assertEqual(result.failure_stage, "retrieval")
+        self.assertEqual(result.internal_reason, "NO_REQUIRED_COLUMN_HIT")
         self.generator.generate.assert_not_called()
         self.executor.execute.assert_not_called()
 
@@ -104,6 +108,7 @@ class RetrievalServiceTest(unittest.TestCase):
         provider.retrieve.return_value = OnlineRetrievalResult(
             status=RetrievalStatus.RETRIEVAL_UNAVAILABLE,
             asset_version="build-v2",
+            internal_reason="QDRANT_UNAVAILABLE",
             warnings=("qdrant unavailable",),
         )
         self.generator.generate.return_value = (
@@ -115,6 +120,9 @@ class RetrievalServiceTest(unittest.TestCase):
             result = service.query(QueryRequest(question="查询订单"))
 
         self._assert_failure(result, QueryErrorCode.CONTEXT_ERROR)
+        assert isinstance(result, QueryFailure)
+        self.assertEqual(result.failure_stage, "retrieval")
+        self.assertEqual(result.internal_reason, "QDRANT_UNAVAILABLE")
         self.generator.generate.assert_not_called()
         self.executor.execute.assert_not_called()
         self.assertIn("status=RETRIEVAL_UNAVAILABLE", logs.output[0])

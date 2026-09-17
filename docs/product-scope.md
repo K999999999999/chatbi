@@ -30,7 +30,7 @@
 
 ## 当前不做
 
-- 基础 Multi-Metric Retrieval（多指标在线检索）的生产化边界；当前实现、确定性测试和当前分支 21/21 真实评测已完成，但不把该结果直接描述为 Production Ready（生产可用）。
+- 基础 Multi-Metric Retrieval（多指标在线检索）的生产化边界；当前实现、确定性测试和真实评测已完成，最近一次当前分支评测为 20/21，唯一失败为一次受控的 Query Understanding LLM_ERROR，但不把该结果直接描述为 Production Ready（生产可用）。
 - 多轮对话和复杂分析 Agent。
 - SQL 自动修复和多模型投票。
 - React、Vue 或其他正式前端 UI（等生产化需求明确后再做）、API Gateway、登录、限流、审计和生产运维。

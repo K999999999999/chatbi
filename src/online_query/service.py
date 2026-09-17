@@ -152,13 +152,17 @@ class OnlineQueryService:
         if understanding_error is not None:
             return understanding_error
 
-        context, context_error = self._resolve_context(
+        context, context_error, context_reason = self._resolve_context(
             request.question.strip(),
             request_id,
             semantic_query,
         )
         if context_error is not None:
-            return _failure(request_id, context_error)
+            return _failure(
+                request_id,
+                context_error,
+                internal_reason=context_reason,
+            )
         if context is None:
             return _failure(request_id, QueryErrorCode.CONTEXT_ERROR)
 
@@ -301,11 +305,15 @@ class OnlineQueryService:
         question: str,
         request_id: str,
         semantic_query: ValidatedSemanticQuery | None,
-    ) -> tuple[QueryContext | None, QueryErrorCode | None]:
+    ) -> tuple[QueryContext | None, QueryErrorCode | None, str | None]:
         if self._retrieval_provider is None:
             if self._context_failed or self._context is None:
-                return None, QueryErrorCode.CONTEXT_ERROR
-            return self._context, None
+                return (
+                    None,
+                    QueryErrorCode.CONTEXT_ERROR,
+                    "STATIC_CONTEXT_UNAVAILABLE",
+                )
+            return self._context, None, None
 
         with _safe_trace_scope(self._trace_recorder, name="retrieval.plan"):
             if semantic_query is None:
@@ -315,7 +323,7 @@ class OnlineQueryService:
                     error,
                     ErrorType.RETRIEVAL,
                 )
-                return None, error
+                return None, error, "SEMANTIC_QUERY_MISSING"
             retrieval_request = RetrievalRequest(
                 question=question,
                 request_shape=_request_shape(semantic_query),
@@ -351,6 +359,7 @@ class OnlineQueryService:
                     retrieval_request,
                     status=RetrievalStatus.RETRIEVAL_UNAVAILABLE,
                     attributes=base_attributes,
+                    internal_reason="PROVIDER_EXCEPTION",
                 )
 
             retrieval_attributes = {
@@ -369,7 +378,7 @@ class OnlineQueryService:
                         attributes=retrieval_attributes,
                         outcome=TraceOutcome.SUCCESS,
                     )
-                    return resolved_context, None
+                    return resolved_context, None, None
                 except ValueError as exc:
                     _LOGGER.warning(
                         "Online Retrieval fallback: request_id=%s status=SUCCESS "
@@ -383,6 +392,7 @@ class OnlineQueryService:
                         retrieval_request,
                         status=result.status,
                         attributes=retrieval_attributes,
+                        internal_reason="QUERY_CONTEXT_BUILD_FAILED",
                     )
             if result.status in _BUSINESS_RETRIEVAL_FAILURES:
                 error = QueryErrorCode.CANNOT_ANSWER
@@ -393,7 +403,11 @@ class OnlineQueryService:
                     error_type=ErrorType.RETRIEVAL,
                     error_code=error.value,
                 )
-                return None, error
+                return (
+                    None,
+                    error,
+                    result.internal_reason or result.status.value,
+                )
             _LOGGER.warning(
                 "Online Retrieval technical failure: request_id=%s status=%s asset_version=%s "
                 "reason=%s",
@@ -407,6 +421,7 @@ class OnlineQueryService:
                 retrieval_request,
                 status=result.status,
                 attributes=retrieval_attributes,
+                internal_reason=result.internal_reason or result.status.value,
             )
 
     def _understand_query(
@@ -551,7 +566,8 @@ class OnlineQueryService:
         *,
         status: RetrievalStatus,
         attributes: dict[str, object],
-    ) -> tuple[QueryContext | None, QueryErrorCode | None]:
+        internal_reason: str | None = None,
+    ) -> tuple[QueryContext | None, QueryErrorCode | None, str | None]:
         del request_id, retrieval_request
         error = QueryErrorCode.CONTEXT_ERROR
         _safe_enrich(
@@ -565,7 +581,7 @@ class OnlineQueryService:
             error_type=ErrorType.RETRIEVAL,
             error_code=error.value,
         )
-        return None, error
+        return None, error, internal_reason or status.value
 
 
 def _resolve_request_id(request_id: str | None) -> tuple[str, bool]:

@@ -46,6 +46,14 @@ Ticket 05：Prompt 和 SQL Generation 接入已确认语义
 - 验证：定向测试 `18 passed`；全量确定性测试 `286 passed, 6 skipped, 99 subtests passed`。
 - 本 Ticket 未调用真实 LLM、Qdrant、Embedding、PostgreSQL 或 BGE-M3；因此没有声称真实 Query Understanding 准确率、Execution Accuracy、业务验收或 Production Readiness。真实 Evaluation 需在明确授权外部调用后单独执行并保存不含 Secret 的报告。
 
+本次真实评测后的系统修复：
+
+- 修复绝对季度日期的标准化，统一生成半开区间；补充中文季度、数字季度和 `Q` 表达式回归。
+- Retrieval 失败将内部原因传递到 `QueryFailure` 和 Evaluation 报告；对外仍返回受控中文提示。
+- 在权威指标目录增加“已完成订单明细行数”指标，并重建、发布新的 BGE-M3 / Qdrant 资产；未修改评测集。
+- 收紧 Query Understanding 的指标表达规则：普通上下文不拼入指标，决定口径的修饰词保留，避免把“已完成订单数量”压缩成“订单数量”。
+- 本次验证：定向测试 `41 passed, 26 subtests passed`；全量确定性测试 `288 passed, 6 skipped, 102 subtests passed`；最近一次真实在线 RAG Evaluation 为 `20/21`，Execution Accuracy 为 `95.24%`。唯一失败为一次 S02 的 `Query Understanding LLM_ERROR`，同问题单例真实调用已成功；不将该结果表述为 21/21 或 Production Readiness。
+
 ## Comments
 
-本 Ticket 不负责删除静态全量 Schema；静态路径清理和迁移另建 Feature。本 Ticket 的确定性验证已完成并可形成本地 candidate commit；真实外部评测仍需单独授权和执行。
+本 Ticket 不负责删除静态全量 Schema；静态路径清理和迁移另建 Feature。本 Ticket 的确定性验证和本次真实外部评测已完成并可形成本地 candidate commit；后续若要评估稳定准确率或 Production Readiness，仍需独立的重复评测与业务验收。

@@ -210,6 +210,51 @@ class QueryUnderstandingContractTest(unittest.TestCase):
             datetime(2026, 9, 14, tzinfo=QUERY_TIMEZONE),
         )
 
+    def test_absolute_quarter_uses_half_open_range(self) -> None:
+        payload = _payload()
+        payload["time"] = {
+            "text": "2025 年第一季度",
+            "granularity": "quarter",
+        }
+
+        validated = validate_candidate(
+            candidate_from_payload(payload),
+            original_question="2025 年第一季度的销售额",
+            now=NOW,
+        )
+
+        assert validated.time is not None
+        self.assertEqual(
+            validated.time.start,
+            datetime(2025, 1, 1, tzinfo=QUERY_TIMEZONE),
+        )
+        self.assertEqual(
+            validated.time.end,
+            datetime(2025, 4, 1, tzinfo=QUERY_TIMEZONE),
+        )
+
+    def test_absolute_quarter_accepts_numeric_and_q_forms(self) -> None:
+        for text in ("2025 年第 1 季度", "2025Q1"):
+            payload = _payload()
+            payload["time"] = {"text": text, "granularity": "quarter"}
+
+            with self.subTest(text=text):
+                validated = validate_candidate(
+                    candidate_from_payload(payload),
+                    original_question=f"{text}的销售额",
+                    now=NOW,
+                )
+
+                assert validated.time is not None
+                self.assertEqual(
+                    validated.time.start,
+                    datetime(2025, 1, 1, tzinfo=QUERY_TIMEZONE),
+                )
+                self.assertEqual(
+                    validated.time.end,
+                    datetime(2025, 4, 1, tzinfo=QUERY_TIMEZONE),
+                )
+
     def test_ambiguous_or_invalid_dates_cannot_answer(self) -> None:
         cases = (
             ("3 月", "month"),

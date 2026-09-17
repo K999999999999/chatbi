@@ -20,6 +20,9 @@ _FILTER_FIELDS = frozenset({"field_text", "operator", "values"})
 _RECENT_DAYS_PATTERN = re.compile(r"最近([1-9][0-9]*)天")
 _YEAR_PATTERN = re.compile(r"([0-9]{4})年?$")
 _YEAR_MONTH_PATTERN = re.compile(r"([0-9]{4})(?:年([0-9]{1,2})月?|[-/]([0-9]{1,2}))$")
+_YEAR_QUARTER_PATTERN = re.compile(
+    r"(?P<year>[0-9]{4})(?:年?(?:第)?(?P<cn>[一二三四1-4])季度|年?[Qq](?P<q>[1-4]))$"
+)
 _DATE_PATTERN = re.compile(
     r"([0-9]{4})(?:年([0-9]{1,2})月([0-9]{1,2})日?|[-/]([0-9]{1,2})[-/]([0-9]{1,2}))$"
 )
@@ -352,6 +355,26 @@ def _resolve_dates(
         year = today.year if text == "今年" else today.year - 1
         start = date(year, 1, 1)
         return TimeGranularity.YEAR, start, date(year + 1, 1, 1)
+
+    quarter_match = _YEAR_QUARTER_PATTERN.fullmatch(text)
+    if quarter_match is not None:
+        quarter_text = quarter_match.group("cn") or quarter_match.group("q")
+        quarter_names = {"一": 1, "二": 2, "三": 3, "四": 4}
+        quarter = (
+            quarter_names[quarter_text]
+            if quarter_text in quarter_names
+            else int(quarter_text)
+        )
+        try:
+            start = date(
+                int(quarter_match.group("year")),
+                (quarter - 1) * 3 + 1,
+                1,
+            )
+            end = _shift_month(start, 3)
+        except (TypeError, ValueError, OverflowError):
+            raise _cannot_answer("日期表达无法标准化", "DATE_NOT_NORMALIZABLE")
+        return TimeGranularity.QUARTER, start, end
 
     recent_match = _RECENT_DAYS_PATTERN.fullmatch(text)
     if recent_match is not None:

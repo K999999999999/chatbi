@@ -51,6 +51,9 @@ class QueryUnderstandingLLMTest(unittest.TestCase):
         self.assertIn("只返回一个 JSON 对象", prompt)
         self.assertIn("subjects", prompt)
         self.assertIn("metrics", prompt)
+        self.assertIn("明细行数", prompt)
+        self.assertIn("已完成订单数量", prompt)
+        self.assertIn("最小指标表达式", prompt)
         self.assertIn("不要输出物理表名、物理字段名", prompt)
 
     def test_provider_exception_is_controlled_and_not_retried(self) -> None:
