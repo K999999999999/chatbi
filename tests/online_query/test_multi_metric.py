@@ -241,9 +241,7 @@ def _request(
     return RetrievalRequest(
         question=question,
         request_shape=(
-            RequestShape.EXPLICIT_MULTI
-            if len(metrics) >= 2
-            else RequestShape.BASELINE
+            RequestShape.EXPLICIT_MULTI if len(metrics) >= 2 else RequestShape.BASELINE
         ),
         fallback_policy=FallbackPolicy.FAIL_CLOSED,
         semantic_query=query,

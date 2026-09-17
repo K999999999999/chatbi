@@ -1,7 +1,5 @@
 """RAG Offline Retrieval Evaluation 测试。"""
 
-from pathlib import Path
-from tempfile import TemporaryDirectory
 import unittest
 
 from src.rag_offline import (

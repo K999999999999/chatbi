@@ -124,14 +124,10 @@ def format_display_value(column: str, value: Any) -> Any:
     normalized_column = column.casefold()
     if normalized_column.endswith("_cny"):
         return _format_decimal(value, decimals=2)
-    if (
-        normalized_column.endswith("_count")
-        or normalized_column in {"count", "数量"}
-    ):
+    if normalized_column.endswith("_count") or normalized_column in {"count", "数量"}:
         return _format_decimal(value, decimals=0)
-    if (
-        normalized_column == "gross_margin"
-        or normalized_column.endswith(("_rate", "_ratio", "_percent", "_percentage"))
+    if normalized_column == "gross_margin" or normalized_column.endswith(
+        ("_rate", "_ratio", "_percent", "_percentage")
     ):
         try:
             percentage = _as_decimal(value) * 100

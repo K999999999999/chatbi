@@ -39,8 +39,7 @@ def _multi_metric_table(constraints: tuple) -> str:
     sources = {
         constraint.data_source.strip().casefold()
         for constraint in constraints
-        if isinstance(constraint.data_source, str)
-        and constraint.data_source.strip()
+        if isinstance(constraint.data_source, str) and constraint.data_source.strip()
     }
     if len(sources) != 1:
         raise SQLRejectedError("多指标必须共享一个事实表")
@@ -63,15 +62,11 @@ def _validate_multi_metric_from(
         raise SQLRejectedError("多指标 SQL 必须以共同事实表为主表")
 
     table_refs = tuple(
-        _qualified_table_ref(table)
-        for table in expression.find_all(exp.Table)
+        _qualified_table_ref(table) for table in expression.find_all(exp.Table)
     )
     if len(table_refs) != len(set(table_refs)):
         raise SQLRejectedError("多指标 SQL 不支持同一物理表的重复引用")
-    if sum(
-        table.casefold() == metric_table.casefold()
-        for table in table_refs
-    ) != 1:
+    if sum(table.casefold() == metric_table.casefold() for table in table_refs) != 1:
         raise SQLRejectedError("多指标 SQL 必须只包含一个共同事实表")
 
     certified_tables = {
@@ -94,8 +89,7 @@ def _validate_multi_metric_joins(
 ) -> None:
     joins = tuple(expression.args.get("joins") or ())
     table_refs = tuple(
-        _qualified_table_ref(table)
-        for table in expression.find_all(exp.Table)
+        _qualified_table_ref(table) for table in expression.find_all(exp.Table)
     )
     if len(table_refs) != 1 + len(joins):
         raise SQLRejectedError("多指标 SQL 的表必须通过显式认证 Join 连接")
@@ -133,10 +127,7 @@ def _validate_multi_metric_joins(
     if any(
         table.casefold() != metric_table.casefold()
         and table.casefold()
-        not in {
-            constraint.target_table.casefold()
-            for constraint in constraints
-        }
+        not in {constraint.target_table.casefold() for constraint in constraints}
         for table in table_refs
     ):
         raise SQLRejectedError("多指标 SQL 的 Join 目标不在认证关系中")
@@ -223,10 +214,7 @@ def _validate_multi_metric_output(
         raise SQLRejectedError("多指标 SQL 输出的指标数量不完整")
 
     for node in expression.walk():
-        if (
-            isinstance(node, exp.AggFunc)
-            and id(node) not in metric_aggregate_ids
-        ):
+        if isinstance(node, exp.AggFunc) and id(node) not in metric_aggregate_ids:
             raise SQLRejectedError("多指标 SQL 包含额外聚合表达式")
 
     group = expression.args.get("group")
@@ -302,7 +290,9 @@ def _join_pairs(
     return implementation(condition, bindings, context)
 
 
-def _constraint_pairs(constraint: object) -> frozenset[tuple[tuple[str, str], tuple[str, str]]]:
+def _constraint_pairs(
+    constraint: object,
+) -> frozenset[tuple[tuple[str, str], tuple[str, str]]]:
     from .sql_guard import _constraint_pairs as implementation
 
     return implementation(constraint)

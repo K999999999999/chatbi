@@ -89,7 +89,9 @@ class T3ARetrievalObservabilityTest(unittest.TestCase):
         for name in required:
             self.assertIn(name, names)
         self.assertEqual(names[-1], "query.request")
-        self.assertEqual({span.context.trace_id for span in spans}, {spans[-1].context.trace_id})
+        self.assertEqual(
+            {span.context.trace_id for span in spans}, {spans[-1].context.trace_id}
+        )
 
         table_search = next(span for span in spans if span.name == "table.search")
         self.assertEqual(table_search.attributes["chatbi.retrieval.candidate_count"], 3)
@@ -130,7 +132,13 @@ class T3ARetrievalObservabilityTest(unittest.TestCase):
         self.assertEqual(result.status, RetrievalStatus.SUCCESS)
         self.assertEqual(store.metric_query_count, 3)
         self.assertEqual(
-            len([span for span in exporter.get_finished_spans() if span.name == "metric.search"]),
+            len(
+                [
+                    span
+                    for span in exporter.get_finished_spans()
+                    if span.name == "metric.search"
+                ]
+            ),
             3,
         )
 

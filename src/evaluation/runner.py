@@ -205,14 +205,8 @@ def _summarize(cases: tuple[CaseEvaluation, ...]) -> EvaluationSummary:
     categories = sorted({case.category for case in cases})
     category_accuracy: dict[str, float | None] = {}
     for category in categories:
-        category_cases = [
-            case
-            for case in valid
-            if case.category == category
-        ]
-        category_passed = sum(
-            case.status == CaseStatus.PASS for case in category_cases
-        )
+        category_cases = [case for case in valid if case.category == category]
+        category_passed = sum(case.status == CaseStatus.PASS for case in category_cases)
         category_accuracy[category] = (
             category_passed / len(category_cases) if category_cases else None
         )

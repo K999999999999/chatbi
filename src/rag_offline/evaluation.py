@@ -204,10 +204,7 @@ def _find_table(facts: Facts, table_name: str) -> str:
 
 def _find_column(facts: Facts, table_name: str, column_name: str) -> str:
     for column in facts.columns:
-        if (
-            column["table_name"] == table_name
-            and column["column_name"] == column_name
-        ):
+        if column["table_name"] == table_name and column["column_name"] == column_name:
             return (
                 f"{column['schema_name']}.{column['table_name']}."
                 f"{column['column_name']}"

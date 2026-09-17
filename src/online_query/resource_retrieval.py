@@ -10,7 +10,11 @@ from typing import Any
 from sqlglot import exp, parse_one
 from sqlglot.errors import SqlglotError
 
-from src.rag_offline.documents import COLUMN_COLLECTION, METRIC_COLLECTION, TABLE_COLLECTION
+from src.rag_offline.documents import (
+    COLUMN_COLLECTION,
+    METRIC_COLLECTION,
+    TABLE_COLLECTION,
+)
 from src.rag_offline.qdrant_store import SearchHit
 
 from .contracts import ColumnHit, MetricHit, RetrievalConfig, TableHit
@@ -22,7 +26,9 @@ class ResourceRetrievalContractError(RuntimeError):
     """候选资源或指标必需字段不满足在线 Contract。"""
 
 
-_TIME_FIELD_PATTERN = re.compile(r"^\s*(?P<source>[^\s]+)\s*->\s*(?P<target>[^\s]+)\s*$")
+_TIME_FIELD_PATTERN = re.compile(
+    r"^\s*(?P<source>[^\s]+)\s*->\s*(?P<target>[^\s]+)\s*$"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,9 +138,7 @@ def _column_hits(
     search_hits = search or snapshot.qdrant_store.search
     embedded_query = embed(column_query)
     grouping_embedding = (
-        embed(grouping_query)
-        if grouping_query and grouping_tables
-        else None
+        embed(grouping_query) if grouping_query and grouping_tables else None
     )
     required_hits: dict[tuple[str, str], ColumnHit] = {}
     grouping_hits: dict[tuple[str, str], ColumnHit] = {}
@@ -252,7 +256,9 @@ def _to_column_hit(hit: SearchHit, rank: int) -> ColumnHit:
     data_type = _required_metadata_text(metadata, "data_type", hit.document_id)
     page_content = hit.payload.get("page_content", "")
     if not isinstance(page_content, str):
-        raise ResourceRetrievalContractError(f"COLUMN {hit.document_id} 的 page_content 无效")
+        raise ResourceRetrievalContractError(
+            f"COLUMN {hit.document_id} 的 page_content 无效"
+        )
     return ColumnHit(
         document_id=hit.document_id,
         schema_name=schema_name,
@@ -271,7 +277,9 @@ def _to_metric_hit(hit: SearchHit, rank: int) -> MetricHit:
     metric_name = _required_metadata_text(metadata, "metric_name", hit.document_id)
     page_content = hit.payload.get("page_content", "")
     if not isinstance(page_content, str) or not page_content.strip():
-        raise ResourceRetrievalContractError(f"METRIC {hit.document_id} 的 page_content 无效")
+        raise ResourceRetrievalContractError(
+            f"METRIC {hit.document_id} 的 page_content 无效"
+        )
     return MetricHit(
         document_id=hit.document_id,
         metric_name=metric_name,
@@ -294,7 +302,9 @@ def _page_content(hit: SearchHit, expected_doc_type: str) -> str:
 def _metadata(hit: SearchHit, expected_doc_type: str) -> Mapping[str, Any]:
     metadata = hit.payload.get("metadata")
     if not isinstance(metadata, Mapping):
-        raise ResourceRetrievalContractError(f"{expected_doc_type} {hit.document_id} 缺少 metadata")
+        raise ResourceRetrievalContractError(
+            f"{expected_doc_type} {hit.document_id} 缺少 metadata"
+        )
     if metadata.get("doc_type") != expected_doc_type:
         raise ResourceRetrievalContractError(f"{hit.document_id} 的 doc_type 不正确")
     return metadata
@@ -368,10 +378,14 @@ def _parse_time_field(metric: MetricHit | None) -> _TimeField | None:
         return None
     raw = metric.metadata.get("time_field")
     if not isinstance(raw, str) or not raw.strip():
-        raise ResourceRetrievalContractError(f"指标 {metric.metric_name} 缺少有效 time_field")
+        raise ResourceRetrievalContractError(
+            f"指标 {metric.metric_name} 缺少有效 time_field"
+        )
     match = _TIME_FIELD_PATTERN.fullmatch(raw)
     if match is None:
-        raise ResourceRetrievalContractError(f"指标 {metric.metric_name} 的 time_field 格式无效")
+        raise ResourceRetrievalContractError(
+            f"指标 {metric.metric_name} 的 time_field 格式无效"
+        )
     source_table, source_column = _split_field_ref(match.group("source"), metric)
     target_table, filter_column = _split_field_ref(match.group("target"), metric)
     return _TimeField(source_table, source_column, target_table, filter_column)
@@ -383,13 +397,17 @@ def _split_field_ref(value: str, metric: MetricHit) -> tuple[str, str]:
         return f"{_metric_schema(metric)}.{parts[0]}", parts[1]
     if len(parts) == 3:
         return f"{parts[0]}.{parts[1]}", parts[2]
-    raise ResourceRetrievalContractError(f"指标 {metric.metric_name} 的字段引用格式无效：{value}")
+    raise ResourceRetrievalContractError(
+        f"指标 {metric.metric_name} 的字段引用格式无效：{value}"
+    )
 
 
 def _metric_schema(metric: MetricHit) -> str:
     source = _metric_data_source(metric).split(".")
     if len(source) != 2:
-        raise ResourceRetrievalContractError(f"指标 {metric.metric_name} 的 data_source 格式无效")
+        raise ResourceRetrievalContractError(
+            f"指标 {metric.metric_name} 的 data_source 格式无效"
+        )
     return source[0]
 
 
@@ -401,7 +419,9 @@ def _required_columns(
         return MappingProxyType({})
     formula = metric.metadata.get("formula")
     if not isinstance(formula, str) or not formula.strip():
-        raise ResourceRetrievalContractError(f"指标 {metric.metric_name} 缺少有效 formula")
+        raise ResourceRetrievalContractError(
+            f"指标 {metric.metric_name} 缺少有效 formula"
+        )
     try:
         expression = parse_one(f"SELECT {formula}", read="postgres")
     except (SqlglotError, ValueError, TypeError) as exc:
@@ -418,7 +438,9 @@ def _required_columns(
         result[data_source].add(column.name)
     filters = metric.metadata.get("filters", ())
     if not isinstance(filters, (list, tuple)):
-        raise ResourceRetrievalContractError(f"指标 {metric.metric_name} 的 filters 格式无效")
+        raise ResourceRetrievalContractError(
+            f"指标 {metric.metric_name} 的 filters 格式无效"
+        )
     for index, filter_expression in enumerate(filters, 1):
         if not isinstance(filter_expression, str) or not filter_expression.strip():
             raise ResourceRetrievalContractError(
@@ -458,10 +480,7 @@ def _required_columns_many(
         for table, columns in _required_columns(metric, time_field).items():
             merged[table].update(columns)
     return MappingProxyType(
-        {
-            table: frozenset(columns)
-            for table, columns in sorted(merged.items())
-        }
+        {table: frozenset(columns) for table, columns in sorted(merged.items())}
     )
 
 
@@ -485,10 +504,7 @@ def _missing_required_column_details(
 ) -> tuple[str, ...]:
     """记录每个缺失物理字段及依赖它的请求指标。"""
 
-    available = {
-        (hit.qualified_table, hit.column_name)
-        for hit in column_hits
-    }
+    available = {(hit.qualified_table, hit.column_name) for hit in column_hits}
     dependents: defaultdict[tuple[str, str], set[str]] = defaultdict(set)
     for metric in metrics:
         for table, columns in _required_columns(metric, time_field).items():

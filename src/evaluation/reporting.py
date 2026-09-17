@@ -200,9 +200,7 @@ def render_markdown_report(report: Mapping[str, object]) -> str:
     if category_accuracy is None:
         raise ReportingError("报告分类汇总结构无效")
     for category, accuracy in sorted(category_accuracy.items()):
-        lines.append(
-            f"| {_markdown_cell(category)} | {_accuracy_text(accuracy)} |"
-        )
+        lines.append(f"| {_markdown_cell(category)} | {_accuracy_text(accuracy)} |")
 
     lines.extend(["", "## 链路关联", ""])
     lines.extend(
@@ -422,10 +420,7 @@ def _hash_reference_results(results: Mapping[str, QueryData]) -> str:
         {
             "case_id": case_id,
             "column_count": len(data.columns),
-            "rows": [
-                [_canonical_value(value) for value in row]
-                for row in data.rows
-            ],
+            "rows": [[_canonical_value(value) for value in row] for row in data.rows],
             "truncated": data.truncated,
         }
         for case_id, data in sorted(results.items())
@@ -478,7 +473,9 @@ def _accuracy_text(value: object) -> str:
 
 
 def _markdown_cell(value: object) -> str:
-    return str(value if value is not None else "").replace("|", "\\|").replace("\n", " ")
+    return (
+        str(value if value is not None else "").replace("|", "\\|").replace("\n", " ")
+    )
 
 
 def _string_list(mapping: Mapping[str, object], field: str) -> list[str]:

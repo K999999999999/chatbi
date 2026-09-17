@@ -109,9 +109,7 @@ class EvaluationEntrypointTest(unittest.TestCase):
             context = QueryContext(
                 prompt_context="{}",
                 allowed_tables=frozenset({"mart_sales.test_table"}),
-                allowed_columns={
-                    "mart_sales.test_table": frozenset({"value"})
-                },
+                allowed_columns={"mart_sales.test_table": frozenset({"value"})},
             )
             data = QueryData(
                 columns=("value",),
@@ -246,7 +244,9 @@ class EvaluationEntrypointTest(unittest.TestCase):
                 executor_factory=lambda environ: (_ for _ in ()).throw(
                     AssertionError("semantic mode must not create executor")
                 ),
-                query_understanding_factory=lambda environ: _FakeSemanticQueryUnderstanding(),
+                query_understanding_factory=lambda environ: (
+                    _FakeSemanticQueryUnderstanding()
+                ),
                 git_state_reader=lambda project_root: ("abcdef123456", False),
                 stdout=stdout,
                 stderr=StringIO(),
@@ -445,9 +445,7 @@ class EvaluationEntrypointTest(unittest.TestCase):
         context = QueryContext(
             prompt_context="{}",
             allowed_tables=frozenset({"mart_sales.test_table"}),
-            allowed_columns={
-                "mart_sales.test_table": frozenset({"value"})
-            },
+            allowed_columns={"mart_sales.test_table": frozenset({"value"})},
         )
         return cases_path, context_file, context, sql
 

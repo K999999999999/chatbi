@@ -181,7 +181,9 @@ class StreamlitQueryClientTest(TestCase):
             ],
         )
 
-    def test_success_page_displays_trace_id_only_when_response_header_provided_it(self) -> None:
+    def test_success_page_displays_trace_id_only_when_response_header_provided_it(
+        self,
+    ) -> None:
         displayed = _FakeStreamlit()
 
         _render_success(
@@ -212,7 +214,9 @@ class StreamlitQueryClientTest(TestCase):
             displayed_without_trace.captions,
         )
 
-    def test_error_page_displays_request_and_trace_ids_without_raw_exception(self) -> None:
+    def test_error_page_displays_request_and_trace_ids_without_raw_exception(
+        self,
+    ) -> None:
         displayed = _FakeStreamlit()
 
         _render_error(

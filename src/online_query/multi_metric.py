@@ -167,8 +167,7 @@ def _matching_hits(
     matches: dict[str, MetricHit] = {}
     for hit in metric_hits:
         if any(
-            normalized_request == _normalize(label)
-            for label in _metric_labels(hit)
+            normalized_request == _normalize(label) for label in _metric_labels(hit)
         ):
             previous = matches.get(hit.document_id)
             if previous is None or hit.score > previous.score:
@@ -224,17 +223,13 @@ def _metadata_strings(hit: MetricHit, key: str) -> tuple[str, ...]:
 
 def _compatible(constraints: tuple[MetricConstraint, ...]) -> bool:
     data_sources = {
-        constraint.data_source.strip().casefold()
-        for constraint in constraints
+        constraint.data_source.strip().casefold() for constraint in constraints
     }
     time_fields = {
         re.sub(r"\s+", "", constraint.time_field).casefold()
         for constraint in constraints
     }
-    filters = {
-        _canonical_filters(constraint.filters)
-        for constraint in constraints
-    }
+    filters = {_canonical_filters(constraint.filters) for constraint in constraints}
     return len(data_sources) == len(time_fields) == len(filters) == 1
 
 

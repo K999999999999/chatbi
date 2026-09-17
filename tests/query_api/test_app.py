@@ -108,7 +108,11 @@ class QueryApiAppTest(TestCase):
         self.assertTrue(generated_request_id)
         self.assertEqual(
             service.requests,
-            [QueryRequest(question="查询没有数据的产品", request_id=generated_request_id)],
+            [
+                QueryRequest(
+                    question="查询没有数据的产品", request_id=generated_request_id
+                )
+            ],
         )
         self.assertEqual(response.json()["rows"], [])
         self.assertEqual(response.json()["row_count"], 0)
@@ -191,9 +195,7 @@ class QueryApiAppTest(TestCase):
 
                 self.assertEqual(response.status_code, 400)
                 self.assertEqual(response.json()["error_code"], "INVALID_REQUEST")
-                self.assertEqual(
-                    response.json()["request_id"], "req-invalid-body"
-                )
+                self.assertEqual(response.json()["request_id"], "req-invalid-body")
                 self.assertNotIn("detail", response.json())
 
     def test_invalid_json_returns_failure_shape(self) -> None:

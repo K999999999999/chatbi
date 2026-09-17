@@ -134,7 +134,11 @@ def safe_attribute_value(value: Any, rule: str) -> Any:
     if rule == "boolean":
         return value if isinstance(value, bool) else None
     if rule in {"count", "gen_ai_count"}:
-        return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+        return (
+            value
+            if isinstance(value, int) and not isinstance(value, bool) and value >= 0
+            else None
+        )
     if rule in {"identifier_list", "count_list", "number_list"}:
         if not isinstance(value, (list, tuple)):
             return None
@@ -231,7 +235,8 @@ def safe_set_status(span: OTelSpan, outcome: str) -> None:
     try:
         status_code = (
             StatusCode.OK
-            if outcome in {
+            if outcome
+            in {
                 TraceOutcome.SUCCESS.value,
                 TraceOutcome.FALLBACK_SUCCESS.value,
             }

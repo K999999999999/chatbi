@@ -178,6 +178,7 @@ class LangChainQueryUnderstanding:
                     outcome=TraceOutcome.SUCCESS,
                 )
 
+
 def build_query_understanding_prompt(question: str) -> str:
     """构造只要求业务语义的 Query Understanding Prompt。"""
 

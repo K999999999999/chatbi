@@ -80,9 +80,7 @@ def candidate_table_hits(
                 f"必需表没有被 TABLE 候选命中：{name}"
             )
         if is_intermediate_table(existing):
-            raise RequiredCandidateUnavailableError(
-                f"V1 不支持中间表或桥接表：{name}"
-            )
+            raise RequiredCandidateUnavailableError(f"V1 不支持中间表或桥接表：{name}")
         candidates.append(existing)
     return tuple(candidates)
 
@@ -128,10 +126,7 @@ def requires_date_context(query: ValidatedSemanticQuery) -> bool:
 
 def table_content_matches(question: str, page_content: str) -> bool:
     normalized_content = normalize_text(page_content)
-    return any(
-        term in normalized_content
-        for term in cjk_bigrams(question)
-    )
+    return any(term in normalized_content for term in cjk_bigrams(question))
 
 
 def cjk_bigrams(value: str) -> tuple[str, ...]:

@@ -29,7 +29,9 @@ class DocumentBuildTest(unittest.TestCase):
         self.assertEqual(len(documents), 2 + 6 + 2)
         ids = [document.document_id for document in documents]
         self.assertEqual(len(ids), len(set(ids)))
-        self.assertTrue(all(isinstance(document, RetrievalDocument) for document in documents))
+        self.assertTrue(
+            all(isinstance(document, RetrievalDocument) for document in documents)
+        )
         self.assertTrue(all(document.page_content for document in documents))
         self.assertEqual(
             sum(d.collection == TABLE_COLLECTION for d in documents),
@@ -129,9 +131,7 @@ class DocumentBuildTest(unittest.TestCase):
         self.assertEqual(completed.metadata["depends_on"], ())
         self.assertEqual(completed.metadata["notes"], "按 order_id 去重。")
 
-        derived = next(
-            d for d in documents if d.metadata["metric_name"] == "销售金额"
-        )
+        derived = next(d for d in documents if d.metadata["metric_name"] == "销售金额")
         self.assertEqual(derived.metadata["depends_on"], ("已完成订单数",))
         self.assertNotIn("已完成订单数", derived.page_content)
 

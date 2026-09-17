@@ -60,9 +60,9 @@ class ObservabilityConfig:
         resource_attributes, resource_conflict = _parse_resource_attributes(
             values.get("OTEL_RESOURCE_ATTRIBUTES", "")
         )
-        deployment_environment = resource_attributes.get(
-            "deployment.environment.name"
-        ) or runtime_env
+        deployment_environment = (
+            resource_attributes.get("deployment.environment.name") or runtime_env
+        )
         resource_env = _normalized_runtime_env(deployment_environment)
         content_requested = _parse_bool(values.get("CHATBI_TRACE_CONTENT_ENABLED"))
         content_allowed = (

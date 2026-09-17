@@ -26,9 +26,7 @@ _YEAR_QUARTER_PATTERN = re.compile(
 _DATE_PATTERN = re.compile(
     r"([0-9]{4})(?:年([0-9]{1,2})月([0-9]{1,2})日?|[-/]([0-9]{1,2})[-/]([0-9]{1,2}))$"
 )
-_DATE_RANGE_PATTERN = re.compile(
-    r"(.+?)(?:至|到|~)(.+)$"
-)
+_DATE_RANGE_PATTERN = re.compile(r"(.+?)(?:至|到|~)(.+)$")
 _CURRENT_CONTEXT_TIME_TEXTS = frozenset({"当前", "目前", "现在"})
 
 
@@ -392,7 +390,9 @@ def _resolve_dates(
         try:
             start = today - timedelta(days=days - 1)
         except (OverflowError, ValueError):
-            raise _cannot_answer("最近 N 天的范围超出日期支持范围", "DATE_NOT_NORMALIZABLE")
+            raise _cannot_answer(
+                "最近 N 天的范围超出日期支持范围", "DATE_NOT_NORMALIZABLE"
+            )
         return TimeGranularity.DAY, start, today + timedelta(days=1)
 
     range_match = _DATE_RANGE_PATTERN.fullmatch(text)
@@ -401,7 +401,9 @@ def _resolve_dates(
         end_inclusive = _parse_absolute_day(range_match.group(2))
         end = end_inclusive + timedelta(days=1)
         if start > end_inclusive:
-            raise _cannot_answer("日期区间的开始日期晚于结束日期", "DATE_RANGE_REVERSED")
+            raise _cannot_answer(
+                "日期区间的开始日期晚于结束日期", "DATE_RANGE_REVERSED"
+            )
         return TimeGranularity.DAY, start, end
 
     date_match = _DATE_PATTERN.fullmatch(text)

@@ -61,8 +61,9 @@ class QueryUnderstandingContractTest(unittest.TestCase):
             payload = _payload()
             payload[field] = ["有效", ""]
 
-            with self.subTest(field=field), self.assertRaises(
-                SemanticQueryStructureError
+            with (
+                self.subTest(field=field),
+                self.assertRaises(SemanticQueryStructureError),
             ):
                 candidate_from_payload(payload)
 
@@ -106,7 +107,14 @@ class QueryUnderstandingContractTest(unittest.TestCase):
 
     def test_metric_limit_is_five_without_metric_count(self) -> None:
         payload = _payload()
-        payload["metrics"] = ["指标一", "指标二", "指标三", "指标四", "指标五", "指标六"]
+        payload["metrics"] = [
+            "指标一",
+            "指标二",
+            "指标三",
+            "指标四",
+            "指标五",
+            "指标六",
+        ]
 
         candidate = candidate_from_payload(payload)
         with self.assertRaises(SemanticQueryCannotAnswer):

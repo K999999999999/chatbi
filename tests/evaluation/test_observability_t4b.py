@@ -151,7 +151,9 @@ class EvaluationObservabilityT4BTest(unittest.TestCase):
         self.assertEqual(len(executor.calls), 6)
         self.assertEqual(len(exporter.get_finished_spans()), 6)
 
-    def test_shared_recorder_has_one_evaluation_root_and_service_borrows_it(self) -> None:
+    def test_shared_recorder_has_one_evaluation_root_and_service_borrows_it(
+        self,
+    ) -> None:
         recorder, exporter = create_in_memory_recorder()
         generator = _FakeGenerator(self.sql)
         executor = _FakeExecutor(self.reference)
@@ -182,7 +184,9 @@ class EvaluationObservabilityT4BTest(unittest.TestCase):
         )
         self.assertEqual(root.attributes["evaluation.case_id"], "SHARED")
         self.assertEqual(root.attributes["chatbi.request.id"], "evaluation-SHARED")
-        self.assertTrue(all(span.context.trace_id == root.context.trace_id for span in spans))
+        self.assertTrue(
+            all(span.context.trace_id == root.context.trace_id for span in spans)
+        )
 
     def test_report_contains_safe_correlation_and_loads_old_baseline(self) -> None:
         from src.evaluation.reporting import (

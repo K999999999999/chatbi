@@ -366,9 +366,7 @@ def _physical_collection_name(
 
 def _validate_build_id(build_id: str) -> None:
     if not _SAFE_BUILD_ID.fullmatch(build_id):
-        raise OfflineBuildValidationError(
-            "build_id 只能包含字母、数字、下划线和连字符"
-        )
+        raise OfflineBuildValidationError("build_id 只能包含字母、数字、下划线和连字符")
 
 
 def _validate_collection_prefix(prefix: str) -> None:

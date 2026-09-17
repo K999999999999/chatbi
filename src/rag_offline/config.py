@@ -63,9 +63,7 @@ class OfflineBuildConfig:
             raise OfflineBuildConfigError("RAG_MODEL_NAME_OR_PATH 不能为空")
         raw_device = _optional_env("RAG_EMBEDDING_DEVICE")
         device = (
-            None
-            if raw_device is None or raw_device.lower() == "auto"
-            else raw_device
+            None if raw_device is None or raw_device.lower() == "auto" else raw_device
         )
 
         return cls(
@@ -73,8 +71,7 @@ class OfflineBuildConfig:
             qdrant_url=qdrant_url,
             qdrant_path=qdrant_path,
             qdrant_api_key=(
-                _optional_env("RAG_QDRANT_API_KEY")
-                or _optional_env("QDRANT_API_KEY")
+                _optional_env("RAG_QDRANT_API_KEY") or _optional_env("QDRANT_API_KEY")
             ),
             qdrant_timeout_seconds=_positive_float(
                 "RAG_QDRANT_TIMEOUT_SECONDS",

@@ -54,7 +54,9 @@ class PromptTest(unittest.TestCase):
 
         prompt = build_prompt("查询指标一数和指标二数", context)
 
-        self.assertIn("按 Indicator Context 中 requested_metrics 的顺序输出全部指标", prompt)
+        self.assertIn(
+            "按 Indicator Context 中 requested_metrics 的顺序输出全部指标", prompt
+        )
         self.assertIn("严格使用对应的认证 formula 和 filters", prompt)
         self.assertIn("共享同一组用户日期、分组字段和普通筛选条件", prompt)
         self.assertIn("不得为了补齐指标自行加入其他资源", prompt)
@@ -94,7 +96,9 @@ class PromptTest(unittest.TestCase):
         self.assertIn('"values":["已完成"]', prompt)
         self.assertIn(question, prompt)
 
-    def test_structured_prompt_does_not_reparse_or_replace_semantic_fields(self) -> None:
+    def test_structured_prompt_does_not_reparse_or_replace_semantic_fields(
+        self,
+    ) -> None:
         candidate = candidate_from_payload(
             {
                 "query_type": "entity_lookup",

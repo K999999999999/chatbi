@@ -41,13 +41,9 @@ class V1AcceptanceTest(unittest.TestCase):
         self,
     ) -> None:
         root = Path(__file__).resolve().parents[2]
-        cases = load_evaluation_cases(
-            root / "src" / "evaluation" / "eval_cases.json"
-        )
+        cases = load_evaluation_cases(root / "src" / "evaluation" / "eval_cases.json")
         context = load_query_context()
-        generator = _SequentialSQLGenerator(
-            tuple(case.expected_sql for case in cases)
-        )
+        generator = _SequentialSQLGenerator(tuple(case.expected_sql for case in cases))
         executor = _EmptyResultExecutor()
         service = OnlineQueryService(
             generator,

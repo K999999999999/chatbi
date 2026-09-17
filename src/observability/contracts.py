@@ -5,7 +5,9 @@ from enum import StrEnum
 from typing import Any, Protocol, TypeAlias
 
 
-AttributeValue: TypeAlias = str | bool | int | float | Sequence[str | bool | int | float]
+AttributeValue: TypeAlias = (
+    str | bool | int | float | Sequence[str | bool | int | float]
+)
 Attributes: TypeAlias = Mapping[str, AttributeValue]
 Carrier: TypeAlias = Mapping[str, str]
 

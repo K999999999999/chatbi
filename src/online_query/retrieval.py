@@ -46,11 +46,9 @@ from .relationship_graph import (
 )
 from .resource_retrieval import (
     ResourceRetrievalContractError,
-    _TimeField,
     _column_hits,
     _column_query,
     _contains_required_columns,
-    _metric_data_source,
     _metric_hits,
     _missing_required_column_details,
     _multi_column_query,
@@ -72,6 +70,7 @@ from .retrieval_selection import (
     select_anchor,
     target_tables,
 )
+
 _TRACE_EVIDENCE_LIMIT = 10
 
 
@@ -555,7 +554,8 @@ class OnlineRetriever:
                     "chatbi.retrieval.column_count": len(final_fields),
                     "chatbi.retrieval.metric_count": len(selected_tuple),
                     "chatbi.retrieval.candidate.qualified_tables": tuple(
-                        hit.qualified_name for hit in final_tables[:_TRACE_EVIDENCE_LIMIT]
+                        hit.qualified_name
+                        for hit in final_tables[:_TRACE_EVIDENCE_LIMIT]
                     ),
                 },
             )
@@ -691,9 +691,7 @@ def _candidate_trace_attributes(
             "chatbi.retrieval.candidate.document_ids": tuple(
                 hit.document_id for hit in evidence
             ),
-            "chatbi.retrieval.candidate.ranks": tuple(
-                range(1, len(evidence) + 1)
-            ),
+            "chatbi.retrieval.candidate.ranks": tuple(range(1, len(evidence) + 1)),
             "chatbi.retrieval.candidate.scores": tuple(
                 float(hit.score) for hit in evidence
             ),
@@ -742,12 +740,10 @@ def _join_trace_attributes(resolution: JoinResolution) -> dict[str, object]:
     paths = resolution.paths[:_TRACE_EVIDENCE_LIMIT]
     return {
         "chatbi.retrieval.join.edge_ids": tuple(
-            edge.edge_id
-            for edge in resolution.joins[:_TRACE_EVIDENCE_LIMIT]
+            edge.edge_id for edge in resolution.joins[:_TRACE_EVIDENCE_LIMIT]
         ),
         "chatbi.retrieval.join.path_ids": tuple(
-            f"path:{index}"
-            for index, _ in enumerate(paths, 1)
+            f"path:{index}" for index, _ in enumerate(paths, 1)
         ),
         "chatbi.retrieval.join.path_count": len(resolution.paths),
     }
@@ -763,7 +759,9 @@ def _merge_metric_hits(
             if previous is None or hit.score > previous.score:
                 best_by_document[hit.document_id] = hit
     return tuple(
-        sorted(best_by_document.values(), key=lambda item: (-item.score, item.document_id))
+        sorted(
+            best_by_document.values(), key=lambda item: (-item.score, item.document_id)
+        )
     )
 
 

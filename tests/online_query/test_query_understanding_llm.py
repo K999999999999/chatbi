@@ -78,7 +78,9 @@ class QueryUnderstandingLLMTest(unittest.TestCase):
         ]
         adapter = LangChainQueryUnderstanding(model)
 
-        with self.assertRaisesRegex(LLMError, "Query Understanding LLM 调用失败") as raised:
+        with self.assertRaisesRegex(
+            LLMError, "Query Understanding LLM 调用失败"
+        ) as raised:
             adapter.understand("查询销售额")
 
         self.assertIsInstance(raised.exception.__cause__, TimeoutError)

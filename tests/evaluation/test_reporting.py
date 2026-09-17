@@ -98,9 +98,7 @@ class EvaluationReportingTest(unittest.TestCase):
     def test_renders_human_readable_summary_without_baseline(self) -> None:
         from src.evaluation.reporting import create_report, render_markdown_report
 
-        run = self._run(
-            (CaseStatus.PASS, CaseStatus.FAIL, CaseStatus.INVALID_CASE)
-        )
+        run = self._run((CaseStatus.PASS, CaseStatus.FAIL, CaseStatus.INVALID_CASE))
         report = create_report(run, self._metadata())
 
         markdown = render_markdown_report(report)
