@@ -70,7 +70,7 @@ Architecture / Domain / Existing Contract
 | 结构化 Relationship Graph | data/rag/{build_id}/relationship_graph.json | BFS Join Path |
 | 静态 QueryContext | src/online_query/context.py | 技术故障 fallback |
 | 表列 allowlist | src/online_query/contracts.py | Dynamic Schema 和候选范围校验 |
-| PostgreSQL AST SQL Guard | src/online_query/sql_guard/sql_guard.py | 继续作为 SQL 最终安全边界 |
+| PostgreSQL AST SQL Guard | src/online_query/sql_guard/sql_guard.py、sql_guard_scope.py | 继续作为 SQL 最终安全边界 |
 | 现有 SQL 生成、数据库执行和服务编排 | src/online_query/ | 不改变职责，只替换上下文来源 |
 
 当前已发布真实资产：
@@ -110,6 +110,7 @@ src/online_query/
 │  └─ retrieval_results.py
 └─ sql_guard/         # SQL 安全校验内部职责和公共入口
    ├─ sql_guard.py
+   ├─ sql_guard_scope.py
    ├─ sql_guard_join.py
    └─ sql_guard_multi_metric.py
 ~~~

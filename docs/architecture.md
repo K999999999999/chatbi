@@ -103,6 +103,7 @@ flowchart TB
         Prompt["prompt.py<br/>把问题和上下文组成 Prompt"]
         LLM["llm.py<br/>通过 LangChain 调用 LLM 生成 SQL"]
         Guard["sql_guard.py<br/>候选解析、范围和危险函数边界"]
+        GuardScope["sql_guard_scope.py<br/>AST 作用域、表绑定和字段白名单"]
         GuardJoin["sql_guard_join.py<br/>认证 Relationship Graph Join 校验"]
         GuardMetric["sql_guard_multi_metric.py<br/>多指标结构、公式和过滤校验"]
         Database["database.py<br/>使用 chatbi_app 只读执行 SQL"]
@@ -123,6 +124,7 @@ flowchart TB
         Prompt -->|"3. 生成提示词"| LLM
         LLM -->|"4. 返回 SQL 候选"| Guard
         Guard --> GuardJoin
+        Guard --> GuardScope
         Guard --> GuardMetric
         Guard -->|"5. 返回安全 SQL"| Database
         Database -->|"6. 返回数据或错误"| Service
