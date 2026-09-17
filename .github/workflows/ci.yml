@@ -45,6 +45,30 @@ jobs:
       - name: Run deterministic tests
         run: uv run --python 3.11 --locked --with pytest python -m pytest -q
 
+  sql-guard-tests:
+    name: SQL Guard tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.2"
+
+      - name: Install Python
+        run: uv python install 3.11
+
+      - name: Verify lockfile
+        run: uv lock --check
+
+      - name: Run SQL Guard tests
+        run: >-
+          uv run --python 3.11 --locked --with pytest python -m pytest -q
+          tests/online_query/test_sql_guard.py
+
   postgres-integration:
     name: PostgreSQL integration
     runs-on: ubuntu-latest
@@ -194,3 +218,60 @@ jobs:
             --request POST http://127.0.0.1:8000/api/v1/query \
             --header 'Content-Type: application/json' --data '{}')
           test "$query_status" = '400'
+
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.2"
+
+      - name: Install Python
+        run: uv python install 3.11
+
+      - name: Verify lockfile
+        run: uv lock --check
+
+      - name: Audit Python dependencies
+        run: uv run --python 3.11 --locked --with pip-audit pip-audit
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Scan for secrets
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "false"
+
+  static-security-scan:
+    name: Static security scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.2"
+
+      - name: Install Python
+        run: uv python install 3.11
+
+      - name: Run blocking Bandit scan
+        run: uv run --python 3.11 --locked --with bandit bandit -r src scripts -ll
