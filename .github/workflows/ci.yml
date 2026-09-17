@@ -36,6 +36,12 @@ jobs:
       - name: Verify lockfile
         run: uv lock --check
 
+      - name: Compile Python sources
+        run: uv run --python 3.11 --locked python -m compileall -q src tests
+
+      - name: Collect pytest tests
+        run: uv run --python 3.11 --locked --with pytest python -m pytest --collect-only -q
+
       - name: Run deterministic tests
         run: uv run --python 3.11 --locked --with pytest python -m pytest -q
 
