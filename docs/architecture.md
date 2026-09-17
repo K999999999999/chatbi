@@ -97,6 +97,7 @@ flowchart TB
         RetrievalContext["retrieval_context.py<br/>最终资源闭包和 QueryContext"]
         RetrievalResource["resource_retrieval.py<br/>TABLE / COLUMN / METRIC 检索与转换"]
         RetrievalMetric["metric_requirements.py<br/>指标字段依赖和时间字段"]
+        MetricRequestShape["metric_request_shape.py<br/>多指标请求形态和列举解析"]
         RetrievalGraph["relationship_graph.py<br/>确定性关系图路径"]
         Prompt["prompt.py<br/>把问题和上下文组成 Prompt"]
         LLM["llm.py<br/>通过 LangChain 调用 LLM 生成 SQL"]
@@ -113,6 +114,7 @@ flowchart TB
         Retrieval --> RetrievalSelection
         Retrieval --> RetrievalResource
         Retrieval --> RetrievalMetric
+        Retrieval --> MetricRequestShape
         Retrieval --> RetrievalGraph
         Retrieval --> RetrievalContext
         Service -->|"2. 提供上下文"| Prompt
