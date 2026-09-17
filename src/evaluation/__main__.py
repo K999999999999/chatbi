@@ -77,6 +77,7 @@ def run_cli(
     context_paths: Mapping[str, Path] | None = None,
     stdout: TextIO | None = None,
     stderr: TextIO | None = None,
+    runtime_factory: Callable[[], RagRuntime] | None = None,
 ) -> int:
     """运行一次评测；依赖参数仅用于确定性软件测试。"""
 
@@ -86,6 +87,7 @@ def run_cli(
     parser = _parser()
     args = parser.parse_args(argv)
     trace_recorder: TraceRecorder | None = None
+    rag_runtime: RagRuntime | None = None
 
     try:
         try:
@@ -110,6 +112,40 @@ def run_cli(
         cases = load_evaluation_cases(args.cases)
         baseline = load_report(args.baseline) if args.baseline else None
         context = context_loader()
+        retrieval_provider = None
+        query_understanding = None
+        if args.online_retrieval:
+            if not _rag_online_retrieval_enabled(source):
+                raise ReportingError(
+                    "RAG_ONLINE_RETRIEVAL_ENABLED 已关闭，不能运行在线检索评测"
+                )
+            if retrieval_factory is None:
+                runtime_builder = (
+                    RagRuntime.from_environment
+                    if runtime_factory is None
+                    else runtime_factory
+                )
+                try:
+                    rag_runtime = runtime_builder()
+                    _preflight_online_retrieval(rag_runtime)
+                except ReportingError:
+                    raise
+                except Exception as exc:
+                    raise ReportingError(f"在线 RAG 评测前置检查失败：{exc}") from exc
+                retrieval_provider = _build_online_retrieval_provider(
+                    rag_runtime,
+                    trace_recorder,
+                )
+            else:
+                retrieval_provider = retrieval_factory()
+            query_understanding = (
+                LangChainQueryUnderstanding.from_env(
+                    source,
+                    trace_recorder=trace_recorder,
+                )
+                if query_understanding_factory is None
+                else query_understanding_factory(source)
+            )
         executor = executor_factory(source)
         generator = (
             LangChainSQLGenerator.from_env(
@@ -119,28 +155,6 @@ def run_cli(
             if generator_factory is None
             else generator_factory(source)
         )
-        retrieval_provider = None
-        query_understanding = None
-        if args.online_retrieval:
-            if not _rag_online_retrieval_enabled(source):
-                raise ReportingError(
-                    "RAG_ONLINE_RETRIEVAL_ENABLED 已关闭，不能运行在线检索评测"
-                )
-            if retrieval_factory is None:
-
-                def provider_factory() -> RetrievalProvider:
-                    return _build_online_retrieval_provider(trace_recorder)
-            else:
-                provider_factory = retrieval_factory
-            retrieval_provider = provider_factory()
-            query_understanding = (
-                LangChainQueryUnderstanding.from_env(
-                    source,
-                    trace_recorder=trace_recorder,
-                )
-                if query_understanding_factory is None
-                else query_understanding_factory(source)
-            )
         service = OnlineQueryService(
             generator,
             executor,
@@ -190,6 +204,7 @@ def run_cli(
         print("ERROR: 评测运行失败", file=error_output)
         return 1
     finally:
+        _shutdown_rag_runtime(rag_runtime)
         _shutdown_trace_recorder(trace_recorder)
 
 
@@ -291,12 +306,31 @@ def _run_query_understanding_cli(
 
 
 def _build_online_retrieval_provider(
+    runtime: RagRuntime,
     trace_recorder: TraceRecorder | None = None,
 ) -> RetrievalProvider:
     return OnlineRetriever(
-        RagRuntime.from_environment(),
+        runtime,
         trace_recorder=trace_recorder,
     )
+
+
+def _preflight_online_retrieval(runtime: RagRuntime) -> None:
+    """在运行案例前验证一次在线 RAG 资产和运行时依赖。"""
+
+    try:
+        runtime.get_snapshot()
+    except Exception as exc:
+        raise ReportingError(f"在线 RAG 评测前置检查失败：{exc}") from exc
+
+
+def _shutdown_rag_runtime(runtime: RagRuntime | None) -> None:
+    if runtime is None:
+        return
+    try:
+        runtime.close()
+    except Exception:
+        pass
 
 
 def _shutdown_trace_recorder(trace_recorder: TraceRecorder | None) -> None:

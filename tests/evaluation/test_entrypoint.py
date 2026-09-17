@@ -5,6 +5,7 @@ import unittest
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from src.online_query.contracts import (
     OnlineRetrievalResult,
@@ -48,6 +49,33 @@ class _FakeRetrievalProvider:
             status=RetrievalStatus.SUCCESS,
             query_context=self._context,
         )
+
+
+class _FailingRuntime:
+    def __init__(self, message: str) -> None:
+        self.message = message
+        self.get_snapshot_calls = 0
+        self.close_calls = 0
+
+    def get_snapshot(self) -> object:
+        self.get_snapshot_calls += 1
+        raise RuntimeError(self.message)
+
+    def close(self) -> None:
+        self.close_calls += 1
+
+
+class _SuccessfulRuntime:
+    def __init__(self) -> None:
+        self.get_snapshot_calls = 0
+        self.close_calls = 0
+
+    def get_snapshot(self) -> object:
+        self.get_snapshot_calls += 1
+        return object()
+
+    def close(self) -> None:
+        self.close_calls += 1
 
 
 class _FakeQueryUnderstanding:
@@ -196,6 +224,109 @@ class EvaluationEntrypointTest(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(len(provider.requests), 1)
         self.assertIsInstance(provider.requests[0], RetrievalRequest)
+
+    def test_online_retrieval_preflight_stops_before_cases(self) -> None:
+        from src.evaluation.__main__ import run_cli
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            cases_path, context_file, context, _ = self._files(root)
+            output_dir = root / "reports"
+            runtime = _FailingRuntime("发布文件不存在：current.json")
+            executor_calls = 0
+            generator_calls = 0
+            stderr = StringIO()
+
+            def executor_factory(environ: object) -> _FakeExecutor:
+                nonlocal executor_calls
+                executor_calls += 1
+                raise AssertionError("RAG preflight 失败后不应创建 QueryExecutor")
+
+            def generator_factory(environ: object) -> _FakeGenerator:
+                nonlocal generator_calls
+                generator_calls += 1
+                raise AssertionError("RAG preflight 失败后不应创建 SQLGenerator")
+
+            exit_code = run_cli(
+                [
+                    "--cases",
+                    str(cases_path),
+                    "--output-dir",
+                    str(output_dir),
+                    "--online-retrieval",
+                ],
+                environ={
+                    "LLM_MODEL": "test-model",
+                    "RAG_ONLINE_RETRIEVAL_ENABLED": "true",
+                },
+                context_loader=lambda: context,
+                generator_factory=generator_factory,
+                executor_factory=executor_factory,
+                runtime_factory=lambda: runtime,
+                git_state_reader=lambda project_root: ("abcdef123456", False),
+                context_paths={"context": context_file},
+                stdout=StringIO(),
+                stderr=stderr,
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(runtime.get_snapshot_calls, 1)
+        self.assertEqual(runtime.close_calls, 1)
+        self.assertEqual(executor_calls, 0)
+        self.assertEqual(generator_calls, 0)
+        self.assertIn("在线 RAG 评测前置检查失败", stderr.getvalue())
+        self.assertIn("current.json", stderr.getvalue())
+        self.assertEqual(list(output_dir.glob("*")), [])
+
+    def test_online_retrieval_reuses_preflight_runtime(self) -> None:
+        from src.evaluation.__main__ import run_cli
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            cases_path, context_file, context, sql = self._files(root)
+            output_dir = root / "reports"
+            data = QueryData(
+                columns=("value",),
+                rows=((1,),),
+                truncated=False,
+            )
+            runtime = _SuccessfulRuntime()
+            provider = _FakeRetrievalProvider(context)
+
+            with patch(
+                "src.evaluation.__main__._build_online_retrieval_provider",
+                return_value=provider,
+            ) as build_provider:
+                exit_code = run_cli(
+                    [
+                        "--cases",
+                        str(cases_path),
+                        "--output-dir",
+                        str(output_dir),
+                        "--online-retrieval",
+                    ],
+                    environ={
+                        "LLM_MODEL": "test-model",
+                        "RAG_ONLINE_RETRIEVAL_ENABLED": "true",
+                    },
+                    context_loader=lambda: context,
+                    generator_factory=lambda environ: _FakeGenerator(sql),
+                    executor_factory=lambda environ: _FakeExecutor(data),
+                    runtime_factory=lambda: runtime,
+                    query_understanding_factory=lambda environ: (
+                        _FakeQueryUnderstanding()
+                    ),
+                    git_state_reader=lambda project_root: ("abcdef123456", False),
+                    context_paths={"context": context_file},
+                    stdout=StringIO(),
+                    stderr=StringIO(),
+                )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(runtime.get_snapshot_calls, 1)
+        self.assertEqual(runtime.close_calls, 1)
+        self.assertIs(build_provider.call_args.args[0], runtime)
+        self.assertEqual(len(provider.requests), 1)
 
     def test_query_understanding_mode_writes_semantic_report_without_sql_chain(
         self,
