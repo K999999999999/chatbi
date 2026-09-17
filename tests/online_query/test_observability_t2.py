@@ -136,9 +136,10 @@ class T2ObservabilityTest(unittest.TestCase):
 
     def test_sql_guard_rejection_does_not_create_database_span(self) -> None:
         with patch(
-            "src.online_query.service.validate_sql",
-            side_effect=RuntimeError("sql-internal-detail"),
-        ):
+            "src.online_query.service._new_validation_session",
+        ) as factory:
+            session = factory.return_value
+            session.validate_sql.side_effect = RuntimeError("sql-internal-detail")
             result = self._service().query(QueryRequest(question="查询订单"))
 
         self._assert_failure(result, QueryErrorCode.SQL_REJECTED)

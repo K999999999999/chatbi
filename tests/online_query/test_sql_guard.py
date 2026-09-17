@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 from src.online_query.contracts import (
     JoinConstraint,
@@ -12,6 +13,7 @@ from src.online_query.contracts import (
 )
 from src.online_query.context import load_query_context
 from src.online_query.sql_guard import SQLRejectedError, validate_sql
+import src.online_query.sql_guard as sql_guard
 
 
 class SQLGuardTest(unittest.TestCase):
@@ -62,6 +64,18 @@ class SQLGuardTest(unittest.TestCase):
         validated = validate_sql(sql, self.context)
 
         self.assertEqual(validated.sql, sql)
+
+    def test_standalone_validate_sql_parses_once(self) -> None:
+        sql = "SELECT order_id FROM mart_sales.fct_sales_order_line"
+
+        with patch(
+            "src.online_query.sql_guard._parse_single_select",
+            wraps=sql_guard._parse_single_select,
+        ) as parse:
+            validated = validate_sql(sql, self.context)
+
+        self.assertEqual(validated.sql, sql)
+        self.assertEqual(parse.call_count, 1)
 
     def test_valid_direct_left_join_uses_graph_constraint(self) -> None:
         sql = (

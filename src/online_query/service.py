@@ -31,7 +31,7 @@ from .contracts import (
 from .database import DatabaseError, DatabaseQueryTimeout
 from .multi_metric import build_retrieval_request
 from .prompt import build_prompt
-from .sql_guard import validate_candidate_scope, validate_sql
+from .sql_guard import _new_validation_session
 
 
 _ERROR_MESSAGES = {
@@ -176,7 +176,8 @@ class OnlineQueryService:
             name="candidate_scope.validate",
         ):
             try:
-                validate_candidate_scope(candidate, context)
+                validation_session = _new_validation_session(candidate, context)
+                validation_session.validate_candidate_scope()
             except Exception:
                 result = _failure(request_id, QueryErrorCode.SQL_REJECTED)
                 _enrich_failure_span(
@@ -189,7 +190,7 @@ class OnlineQueryService:
 
         with _safe_trace_scope(self._trace_recorder, name="sql.guard"):
             try:
-                validated_sql = validate_sql(candidate, context)
+                validated_sql = validation_session.validate_sql()
             except Exception:
                 result = _failure(request_id, QueryErrorCode.SQL_REJECTED)
                 _enrich_failure_span(

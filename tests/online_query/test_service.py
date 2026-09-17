@@ -4,6 +4,7 @@ from uuid import UUID
 import unittest
 from unittest.mock import Mock, patch
 
+import src.online_query.sql_guard as sql_guard
 from src.online_query.context import ContextLoadError
 from src.online_query.contracts import (
     QueryContext,
@@ -115,7 +116,7 @@ class ServiceTest(unittest.TestCase):
         self.generator.generate.side_effect = LLMError("provider detail")
         service = self._service()
 
-        with patch("src.online_query.service.validate_sql") as guard:
+        with patch("src.online_query.service._new_validation_session") as guard:
             result = service.query(QueryRequest(question="查询订单"))
 
         self._assert_failure(result, QueryErrorCode.LLM_ERROR)
@@ -136,12 +137,36 @@ class ServiceTest(unittest.TestCase):
         self.generator.generate.return_value = "CANNOT_ANSWER"
         service = self._service()
 
-        with patch("src.online_query.service.validate_sql") as guard:
+        with patch("src.online_query.service._new_validation_session") as guard:
             result = service.query(QueryRequest(question="查询不存在的业务"))
 
         self._assert_failure(result, QueryErrorCode.CANNOT_ANSWER)
         guard.assert_not_called()
         self.executor.execute.assert_not_called()
+
+    def test_query_reuses_one_parse_between_scope_and_sql_guard(self) -> None:
+        with patch(
+            "src.online_query.sql_guard._parse_single_select",
+            wraps=sql_guard._parse_single_select,
+        ) as parse:
+            result = self._service().query(QueryRequest(question="查询订单"))
+
+        self.assertIsInstance(result, QuerySuccess)
+        self.assertEqual(parse.call_count, 1)
+
+    def test_separate_queries_do_not_reuse_validation_state(self) -> None:
+        service = self._service()
+
+        with patch(
+            "src.online_query.sql_guard._parse_single_select",
+            wraps=sql_guard._parse_single_select,
+        ) as parse:
+            first = service.query(QueryRequest(question="第一次查询"))
+            second = service.query(QueryRequest(question="第二次查询"))
+
+        self.assertIsInstance(first, QuerySuccess)
+        self.assertIsInstance(second, QuerySuccess)
+        self.assertEqual(parse.call_count, 2)
 
     def test_rejected_sql_stops_before_database(self) -> None:
         self.generator.generate.return_value = (
