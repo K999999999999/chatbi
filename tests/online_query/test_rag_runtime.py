@@ -158,8 +158,7 @@ def _asset(
     model: str = "model",
 ) -> PublishedAsset:
     collection_names = {
-        collection: f"{collection}-{build_id}"
-        for collection in COLLECTIONS
+        collection: f"{collection}-{build_id}" for collection in COLLECTIONS
     }
     manifest = {
         "status": "READY",

@@ -27,7 +27,9 @@ TRACE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 
 
 class ObservabilityTracingTest(unittest.TestCase):
-    def test_root_child_and_borrowed_scope_have_one_root_and_root_ends_last(self) -> None:
+    def test_root_child_and_borrowed_scope_have_one_root_and_root_ends_last(
+        self,
+    ) -> None:
         recorder, exporter = create_in_memory_recorder()
 
         with recorder.query_trace(
@@ -184,7 +186,9 @@ class ObservabilityTracingTest(unittest.TestCase):
             self.assertTrue(next_root.owns_root)
             self.assertNotEqual(next_root.trace_id, root.trace_id)
 
-    def test_root_content_capture_attribute_is_configured_and_cannot_be_overridden(self) -> None:
+    def test_root_content_capture_attribute_is_configured_and_cannot_be_overridden(
+        self,
+    ) -> None:
         recorder, exporter = create_in_memory_recorder(
             ObservabilityConfig(
                 runtime_env="local",
@@ -222,7 +226,9 @@ class ObservabilityTracingTest(unittest.TestCase):
                     configured,
                 )
 
-    def test_unknown_chatbi_attributes_are_rejected_and_safe_values_are_kept(self) -> None:
+    def test_unknown_chatbi_attributes_are_rejected_and_safe_values_are_kept(
+        self,
+    ) -> None:
         recorder, exporter = create_in_memory_recorder()
 
         with recorder.query_trace(QuerySource.INTERNAL):
@@ -244,7 +250,9 @@ class ObservabilityTracingTest(unittest.TestCase):
         self.assertEqual(root.attributes["chatbi.result.status"], "SUCCESS")
         self.assertNotIn("raw-secret", repr(root.attributes))
 
-    def test_batch_exporter_failures_are_safe_and_query_does_not_force_flush(self) -> None:
+    def test_batch_exporter_failures_are_safe_and_query_does_not_force_flush(
+        self,
+    ) -> None:
         class FailingExporter:
             def __init__(self, **kwargs):
                 del kwargs
@@ -267,7 +275,9 @@ class ObservabilityTracingTest(unittest.TestCase):
         processors = provider._active_span_processor._span_processors
         self.assertEqual(len(processors), 1)
         self.assertIsInstance(processors[0], BatchSpanProcessor)
-        with patch.object(provider, "force_flush", wraps=provider.force_flush) as force_flush:
+        with patch.object(
+            provider, "force_flush", wraps=provider.force_flush
+        ) as force_flush:
             with self.assertLogs(tracing._LOGGER, level="WARNING") as logs:
                 with recorder.query_trace(QuerySource.INTERNAL):
                     pass
@@ -282,7 +292,9 @@ class ObservabilityTracingTest(unittest.TestCase):
         self.assertIn("stage=exporter_export", output)
         self.assertIn("stage=exporter_shutdown", output)
 
-    def test_safe_exporter_returns_failure_without_propagating_exporter_exception(self) -> None:
+    def test_safe_exporter_returns_failure_without_propagating_exporter_exception(
+        self,
+    ) -> None:
         class BrokenExporter:
             def export(self, spans):
                 raise RuntimeError("secret-export")

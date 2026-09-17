@@ -632,10 +632,6 @@ def _request_shape(query: ValidatedSemanticQuery) -> RequestShape:
 
 def _exception_reason(exc: Exception, fallback: str) -> str:
     reason = getattr(exc, "reason", None)
-    if (
-        isinstance(reason, str)
-        and reason.strip()
-        and reason.strip() != "LLM_ERROR"
-    ):
+    if isinstance(reason, str) and reason.strip() and reason.strip() != "LLM_ERROR":
         return reason.strip()[:128]
     return fallback

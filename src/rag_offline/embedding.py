@@ -188,9 +188,7 @@ def _parse_output(
     dense_rows = _get_output_value(output, "dense_vecs")
     sparse_rows = _get_output_value(output, "lexical_weights")
     if dense_rows is None or sparse_rows is None:
-        raise EmbeddingError(
-            "Embedding 输出必须同时包含 dense_vecs 和 lexical_weights"
-        )
+        raise EmbeddingError("Embedding 输出必须同时包含 dense_vecs 和 lexical_weights")
     if len(dense_rows) != expected_count or len(sparse_rows) != expected_count:
         raise EmbeddingError("Embedding 输出数量与输入文本数量不一致")
 
@@ -241,9 +239,7 @@ def _parse_sparse(value: Any, index: int) -> SparseEmbedding:
             key = int(raw_key)
             weight = float(raw_value)
             if not math.isfinite(weight):
-                raise EmbeddingError(
-                    f"lexical_weights 第 {index} 条包含非有限数值"
-                )
+                raise EmbeddingError(f"lexical_weights 第 {index} 条包含非有限数值")
             if weight != 0.0:
                 normalized[key] = weight
     except (TypeError, ValueError) as exc:

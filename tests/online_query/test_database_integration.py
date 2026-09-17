@@ -33,8 +33,7 @@ class DatabaseIntegrationTest(unittest.TestCase):
     def test_empty_result_is_success(self) -> None:
         result = self.executor.execute(
             ValidatedSQL(
-                "SELECT order_id FROM mart_sales.fct_sales_order_line "
-                "WHERE false"
+                "SELECT order_id FROM mart_sales.fct_sales_order_line WHERE false"
             )
         )
 
@@ -44,8 +43,7 @@ class DatabaseIntegrationTest(unittest.TestCase):
     def test_real_query_is_truncated_to_100_rows(self) -> None:
         result = self.executor.execute(
             ValidatedSQL(
-                "SELECT order_id FROM mart_sales.fct_sales_order_line "
-                "ORDER BY order_id"
+                "SELECT order_id FROM mart_sales.fct_sales_order_line ORDER BY order_id"
             )
         )
 
@@ -55,9 +53,7 @@ class DatabaseIntegrationTest(unittest.TestCase):
     def test_read_only_transaction_blocks_write_even_after_guard(self) -> None:
         with self.assertRaises(DatabaseError):
             self.executor.execute(
-                ValidatedSQL(
-                    "DELETE FROM mart_sales.fct_sales_order_line WHERE false"
-                )
+                ValidatedSQL("DELETE FROM mart_sales.fct_sales_order_line WHERE false")
             )
 
 

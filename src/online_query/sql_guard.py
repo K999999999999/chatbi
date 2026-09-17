@@ -204,8 +204,7 @@ def _column_identity(
         candidates = {
             table
             for table in set().union(*bindings.values())
-            if column.name
-            in context.allowed_columns.get(table, frozenset())
+            if column.name in context.allowed_columns.get(table, frozenset())
         }
         if len(candidates) != 1:
             raise SQLRejectedError("SQL 未限定字段无法唯一解析")

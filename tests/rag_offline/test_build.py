@@ -146,7 +146,9 @@ class BuildTest(unittest.TestCase):
         self.assertTrue(summary.published)
         self.assertEqual(len(embedding.document_texts), 7)
         self.assertTrue(all(text.strip() for text in embedding.document_texts))
-        self.assertTrue(all("doc_type" not in text for text in embedding.document_texts))
+        self.assertTrue(
+            all("doc_type" not in text for text in embedding.document_texts)
+        )
 
     def test_failure_keeps_previous_current_pointer(self) -> None:
         with TemporaryDirectory() as directory:
@@ -162,9 +164,7 @@ class BuildTest(unittest.TestCase):
                 output_dir=output_root,
                 build_id="build-good",
             )
-            pointer_before = (output_root / "current.json").read_text(
-                encoding="utf-8"
-            )
+            pointer_before = (output_root / "current.json").read_text(encoding="utf-8")
             failed_store = _FakeStore(fail_when_name_contains="_column__")
             second = build_offline_assets(
                 _FakeEmbedding(),
@@ -174,9 +174,7 @@ class BuildTest(unittest.TestCase):
                 output_dir=output_root,
                 build_id="build-bad",
             )
-            pointer_after = (output_root / "current.json").read_text(
-                encoding="utf-8"
-            )
+            pointer_after = (output_root / "current.json").read_text(encoding="utf-8")
 
         self.assertTrue(first.published)
         self.assertEqual(second.status, "FAILED")

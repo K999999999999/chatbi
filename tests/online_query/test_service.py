@@ -27,9 +27,7 @@ class ServiceTest(unittest.TestCase):
                 '{"tables": [{"schema_name": "mart_sales", '
                 '"table_name": "fct_sales_order_line"}]}'
             ),
-            allowed_tables=frozenset(
-                {"mart_sales.fct_sales_order_line"}
-            ),
+            allowed_tables=frozenset({"mart_sales.fct_sales_order_line"}),
             allowed_columns={
                 "mart_sales.fct_sales_order_line": frozenset(
                     {"order_id", "order_status"}

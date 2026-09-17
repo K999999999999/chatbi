@@ -82,10 +82,7 @@ class DatabaseTest(unittest.TestCase):
         cursor.execute.assert_has_calls(
             [
                 call("SET LOCAL statement_timeout = '10s'"),
-                call(
-                    "SELECT order_id FROM mart_sales.fct_sales_order_line "
-                    "WHERE 1=0"
-                ),
+                call("SELECT order_id FROM mart_sales.fct_sales_order_line WHERE 1=0"),
             ]
         )
         cursor.fetchmany.assert_called_once_with(101)

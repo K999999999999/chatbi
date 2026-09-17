@@ -34,9 +34,7 @@ class RetrievalServiceTest(unittest.TestCase):
         self.dynamic_context = QueryContext(
             prompt_context="DYNAMIC CONTEXT",
             allowed_tables=frozenset({"mart_sales.dim_customer"}),
-            allowed_columns={
-                "mart_sales.dim_customer": frozenset({"customer_name"})
-            },
+            allowed_columns={"mart_sales.dim_customer": frozenset({"customer_name"})},
         )
         self.generator = Mock()
         self.generator.generate.return_value = (
@@ -85,7 +83,9 @@ class RetrievalServiceTest(unittest.TestCase):
         self.generator.generate.assert_not_called()
         self.executor.execute.assert_not_called()
 
-    def test_missing_relationship_or_candidate_returns_cannot_answer_before_llm(self) -> None:
+    def test_missing_relationship_or_candidate_returns_cannot_answer_before_llm(
+        self,
+    ) -> None:
         provider = Mock()
         service = self._service(provider)
 
@@ -177,7 +177,9 @@ class RetrievalServiceTest(unittest.TestCase):
         self.assertIsInstance(result, QuerySuccess)
         loader.assert_not_called()
 
-    def test_multi_metric_technical_failure_does_not_fallback_to_static_context(self) -> None:
+    def test_multi_metric_technical_failure_does_not_fallback_to_static_context(
+        self,
+    ) -> None:
         provider = Mock()
         provider.retrieve.return_value = OnlineRetrievalResult(
             status=RetrievalStatus.RETRIEVAL_UNAVAILABLE,
@@ -187,9 +189,7 @@ class RetrievalServiceTest(unittest.TestCase):
         )
         service = self._service(provider)
 
-        result = service.query(
-            QueryRequest(question="按客户类型统计销售额和毛利率")
-        )
+        result = service.query(QueryRequest(question="按客户类型统计销售额和毛利率"))
 
         self._assert_failure(result, QueryErrorCode.CONTEXT_ERROR)
         self.generator.generate.assert_not_called()
@@ -201,20 +201,22 @@ class RetrievalServiceTest(unittest.TestCase):
             FallbackPolicy.FAIL_CLOSED,
         )
 
-    def test_multi_metric_provider_exception_does_not_fallback_to_static_context(self) -> None:
+    def test_multi_metric_provider_exception_does_not_fallback_to_static_context(
+        self,
+    ) -> None:
         provider = Mock()
         provider.retrieve.side_effect = RuntimeError("qdrant unavailable")
         service = self._service(provider)
 
-        result = service.query(
-            QueryRequest(question="按客户类型统计销售额和毛利率")
-        )
+        result = service.query(QueryRequest(question="按客户类型统计销售额和毛利率"))
 
         self._assert_failure(result, QueryErrorCode.CONTEXT_ERROR)
         self.generator.generate.assert_not_called()
         self.executor.execute.assert_not_called()
 
-    def test_successful_provider_context_is_used_without_service_side_shape_branch(self) -> None:
+    def test_successful_provider_context_is_used_without_service_side_shape_branch(
+        self,
+    ) -> None:
         provider = Mock()
         provider.retrieve.return_value = OnlineRetrievalResult(
             status=RetrievalStatus.SUCCESS,
@@ -223,9 +225,7 @@ class RetrievalServiceTest(unittest.TestCase):
         )
         service = self._service(provider)
 
-        result = service.query(
-            QueryRequest(question="按客户类型统计销售额和毛利率")
-        )
+        result = service.query(QueryRequest(question="按客户类型统计销售额和毛利率"))
 
         self.assertIsInstance(result, QuerySuccess)
         self.generator.generate.assert_called_once()
@@ -252,7 +252,9 @@ class RetrievalServiceTest(unittest.TestCase):
         self.assertIsInstance(result, QuerySuccess)
         self.executor.execute.assert_called_once()
 
-    def test_technical_failure_with_unavailable_static_context_is_context_error(self) -> None:
+    def test_technical_failure_with_unavailable_static_context_is_context_error(
+        self,
+    ) -> None:
         provider = Mock()
         provider.retrieve.return_value = OnlineRetrievalResult(
             status=RetrievalStatus.EMBEDDING_UNAVAILABLE

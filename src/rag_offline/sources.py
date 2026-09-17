@@ -233,9 +233,7 @@ def _resolve_column_reference(
     table = candidate_tables[0]
     table_key = _table_key(table)
     known_columns = {
-        column["column_name"]
-        for column in columns
-        if _table_key(column) == table_key
+        column["column_name"] for column in columns if _table_key(column) == table_key
     }
     if column_name not in known_columns:
         return None

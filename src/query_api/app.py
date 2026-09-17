@@ -179,7 +179,9 @@ def _result_response(
 
 class _FallbackScope:
     def __init__(self, trace_id: str | None = None) -> None:
-        self.trace_id = trace_id if _TRACE_ID_RE.fullmatch(trace_id or "") else uuid4().hex
+        self.trace_id = (
+            trace_id if _TRACE_ID_RE.fullmatch(trace_id or "") else uuid4().hex
+        )
 
     def __enter__(self) -> "_FallbackScope":
         return self
@@ -247,6 +249,8 @@ def _request_id_from_header(value: str | None) -> str:
 
 def _request_id_from_state(request: Request) -> str:
     value = getattr(request.state, "request_id", None)
-    return value if isinstance(value, str) and value.strip() else _request_id_from_header(
-        request.headers.get("X-Request-ID")
+    return (
+        value
+        if isinstance(value, str) and value.strip()
+        else _request_id_from_header(request.headers.get("X-Request-ID"))
     )

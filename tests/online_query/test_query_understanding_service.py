@@ -31,9 +31,7 @@ class QueryUnderstandingServiceTest(unittest.TestCase):
         self.context = QueryContext(
             prompt_context="DYNAMIC CONTEXT",
             allowed_tables=frozenset({"mart_sales.dim_customer"}),
-            allowed_columns={
-                "mart_sales.dim_customer": frozenset({"customer_name"})
-            },
+            allowed_columns={"mart_sales.dim_customer": frozenset({"customer_name"})},
         )
         self.generator = Mock()
         self.generator.generate.return_value = (
@@ -59,7 +57,8 @@ class QueryUnderstandingServiceTest(unittest.TestCase):
         )
         events: list[str] = []
         self.adapter.understand.side_effect = lambda question: (
-            events.append("understand") or _candidate(
+            events.append("understand")
+            or _candidate(
                 query_type="metric_analysis",
                 subjects=("销售",),
                 metrics=("销售额", "毛利率"),
@@ -95,7 +94,9 @@ class QueryUnderstandingServiceTest(unittest.TestCase):
         prompt = self.generator.generate.call_args.args[0]
         self.assertIn('"metrics":["销售额","毛利率"]', prompt)
 
-    def test_query_understanding_failure_stops_before_retrieval_sql_and_database(self) -> None:
+    def test_query_understanding_failure_stops_before_retrieval_sql_and_database(
+        self,
+    ) -> None:
         provider = Mock()
         self.adapter.understand.side_effect = LLMError("provider detail")
         service = self._service(provider)
@@ -130,7 +131,9 @@ class QueryUnderstandingServiceTest(unittest.TestCase):
         self.generator.generate.assert_not_called()
         self.executor.execute.assert_not_called()
 
-    def test_missing_query_understanding_adapter_is_online_configuration_error(self) -> None:
+    def test_missing_query_understanding_adapter_is_online_configuration_error(
+        self,
+    ) -> None:
         provider = Mock()
         service = OnlineQueryService(
             self.generator,

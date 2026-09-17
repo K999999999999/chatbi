@@ -93,9 +93,7 @@ def _build_join_constraints(
             )
         ).to_dict()
     except RelationshipGraphError as exc:
-        raise ContextLoadError(
-            f"relationships 无法构建安全关系图：{exc}"
-        ) from None
+        raise ContextLoadError(f"relationships 无法构建安全关系图：{exc}") from None
 
     unique_keys: dict[tuple[str, tuple[str, ...]], str] = {}
     for section, prefix in (
@@ -105,9 +103,7 @@ def _build_join_constraints(
         for record in graph[section]:
             table = f"{record['schema_name']}.{record['table_name']}"
             columns = tuple(record["column_names"])
-            unique_keys[(table, columns)] = (
-                f"{prefix}:{record['constraint_name']}"
-            )
+            unique_keys[(table, columns)] = f"{prefix}:{record['constraint_name']}"
 
     constraints: list[JoinConstraint] = []
     for edge in graph["foreign_keys"]:

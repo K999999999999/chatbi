@@ -33,7 +33,7 @@ from .contracts import (
 )
 from .tracing_export import SafeExporter
 from .tracing_safety import (
-    _LOGGER,
+    _LOGGER,  # noqa: F401 - 保留测试和内部诊断使用的兼容名称。
     _SAFE_ERROR_TYPES,
     _SAFE_OUTCOMES,
     is_safe_error_code as _is_safe_error_code,
@@ -219,9 +219,9 @@ class OtelTraceRecorder:
             root_attributes = _safe_attributes(attributes)
             root_attributes["chatbi.request.source"] = _safe_source(source)
             # 内容采集开关只能来自受信任配置，调用方不能用同名属性覆盖。
-            root_attributes[
-                "chatbi.content_capture.enabled"
-            ] = self._config.content_capture_enabled
+            root_attributes["chatbi.content_capture.enabled"] = (
+                self._config.content_capture_enabled
+            )
             root = self._start_span("query.request", root_attributes)
             if root is None:
                 return _new_noop_root_scope()

@@ -95,7 +95,9 @@ def run_cli(
             trace_recorder = None
 
         if args.query_understanding:
-            state_reader = _read_git_state if git_state_reader is None else git_state_reader
+            state_reader = (
+                _read_git_state if git_state_reader is None else git_state_reader
+            )
             return _run_query_understanding_cli(
                 args,
                 source,
@@ -125,9 +127,9 @@ def run_cli(
                     "RAG_ONLINE_RETRIEVAL_ENABLED 已关闭，不能运行在线检索评测"
                 )
             if retrieval_factory is None:
-                provider_factory = lambda: _build_online_retrieval_provider(
-                    trace_recorder
-                )
+
+                def provider_factory() -> RetrievalProvider:
+                    return _build_online_retrieval_provider(trace_recorder)
             else:
                 provider_factory = retrieval_factory
             retrieval_provider = provider_factory()

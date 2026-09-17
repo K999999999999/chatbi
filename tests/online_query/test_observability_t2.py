@@ -76,7 +76,9 @@ class T2ObservabilityTest(unittest.TestCase):
         self.assertEqual(root.attributes["chatbi.request.id"], "req-t2-success")
         self.assertEqual(root.attributes["chatbi.request.source"], "INTERNAL")
         self.assertEqual(root.attributes["chatbi.outcome"], TraceOutcome.SUCCESS.value)
-        self.assertEqual({span.context.trace_id for span in spans}, {root.context.trace_id})
+        self.assertEqual(
+            {span.context.trace_id for span in spans}, {root.context.trace_id}
+        )
         self.assertTrue(all(span.parent is not None for span in spans[:-1]))
 
         guard = next(span for span in spans if span.name == "sql.guard")
@@ -123,7 +125,9 @@ class T2ObservabilityTest(unittest.TestCase):
                 if error_code == QueryErrorCode.CANNOT_ANSWER:
                     self.generator.generate.return_value = "CANNOT_ANSWER"
                 elif error_code == QueryErrorCode.SQL_REJECTED:
-                    self.generator.generate.return_value = "DELETE FROM mart_sales.fct_sales_order_line"
+                    self.generator.generate.return_value = (
+                        "DELETE FROM mart_sales.fct_sales_order_line"
+                    )
                 result = self._service().query(request)
                 self._assert_failure(result, error_code)
                 spans = self.exporter.get_finished_spans()
@@ -152,9 +156,27 @@ class T2ObservabilityTest(unittest.TestCase):
 
     def test_technical_failures_and_database_timeout_are_classified(self) -> None:
         scenarios = (
-            ("llm", self.generator, RuntimeError("provider-detail"), QueryErrorCode.LLM_ERROR, "llm.generate"),
-            ("database", self.executor, DatabaseError("db-detail"), QueryErrorCode.DATABASE_ERROR, "database.execute"),
-            ("timeout", self.executor, DatabaseQueryTimeout("timeout-detail"), QueryErrorCode.QUERY_TIMEOUT, "database.execute"),
+            (
+                "llm",
+                self.generator,
+                RuntimeError("provider-detail"),
+                QueryErrorCode.LLM_ERROR,
+                "llm.generate",
+            ),
+            (
+                "database",
+                self.executor,
+                DatabaseError("db-detail"),
+                QueryErrorCode.DATABASE_ERROR,
+                "database.execute",
+            ),
+            (
+                "timeout",
+                self.executor,
+                DatabaseQueryTimeout("timeout-detail"),
+                QueryErrorCode.QUERY_TIMEOUT,
+                "database.execute",
+            ),
         )
         for name, dependency, failure, error_code, span_name in scenarios:
             with self.subTest(name=name):
@@ -173,11 +195,13 @@ class T2ObservabilityTest(unittest.TestCase):
                     else TraceOutcome.TECHNICAL_FAILURE.value
                 )
                 self.assertEqual(failed.attributes["chatbi.outcome"], expected_outcome)
-                self.assertEqual(failed.attributes["chatbi.error_code"], error_code.value)
                 self.assertEqual(
-                    next(span for span in spans if span.name == "query.request").attributes[
-                        "chatbi.error_code"
-                    ],
+                    failed.attributes["chatbi.error_code"], error_code.value
+                )
+                self.assertEqual(
+                    next(
+                        span for span in spans if span.name == "query.request"
+                    ).attributes["chatbi.error_code"],
                     error_code.value,
                 )
                 self.generator.generate.side_effect = None
@@ -201,9 +225,13 @@ class T2ObservabilityTest(unittest.TestCase):
             for span in self.exporter.get_finished_spans()
             if span.name == "query.request"
         )
-        self.assertEqual(root.attributes["chatbi.outcome"], TraceOutcome.TECHNICAL_FAILURE.value)
+        self.assertEqual(
+            root.attributes["chatbi.outcome"], TraceOutcome.TECHNICAL_FAILURE.value
+        )
 
-    def test_retrieval_technical_failure_is_fail_closed_without_static_fallback(self) -> None:
+    def test_retrieval_technical_failure_is_fail_closed_without_static_fallback(
+        self,
+    ) -> None:
         provider = Mock()
         provider.retrieve.return_value = OnlineRetrievalResult(
             status=RetrievalStatus.RETRIEVAL_UNAVAILABLE,
@@ -230,7 +258,9 @@ class T2ObservabilityTest(unittest.TestCase):
             retrieval.attributes["chatbi.retrieval.fallback_policy"],
             FallbackPolicy.FAIL_CLOSED.value,
         )
-        self.assertEqual(retrieval.attributes["chatbi.retrieval.status"], "RETRIEVAL_UNAVAILABLE")
+        self.assertEqual(
+            retrieval.attributes["chatbi.retrieval.status"], "RETRIEVAL_UNAVAILABLE"
+        )
         self.assertFalse(retrieval.attributes["chatbi.retrieval.fallback_used"])
         self.assertEqual(
             retrieval.attributes["chatbi.outcome"],
@@ -278,15 +308,15 @@ class T2ObservabilityTest(unittest.TestCase):
         expected = self._service().query(request)
         self.generator.reset_mock()
         self.executor.reset_mock()
-        actual = self._service(trace_recorder=BrokenRecorder()).query(
-            request
-        )
+        actual = self._service(trace_recorder=BrokenRecorder()).query(request)
 
         self.assertEqual(actual, expected)
         self.generator.generate.assert_called_once()
         self.executor.execute.assert_called_once()
 
-    def _service(self, provider: Mock | None = None, *, trace_recorder=None) -> OnlineQueryService:
+    def _service(
+        self, provider: Mock | None = None, *, trace_recorder=None
+    ) -> OnlineQueryService:
         return OnlineQueryService(
             self.generator,
             self.executor,

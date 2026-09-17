@@ -30,9 +30,7 @@ class ServiceDatabaseIntegrationTest(unittest.TestCase):
         context = load_query_context()
         root = Path(__file__).resolve().parents[2]
         metrics = json.loads(
-            (root / "src" / "semantic" / "metrics.json").read_text(
-                encoding="utf-8"
-            )
+            (root / "src" / "semantic" / "metrics.json").read_text(encoding="utf-8")
         )
         completed_orders_sql = metrics[0]["sql_template"]
         executor = PsycopgQueryExecutor.from_env()
@@ -71,14 +69,10 @@ class ServiceIntegrationTest(unittest.TestCase):
         )
         root = Path(__file__).resolve().parents[2]
         metrics = json.loads(
-            (root / "src" / "semantic" / "metrics.json").read_text(
-                encoding="utf-8"
-            )
+            (root / "src" / "semantic" / "metrics.json").read_text(encoding="utf-8")
         )
         completed_orders_sql = metrics[0]["sql_template"]
-        expected = executor.execute(
-            validate_sql(completed_orders_sql, context)
-        )
+        expected = executor.execute(validate_sql(completed_orders_sql, context))
 
         result = service.query(
             QueryRequest(

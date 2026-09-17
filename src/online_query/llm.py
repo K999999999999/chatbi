@@ -129,9 +129,7 @@ class LangChainSQLGenerator:
             ("gen_ai.usage.output_tokens", "output_tokens", "completion_tokens"),
             ("gen_ai.usage.total_tokens", "total_tokens", "total_tokens"),
         ):
-            value = _valid_non_negative_int(
-                _mapping_value(usage_metadata, usage_key)
-            )
+            value = _valid_non_negative_int(_mapping_value(usage_metadata, usage_key))
             if value is None:
                 value = _valid_non_negative_int(
                     _mapping_value(token_usage, fallback_key)

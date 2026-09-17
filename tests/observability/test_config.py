@@ -45,9 +45,7 @@ class ObservabilityConfigTest(unittest.TestCase):
             {
                 "CHATBI_RUNTIME_ENV": "local",
                 "CHATBI_TRACE_CONTENT_ENABLED": "true",
-                "OTEL_RESOURCE_ATTRIBUTES": (
-                    "deployment.environment.name=production"
-                ),
+                "OTEL_RESOURCE_ATTRIBUTES": ("deployment.environment.name=production"),
             }
         )
 

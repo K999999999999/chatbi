@@ -49,7 +49,9 @@ class QdrantAssetStore:
             try:
                 client = QdrantClient(path=path)
             except Exception as exc:
-                raise QdrantStoreError(f"无法打开 Qdrant 本地目录 {path}：{exc}") from exc
+                raise QdrantStoreError(
+                    f"无法打开 Qdrant 本地目录 {path}：{exc}"
+                ) from exc
             return cls(client)
         if not url:
             raise QdrantStoreError("Qdrant 必须配置 url 或 path")
@@ -149,7 +151,9 @@ class QdrantAssetStore:
             value = _field(result, "count")
             return int(value)
         except Exception as exc:
-            raise QdrantStoreError(f"读取集合数量失败 {collection_name}：{exc}") from exc
+            raise QdrantStoreError(
+                f"读取集合数量失败 {collection_name}：{exc}"
+            ) from exc
 
     def scroll_payloads(
         self,
@@ -180,20 +184,14 @@ class QdrantAssetStore:
                 ) from exc
 
             if not isinstance(response, tuple) or len(response) != 2:
-                raise QdrantStoreError(
-                    f"集合 {collection_name} 返回了无效 Scroll 响应"
-                )
+                raise QdrantStoreError(f"集合 {collection_name} 返回了无效 Scroll 响应")
             points, next_offset = response
             if not isinstance(points, Sequence) or isinstance(points, (str, bytes)):
-                raise QdrantStoreError(
-                    f"集合 {collection_name} 返回了无效 Scroll 记录"
-                )
+                raise QdrantStoreError(f"集合 {collection_name} 返回了无效 Scroll 记录")
             for point in points:
                 payload = _field(point, "payload", {}) or {}
                 if not isinstance(payload, Mapping):
-                    raise QdrantStoreError(
-                        f"集合 {collection_name} 返回了无效 payload"
-                    )
+                    raise QdrantStoreError(f"集合 {collection_name} 返回了无效 payload")
                 payloads.append(dict(payload))
 
             if next_offset is None:
