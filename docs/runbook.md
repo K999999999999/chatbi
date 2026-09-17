@@ -279,6 +279,20 @@ git status --short --branch
 uv run --env-file .env python -m src.evaluation --online-retrieval
 ```
 
+### 8.1 Worktree 与本地 RAG 资产
+
+`.env`、`data/rag/` 和 `models/bge-m3/` 是本地 ignored（被 Git 忽略）资产，`git worktree` 或干净 clone 只会取得 Git 已跟踪的代码，不会自动复制这些文件。进入新的 worktree 运行真实评测前，先确认当前环境中的资产存在：
+
+```powershell
+Test-Path -LiteralPath '.env'
+Test-Path -LiteralPath 'data/rag/current.json'
+Test-Path -LiteralPath 'models/bge-m3'
+```
+
+如果代码位于新的 worktree，但 RAG 资产保存在已有主工作区，应将 `RAG_OUTPUT_DIR` 和 `RAG_MODEL_DIR` 指向主工作区的绝对路径；不要让相对路径在新 worktree 中解析出另一份模型路径。`.env` 可以继续通过本机环境或评测命令注入，不要复制到 Git。
+
+`--online-retrieval` 会在执行标准案例前完成一次 RAG Preflight（RAG 前置检查）。如果发布指针、Manifest、Embedding Model、向量集合或运行时依赖不可用，评测会直接输出单个前置错误并退出，不会把所有案例伪装成业务失败。
+
 指定历史报告进行回退比较：
 
 ```powershell
