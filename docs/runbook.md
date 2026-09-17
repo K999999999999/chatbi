@@ -252,7 +252,7 @@ PR（Pull Request，合并请求）不按固定 commit 数量创建。一个 PR 
 → Push 并创建或更新 PR
 ```
 
-用户确认前，Agent 不 Push、不创建 PR。确认后如果完整 E2E 失败，不提交 PR；修复后必须重新形成 candidate commit 并重新验证。完整 E2E 通过后又修改 Retrieval、Prompt、RAG、LLM 或 Evaluation cases 等行为代码时，必须重新运行。
+Agent 的提醒必须明确说明：用户这一次确认会授权先执行本地最终验收，并且在完整 E2E 通过后 Push、创建或更新 PR。用户确认前，Agent 不 Push、不创建 PR。确认后如果完整 E2E 失败，不提交 PR；修复后必须重新形成 candidate commit 并重新验证。完整 E2E 通过后又修改 Retrieval、Prompt、RAG、LLM 或 Evaluation cases 等行为代码时，必须重新运行。
 
 最终 candidate commit 的本地检查可以使用：
 
