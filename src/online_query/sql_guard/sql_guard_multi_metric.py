@@ -5,6 +5,14 @@ from sqlglot.errors import SqlglotError
 
 from ..contracts import QueryContext
 from .sql_guard_errors import SQLRejectedError
+from .sql_guard_scope import (
+    _canonical_expression_sql,
+    _constraint_pairs,
+    _join_pairs,
+    _multi_conjuncts,
+    _qualified_table_ref,
+    _table_bindings,
+)
 
 
 def validate_multi_metric_expression(
@@ -278,58 +286,3 @@ def _validate_multi_metric_output(
             raise SQLRejectedError(
                 f"多指标 SQL 未按认证公式实现：{constraint.metric_name}"
             )
-
-
-def _table_bindings(expression: exp.Select) -> dict[str, set[str]]:
-    from .sql_guard import _table_bindings as implementation
-
-    return implementation(expression)
-
-
-def _qualified_table_ref(table: exp.Table) -> str:
-    from .sql_guard import _qualified_table_ref as implementation
-
-    return implementation(table)
-
-
-def _join_pairs(
-    condition: exp.Expression,
-    bindings: dict[str, set[str]],
-    context: QueryContext,
-) -> frozenset[tuple[tuple[str, str], tuple[str, str]]]:
-    from .sql_guard import _join_pairs as implementation
-
-    return implementation(condition, bindings, context)
-
-
-def _constraint_pairs(constraint: object) -> frozenset[tuple[tuple[str, str], tuple[str, str]]]:
-    from .sql_guard import _constraint_pairs as implementation
-
-    return implementation(constraint)
-
-
-def _canonical_expression_sql(
-    expression: exp.Expression,
-    *,
-    bindings: dict[str, set[str]],
-    context: QueryContext,
-    default_table: str | None = None,
-    aliases_are_default: bool = False,
-) -> str:
-    from .sql_guard import _canonical_expression_sql as implementation
-
-    return implementation(
-        expression,
-        bindings=bindings,
-        context=context,
-        default_table=default_table,
-        aliases_are_default=aliases_are_default,
-    )
-
-
-def _multi_conjuncts(
-    condition: exp.Expression | None,
-) -> tuple[exp.Expression, ...]:
-    from .sql_guard import _multi_conjuncts as implementation
-
-    return implementation(condition)
