@@ -6,8 +6,6 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from src.rag_offline import (
-    DEFAULT_METRICS_PATH,
-    DEFAULT_STRUCTURE_DIR,
     SourceLoadError,
     load_facts,
 )
@@ -20,7 +18,13 @@ class SourceLoadingTest(unittest.TestCase):
         self.assertEqual(len(facts.tables), 7)
         self.assertEqual(len(facts.columns), 69)
         self.assertEqual(len(facts.relationships), 25)
-        self.assertEqual(len(facts.metrics), 5)
+        self.assertEqual(len(facts.metrics), 6)
+
+        line_count = next(
+            metric for metric in facts.metrics if metric["name"] == "已完成订单明细行数"
+        )
+        self.assertEqual(line_count["formula"], "COUNT(*)")
+        self.assertEqual(line_count["aliases"], ("订单明细行数",))
 
     def test_loads_valid_temporary_facts(self) -> None:
         with TemporaryDirectory() as directory:

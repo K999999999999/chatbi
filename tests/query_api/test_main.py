@@ -42,9 +42,7 @@ class QueryApiIntegrationTest(TestCase):
     def test_http_query_uses_real_online_query_service_chain(self) -> None:
         root = Path(__file__).resolve().parents[2]
         metrics = json.loads(
-            (root / "src" / "semantic" / "metrics.json").read_text(
-                encoding="utf-8"
-            )
+            (root / "src" / "semantic" / "metrics.json").read_text(encoding="utf-8")
         )
         sql = metrics[0]["sql_template"]
         generator = _FixedSQLGenerator(sql)

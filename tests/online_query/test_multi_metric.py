@@ -7,53 +7,45 @@ from src.online_query.contracts import (
     FallbackPolicy,
     MetricHit,
     MetricPlanStatus,
+    RetrievalRequest,
     RequestShape,
 )
+from src.online_query.query_understanding import (
+    QueryType,
+    ValidatedSemanticQuery,
+)
 from src.online_query.retrieval.multi_metric import (
-    build_retrieval_request,
-    classify_request_shape,
     plan_retrieved_metrics,
 )
 
 
 class MultiMetricPlanningTest(unittest.TestCase):
     def test_explicit_multi_shape_is_fail_closed(self) -> None:
-        request = build_retrieval_request(
-            "按客户类型统计已完成订单数、人民币销售额和毛利率"
+        request = _request(
+            "按客户类型统计已完成订单数、人民币销售额和毛利率",
+            metrics=("已完成订单数", "人民币销售额", "毛利率"),
         )
 
         self.assertEqual(request.request_shape, RequestShape.EXPLICIT_MULTI)
         self.assertEqual(request.fallback_policy, FallbackPolicy.FAIL_CLOSED)
 
-    def test_grouping_list_and_text_match_are_not_multi_metric(self) -> None:
-        cases = (
+    def test_shape_comes_from_structured_metric_count(self) -> None:
+        request = _request(
             "查询客户类型和销售区域",
-            "客户名称中包含毛利率和销售额",
-            "按客户类型和销售区域统计毛利率",
+            metrics=("销售额", "毛利率"),
+            dimensions=("客户类型", "销售区域"),
         )
 
-        for question in cases:
-            with self.subTest(question=question):
-                self.assertEqual(
-                    classify_request_shape(question),
-                    RequestShape.BASELINE,
-                )
+        self.assertEqual(request.request_shape, RequestShape.EXPLICIT_MULTI)
 
-    def test_unsupported_or_separate_scope_is_possible_multi(self) -> None:
-        cases = (
-            "不要销售额和毛利率",
+    def test_unsupported_multi_scope_is_not_guessed_by_retrieval(self) -> None:
+        request = _request(
             "分别查询销售额和毛利率",
-            "3月销售额和4月毛利率",
+            metrics=("销售额", "毛利率"),
         )
 
-        for question in cases:
-            with self.subTest(question=question):
-                request = build_retrieval_request(question)
-                self.assertEqual(request.request_shape, RequestShape.POSSIBLE_MULTI)
-                self.assertEqual(
-                    request.fallback_policy,
-                    FallbackPolicy.FAIL_CLOSED,
-                )
+        self.assertEqual(request.request_shape, RequestShape.EXPLICIT_MULTI)
+        self.assertEqual(request.fallback_policy, FallbackPolicy.FAIL_CLOSED)
 
     def test_c05_maps_aliases_and_preserves_user_order(self) -> None:
         catalog = _catalog(
@@ -61,11 +53,12 @@ class MultiMetricPlanningTest(unittest.TestCase):
             _entry("人民币净销售额", aliases=("销售额", "人民币销售额")),
             _entry("毛利率", aliases=("毛利润率",)),
         )
-        request = build_retrieval_request(
-            "按客户类型统计已完成订单数、人民币销售额和毛利率"
+        request = _request(
+            "按客户类型统计已完成订单数、人民币销售额和毛利率",
+            metrics=("已完成订单数", "人民币销售额", "毛利率"),
         )
 
-        plan = plan_retrieved_metrics(request, catalog)
+        plan = _plan(request, catalog)
 
         self.assertEqual(plan.status, MetricPlanStatus.SUCCESS)
         self.assertEqual(
@@ -86,9 +79,9 @@ class MultiMetricPlanningTest(unittest.TestCase):
             _entry("人民币毛利", aliases=("毛利",)),
             _entry("毛利率"),
         )
-        request = build_retrieval_request("毛利和毛利率")
+        request = _request("毛利和毛利率", metrics=("毛利", "毛利率"))
 
-        plan = plan_retrieved_metrics(request, catalog)
+        plan = _plan(request, catalog)
 
         self.assertEqual(plan.status, MetricPlanStatus.SUCCESS)
         self.assertEqual(
@@ -100,9 +93,12 @@ class MultiMetricPlanningTest(unittest.TestCase):
         catalog = _catalog(
             _entry("人民币净销售额", aliases=("销售额", "人民币销售额")),
         )
-        request = build_retrieval_request("查询销售额和人民币销售额")
+        request = _request(
+            "查询销售额和人民币销售额",
+            metrics=("销售额", "人民币销售额"),
+        )
 
-        plan = plan_retrieved_metrics(request, catalog)
+        plan = _plan(request, catalog)
 
         self.assertEqual(plan.status, MetricPlanStatus.SUCCESS)
         self.assertEqual(len(plan.mentions), 2)
@@ -113,9 +109,12 @@ class MultiMetricPlanningTest(unittest.TestCase):
         catalog = _catalog(
             _entry("人民币净销售额", aliases=("销售额",)),
         )
-        request = build_retrieval_request("查询销售额和未登记退货率")
+        request = _request(
+            "查询销售额和未登记退货率",
+            metrics=("销售额", "未登记退货率"),
+        )
 
-        plan = plan_retrieved_metrics(request, catalog)
+        plan = _plan(request, catalog)
 
         self.assertEqual(plan.status, MetricPlanStatus.NO_METRIC)
         self.assertIn("未登记退货率", plan.reason)
@@ -123,11 +122,12 @@ class MultiMetricPlanningTest(unittest.TestCase):
     def test_more_than_five_distinct_metrics_is_rejected(self) -> None:
         entries = tuple(_entry(f"测试指标{index}数") for index in range(1, 7))
         catalog = _catalog(*entries)
-        request = build_retrieval_request(
-            "查询" + "、".join(entry.metric_name for entry in entries)
+        request = _request(
+            "查询" + "、".join(entry.metric_name for entry in entries),
+            metrics=tuple(entry.metric_name for entry in entries),
         )
 
-        plan = plan_retrieved_metrics(request, catalog)
+        plan = _plan(request, catalog)
 
         self.assertEqual(plan.status, MetricPlanStatus.TOO_MANY)
 
@@ -140,9 +140,9 @@ class MultiMetricPlanningTest(unittest.TestCase):
             "指标二数",
             filters=("x.channel = 'direct'", "x.order_status = 'completed'"),
         )
-        request = build_retrieval_request("查询指标一数和指标二数")
+        request = _request("查询指标一数和指标二数", metrics=("指标一数", "指标二数"))
 
-        plan = plan_retrieved_metrics(request, _catalog(first, second))
+        plan = _plan(request, _catalog(first, second))
 
         self.assertEqual(plan.status, MetricPlanStatus.SUCCESS)
 
@@ -156,11 +156,11 @@ class MultiMetricPlanningTest(unittest.TestCase):
 
         for conflicting in conflicts:
             with self.subTest(metric=conflicting):
-                request = build_retrieval_request("查询指标一数和指标二数")
-                plan = plan_retrieved_metrics(
-                    request,
-                    _catalog(base, conflicting),
+                request = _request(
+                    "查询指标一数和指标二数",
+                    metrics=("指标一数", "指标二数"),
                 )
+                plan = _plan(request, _catalog(base, conflicting))
                 self.assertEqual(
                     plan.status,
                     MetricPlanStatus.UNSUPPORTED_COMBINATION,
@@ -169,16 +169,16 @@ class MultiMetricPlanningTest(unittest.TestCase):
     def test_invalid_filter_asset_is_reported(self) -> None:
         first = _entry("指标一数")
         second = _entry("指标二数", filters=("not valid =",))
-        request = build_retrieval_request("查询指标一数和指标二数")
+        request = _request("查询指标一数和指标二数", metrics=("指标一数", "指标二数"))
 
-        plan = plan_retrieved_metrics(request, _catalog(first, second))
+        plan = _plan(request, _catalog(first, second))
 
         self.assertEqual(plan.status, MetricPlanStatus.INVALID_ASSET)
 
     def test_baseline_request_can_resolve_one_metric_from_hits(self) -> None:
-        request = build_retrieval_request("只查询毛利率")
+        request = _request("只查询毛利率", metrics=("毛利率",))
 
-        plan = plan_retrieved_metrics(request, _catalog(_entry("毛利率")))
+        plan = _plan(request, _catalog(_entry("毛利率")))
 
         self.assertEqual(plan.status, MetricPlanStatus.SUCCESS)
         self.assertEqual(len(plan.constraints), 1)
@@ -221,6 +221,42 @@ def _entry(
 
 def _catalog(*entries: MetricHit) -> tuple[MetricHit, ...]:
     return entries
+
+
+def _request(
+    question: str,
+    *,
+    metrics: tuple[str, ...],
+    dimensions: tuple[str, ...] = (),
+) -> RetrievalRequest:
+    query = ValidatedSemanticQuery(
+        query_type=(QueryType.METRIC_ANALYSIS if metrics else QueryType.ENTITY_LOOKUP),
+        subjects=("业务主题",),
+        metrics=metrics,
+        dimensions=dimensions,
+        time=None,
+        filters=(),
+        original_question=question,
+    )
+    return RetrievalRequest(
+        question=question,
+        request_shape=(
+            RequestShape.EXPLICIT_MULTI if len(metrics) >= 2 else RequestShape.BASELINE
+        ),
+        fallback_policy=FallbackPolicy.FAIL_CLOSED,
+        semantic_query=query,
+    )
+
+
+def _plan(
+    request: RetrievalRequest,
+    catalog: tuple[MetricHit, ...],
+):
+    assert request.semantic_query is not None
+    return plan_retrieved_metrics(
+        request,
+        tuple(catalog for _ in request.semantic_query.metrics),
+    )
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 """Online Retrieval（在线检索）三路检索、关系解析和上下文组装。"""
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager
 from typing import Any
 
 from src.observability.contracts import TraceRecorder
@@ -12,6 +13,7 @@ from ..contracts import (
     ColumnHit,
     FallbackPolicy,
     JoinConstraint,
+    JoinResolution,
     MetricConstraint,
     MetricHit,
     MetricPlanStatus,
@@ -25,7 +27,7 @@ from ..contracts import (
     RetrievalStatus,
     TableHit,
 )
-from .multi_metric import build_retrieval_request, plan_retrieved_metrics
+from .multi_metric import plan_retrieved_metrics
 from .rag_runtime import (
     AssetSnapshot,
     AssetUnavailableError,
@@ -44,17 +46,15 @@ from .relationship_graph import (
 )
 from .resource_retrieval import (
     ResourceRetrievalContractError,
-    _TimeField,
     _column_hits,
     _column_query,
     _contains_required_columns,
-    _has_metric_intent,
-    _metric_data_source,
     _metric_hits,
     _missing_required_column_details,
     _multi_column_query,
     _parse_time_field,
     _required_columns_many,
+    _table_query,
     _table_hits,
 )
 from .retrieval_context import assemble_context
@@ -65,21 +65,13 @@ from .retrieval_errors import (
 from .retrieval_selection import (
     candidate_table_hits,
     grouping_table_names,
-    grouping_text_from_question,
+    grouping_text_from_dimensions,
     requires_date_context,
     select_anchor,
     target_tables,
 )
-from .retrieval_results import failure as _failure
-from .retrieval_results import result as _result
-from .retrieval_trace import (
-    _TRACE_EVIDENCE_LIMIT,
-    candidate_trace_attributes as _candidate_trace_attributes,
-    join_trace_attributes as _join_trace_attributes,
-    qualified_filter_table as _qualified_filter_table,
-    safe_enrich_current as _safe_enrich_current,
-    safe_span as _safe_span,
-)
+
+_TRACE_EVIDENCE_LIMIT = 10
 
 
 class OnlineRetriever:
@@ -102,15 +94,11 @@ class OnlineRetriever:
             except Exception:
                 self._trace_recorder = None
 
-    def retrieve(self, question: str | RetrievalRequest) -> OnlineRetrievalResult:
-        """执行统一的 TABLE、COLUMN、METRIC 和关系解析流水线。"""
+    def retrieve(self, request: RetrievalRequest) -> OnlineRetrievalResult:
+        """消费结构化查询，执行 TABLE、COLUMN、METRIC 和关系解析流水线。"""
 
-        if isinstance(question, RetrievalRequest):
-            request = question
-        else:
-            if not isinstance(question, str) or not question.strip():
-                raise ValueError("检索问题不能为空")
-            request = build_retrieval_request(question)
+        if not isinstance(request, RetrievalRequest):
+            raise TypeError("OnlineRetriever.retrieve 需要 RetrievalRequest")
         return self._retrieve_request(request)
 
     def _retrieve_request(
@@ -119,10 +107,12 @@ class OnlineRetriever:
     ) -> OnlineRetrievalResult:
         """在同一条链路中处理 metrics = 0 / 1 / N。"""
 
+        if request.semantic_query is None:
+            raise ValueError("RetrievalRequest 缺少 ValidatedSemanticQuery")
         if not isinstance(request.question, str) or not request.question.strip():
             raise ValueError("检索问题不能为空")
-        question = request.question.strip()
-        grouping_text = grouping_text_from_question(question)
+        semantic_query = request.semantic_query
+        grouping_text = grouping_text_from_dimensions(semantic_query.dimensions)
         try:
             with _safe_span(self._trace_recorder, "asset.resolve"):
                 snapshot = self._runtime.get_snapshot()
@@ -155,20 +145,16 @@ class OnlineRetriever:
                 request=request,
             )
 
-        metric_intent = (
-            request.request_shape != RequestShape.BASELINE
-            or _has_metric_intent(question)
-        )
         metric_queries: tuple[MetricRetrievalEvidence, ...] = ()
         selected_tuple: tuple[MetricHit, ...] = ()
         constraints: tuple[MetricConstraint, ...] = ()
         try:
-            query_embedding = self._embed_query(snapshot, question)
+            query_embedding = self._embed_query(snapshot, _table_query(semantic_query))
             table_hits = _table_hits(
                 snapshot,
                 query_embedding,
                 self._config,
-                extra_queries=(grouping_text,) if grouping_text else (),
+                extra_queries=semantic_query.dimensions,
                 embed_query=lambda text: self._embed_query(snapshot, text),
                 search=lambda collection_name, query, **kwargs: self._search(
                     "table.search",
@@ -178,10 +164,10 @@ class OnlineRetriever:
                     **kwargs,
                 ),
             )
-            metric_hits = (
+            metric_hits_by_query = tuple(
                 _metric_hits(
                     snapshot,
-                    query_embedding,
+                    self._embed_query(snapshot, metric_text),
                     self._config,
                     search=lambda collection_name, query, **kwargs: self._search(
                         "metric.search",
@@ -191,9 +177,9 @@ class OnlineRetriever:
                         **kwargs,
                     ),
                 )
-                if metric_intent
-                else ()
+                for metric_text in semantic_query.metrics
             )
+            metric_hits = _merge_metric_hits(metric_hits_by_query)
         except EmbeddingError as exc:
             return _failure(
                 RetrievalStatus.EMBEDDING_UNAVAILABLE,
@@ -227,15 +213,19 @@ class OnlineRetriever:
             metric_hits=metric_hits,
         )
 
-        if metric_intent:
-            plan = plan_retrieved_metrics(request, metric_hits)
+        if semantic_query.metrics:
+            plan = plan_retrieved_metrics(request, metric_hits_by_query)
             metric_queries = tuple(
                 MetricRetrievalEvidence(
-                    requested_text=mention.requested_text,
-                    target_document_id=mention.document_id,
-                    hits=metric_hits,
+                    requested_text=requested_text,
+                    target_document_id=(
+                        plan.mentions[index].document_id
+                        if index < len(plan.mentions)
+                        else ""
+                    ),
+                    hits=metric_hits_by_query[index],
                 )
-                for mention in plan.mentions
+                for index, requested_text in enumerate(semantic_query.metrics)
             )
             evidence = RetrievalEvidence(
                 table_hits=table_hits,
@@ -326,7 +316,7 @@ class OnlineRetriever:
         try:
             time_field = (
                 _parse_time_field(selected_tuple[0])
-                if selected_tuple and requires_date_context(question)
+                if selected_tuple and requires_date_context(semantic_query)
                 else None
             )
             required = (
@@ -335,22 +325,22 @@ class OnlineRetriever:
                 else {}
             )
             candidate_tables = candidate_table_hits(
-                question,
+                semantic_query.dimensions,
                 table_hits,
                 metric_table,
                 time_field,
             )
             grouping_tables = grouping_table_names(
-                grouping_text,
+                semantic_query.dimensions,
                 table_hits,
                 metric_table,
             )
             if not selected_tuple:
-                column_query = question
+                column_query = _column_query(semantic_query, None)
             elif len(selected_tuple) == 1:
-                column_query = _column_query(question, selected_tuple[0])
+                column_query = _column_query(semantic_query, selected_tuple[0])
             else:
-                column_query = _multi_column_query(question, selected_tuple)
+                column_query = _multi_column_query(semantic_query, selected_tuple)
             column_hits = _column_hits(
                 snapshot,
                 candidate_tables,
@@ -564,7 +554,8 @@ class OnlineRetriever:
                     "chatbi.retrieval.column_count": len(final_fields),
                     "chatbi.retrieval.metric_count": len(selected_tuple),
                     "chatbi.retrieval.candidate.qualified_tables": tuple(
-                        hit.qualified_name for hit in final_tables[:_TRACE_EVIDENCE_LIMIT]
+                        hit.qualified_name
+                        for hit in final_tables[:_TRACE_EVIDENCE_LIMIT]
                     ),
                 },
             )
@@ -626,3 +617,214 @@ class OnlineRetriever:
                 _candidate_trace_attributes(hits, scope_table=qualified_table),
             )
             return hits
+
+
+@contextmanager
+def _safe_span(
+    recorder: TraceRecorder | None,
+    name: str,
+    attributes: Mapping[str, object] | None = None,
+) -> Iterator[Any]:
+    """创建内部 Retrieval Span；记录器失败时保持业务异常和返回值不变。"""
+
+    scope: Any = _NoopTraceScope()
+    try:
+        if recorder is not None:
+            scope = recorder.span(name, attributes=attributes)
+        scope.__enter__()
+    except Exception:
+        scope = _NoopTraceScope()
+        scope.__enter__()
+
+    try:
+        yield scope
+    except BaseException as exc:
+        try:
+            scope.__exit__(type(exc), exc, exc.__traceback__)
+        except Exception:
+            pass
+        raise
+    else:
+        try:
+            scope.__exit__(None, None, None)
+        except Exception:
+            pass
+
+
+class _NoopTraceScope:
+    def __enter__(self) -> "_NoopTraceScope":
+        return self
+
+    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> bool:
+        return False
+
+
+def _safe_enrich_current(
+    recorder: TraceRecorder | None,
+    attributes: Mapping[str, object],
+) -> None:
+    if recorder is None:
+        return
+    try:
+        recorder.enrich_current(attributes=attributes)
+    except Exception:
+        pass
+
+
+def _candidate_trace_attributes(
+    hits: Iterable[SearchHit],
+    *,
+    scope_table: str | None = None,
+) -> dict[str, object]:
+    """只提取有界的检索身份/排序证据，不读取正文或完整 Metadata。"""
+
+    materialized = tuple(hits)
+    evidence = materialized[:_TRACE_EVIDENCE_LIMIT]
+    attributes: dict[str, object] = {
+        "chatbi.retrieval.candidate_count": len(materialized),
+    }
+    if not evidence:
+        return attributes
+
+    attributes.update(
+        {
+            "chatbi.retrieval.candidate.document_ids": tuple(
+                hit.document_id for hit in evidence
+            ),
+            "chatbi.retrieval.candidate.ranks": tuple(range(1, len(evidence) + 1)),
+            "chatbi.retrieval.candidate.scores": tuple(
+                float(hit.score) for hit in evidence
+            ),
+        }
+    )
+    qualified_tables = tuple(
+        dict.fromkeys(
+            table
+            for hit in evidence
+            if (table := scope_table or _qualified_table_from_hit(hit)) is not None
+        )
+    )
+    if qualified_tables:
+        attributes["chatbi.retrieval.candidate.qualified_tables"] = qualified_tables
+    return attributes
+
+
+def _qualified_table_from_hit(hit: SearchHit) -> str | None:
+    metadata = hit.payload.get("metadata")
+    if not isinstance(metadata, Mapping):
+        return None
+    schema_name = metadata.get("schema_name")
+    table_name = metadata.get("table_name")
+    if not isinstance(schema_name, str) or not isinstance(table_name, str):
+        return None
+    if not schema_name.strip() or not table_name.strip():
+        return None
+    return f"{schema_name.strip()}.{table_name.strip()}"
+
+
+def _qualified_filter_table(
+    filter_payload: Mapping[str, str] | None,
+) -> str | None:
+    if not isinstance(filter_payload, Mapping):
+        return None
+    schema_name = filter_payload.get("schema_name")
+    table_name = filter_payload.get("table_name")
+    if not isinstance(schema_name, str) or not isinstance(table_name, str):
+        return None
+    if not schema_name.strip() or not table_name.strip():
+        return None
+    return f"{schema_name.strip()}.{table_name.strip()}"
+
+
+def _join_trace_attributes(resolution: JoinResolution) -> dict[str, object]:
+    paths = resolution.paths[:_TRACE_EVIDENCE_LIMIT]
+    return {
+        "chatbi.retrieval.join.edge_ids": tuple(
+            edge.edge_id for edge in resolution.joins[:_TRACE_EVIDENCE_LIMIT]
+        ),
+        "chatbi.retrieval.join.path_ids": tuple(
+            f"path:{index}" for index, _ in enumerate(paths, 1)
+        ),
+        "chatbi.retrieval.join.path_count": len(resolution.paths),
+    }
+
+
+def _merge_metric_hits(
+    metric_hits_by_query: tuple[tuple[MetricHit, ...], ...],
+) -> tuple[MetricHit, ...]:
+    best_by_document: dict[str, MetricHit] = {}
+    for hits in metric_hits_by_query:
+        for hit in hits:
+            previous = best_by_document.get(hit.document_id)
+            if previous is None or hit.score > previous.score:
+                best_by_document[hit.document_id] = hit
+    return tuple(
+        sorted(
+            best_by_document.values(), key=lambda item: (-item.score, item.document_id)
+        )
+    )
+
+
+def _result(
+    status: RetrievalStatus,
+    asset_version: str | None,
+    *,
+    tables: tuple[TableHit, ...] = (),
+    fields: tuple[ColumnHit, ...] = (),
+    metrics: tuple[MetricHit, ...] = (),
+    join_path: JoinResolution | None = None,
+    dynamic_schema: str = "",
+    indicator_context: str = "",
+    evidence: RetrievalEvidence | None = None,
+    warnings: tuple[str, ...] = (),
+    query_context: QueryContext | None = None,
+    request: RetrievalRequest | None = None,
+    internal_reason: str | None = None,
+    metric_constraints: tuple[MetricConstraint, ...] = (),
+    join_constraints: tuple[JoinConstraint, ...] = (),
+) -> OnlineRetrievalResult:
+    return OnlineRetrievalResult(
+        status=status,
+        request_shape=(
+            request.request_shape if request is not None else RequestShape.BASELINE
+        ),
+        fallback_policy=(
+            request.fallback_policy
+            if request is not None
+            else FallbackPolicy.FAIL_CLOSED
+        ),
+        internal_reason=internal_reason,
+        asset_version=asset_version,
+        tables=tables,
+        fields=fields,
+        metrics=metrics,
+        join_path=join_path,
+        dynamic_schema=dynamic_schema,
+        indicator_context=indicator_context,
+        evidence=evidence or RetrievalEvidence(),
+        warnings=warnings,
+        query_context=query_context,
+        metric_constraints=metric_constraints,
+        join_constraints=join_constraints,
+    )
+
+
+def _failure(
+    status: RetrievalStatus,
+    warning: str,
+    *,
+    asset_version: str | None = None,
+    evidence: RetrievalEvidence | None = None,
+    request: RetrievalRequest | None = None,
+    internal_reason: str | None = None,
+    metric_constraints: tuple[MetricConstraint, ...] = (),
+) -> OnlineRetrievalResult:
+    return _result(
+        status,
+        asset_version,
+        evidence=evidence,
+        warnings=(warning,),
+        request=request,
+        internal_reason=internal_reason,
+        metric_constraints=metric_constraints,
+    )

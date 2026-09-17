@@ -47,9 +47,7 @@ def assemble_context(
     final_fields = _final_column_hits(
         column_hits,
         resolution,
-        allowed_tables=frozenset(
-            table.qualified_name for table in final_tables
-        ),
+        allowed_tables=frozenset(table.qualified_name for table in final_tables),
     )
     dynamic_schema = _build_dynamic_schema(final_tables, final_fields, resolution)
     indicator_context = (
@@ -98,7 +96,8 @@ def _final_column_hits(
     allowed_tables: frozenset[str],
 ) -> tuple[ColumnHit, ...]:
     by_identity = {
-        (hit.qualified_table, hit.column_name): hit for hit in column_hits
+        (hit.qualified_table, hit.column_name): hit
+        for hit in column_hits
         if hit.qualified_table in allowed_tables
     }
     for edge in resolution.joins:
@@ -203,9 +202,7 @@ def _build_indicator_context(metric: MetricHit | None) -> str:
 
 
 def _build_multi_indicator_context(metrics: tuple[MetricHit, ...]) -> str:
-    value = {
-        "requested_metrics": [_indicator_value(metric) for metric in metrics]
-    }
+    value = {"requested_metrics": [_indicator_value(metric) for metric in metrics]}
     return json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
 
 
@@ -240,10 +237,7 @@ def _allowed_columns(fields: tuple[ColumnHit, ...]) -> dict[str, frozenset[str]]
     result: defaultdict[str, set[str]] = defaultdict(set)
     for field in fields:
         result[field.qualified_table].add(field.column_name)
-    return {
-        table: frozenset(columns)
-        for table, columns in sorted(result.items())
-    }
+    return {table: frozenset(columns) for table, columns in sorted(result.items())}
 
 
 def _json_value(value: Any) -> Any:

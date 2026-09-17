@@ -83,14 +83,14 @@ QueryRequest
 - 在线 RAG 的 Qdrant、Embedding、资产版本或关系图技术故障统一返回 `CONTEXT_ERROR`，不调用 LLM；业务资源缺失、关系不可达或关系歧义返回 `CANNOT_ANSWER`。实体类、单指标和多指标均遵循同一条 `metrics=0/1/N` 检索流程。
 - 静态事实文件修改后通过重启应用重新加载，当前不支持静态文件热更新；已发布 RAG 资产按 `current.json` 的新版本在后续请求中加载，不要求重启。
 - 发布资产或静态文件不存在、JSON 无法解析或内容完全为空时，不允许继续调用 LLM；无法建立合法上下文时返回 `CONTEXT_ERROR`。
-- 多指标最多支持用户明确请求的 3 个指标；全部请求指标必须覆盖并兼容，否则返回 `CANNOT_ANSWER`。指标依赖不在线展开，公式字段不由程序静默补入。
+- 多指标最多支持用户明确请求的 5 个指标；全部请求指标必须覆盖并兼容，否则返回 `CANNOT_ANSWER`。指标依赖不在线展开，公式字段不由程序静默补入。
 
 ## LLM 行为
 
 - 能回答时只返回一条 PostgreSQL SQL，不返回解释、Markdown、分析过程或多个候选。
 - 无法根据当前结构和指标回答时，触发 `CANNOT_ANSWER`，不得编造表、字段或指标。
 - 不使用 Few-shot、对话历史、自动修复、第二轮反思或多模型投票。
-- 当前不自动重试 LLM 调用。
+- Query Understanding 的 Provider 调用异常或超时最多重试一次；非法 JSON、结构化 Contract 错误和 `CANNOT_ANSWER` 不重试。SQLGenerator 保持不自动重试。
 
 ## SQL 安全规则
 
@@ -108,7 +108,7 @@ QueryRequest
 - LLM 调用超时：30 秒，超时返回 `LLM_ERROR`。
 - 数据库查询超时：10 秒，超时返回 `QUERY_TIMEOUT`。
 - 最多返回 100 行；执行端最多读取 101 行用于判断是否截断。
-- 当前不支持用户分页和自动重试。
+- 当前不支持用户分页；除 Query Understanding 的一次受控 Provider 重试外，SQL 生成、SQL Guard 和数据库执行不自动重试。
 
 ## 业务规则
 

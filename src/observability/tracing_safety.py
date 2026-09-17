@@ -79,6 +79,11 @@ _SAFE_ATTRIBUTE_RULES: dict[str, str] = {
     "chatbi.retrieval.join.edge_ids": "identifier_list",
     "chatbi.retrieval.join.path_ids": "identifier_list",
     "chatbi.retrieval.join.path_count": "count",
+    "chatbi.query_understanding.query_type": "identifier",
+    "chatbi.query_understanding.metric_count": "count",
+    "chatbi.query_understanding.filter_count": "count",
+    "chatbi.query_understanding.has_time": "boolean",
+    "chatbi.query_understanding.reason": "reason",
     "chatbi.prompt.length": "count",
     "chatbi.prompt.question_length": "count",
     "chatbi.prompt.context_length": "count",
@@ -96,6 +101,7 @@ _SAFE_ATTRIBUTE_RULES: dict[str, str] = {
 _SAFE_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _SAFE_HASH_RE = re.compile(r"^[0-9a-fA-F]{32,128}$")
 _SAFE_VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$")
+_SAFE_REASON_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _SAFE_GEN_AI_MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+@-]{0,127}$")
 _UNSAFE_GEN_AI_MODEL_RE = re.compile(
     r"(?:api[-_ ]?key|authorization|bearer|password|secret|"
@@ -128,7 +134,11 @@ def safe_attribute_value(value: Any, rule: str) -> Any:
     if rule == "boolean":
         return value if isinstance(value, bool) else None
     if rule in {"count", "gen_ai_count"}:
-        return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+        return (
+            value
+            if isinstance(value, int) and not isinstance(value, bool) and value >= 0
+            else None
+        )
     if rule in {"identifier_list", "count_list", "number_list"}:
         if not isinstance(value, (list, tuple)):
             return None
@@ -177,6 +187,8 @@ def safe_attribute_value(value: Any, rule: str) -> Any:
         return value if _SAFE_HASH_RE.fullmatch(value) else None
     if rule == "version":
         return value if _SAFE_VERSION_RE.fullmatch(value) else None
+    if rule == "reason":
+        return value if _SAFE_REASON_RE.fullmatch(value) else None
     if rule == "status":
         return value if _SAFE_IDENTIFIER_RE.fullmatch(value) else None
     return None
@@ -223,7 +235,8 @@ def safe_set_status(span: OTelSpan, outcome: str) -> None:
     try:
         status_code = (
             StatusCode.OK
-            if outcome in {
+            if outcome
+            in {
                 TraceOutcome.SUCCESS.value,
                 TraceOutcome.FALLBACK_SUCCESS.value,
             }

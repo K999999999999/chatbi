@@ -2,6 +2,7 @@
 
 import json
 import unittest
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -97,9 +98,7 @@ class EvaluationReportingTest(unittest.TestCase):
     def test_renders_human_readable_summary_without_baseline(self) -> None:
         from src.evaluation.reporting import create_report, render_markdown_report
 
-        run = self._run(
-            (CaseStatus.PASS, CaseStatus.FAIL, CaseStatus.INVALID_CASE)
-        )
+        run = self._run((CaseStatus.PASS, CaseStatus.FAIL, CaseStatus.INVALID_CASE))
         report = create_report(run, self._metadata())
 
         markdown = render_markdown_report(report)
@@ -111,9 +110,47 @@ class EvaluationReportingTest(unittest.TestCase):
             "有效案例执行准确率 50.00%。",
             markdown,
         )
-        self.assertIn("| C2 | simple | FAIL | 失败 |", markdown)
-        self.assertIn("| C3 | simple | INVALID_CASE | 失败 |", markdown)
+        self.assertIn("| C2 | simple | FAIL | 未说明 | 未说明 | 失败 |", markdown)
+        self.assertIn(
+            "| C3 | simple | INVALID_CASE | 未说明 | 未说明 | 失败 |",
+            markdown,
+        )
         self.assertIn("本次未执行自动基线比较", markdown)
+
+    def test_report_exposes_query_understanding_failure_stage(self) -> None:
+        from src.evaluation.reporting import create_report, render_markdown_report
+
+        run = self._run((CaseStatus.FAIL,))
+        run = replace(
+            run,
+            cases=(
+                replace(
+                    run.cases[0],
+                    failure_stage="query_understanding",
+                    internal_reason="QUERY_TYPE_UNKNOWN",
+                ),
+            ),
+        )
+
+        report = create_report(run, self._metadata())
+        markdown = render_markdown_report(report)
+
+        self.assertEqual(
+            report["summary"]["failure_stage_counts"],
+            {"query_understanding": 1},
+        )
+        self.assertEqual(
+            report["summary"]["internal_reason_counts"],
+            {"QUERY_TYPE_UNKNOWN": 1},
+        )
+        self.assertEqual(
+            report["cases"][0]["internal_reason"],
+            "QUERY_TYPE_UNKNOWN",
+        )
+        self.assertIn(
+            "| C1 | simple | FAIL | query_understanding | QUERY_TYPE_UNKNOWN | 失败 |",
+            markdown,
+        )
 
     def test_renders_regression_and_improvement_summary(self) -> None:
         from src.evaluation.reporting import create_report, render_markdown_report

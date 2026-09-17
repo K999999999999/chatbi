@@ -12,7 +12,9 @@ class ContextTest(unittest.TestCase):
     def setUp(self) -> None:
         load_query_context.cache_clear()
 
-    def test_loads_four_files_with_column_value_examples_and_caches_context(self) -> None:
+    def test_loads_four_files_with_column_value_examples_and_caches_context(
+        self,
+    ) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
             structure_dir, metrics_path = self._write_valid_context(root)
@@ -27,9 +29,7 @@ class ContextTest(unittest.TestCase):
             )
             self.assertEqual(
                 first.allowed_columns["mart_sales.fct_sales_order_line"],
-                frozenset(
-                    {"order_id", "net_sales_amount_cny", "order_status"}
-                ),
+                frozenset({"order_id", "net_sales_amount_cny", "order_status"}),
             )
             self.assertIn("relationships", first.prompt_context)
             self.assertIn("value_examples", first.prompt_context)
@@ -193,9 +193,7 @@ class ContextTest(unittest.TestCase):
             )
 
             relationships_path = structure_dir / "relationships.json"
-            relationships = json.loads(
-                relationships_path.read_text(encoding="utf-8")
-            )
+            relationships = json.loads(relationships_path.read_text(encoding="utf-8"))
             relationships.extend(
                 [
                     {

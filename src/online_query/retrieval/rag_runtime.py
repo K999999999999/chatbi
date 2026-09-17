@@ -198,7 +198,9 @@ def _validate_collections(
         if not store.collection_exists(name):
             raise AssetUnavailableError(f"发布集合不存在：{name}")
         item = raw_collections.get(collection)
-        expected_count = item.get("document_count") if isinstance(item, Mapping) else None
+        expected_count = (
+            item.get("document_count") if isinstance(item, Mapping) else None
+        )
         if not isinstance(expected_count, int) or expected_count <= 0:
             raise AssetUnavailableError(f"Manifest 缺少 {collection} 文档数量")
         if store.count(name) != expected_count:

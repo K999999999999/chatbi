@@ -1,9 +1,9 @@
 """使用 LangChain（语言链）调用 LLM（大模型）生成 SQL 候选。"""
 
-from collections.abc import Mapping
-from math import isfinite
 import os
 import re
+from collections.abc import Mapping
+from math import isfinite
 from typing import Protocol
 
 from langchain_openai import ChatOpenAI
@@ -13,6 +13,10 @@ from ..observability.contracts import TraceRecorder
 
 class LLMError(RuntimeError):
     """LLM 配置、调用或返回内容不满足最小契约。"""
+
+    def __init__(self, message: str, *, reason: str = "LLM_ERROR") -> None:
+        super().__init__(message)
+        self.reason = reason
 
 
 _MAX_LLM_TIMEOUT_SECONDS = 30.0
@@ -125,9 +129,7 @@ class LangChainSQLGenerator:
             ("gen_ai.usage.output_tokens", "output_tokens", "completion_tokens"),
             ("gen_ai.usage.total_tokens", "total_tokens", "total_tokens"),
         ):
-            value = _valid_non_negative_int(
-                _mapping_value(usage_metadata, usage_key)
-            )
+            value = _valid_non_negative_int(_mapping_value(usage_metadata, usage_key))
             if value is None:
                 value = _valid_non_negative_int(
                     _mapping_value(token_usage, fallback_key)

@@ -4,7 +4,6 @@ import unittest
 
 from src.observability.contracts import QuerySource
 from src.observability.tracing import create_in_memory_recorder
-from src.online_query.retrieval.multi_metric import build_retrieval_request
 from src.online_query.retrieval import OnlineRetriever
 from src.online_query.contracts import RetrievalStatus
 
@@ -22,6 +21,7 @@ from tests.online_query.test_retrieval import (
     _table,
     _column,
     _FakeStore,
+    _request,
 )
 
 
@@ -65,7 +65,14 @@ class T3ARetrievalObservabilityTest(unittest.TestCase):
         )
 
         with recorder.query_trace(QuerySource.INTERNAL):
-            result = retriever.retrieve("按销售区域统计毛利率")
+            result = retriever.retrieve(
+                _request(
+                    "按销售区域统计毛利率",
+                    metrics=("毛利率",),
+                    dimensions=("销售区域",),
+                    subjects=("销售",),
+                )
+            )
 
         self.assertEqual(result.status, RetrievalStatus.SUCCESS)
         spans = exporter.get_finished_spans()
@@ -82,7 +89,9 @@ class T3ARetrievalObservabilityTest(unittest.TestCase):
         for name in required:
             self.assertIn(name, names)
         self.assertEqual(names[-1], "query.request")
-        self.assertEqual({span.context.trace_id for span in spans}, {spans[-1].context.trace_id})
+        self.assertEqual(
+            {span.context.trace_id for span in spans}, {spans[-1].context.trace_id}
+        )
 
         table_search = next(span for span in spans if span.name == "table.search")
         self.assertEqual(table_search.attributes["chatbi.retrieval.candidate_count"], 3)
@@ -106,8 +115,11 @@ class T3ARetrievalObservabilityTest(unittest.TestCase):
         metrics = _multi_metrics()
         store = _CombinedMetricStore(_multi_tables(), _multi_columns(), metrics)
         recorder, exporter = create_in_memory_recorder()
-        request = build_retrieval_request(
-            "按客户类型统计已完成订单数、人民币销售额和毛利率"
+        request = _request(
+            "按客户类型统计已完成订单数、人民币销售额和毛利率",
+            metrics=("已完成订单数", "人民币销售额", "毛利率"),
+            dimensions=("客户类型",),
+            subjects=("销售",),
         )
         retriever = OnlineRetriever(
             _FakeRuntime(_snapshot(store, _FakeEmbedding(), _multi_graph())),
@@ -118,10 +130,16 @@ class T3ARetrievalObservabilityTest(unittest.TestCase):
             result = retriever.retrieve(request)
 
         self.assertEqual(result.status, RetrievalStatus.SUCCESS)
-        self.assertEqual(store.metric_query_count, 1)
+        self.assertEqual(store.metric_query_count, 3)
         self.assertEqual(
-            len([span for span in exporter.get_finished_spans() if span.name == "metric.search"]),
-            1,
+            len(
+                [
+                    span
+                    for span in exporter.get_finished_spans()
+                    if span.name == "metric.search"
+                ]
+            ),
+            3,
         )
 
     def test_trace_recorder_failure_is_fail_open(self) -> None:
@@ -140,7 +158,7 @@ class T3ARetrievalObservabilityTest(unittest.TestCase):
         result = OnlineRetriever(
             _FakeRuntime(_snapshot(store, _FakeEmbedding(), {"foreign_keys": []})),
             trace_recorder=BrokenRecorder(),
-        ).retrieve("列出所有客户")
+        ).retrieve(_request("列出所有客户", subjects=("客户",)))
 
         self.assertEqual(result.status, RetrievalStatus.SUCCESS)
 

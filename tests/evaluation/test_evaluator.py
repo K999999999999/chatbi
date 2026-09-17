@@ -167,9 +167,7 @@ class ResultComparisonTest(unittest.TestCase):
         reordered = self._data(("value",), ((2,), (1,)))
 
         self.assertTrue(results_match(reordered, expected))
-        self.assertFalse(
-            results_match(reordered, expected, order_sensitive=True)
-        )
+        self.assertFalse(results_match(reordered, expected, order_sensitive=True))
 
     def test_compares_nulls_and_non_numeric_values_exactly(self) -> None:
         from src.evaluation.evaluator import results_match

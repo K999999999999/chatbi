@@ -10,7 +10,7 @@ from pathlib import Path
 
 from src.online_query.contracts import QueryData
 
-from .runner import EvaluationRun
+from .runner import CaseStatus, EvaluationRun
 
 
 class ReportingError(RuntimeError):
@@ -98,6 +98,8 @@ def create_report(
             "invalid_cases": run.summary.invalid_cases,
             "execution_accuracy": run.summary.execution_accuracy,
             "category_accuracy": dict(run.summary.category_accuracy),
+            "failure_stage_counts": _failure_stage_counts(run),
+            "internal_reason_counts": _internal_reason_counts(run),
         },
         "cases": [
             {
@@ -107,6 +109,8 @@ def create_report(
                 "generated_sql": result.generated_sql,
                 "query_error_code": result.query_error_code,
                 "failure_reason": result.failure_reason,
+                "failure_stage": result.failure_stage,
+                "internal_reason": result.internal_reason,
                 "duration_ms": result.duration_ms,
                 "request_id": result.request_id,
                 "trace_id": result.trace_id,
@@ -148,19 +152,55 @@ def render_markdown_report(report: Mapping[str, object]) -> str:
             f"无效 {invalid} 条；有效案例执行准确率 {accuracy_text}。"
         ),
         "",
-        "## 分类准确率",
+        "## 失败阶段分布",
         "",
-        "| 分类 | 执行准确率 |",
-        "|---|---:|",
     ]
+    stage_counts = _object_mapping(summary.get("failure_stage_counts"))
+    if stage_counts is None:
+        raise ReportingError("报告失败阶段汇总结构无效")
+    if not stage_counts:
+        lines.append("没有记录失败阶段。")
+    else:
+        lines.extend(
+            [
+                "| 阶段 | 失败案例数 |",
+                "|---|---:|",
+            ]
+        )
+        for stage, count in sorted(stage_counts.items()):
+            lines.append(f"| {_markdown_cell(stage)} | {_markdown_cell(count)} |")
+
+    lines.extend(["", "## 内部原因分布", ""])
+    reason_counts = _object_mapping(summary.get("internal_reason_counts"))
+    if reason_counts is None:
+        raise ReportingError("报告内部原因汇总结构无效")
+    if not reason_counts:
+        lines.append("没有记录内部原因。")
+    else:
+        lines.extend(
+            [
+                "| 内部原因 | 案例数 |",
+                "|---|---:|",
+            ]
+        )
+        for reason, count in sorted(reason_counts.items()):
+            lines.append(f"| {_markdown_cell(reason)} | {_markdown_cell(count)} |")
+
+    lines.extend(
+        [
+            "",
+            "## 分类准确率",
+            "",
+            "| 分类 | 执行准确率 |",
+            "|---|---:|",
+        ]
+    )
 
     category_accuracy = _object_mapping(summary.get("category_accuracy"))
     if category_accuracy is None:
         raise ReportingError("报告分类汇总结构无效")
     for category, accuracy in sorted(category_accuracy.items()):
-        lines.append(
-            f"| {_markdown_cell(category)} | {_accuracy_text(accuracy)} |"
-        )
+        lines.append(f"| {_markdown_cell(category)} | {_accuracy_text(accuracy)} |")
 
     lines.extend(["", "## 链路关联", ""])
     lines.extend(
@@ -196,16 +236,23 @@ def render_markdown_report(report: Mapping[str, object]) -> str:
     else:
         lines.extend(
             [
-                "| 案例 | 分类 | 状态 | 原因 |",
-                "|---|---|---|---|",
+                "| 案例 | 分类 | 状态 | 阶段 | 内部原因 | 原因 |",
+                "|---|---|---|---|---|---|",
             ]
         )
         for case in non_pass_cases:
             lines.append(
-                "| {case_id} | {category} | {status} | {reason} |".format(
+                (
+                    "| {case_id} | {category} | {status} | {stage} | "
+                    "{internal_reason} | {reason} |"
+                ).format(
                     case_id=_markdown_cell(case.get("case_id")),
                     category=_markdown_cell(case.get("category")),
                     status=_markdown_cell(case.get("status")),
+                    stage=_markdown_cell(case.get("failure_stage") or "未说明"),
+                    internal_reason=_markdown_cell(
+                        case.get("internal_reason") or "未说明"
+                    ),
                     reason=_markdown_cell(case.get("failure_reason") or "未说明"),
                 )
             )
@@ -296,6 +343,24 @@ def compare_baseline(
     }
 
 
+def _failure_stage_counts(run: EvaluationRun) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in run.cases:
+        if case.status == CaseStatus.PASS or not case.failure_stage:
+            continue
+        counts[case.failure_stage] = counts.get(case.failure_stage, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _internal_reason_counts(run: EvaluationRun) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in run.cases:
+        if case.status == CaseStatus.PASS or not case.internal_reason:
+            continue
+        counts[case.internal_reason] = counts.get(case.internal_reason, 0) + 1
+    return dict(sorted(counts.items()))
+
+
 def write_report(report: Mapping[str, object], path: Path) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -355,10 +420,7 @@ def _hash_reference_results(results: Mapping[str, QueryData]) -> str:
         {
             "case_id": case_id,
             "column_count": len(data.columns),
-            "rows": [
-                [_canonical_value(value) for value in row]
-                for row in data.rows
-            ],
+            "rows": [[_canonical_value(value) for value in row] for row in data.rows],
             "truncated": data.truncated,
         }
         for case_id, data in sorted(results.items())
@@ -411,7 +473,9 @@ def _accuracy_text(value: object) -> str:
 
 
 def _markdown_cell(value: object) -> str:
-    return str(value if value is not None else "").replace("|", "\\|").replace("\n", " ")
+    return (
+        str(value if value is not None else "").replace("|", "\\|").replace("\n", " ")
+    )
 
 
 def _string_list(mapping: Mapping[str, object], field: str) -> list[str]:

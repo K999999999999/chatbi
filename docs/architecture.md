@@ -90,20 +90,16 @@ flowchart TB
         OInit["__init__.py<br/>模块公开入口"]
         Contracts["contracts.py<br/>请求、响应、错误码<br/>SQLGenerator / QueryExecutor 接口"]
         Service["service.py<br/>查询主流程总编排"]
-        ServiceRetrieval["service_retrieval.py<br/>Retrieval 上下文解析和失败映射"]
         QueryTrace["query_trace.py<br/>查询 Trace scope 和结果标记"]
         Context["context.py<br/>加载结构和指标文件"]
         Retrieval["retrieval.py<br/>OnlineRetriever 公共编排入口"]
         RetrievalSelection["retrieval_selection.py<br/>候选范围、分组和 Anchor"]
         RetrievalContext["retrieval_context.py<br/>最终资源闭包和 QueryContext"]
-        RetrievalResource["resource_retrieval.py<br/>TABLE / COLUMN / METRIC 检索与转换"]
-        RetrievalMetric["metric_requirements.py<br/>指标字段依赖和时间字段"]
-        MetricRequestShape["metric_request_shape.py<br/>多指标请求形态和列举解析"]
+        RetrievalResource["resource_retrieval.py<br/>TABLE / COLUMN / METRIC 检索"]
         RetrievalGraph["relationship_graph.py<br/>确定性关系图路径"]
         Prompt["prompt.py<br/>把问题和上下文组成 Prompt"]
         LLM["llm.py<br/>通过 LangChain 调用 LLM 生成 SQL"]
         Guard["sql_guard.py<br/>候选解析、范围和危险函数边界"]
-        GuardScope["sql_guard_scope.py<br/>AST 作用域、表绑定和字段白名单"]
         GuardJoin["sql_guard_join.py<br/>认证 Relationship Graph Join 校验"]
         GuardMetric["sql_guard_multi_metric.py<br/>多指标结构、公式和过滤校验"]
         Database["database.py<br/>使用 chatbi_app 只读执行 SQL"]
@@ -111,20 +107,16 @@ flowchart TB
         OInit --> Service
         Contracts -. "统一数据类型" .-> Service
         Service --> QueryTrace
-        Service --> ServiceRetrieval
         Service -->|"1. 加载上下文 / Retrieval"| Context
         Context --> Retrieval
         Retrieval --> RetrievalSelection
         Retrieval --> RetrievalResource
-        Retrieval --> RetrievalMetric
-        Retrieval --> MetricRequestShape
         Retrieval --> RetrievalGraph
         Retrieval --> RetrievalContext
         Service -->|"2. 提供上下文"| Prompt
         Prompt -->|"3. 生成提示词"| LLM
         LLM -->|"4. 返回 SQL 候选"| Guard
         Guard --> GuardJoin
-        Guard --> GuardScope
         Guard --> GuardMetric
         Guard -->|"5. 返回安全 SQL"| Database
         Database -->|"6. 返回数据或错误"| Service
@@ -352,8 +344,8 @@ Online Retrieval V1 已接入 Online Query：实体类、单指标和多指标�
 - Online Query 已实现，Software Test 与真实 PostgreSQL 集成测试已通过。
 - Query API Adapter 已实现，提供 `/health` 和 `/api/v1/query`；API 确定性测试已通过。
 - Streamlit 页面已实现，提供问题输入、结果展示和受控错误提示，并通过三条手工业务验收。
-- Evaluation 已实现并复用正式 Online Query 链路；当前全量确定性软件测试为 251 passed、6 skipped、85 subtests；当前分支真实在线 RAG 评测为 21/21，C04 四指标和 C06 五指标均通过，JSON 数据报告和 Markdown 总结报告按本地策略忽略。
+- Evaluation 已实现并复用正式 Online Query 链路；当前分支最近一次真实在线 RAG 评测为 20/21，Execution Accuracy=95.24%，唯一失败为一次 S04 Query Understanding LLM_ERROR，单例重跑已成功；JSON 数据报告和 Markdown 总结报告按本地策略忽略。
 - 旧版扁平 POC 链路及其重复测试已删除。
-- RAG Offline Build 已实现并发布 BGE-M3 / Qdrant 离线资产；TABLE=7、COLUMN=69、METRIC=5、关系边=9，固定检索评测 5/5 通过。
-- Online Retrieval、Schema Linking 和关系图在线路径查找已完成 V1 实现；统一 `metrics=0/1/N`、直接 FK→PK、最多 5 个指标和 Fail Closed 边界已通过确定性验收。真实 Qdrant、LLM 和 PostgreSQL 的当前结果需要在本次字段恢复改动后重新建立；跨事实表、经营分析等复杂多指标组合仍属于后续边界。
+- RAG Offline Build 已实现并发布 BGE-M3 / Qdrant 离线资产；TABLE=7、COLUMN=69、METRIC=6、关系边=9，固定检索评测 5/5 通过。
+- Online Retrieval、Schema Linking 和关系图在线路径查找已完成 V1 实现；统一 `metrics=0/1/N`、直接 FK→PK、最多 5 个指标和 Fail Closed 边界已通过确定性验收。最近一次真实 Qdrant、LLM 和 PostgreSQL 评测已在本次字段与查询理解修复后重新建立；跨事实表、经营分析等复杂多指标组合仍属于后续边界。
 - 正式前端 UI 不是当前下一步必做项，继续使用 Streamlit，待生产化需求明确后再决定。

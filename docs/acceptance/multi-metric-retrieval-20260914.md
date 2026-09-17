@@ -4,7 +4,7 @@
 
 对应当时规格：`docs/specs/multi-metric-retrieval.md`
 
-当前行为以 [Online Retrieval V1 Feature Contract（在线检索 V1 功能契约）](../../.scratch/online-retrieval-v1/spec.md) 为准。本记录保留 2026-09-14 当时的验收范围和原始证据；其中“2～5 个指标”等历史范围不覆盖当前 V1 的“最多 3 个指标”规则。
+当前行为以 [Online Retrieval V1 Feature Contract（在线检索 V1 功能契约）](../../.scratch/online-retrieval-v1/spec.md) 为准。本记录保留 2026-09-14 当时的验收范围和原始证据；其中“2～5 个指标”等历史范围不覆盖当前 Query Understanding Feature 的“最多 5 个指标”规则。
 
 对应实现设计：`docs/designs/multi-metric-retrieval.md`
 

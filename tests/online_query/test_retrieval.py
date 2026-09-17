@@ -2,7 +2,6 @@
 
 import json
 import unittest
-from types import MappingProxyType
 
 from src.rag_offline.embedding import EmbeddedText, SparseEmbedding
 from src.rag_offline.qdrant_store import SearchHit
@@ -10,9 +9,15 @@ from src.online_query.contracts import (
     FallbackPolicy,
     RequestShape,
     RetrievalConfig,
+    RetrievalRequest,
     RetrievalStatus,
 )
-from src.online_query.retrieval.multi_metric import build_retrieval_request
+from src.online_query.query_understanding import (
+    QueryType,
+    ValidatedSemanticQuery,
+    candidate_from_payload,
+    validate_candidate,
+)
 from src.online_query.retrieval.rag_runtime import (
     AssetSnapshot,
     RetrievalUnavailableError,
@@ -117,7 +122,9 @@ class _GroupingEmbedding(_FakeEmbedding):
     def embed_query(self, text: str) -> EmbeddedText:
         self.queries.append(text)
         dense = (0.0, 1.0, 0.0, 0.0) if text == "技术路线" else (1.0, 0.0, 0.0, 1.0)
-        return EmbeddedText(dense=dense, sparse=SparseEmbedding(indices=(1,), values=(1.0,)))
+        return EmbeddedText(
+            dense=dense, sparse=SparseEmbedding(indices=(1,), values=(1.0,))
+        )
 
 
 class _FakeRuntime:
@@ -398,7 +405,9 @@ class RetrievalTest(unittest.TestCase):
     def test_metric_query_returns_dynamic_context_and_indicator_metadata(self) -> None:
         tables = (
             _table("table:fct", "fct_sales_order_line", 0.95),
-            _table("table:region", "dim_sales_region", 0.85, page_content="销售区域维度"),
+            _table(
+                "table:region", "dim_sales_region", 0.85, page_content="销售区域维度"
+            ),
             _table("table:date", "dim_date", 0.80),
         )
         columns = {
@@ -417,15 +426,27 @@ class RetrievalTest(unittest.TestCase):
                 _column("dim_date", "full_date", 0.89),
             ),
         }
-        store = _FakeStore(tables, columns, (_metric("毛利率", 0.97, aliases=("毛利润率",)),))
+        store = _FakeStore(
+            tables, columns, (_metric("毛利率", 0.97, aliases=("毛利润率",)),)
+        )
         embedding = _FakeEmbedding()
         runtime = _FakeRuntime(_snapshot(store, embedding, _sales_graph()))
 
-        result = OnlineRetriever(runtime).retrieve("按销售区域统计毛利率")
+        result = OnlineRetriever(runtime).retrieve(
+            _request(
+                "按销售区域统计毛利率",
+                metrics=("毛利率",),
+                dimensions=("销售区域",),
+                subjects=("销售",),
+            )
+        )
 
         self.assertEqual(result.status, RetrievalStatus.SUCCESS)
         self.assertEqual([metric.metric_name for metric in result.metrics], ["毛利率"])
-        self.assertIn("SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny)", result.indicator_context)
+        self.assertIn(
+            "SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny)",
+            result.indicator_context,
+        )
         self.assertIn("completion_date_key", result.indicator_context)
         dynamic_schema = json.loads(result.dynamic_schema)
         dynamic_columns = {
@@ -479,7 +500,14 @@ class RetrievalTest(unittest.TestCase):
                     _sales_graph(include_region=False, include_date=True),
                 )
             )
-        ).retrieve("查询 2025 年毛利率")
+        ).retrieve(
+            _request(
+                "查询指定期间毛利率",
+                metrics=("毛利率",),
+                subjects=("销售",),
+                time=("2025 年", "year"),
+            )
+        )
 
         self.assertEqual(result.status, RetrievalStatus.SUCCESS)
         self.assertEqual(
@@ -520,7 +548,14 @@ class RetrievalTest(unittest.TestCase):
                     _sales_graph(include_region=False, include_date=True),
                 )
             )
-        ).retrieve("查询 2025 年毛利率")
+        ).retrieve(
+            _request(
+                "查询指定期间毛利率",
+                metrics=("毛利率",),
+                subjects=("销售",),
+                time=("2025 年", "year"),
+            )
+        )
 
         self.assertEqual(result.status, RetrievalStatus.PARTIAL_UNREACHABLE)
         self.assertIsNone(result.query_context)
@@ -528,13 +563,11 @@ class RetrievalTest(unittest.TestCase):
 
     def test_entity_query_can_continue_without_metric(self) -> None:
         tables = (_table("table:customer", "dim_customer", 0.90),)
-        columns = {
-            "dim_customer": (_column("dim_customer", "customer_id", 0.90),)
-        }
+        columns = {"dim_customer": (_column("dim_customer", "customer_id", 0.90),)}
         store = _FakeStore(tables, columns, ())
         result = OnlineRetriever(
             _FakeRuntime(_snapshot(store, _FakeEmbedding(), {"foreign_keys": []}))
-        ).retrieve("列出所有客户")
+        ).retrieve(_request("列出所有客户", subjects=("客户",)))
 
         self.assertEqual(result.status, RetrievalStatus.SUCCESS)
         self.assertEqual(result.metrics, ())
@@ -542,9 +575,7 @@ class RetrievalTest(unittest.TestCase):
 
     def test_entity_query_skips_metric_collection(self) -> None:
         tables = (_table("table:customer", "dim_customer", 0.90),)
-        columns = {
-            "dim_customer": (_column("dim_customer", "customer_id", 0.90),)
-        }
+        columns = {"dim_customer": (_column("dim_customer", "customer_id", 0.90),)}
         store = _CombinedMetricStore(
             tables,
             columns,
@@ -553,21 +584,95 @@ class RetrievalTest(unittest.TestCase):
 
         result = OnlineRetriever(
             _FakeRuntime(_snapshot(store, _FakeEmbedding(), {"foreign_keys": []}))
-        ).retrieve("列出所有客户")
+        ).retrieve(_request("列出所有客户", subjects=("客户",)))
 
         self.assertEqual(result.status, RetrievalStatus.SUCCESS)
         self.assertEqual(store.metric_query_count, 0)
 
+    def test_structured_metric_is_used_when_original_question_has_no_metric_term(
+        self,
+    ) -> None:
+        tables = (_table("table:fct", "fct_sales_order_line", 0.90),)
+        store = _FakeStore(
+            tables,
+            {"fct_sales_order_line": _multi_columns()["fct_sales_order_line"]},
+            (_metric("毛利率", 0.95),),
+        )
+
+        result = OnlineRetriever(
+            _FakeRuntime(
+                _snapshot(store, _FakeEmbedding(), _sales_graph(include_region=False))
+            )
+        ).retrieve(
+            _request(
+                "请按业务主题处理",
+                subjects=("销售",),
+                metrics=("毛利率",),
+            )
+        )
+
+        self.assertEqual(result.status, RetrievalStatus.SUCCESS)
+        self.assertEqual([item.metric_name for item in result.metrics], ["毛利率"])
+
+    def test_structured_entity_query_does_not_infer_metric_from_original_question(
+        self,
+    ) -> None:
+        tables = (_table("table:customer", "dim_customer", 0.90),)
+        store = _CombinedMetricStore(
+            tables,
+            {"dim_customer": (_column("dim_customer", "customer_id", 0.90),)},
+            (_metric("毛利率", 0.95),),
+        )
+
+        result = OnlineRetriever(
+            _FakeRuntime(_snapshot(store, _FakeEmbedding(), {"foreign_keys": []}))
+        ).retrieve(
+            _request(
+                "统计包含金额字段的客户",
+                subjects=("客户",),
+            )
+        )
+
+        self.assertEqual(result.status, RetrievalStatus.SUCCESS)
+        self.assertEqual(result.metrics, ())
+        self.assertEqual(store.metric_query_count, 0)
+
+    def test_structured_filter_field_is_used_for_column_retrieval(self) -> None:
+        tables = (_table("table:customer", "dim_customer", 0.90),)
+        embedding = _FakeEmbedding()
+        store = _FakeStore(
+            tables,
+            {"dim_customer": (_column("dim_customer", "customer_status", 0.90),)},
+            (),
+        )
+
+        result = OnlineRetriever(
+            _FakeRuntime(_snapshot(store, embedding, {"foreign_keys": []}))
+        ).retrieve(
+            _request(
+                "查询客户",
+                subjects=("客户",),
+                filters=("客户状态",),
+            )
+        )
+
+        self.assertEqual(result.status, RetrievalStatus.SUCCESS)
+        self.assertTrue(any("客户状态" in query for query in embedding.queries))
+
+    def test_string_is_not_a_formal_online_retrieval_input(self) -> None:
+        retriever = OnlineRetriever(_UnavailableRuntime())
+
+        with self.assertRaises(TypeError):
+            retriever.retrieve("列出所有客户")
+
     def test_metric_intent_with_no_metric_hit_stops_before_context(self) -> None:
         tables = (_table("table:customer", "dim_customer", 0.90),)
-        columns = {
-            "dim_customer": (_column("dim_customer", "customer_id", 0.90),)
-        }
+        columns = {"dim_customer": (_column("dim_customer", "customer_id", 0.90),)}
         store = _CombinedMetricStore(tables, columns, ())
 
         result = OnlineRetriever(
             _FakeRuntime(_snapshot(store, _FakeEmbedding(), {"foreign_keys": []}))
-        ).retrieve("查询退货金额")
+        ).retrieve(_request("查询退货金额", metrics=("退货金额",), subjects=("订单",)))
 
         self.assertEqual(result.status, RetrievalStatus.NO_METRIC_HIT)
         self.assertIsNone(result.query_context)
@@ -625,7 +730,13 @@ class RetrievalTest(unittest.TestCase):
                 )
             ),
             config=RetrievalConfig(column_top_k=2),
-        ).retrieve("按销售区域查询")
+        ).retrieve(
+            _request(
+                "按销售区域查询",
+                dimensions=("销售区域",),
+                subjects=("销售",),
+            )
+        )
 
         self.assertEqual(result.status, RetrievalStatus.SUCCESS)
         assert result.query_context is not None
@@ -637,7 +748,9 @@ class RetrievalTest(unittest.TestCase):
             ),
         )
 
-    def test_required_columns_are_recovered_when_semantic_top_k_misses_them(self) -> None:
+    def test_required_columns_are_recovered_when_semantic_top_k_misses_them(
+        self,
+    ) -> None:
         store = _RequiredColumnRecoveryStore(
             _multi_tables(),
             _multi_columns(),
@@ -647,8 +760,11 @@ class RetrievalTest(unittest.TestCase):
         result = OnlineRetriever(
             _FakeRuntime(_snapshot(store, _FakeEmbedding(), _multi_graph()))
         ).retrieve(
-            build_retrieval_request(
-                "按客户类型统计已完成订单数、人民币销售额和毛利率"
+            _request(
+                "按客户类型统计已完成订单数、人民币销售额和毛利率",
+                metrics=("已完成订单数", "人民币销售额", "毛利率"),
+                dimensions=("客户类型",),
+                subjects=("销售",),
             )
         )
 
@@ -661,12 +777,12 @@ class RetrievalTest(unittest.TestCase):
                 "sales_cost_amount_cny",
                 "order_status",
             }
-            <= result.query_context.allowed_columns[
-                "mart_sales.fct_sales_order_line"
-            ]
+            <= result.query_context.allowed_columns["mart_sales.fct_sales_order_line"]
         )
 
-    def test_grouping_table_is_added_by_dimension_query_when_main_top_k_misses_it(self) -> None:
+    def test_grouping_table_is_added_by_dimension_query_when_main_top_k_misses_it(
+        self,
+    ) -> None:
         fact = _table("table:fct", "fct_sales_order_line", 0.95)
         product = _table(
             "table:product",
@@ -675,7 +791,9 @@ class RetrievalTest(unittest.TestCase):
             page_content="产品维度：产品线、产品类别、技术路线",
         )
         columns = {
-            "fct_sales_order_line": (_column("fct_sales_order_line", "order_id", 0.90),),
+            "fct_sales_order_line": (
+                _column("fct_sales_order_line", "order_id", 0.90),
+            ),
             "dim_product": (_column("dim_product", "technology_route", 0.90),),
         }
         store = _GroupingTableStore(
@@ -714,7 +832,13 @@ class RetrievalTest(unittest.TestCase):
                     },
                 )
             )
-        ).retrieve("按技术路线查询")
+        ).retrieve(
+            _request(
+                "按技术路线查询",
+                dimensions=("技术路线",),
+                subjects=("订单",),
+            )
+        )
 
         self.assertEqual(result.status, RetrievalStatus.SUCCESS)
         assert result.query_context is not None
@@ -729,7 +853,7 @@ class RetrievalTest(unittest.TestCase):
         store = _FakeStore(tables, columns, metrics)
         result = OnlineRetriever(
             _FakeRuntime(_snapshot(store, _FakeEmbedding(), {"foreign_keys": []}))
-        ).retrieve("统计经营表现")
+        ).retrieve(_request("统计经营表现", metrics=("经营表现",), subjects=("经营",)))
 
         self.assertEqual(result.status, RetrievalStatus.AMBIGUOUS)
         self.assertEqual(result.metrics, ())
@@ -738,9 +862,7 @@ class RetrievalTest(unittest.TestCase):
     def test_longest_metric_alias_wins_over_nested_short_alias(self) -> None:
         tables = (_table("table:fct", "fct_sales_order_line", 0.90),)
         columns = {
-            "fct_sales_order_line": (
-                _column("fct_sales_order_line", "order_id", 0.90),
-            )
+            "fct_sales_order_line": (_column("fct_sales_order_line", "order_id", 0.90),)
         }
         metrics = (
             _metric("人民币毛利", 0.80, aliases=("毛利",)),
@@ -749,7 +871,7 @@ class RetrievalTest(unittest.TestCase):
         store = _FakeStore(tables, columns, metrics)
         result = OnlineRetriever(
             _FakeRuntime(_snapshot(store, _FakeEmbedding(), {"foreign_keys": []}))
-        ).retrieve("查询毛利率")
+        ).retrieve(_request("查询毛利率", metrics=("毛利率",), subjects=("销售",)))
 
         self.assertEqual(result.status, RetrievalStatus.NO_REQUIRED_COLUMN_HIT)
         self.assertEqual([metric.metric_name for metric in result.metrics], ["毛利率"])
@@ -764,10 +886,14 @@ class RetrievalTest(unittest.TestCase):
             ),
             "dim_date": (_column("dim_date", "full_date", 0.88),),
         }
-        store = _FakeStore(tables, columns, (_metric("毛利率", 0.95, aliases=("毛利率",)),))
+        store = _FakeStore(
+            tables, columns, (_metric("毛利率", 0.95, aliases=("毛利率",)),)
+        )
         result = OnlineRetriever(
-            _FakeRuntime(_snapshot(store, _FakeEmbedding(), _sales_graph(include_region=False)))
-        ).retrieve("查询毛利率")
+            _FakeRuntime(
+                _snapshot(store, _FakeEmbedding(), _sales_graph(include_region=False))
+            )
+        ).retrieve(_request("查询毛利率", metrics=("毛利率",), subjects=("销售",)))
 
         self.assertEqual(result.status, RetrievalStatus.NO_REQUIRED_COLUMN_HIT)
         self.assertIsNone(result.query_context)
@@ -778,13 +904,21 @@ class RetrievalTest(unittest.TestCase):
             _table("table:customer", "dim_customer", 0.85, page_content="客户维度"),
         )
         columns = {
-            "fct_sales_order_line": (_column("fct_sales_order_line", "order_id", 0.90),),
+            "fct_sales_order_line": (
+                _column("fct_sales_order_line", "order_id", 0.90),
+            ),
             "dim_customer": (_column("dim_customer", "customer_id", 0.89),),
         }
         store = _FakeStore(tables, columns, ())
         result = OnlineRetriever(
             _FakeRuntime(_snapshot(store, _FakeEmbedding(), {"foreign_keys": []}))
-        ).retrieve("按客户分析订单")
+        ).retrieve(
+            _request(
+                "按客户分析订单",
+                dimensions=("客户",),
+                subjects=("订单",),
+            )
+        )
 
         self.assertEqual(result.status, RetrievalStatus.PARTIAL_UNREACHABLE)
         self.assertIsNone(result.query_context)
@@ -801,7 +935,14 @@ class RetrievalTest(unittest.TestCase):
 
         result = OnlineRetriever(
             _FakeRuntime(_snapshot(store, embedding, _multi_graph()))
-        ).retrieve(question)
+        ).retrieve(
+            _request(
+                question,
+                metrics=("已完成订单数", "人民币销售额", "毛利率"),
+                dimensions=("客户类型",),
+                subjects=("销售",),
+            )
+        )
 
         self.assertEqual(result.status, RetrievalStatus.SUCCESS)
         self.assertEqual(result.request_shape, RequestShape.EXPLICIT_MULTI)
@@ -810,14 +951,16 @@ class RetrievalTest(unittest.TestCase):
             [metric.metric_name for metric in result.metrics],
             ["已完成订单数", "人民币净销售额", "毛利率"],
         )
-        self.assertEqual(store.metric_query_count, 1)
-        self.assertEqual(store.metric_limits, [10])
+        self.assertEqual(store.metric_query_count, 3)
+        self.assertEqual(store.metric_limits, [10, 10, 10])
         self.assertEqual(len(result.evidence.metric_queries), 3)
         self.assertEqual(
             [item.target_document_id for item in result.evidence.metric_queries],
             [metric.document_id for metric in metrics],
         )
-        self.assertEqual(embedding.queries.count(question), 1)
+        self.assertIn("已完成订单数", embedding.queries)
+        self.assertIn("人民币销售额", embedding.queries)
+        self.assertIn("毛利率", embedding.queries)
         self.assertNotIn("人民币销售额\n人民币净销售额", embedding.queries)
         indicator = json.loads(result.indicator_context)
         self.assertEqual(
@@ -838,10 +981,7 @@ class RetrievalTest(unittest.TestCase):
             )
         )
         self.assertEqual(
-            {
-                item.uniqueness_basis
-                for item in result.query_context.join_constraints
-            },
+            {item.uniqueness_basis for item in result.query_context.join_constraints},
             {"primary_key:pk_dim_customer"},
         )
         fact_columns = result.query_context.allowed_columns[
@@ -868,15 +1008,24 @@ class RetrievalTest(unittest.TestCase):
         result = OnlineRetriever(
             _FakeRuntime(_snapshot(store, _FakeEmbedding(), _multi_graph()))
         ).retrieve(
-            build_retrieval_request(
-                "按客户类型统计已完成订单数、人民币销售额、人民币销售成本、人民币毛利和毛利率"
+            _request(
+                "按客户类型统计已完成订单数、人民币销售额、人民币销售成本、人民币毛利和毛利率",
+                metrics=(
+                    "已完成订单数",
+                    "人民币销售额",
+                    "人民币销售成本",
+                    "人民币毛利",
+                    "毛利率",
+                ),
+                dimensions=("客户类型",),
+                subjects=("销售",),
             )
         )
 
         self.assertEqual(result.status, RetrievalStatus.SUCCESS)
         self.assertEqual(len(result.metrics), 5)
-        self.assertEqual(store.metric_query_count, 1)
-        self.assertEqual(store.metric_limits, [10])
+        self.assertEqual(store.metric_query_count, 5)
+        self.assertEqual(store.metric_limits, [10, 10, 10, 10, 10])
         self.assertIsNotNone(result.query_context)
 
     def test_multi_metric_rejects_more_than_five_before_column_search(self) -> None:
@@ -894,8 +1043,17 @@ class RetrievalTest(unittest.TestCase):
         result = OnlineRetriever(
             _FakeRuntime(_snapshot(store, _FakeEmbedding(), _multi_graph()))
         ).retrieve(
-            build_retrieval_request(
-                "按客户类型统计已完成订单数、人民币销售额、毛利率、订单折扣额和订单返利额"
+            _request(
+                "按客户类型统计已完成订单数、人民币销售额、毛利率、订单折扣额和订单返利额",
+                metrics=(
+                    "已完成订单数",
+                    "人民币销售额",
+                    "毛利率",
+                    "订单折扣额",
+                    "订单返利额",
+                ),
+                dimensions=("客户类型",),
+                subjects=("销售",),
             )
         )
 
@@ -911,15 +1069,25 @@ class RetrievalTest(unittest.TestCase):
         result = OnlineRetriever(
             _FakeRuntime(_snapshot(store, _FakeEmbedding(), _multi_graph()))
         ).retrieve(
-            build_retrieval_request(
-                "按客户类型统计已完成订单数、人民币销售额、毛利率、订单折扣额、订单返利额和订单税额"
+            _request(
+                "按客户类型统计已完成订单数、人民币销售额、毛利率、订单折扣额、订单返利额和订单税额",
+                metrics=(
+                    "已完成订单数",
+                    "人民币销售额",
+                    "毛利率",
+                    "订单折扣额",
+                    "订单返利额",
+                    "订单税额",
+                ),
+                dimensions=("客户类型",),
+                subjects=("销售",),
             )
         )
 
         self.assertEqual(result.status, RetrievalStatus.AMBIGUOUS)
         self.assertEqual(result.internal_reason, "TOO_MANY_METRICS")
-        self.assertEqual(store.metric_query_count, 1)
-        self.assertEqual(store.metric_limits, [10])
+        self.assertEqual(store.metric_query_count, 6)
+        self.assertEqual(store.metric_limits, [10, 10, 10, 10, 10, 10])
         self.assertEqual(store.column_filters, [])
         self.assertIsNone(result.query_context)
 
@@ -934,22 +1102,23 @@ class RetrievalTest(unittest.TestCase):
         result = OnlineRetriever(
             _FakeRuntime(_snapshot(store, _FakeEmbedding(), _multi_graph()))
         ).retrieve(
-            build_retrieval_request(
-                "按客户类型统计已完成订单数、人民币销售额和毛利率"
+            _request(
+                "按客户类型统计已完成订单数、人民币销售额和毛利率",
+                metrics=("已完成订单数", "人民币销售额", "毛利率"),
+                dimensions=("客户类型",),
+                subjects=("销售",),
             )
         )
 
-        self.assertEqual(result.status, RetrievalStatus.NO_METRIC_HIT)
-        self.assertEqual(result.internal_reason, "NO_METRIC_HIT")
+        self.assertEqual(result.status, RetrievalStatus.AMBIGUOUS)
+        self.assertEqual(result.internal_reason, "AMBIGUOUS")
         self.assertEqual(result.fallback_policy, FallbackPolicy.FAIL_CLOSED)
-        self.assertEqual(store.metric_query_count, 1)
-        self.assertEqual(store.metric_limits, [10])
-        self.assertEqual(len(result.evidence.metric_queries), 2)
-        self.assertTrue(
-            all(
-                item.hits == result.evidence.metric_hits
-                for item in result.evidence.metric_queries
-            )
+        self.assertEqual(store.metric_query_count, 3)
+        self.assertEqual(store.metric_limits, [10, 10, 10])
+        self.assertEqual(len(result.evidence.metric_queries), 3)
+        self.assertEqual(
+            [len(item.hits) for item in result.evidence.metric_queries],
+            [2, 2, 2],
         )
         self.assertEqual(store.column_filters, [])
         self.assertIsNone(result.query_context)
@@ -965,8 +1134,11 @@ class RetrievalTest(unittest.TestCase):
         result = OnlineRetriever(
             _FakeRuntime(_snapshot(store, _FakeEmbedding(), _multi_graph()))
         ).retrieve(
-            build_retrieval_request(
-                "按客户类型统计已完成订单数、人民币销售额和毛利率"
+            _request(
+                "按客户类型统计已完成订单数、人民币销售额和毛利率",
+                metrics=("已完成订单数", "人民币销售额", "毛利率"),
+                dimensions=("客户类型",),
+                subjects=("销售",),
             )
         )
 
@@ -997,8 +1169,11 @@ class RetrievalTest(unittest.TestCase):
                 )
             )
         ).retrieve(
-            build_retrieval_request(
-                "按客户类型统计已完成订单数、人民币销售额和毛利率"
+            _request(
+                "按客户类型统计已完成订单数、人民币销售额和毛利率",
+                metrics=("已完成订单数", "人民币销售额", "毛利率"),
+                dimensions=("客户类型",),
+                subjects=("销售",),
             )
         )
 
@@ -1023,8 +1198,11 @@ class RetrievalTest(unittest.TestCase):
                 )
             )
         ).retrieve(
-            build_retrieval_request(
-                "按客户类型统计已完成订单数、人民币销售额和毛利率"
+            _request(
+                "按客户类型统计已完成订单数、人民币销售额和毛利率",
+                metrics=("已完成订单数", "人民币销售额", "毛利率"),
+                dimensions=("客户类型",),
+                subjects=("销售",),
             )
         )
 
@@ -1034,7 +1212,11 @@ class RetrievalTest(unittest.TestCase):
 
     def test_multi_metric_technical_failure_is_fail_closed(self) -> None:
         result = OnlineRetriever(_UnavailableRuntime()).retrieve(
-            build_retrieval_request("统计订单数、销售额和毛利率")
+            _request(
+                "统计订单数、销售额和毛利率",
+                metrics=("订单数", "销售额", "毛利率"),
+                subjects=("订单",),
+            )
         )
 
         self.assertEqual(result.status, RetrievalStatus.RETRIEVAL_UNAVAILABLE)
@@ -1043,16 +1225,67 @@ class RetrievalTest(unittest.TestCase):
 
     def test_dynamic_context_is_json_serializable(self) -> None:
         tables = (_table("table:customer", "dim_customer", 0.90),)
-        columns = {
-            "dim_customer": (_column("dim_customer", "customer_id", 0.90),)
-        }
+        columns = {"dim_customer": (_column("dim_customer", "customer_id", 0.90),)}
         store = _FakeStore(tables, columns, ())
         result = OnlineRetriever(
             _FakeRuntime(_snapshot(store, _FakeEmbedding(), {"foreign_keys": []}))
-        ).retrieve("列出所有客户")
+        ).retrieve(_request("列出所有客户", subjects=("客户",)))
 
         json.loads(result.dynamic_schema)
         self.assertIsNotNone(result.query_context)
+
+
+def _request(
+    question: str,
+    *,
+    subjects: tuple[str, ...],
+    metrics: tuple[str, ...] = (),
+    dimensions: tuple[str, ...] = (),
+    time: tuple[str, str] | None = None,
+    filters: tuple[str, ...] = (),
+) -> RetrievalRequest:
+    candidate = candidate_from_payload(
+        {
+            "query_type": "metric_analysis" if metrics else "entity_lookup",
+            "subjects": list(subjects),
+            "metrics": list(metrics),
+            "dimensions": list(dimensions),
+            "time": (
+                {"text": time[0], "granularity": time[1]} if time is not None else None
+            ),
+            "filters": [
+                {
+                    "field_text": field_text,
+                    "operator": "equals",
+                    "values": ["已完成"],
+                }
+                for field_text in filters
+            ],
+        }
+    )
+    if len(metrics) <= 5:
+        semantic_query = validate_candidate(
+            candidate,
+            original_question=question,
+        )
+    else:
+        semantic_query = ValidatedSemanticQuery(
+            query_type=QueryType.METRIC_ANALYSIS,
+            subjects=subjects,
+            metrics=metrics,
+            dimensions=dimensions,
+            time=None,
+            filters=(),
+            original_question=question,
+        )
+    return RetrievalRequest(
+        question=question,
+        request_shape=(
+            RequestShape.EXPLICIT_MULTI if len(metrics) >= 2 else RequestShape.BASELINE
+        ),
+        fallback_policy=FallbackPolicy.FAIL_CLOSED,
+        semantic_query=semantic_query,
+    )
 
 
 if __name__ == "__main__":

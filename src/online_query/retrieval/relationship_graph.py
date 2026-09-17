@@ -25,9 +25,7 @@ def parse_edges(graph: Mapping[str, Any]) -> tuple[JoinEdge, ...]:
 
     raw_edges = graph.get("foreign_keys")
     if not isinstance(raw_edges, list):
-        raise RelationshipGraphContractError(
-            "Relationship Graph 缺少 foreign_keys"
-        )
+        raise RelationshipGraphContractError("Relationship Graph 缺少 foreign_keys")
     edges: list[JoinEdge] = []
     for index, raw in enumerate(raw_edges, 1):
         if not isinstance(raw, Mapping):
@@ -90,9 +88,7 @@ def validate_time_edge(time_field: Any, edges: tuple[JoinEdge, ...]) -> Any:
             "time_field 无法匹配已验证 Relationship Graph"
         )
     if len(matches) > 1:
-        raise RelationshipGraphAmbiguousError(
-            "time_field 匹配到多条语义不同关系"
-        )
+        raise RelationshipGraphAmbiguousError("time_field 匹配到多条语义不同关系")
     return replace(time_field, edge_id=matches[0].edge_id)
 
 
@@ -119,8 +115,7 @@ def resolve_join_paths(
         direct_edges = tuple(
             edge
             for edge in edges
-            if edge.source_table == anchor_table
-            and edge.target_table == target
+            if edge.source_table == anchor_table and edge.target_table == target
         )
         if target == time_target and time_edge is not None:
             time_edges = tuple(
@@ -207,9 +202,7 @@ def _graph_unique_keys(
     ):
         records = graph.get(section)
         if not isinstance(records, list):
-            raise RelationshipGraphContractError(
-                f"Relationship Graph 缺少 {section}"
-            )
+            raise RelationshipGraphContractError(f"Relationship Graph 缺少 {section}")
         for index, raw in enumerate(records, 1):
             if not isinstance(raw, Mapping):
                 raise RelationshipGraphContractError(

@@ -13,6 +13,14 @@ Evaluation（评测）是离线回归评测工具，不参与用户在线请求�
 - 第一轮建立 Baseline，不设置准确率门槛。
 - 后续使用同一测试集和同一比较规则复测，并与上一份有效报告比较。
 
+Query Understanding 语义评测单独运行：
+
+```text
+uv run --env-file .env python -m src.evaluation --query-understanding
+```
+
+该模式只调用 Query Understanding Adapter，不连接 PostgreSQL、不执行 SQL，适合快速判断结构化语义和失败原因；它不属于普通 CI，也不替代完整 Online Retrieval Real E2E。
+
 ## 输入
 
 ### 标准测试集
@@ -34,6 +42,9 @@ order_sensitive（可选，默认 false）
 - 标准 SQL 仍须经过现有 SQL Guard（SQL 安全校验），并使用同一个只读数据库执行器。
 - 当前 Online Retrieval V1 的标准 Join 必须使用关系图认证的直接 `LEFT JOIN`；中间表、多跳 Join 和未认证 Join 不属于标准案例。
 
+Query Understanding（查询理解）使用独立的语义评测集
+`src/evaluation/query_understanding_cases.json`。该评测集只验证结构化语义，不执行 Retrieval、SQL Guard 或数据库；其中 `time: null` 表示用户没有提出时间过滤条件，不属于案例缺陷。
+
 ### 待评测系统
 
 必须复用正式 Online Query 链路：
@@ -47,6 +58,19 @@ question
   -> PostgreSQL
   -> QuerySuccess 或 QueryFailure
 ```
+
+Query Understanding 语义评测使用独立链路：
+
+```text
+question
+  -> QueryUnderstandingAdapter
+  -> SemanticQueryCandidate
+  -> 确定性 Contract 校验
+  -> 比较 query_type、metrics、dimensions、time
+  -> 记录 PASS 或 FAIL
+```
+
+语义评测与 SQL 执行评测必须同时存在：前者回答“意图是否识别正确”，后者回答“最终查询结果是否正确”。不能只根据 SQL 结果通过推断 Query Understanding 一定正确。
 
 真实 AI Evaluation 必须通过 `--online-retrieval` 装配与生产入口一致的 `OnlineRetriever`；Software Test 可以省略该参数并使用静态 `QueryContext`，以保持确定性和离线性。评测工具不得因此复制一套检索、Prompt 或 SQL Guard 逻辑。
 
@@ -94,6 +118,8 @@ status
 generated_sql
 query_error_code
 failure_reason
+failure_stage
+internal_reason
 duration_ms
 ```
 
@@ -107,6 +133,7 @@ FAIL 数量
 INVALID_CASE 数量
 Execution Accuracy
 各 category 的 Execution Accuracy
+failure_stage 和 internal_reason 分布
 相对上一份报告的回退案例和改善案例
 ```
 
@@ -115,7 +142,7 @@ Execution Accuracy
 每次运行同时生成两份同名报告；报告只作为本地评测产物，不作为 GitHub Issue / PR 或远程交付内容：
 
 - JSON 数据报告：保留机器可读的运行元数据、汇总、单条结果和可选基线比较。
-- Markdown 总结报告：明确展示总体结论、成功/失败/无效数量、总体与分类准确率、失败案例及原因、基线比较状态和必要运行信息。
+- Markdown 总结报告：明确展示总体结论、成功/失败/无效数量、总体与分类准确率、失败阶段、内部原因、失败案例及原因、基线比较状态和必要运行信息。
 
 未指定 Baseline 时，Markdown 必须明确写明“本次未执行自动基线比较”，不得暗示能力没有回退。
 
@@ -151,6 +178,7 @@ Execution Accuracy
 ### AI Evaluation（AI 评测）
 
 - 使用 `uv run --env-file .env python -m src.evaluation --online-retrieval`，21 条标准案例能够顺序运行完成，单条失败不影响其余案例。
+- 使用 `uv run --env-file .env python -m src.evaluation --query-understanding`，独立验证 `query_type`、`metrics`、`dimensions` 和 `time`，其中没有时间条件的案例必须明确期望 `time = null`。
 - 生成包含单条结果的 JSON 数据报告，以及包含总体结论、准确率和失败摘要的 Markdown 总结报告。
 - 后续报告能够识别相对上一份有效报告的回退和改善案例。
 

@@ -28,9 +28,7 @@ class RelationshipGraph:
         return {
             "nodes": list(self.nodes),
             "primary_keys": [_jsonable(item) for item in self.primary_keys],
-            "unique_constraints": [
-                _jsonable(item) for item in self.unique_constraints
-            ],
+            "unique_constraints": [_jsonable(item) for item in self.unique_constraints],
             "unique_indexes": [_jsonable(item) for item in self.unique_indexes],
             "foreign_keys": [_jsonable(item) for item in self.foreign_keys],
         }
@@ -95,7 +93,9 @@ def build_relationship_graph(facts: Facts) -> RelationshipGraph:
                 "column_names": column_names,
                 "predicate": relationship.get("predicate"),
             }
-            _add_unique(unique_indexes, seen_indexes, record, f"{table_key}:{index_name}")
+            _add_unique(
+                unique_indexes, seen_indexes, record, f"{table_key}:{index_name}"
+            )
             continue
 
         if relationship_type != "foreign_key":
@@ -229,9 +229,7 @@ def _add_unique(
 def _required_text(record: dict[str, Any], field: str, index: int) -> str:
     value = record.get(field)
     if not isinstance(value, str) or not value.strip():
-        raise RelationshipGraphError(
-            f"relationships 第 {index} 条缺少有效的 {field}"
-        )
+        raise RelationshipGraphError(f"relationships 第 {index} 条缺少有效的 {field}")
     return value.strip()
 
 
@@ -242,9 +240,7 @@ def _required_columns(
 ) -> tuple[str, ...]:
     values = _string_list(record, index, field)
     if not values:
-        raise RelationshipGraphError(
-            f"relationships 第 {index} 条的 {field} 不能为空"
-        )
+        raise RelationshipGraphError(f"relationships 第 {index} 条的 {field} 不能为空")
     return values
 
 

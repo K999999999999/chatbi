@@ -7,7 +7,12 @@ from fastapi.testclient import TestClient
 
 from src.observability.contracts import QuerySource
 from src.observability.tracing import create_in_memory_recorder
-from src.online_query.contracts import QueryErrorCode, QueryFailure, QueryRequest, QuerySuccess
+from src.online_query.contracts import (
+    QueryErrorCode,
+    QueryFailure,
+    QueryRequest,
+    QuerySuccess,
+)
 from src.query_api.app import create_app
 
 
@@ -43,9 +48,7 @@ class _FailureService:
 class T4AQueryApiObservabilityTest(unittest.TestCase):
     def test_health_is_outside_query_trace_middleware(self) -> None:
         recorder, exporter = create_in_memory_recorder()
-        client = TestClient(
-            create_app(_SuccessService(), trace_recorder=recorder)
-        )
+        client = TestClient(create_app(_SuccessService(), trace_recorder=recorder))
 
         response = client.get("/health")
 
@@ -54,7 +57,9 @@ class T4AQueryApiObservabilityTest(unittest.TestCase):
         self.assertNotIn("X-Trace-ID", response.headers)
         self.assertEqual(exporter.get_finished_spans(), ())
 
-    def test_success_uses_one_local_root_and_returns_matching_trace_header(self) -> None:
+    def test_success_uses_one_local_root_and_returns_matching_trace_header(
+        self,
+    ) -> None:
         service = _SuccessService()
         recorder, exporter = create_in_memory_recorder()
         client = TestClient(create_app(service, trace_recorder=recorder))
@@ -75,7 +80,9 @@ class T4AQueryApiObservabilityTest(unittest.TestCase):
         spans = exporter.get_finished_spans()
         self.assertEqual(spans[-1].name, "query.request")
         root = spans[-1]
-        self.assertEqual(root.attributes["chatbi.request.source"], QuerySource.HTTP.value)
+        self.assertEqual(
+            root.attributes["chatbi.request.source"], QuerySource.HTTP.value
+        )
         self.assertEqual(root.attributes["chatbi.request.id"], "req-t4a-success")
         self.assertEqual(root.context.trace_id, int(trace_id, 16))
         serialized = [span for span in spans if span.name == "response.serialize"]
@@ -104,7 +111,9 @@ class T4AQueryApiObservabilityTest(unittest.TestCase):
         self.assertEqual(names[-1], "query.request")
         self.assertEqual(names.count("response.serialize"), 1)
 
-    def test_missing_request_id_is_generated_and_client_trace_headers_are_ignored(self) -> None:
+    def test_missing_request_id_is_generated_and_client_trace_headers_are_ignored(
+        self,
+    ) -> None:
         service = _SuccessService()
         recorder, exporter = create_in_memory_recorder()
         client = TestClient(create_app(service, trace_recorder=recorder))

@@ -28,10 +28,13 @@ class RelationshipGraphDirectJoinTest(unittest.TestCase):
             time_target=None,
         )
 
-        self.assertEqual(resolution.paths[0].tables, (
-            "mart_sales.fct_sales",
-            "mart_sales.dim_customer",
-        ))
+        self.assertEqual(
+            resolution.paths[0].tables,
+            (
+                "mart_sales.fct_sales",
+                "mart_sales.dim_customer",
+            ),
+        )
         constraints = validated_join_constraints(
             "mart_sales.fct_sales",
             resolution,
@@ -155,7 +158,9 @@ def _edge(constraint_name: str, source_table: str, target_table: str) -> dict:
     }
 
 
-def _graph(*, edges: tuple[dict, ...], primary_keys: tuple[dict, ...] | None = None) -> dict:
+def _graph(
+    *, edges: tuple[dict, ...], primary_keys: tuple[dict, ...] | None = None
+) -> dict:
     keys = primary_keys
     if keys is None:
         keys = (

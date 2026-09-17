@@ -36,9 +36,7 @@ class SQLGuardTest(unittest.TestCase):
                         "order_status",
                     }
                 ),
-                "mart_sales.dim_customer": frozenset(
-                    {"customer_key", "customer_name"}
-                ),
+                "mart_sales.dim_customer": frozenset({"customer_key", "customer_name"}),
             },
             join_constraints=(
                 JoinConstraint(
@@ -141,8 +139,7 @@ class SQLGuardTest(unittest.TestCase):
                 "       SUM(f.net_sales_amount_cny) AS net_sales_cny,",
                 "       SUM(f.sales_cost_amount_cny) AS sales_cost_cny,",
             ),
-            _valid_multi_metric_sql()
-            .replace(
+            _valid_multi_metric_sql().replace(
                 "       SUM(f.net_sales_amount_cny) AS net_sales_cny,\n"
                 "       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny)\n"
                 "           / NULLIF(SUM(f.net_sales_amount_cny), 0) "
@@ -171,8 +168,7 @@ class SQLGuardTest(unittest.TestCase):
             ),
             _valid_multi_metric_sql().replace(
                 "WHERE f.order_status = 'completed'",
-                "WHERE f.order_status = 'completed' "
-                "OR f.order_status = 'pending'",
+                "WHERE f.order_status = 'completed' OR f.order_status = 'pending'",
             ),
             _valid_multi_metric_sql().replace(
                 "ON f.customer_key = c.customer_key",
@@ -185,7 +181,9 @@ class SQLGuardTest(unittest.TestCase):
                 with self.assertRaises(SQLRejectedError):
                     validate_sql(sql, self.multi_context)
 
-    def test_multi_metric_rejects_unsupported_shapes_and_extra_aggregation(self) -> None:
+    def test_multi_metric_rejects_unsupported_shapes_and_extra_aggregation(
+        self,
+    ) -> None:
         candidates = (
             """
 WITH base AS (
@@ -205,8 +203,7 @@ GROUP BY c.customer_type
 """.strip(),
             _valid_multi_metric_sql().replace(
                 "GROUP BY c.customer_type",
-                "GROUP BY c.customer_type "
-                "HAVING SUM(f.net_sales_amount_cny) > 0",
+                "GROUP BY c.customer_type HAVING SUM(f.net_sales_amount_cny) > 0",
             ),
             _valid_multi_metric_sql().replace(
                 "ORDER BY gross_margin DESC",
@@ -252,9 +249,7 @@ FROM sales
     def test_all_metric_sql_templates_pass(self) -> None:
         root = Path(__file__).resolve().parents[2]
         metrics = json.loads(
-            (root / "src" / "semantic" / "metrics.json").read_text(
-                encoding="utf-8"
-            )
+            (root / "src" / "semantic" / "metrics.json").read_text(encoding="utf-8")
         )
         context = load_query_context()
 
@@ -359,10 +354,8 @@ JOIN mart_sales.dim_customer AS c ON c.customer_key = f.customer_key
             "SELECT pg_sleep(1) FROM mart_sales.fct_sales_order_line",
             "SELECT set_config('search_path', 'public', false) "
             "FROM mart_sales.fct_sales_order_line",
-            "SELECT pg_read_file('/tmp/x') "
-            "FROM mart_sales.fct_sales_order_line",
-            "SELECT public.side_effect(order_id) "
-            "FROM mart_sales.fct_sales_order_line",
+            "SELECT pg_read_file('/tmp/x') FROM mart_sales.fct_sales_order_line",
+            "SELECT public.side_effect(order_id) FROM mart_sales.fct_sales_order_line",
         )
 
         for sql in candidates:
@@ -425,7 +418,9 @@ def _multi_metric_context() -> QueryContext:
                     "order_status",
                 }
             ),
-            customer_table: frozenset({"customer_key", "customer_type", "customer_name"}),
+            customer_table: frozenset(
+                {"customer_key", "customer_type", "customer_name"}
+            ),
         },
         request_shape=RequestShape.EXPLICIT_MULTI,
         metric_constraints=constraints,

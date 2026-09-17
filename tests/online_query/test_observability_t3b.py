@@ -57,7 +57,9 @@ class T3BObservabilityTest(unittest.TestCase):
                 generator.generate("prompt")
 
         llm_span = next(
-            span for span in exporter.get_finished_spans() if span.name == "llm.generate"
+            span
+            for span in exporter.get_finished_spans()
+            if span.name == "llm.generate"
         )
         self.assertEqual(llm_span.attributes["gen_ai.response.model"], "provider-alias")
 
@@ -86,7 +88,9 @@ class T3BObservabilityTest(unittest.TestCase):
                 generator.generate("prompt")
 
         llm_span = next(
-            span for span in exporter.get_finished_spans() if span.name == "llm.generate"
+            span
+            for span in exporter.get_finished_spans()
+            if span.name == "llm.generate"
         )
         self.assertEqual(llm_span.attributes["gen_ai.usage.input_tokens"], 10)
         self.assertEqual(llm_span.attributes["gen_ai.usage.output_tokens"], 22)
@@ -129,7 +133,9 @@ class T3BObservabilityTest(unittest.TestCase):
                 )
 
         llm_span = next(
-            span for span in exporter.get_finished_spans() if span.name == "llm.generate"
+            span
+            for span in exporter.get_finished_spans()
+            if span.name == "llm.generate"
         )
         self.assertEqual(
             llm_span.attributes,

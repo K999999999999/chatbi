@@ -23,7 +23,7 @@ QueryRequest
 - 上下文失败时，查询直接返回 `CONTEXT_ERROR`，不得调用 LLM。
 - LLM 返回精确的 `CANNOT_ANSWER` 时，直接返回同名错误。
 - SQL 未通过校验时，直接返回 `SQL_REJECTED`，不得访问数据库。
-- 不自动重试、不修复 SQL、不生成第二次自然语言总结。
+- Query Understanding 的 Provider 调用异常或超时最多重试一次；不重试响应解析、Contract 校验、SQL 生成或 SQL 修复，也不生成第二次自然语言总结。
 
 ## 最小代码结构
 
@@ -57,7 +57,7 @@ QueryRequest
 
 ## 技术决定
 
-- LLM：增加 `langchain-openai`，使用同步 `ChatOpenAI.invoke()`；显式设置 30 秒超时和 `max_retries=0`。
+- LLM：增加 `langchain-openai`，使用同步 `ChatOpenAI.invoke()`；显式设置 30 秒超时和 Provider 内部 `max_retries=0`，Query Understanding 适配器在调用边界最多额外重试一次。
 - SQL Guard：增加 `sqlglot`，指定 PostgreSQL 方言并检查 AST（抽象语法树）。解析成功不等于安全，仍需执行项目自己的白名单规则。
 - Database（数据库）：继续使用现有 `psycopg`，不增加 ORM（对象关系映射）和连接池。
 - 依赖调整：项目代码不再直接调用 OpenAI SDK 时，用 `langchain-openai` 替换 `pyproject.toml` 中直接声明的 `openai`，并更新 `uv.lock`。
@@ -97,7 +97,7 @@ QueryRequest
 | Task | 目标 | 完成标准 | 依赖 |
 |---|---|---|---|
 | T1 Contract 与 Context | 加入必要依赖，建立核心类型并加载五个静态 JSON | 正常数据生成缓存上下文；缺失、损坏或空数据受控失败；确定性测试通过 | 无 |
-| T2 Prompt 与 LLM | 组装完整 Prompt，并用 LangChain 直接生成 SQL 或 `CANNOT_ANSWER` | 30 秒超时、无自动重试、空响应和调用异常可控；Adapter 测试通过 | T1 |
+| T2 Prompt 与 LLM | 组装完整 Prompt，并用 LangChain 直接生成 SQL 或 `CANNOT_ANSWER` | 30 秒超时、Query Understanding Provider 调用最多重试一次、空响应和调用异常可控；Adapter 测试通过 | T1 |
 | T3 SQL Guard | 用 SQLGlot 校验单条只读 PostgreSQL SQL | 合法查询通过；危险语句、越权 Schema、未知表字段和多语句全部拒绝；安全测试通过 | T1 |
 | T4 Database | 用 psycopg 和 `chatbi_app` 执行只读查询 | 10 秒超时、空结果、读取 101 行和返回 100 行行为正确；数据库测试通过 | T1 |
 | T5 Service 与完整链路 | 串联 T1 至 T4，并统一返回成功或受控错误 | 所有错误映射正确；失败时不越过下一边界；至少一条真实问题完成端到端闭环 | T2、T3、T4 |

@@ -19,6 +19,7 @@ from src.online_query.contracts import (
     RetrievalStatus,
 )
 from src.online_query.service import OnlineQueryService
+from src.online_query.query_understanding import candidate_from_payload
 
 
 class RetrievalServiceTest(unittest.TestCase):
@@ -33,9 +34,7 @@ class RetrievalServiceTest(unittest.TestCase):
         self.dynamic_context = QueryContext(
             prompt_context="DYNAMIC CONTEXT",
             allowed_tables=frozenset({"mart_sales.dim_customer"}),
-            allowed_columns={
-                "mart_sales.dim_customer": frozenset({"customer_name"})
-            },
+            allowed_columns={"mart_sales.dim_customer": frozenset({"customer_name"})},
         )
         self.generator = Mock()
         self.generator.generate.return_value = (
@@ -47,6 +46,8 @@ class RetrievalServiceTest(unittest.TestCase):
             rows=(("Alice",),),
             truncated=False,
         )
+        self.query_understanding = Mock()
+        self.query_understanding.understand.side_effect = _candidate_for_question
 
     def test_success_uses_dynamic_context_and_dynamic_scope(self) -> None:
         provider = Mock()
@@ -68,17 +69,23 @@ class RetrievalServiceTest(unittest.TestCase):
     def test_business_retrieval_failure_returns_cannot_answer_before_llm(self) -> None:
         provider = Mock()
         provider.retrieve.return_value = OnlineRetrievalResult(
-            status=RetrievalStatus.NO_REQUIRED_COLUMN_HIT
+            status=RetrievalStatus.NO_REQUIRED_COLUMN_HIT,
+            internal_reason="NO_REQUIRED_COLUMN_HIT",
         )
         service = self._service(provider)
 
         result = service.query(QueryRequest(question="查询不存在的字段"))
 
         self._assert_failure(result, QueryErrorCode.CANNOT_ANSWER)
+        assert isinstance(result, QueryFailure)
+        self.assertEqual(result.failure_stage, "retrieval")
+        self.assertEqual(result.internal_reason, "NO_REQUIRED_COLUMN_HIT")
         self.generator.generate.assert_not_called()
         self.executor.execute.assert_not_called()
 
-    def test_missing_relationship_or_candidate_returns_cannot_answer_before_llm(self) -> None:
+    def test_missing_relationship_or_candidate_returns_cannot_answer_before_llm(
+        self,
+    ) -> None:
         provider = Mock()
         service = self._service(provider)
 
@@ -101,6 +108,7 @@ class RetrievalServiceTest(unittest.TestCase):
         provider.retrieve.return_value = OnlineRetrievalResult(
             status=RetrievalStatus.RETRIEVAL_UNAVAILABLE,
             asset_version="build-v2",
+            internal_reason="QDRANT_UNAVAILABLE",
             warnings=("qdrant unavailable",),
         )
         self.generator.generate.return_value = (
@@ -112,6 +120,9 @@ class RetrievalServiceTest(unittest.TestCase):
             result = service.query(QueryRequest(question="查询订单"))
 
         self._assert_failure(result, QueryErrorCode.CONTEXT_ERROR)
+        assert isinstance(result, QueryFailure)
+        self.assertEqual(result.failure_stage, "retrieval")
+        self.assertEqual(result.internal_reason, "QDRANT_UNAVAILABLE")
         self.generator.generate.assert_not_called()
         self.executor.execute.assert_not_called()
         self.assertIn("status=RETRIEVAL_UNAVAILABLE", logs.output[0])
@@ -158,6 +169,7 @@ class RetrievalServiceTest(unittest.TestCase):
             self.executor,
             context_loader=loader,
             retrieval_provider=provider,
+            query_understanding=self.query_understanding,
         )
 
         result = service.query(QueryRequest(question="查询客户"))
@@ -165,7 +177,9 @@ class RetrievalServiceTest(unittest.TestCase):
         self.assertIsInstance(result, QuerySuccess)
         loader.assert_not_called()
 
-    def test_multi_metric_technical_failure_does_not_fallback_to_static_context(self) -> None:
+    def test_multi_metric_technical_failure_does_not_fallback_to_static_context(
+        self,
+    ) -> None:
         provider = Mock()
         provider.retrieve.return_value = OnlineRetrievalResult(
             status=RetrievalStatus.RETRIEVAL_UNAVAILABLE,
@@ -175,9 +189,7 @@ class RetrievalServiceTest(unittest.TestCase):
         )
         service = self._service(provider)
 
-        result = service.query(
-            QueryRequest(question="按客户类型统计销售额和毛利率")
-        )
+        result = service.query(QueryRequest(question="按客户类型统计销售额和毛利率"))
 
         self._assert_failure(result, QueryErrorCode.CONTEXT_ERROR)
         self.generator.generate.assert_not_called()
@@ -189,20 +201,22 @@ class RetrievalServiceTest(unittest.TestCase):
             FallbackPolicy.FAIL_CLOSED,
         )
 
-    def test_multi_metric_provider_exception_does_not_fallback_to_static_context(self) -> None:
+    def test_multi_metric_provider_exception_does_not_fallback_to_static_context(
+        self,
+    ) -> None:
         provider = Mock()
         provider.retrieve.side_effect = RuntimeError("qdrant unavailable")
         service = self._service(provider)
 
-        result = service.query(
-            QueryRequest(question="按客户类型统计销售额和毛利率")
-        )
+        result = service.query(QueryRequest(question="按客户类型统计销售额和毛利率"))
 
         self._assert_failure(result, QueryErrorCode.CONTEXT_ERROR)
         self.generator.generate.assert_not_called()
         self.executor.execute.assert_not_called()
 
-    def test_successful_provider_context_is_used_without_service_side_shape_branch(self) -> None:
+    def test_successful_provider_context_is_used_without_service_side_shape_branch(
+        self,
+    ) -> None:
         provider = Mock()
         provider.retrieve.return_value = OnlineRetrievalResult(
             status=RetrievalStatus.SUCCESS,
@@ -211,9 +225,7 @@ class RetrievalServiceTest(unittest.TestCase):
         )
         service = self._service(provider)
 
-        result = service.query(
-            QueryRequest(question="按客户类型统计销售额和毛利率")
-        )
+        result = service.query(QueryRequest(question="按客户类型统计销售额和毛利率"))
 
         self.assertIsInstance(result, QuerySuccess)
         self.generator.generate.assert_called_once()
@@ -240,7 +252,9 @@ class RetrievalServiceTest(unittest.TestCase):
         self.assertIsInstance(result, QuerySuccess)
         self.executor.execute.assert_called_once()
 
-    def test_technical_failure_with_unavailable_static_context_is_context_error(self) -> None:
+    def test_technical_failure_with_unavailable_static_context_is_context_error(
+        self,
+    ) -> None:
         provider = Mock()
         provider.retrieve.return_value = OnlineRetrievalResult(
             status=RetrievalStatus.EMBEDDING_UNAVAILABLE
@@ -250,6 +264,7 @@ class RetrievalServiceTest(unittest.TestCase):
             self.executor,
             context_loader=Mock(side_effect=ContextLoadError("static unavailable")),
             retrieval_provider=provider,
+            query_understanding=self.query_understanding,
         )
 
         result = service.query(QueryRequest(question="查询订单"))
@@ -279,6 +294,7 @@ class RetrievalServiceTest(unittest.TestCase):
             self.executor,
             context_loader=lambda: self.static_context,
             retrieval_provider=provider,
+            query_understanding=self.query_understanding,
         )
 
     def _assert_failure(self, result: object, error_code: QueryErrorCode) -> None:
@@ -353,6 +369,30 @@ LEFT JOIN mart_sales.dim_customer AS c
 WHERE f.order_status = 'completed'
 GROUP BY c.customer_type
 """.strip()
+
+
+def _candidate_for_question(question: str):
+    if "统计" in question and "和" in question:
+        return candidate_from_payload(
+            {
+                "query_type": "metric_analysis",
+                "subjects": ["业务主题"],
+                "metrics": ["指标一", "指标二"],
+                "dimensions": [],
+                "time": None,
+                "filters": [],
+            }
+        )
+    return candidate_from_payload(
+        {
+            "query_type": "entity_lookup",
+            "subjects": ["业务主题"],
+            "metrics": [],
+            "dimensions": [],
+            "time": None,
+            "filters": [],
+        }
+    )
 
 
 if __name__ == "__main__":

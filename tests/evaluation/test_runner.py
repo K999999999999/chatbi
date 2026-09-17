@@ -100,15 +100,21 @@ class EvaluationRunnerTest(unittest.TestCase):
                     request_id="evaluation-S01",
                     error_code=QueryErrorCode.SQL_REJECTED,
                     error_message="生成的 SQL 未通过安全校验",
+                    failure_stage="sql_guard",
+                    internal_reason="SQL_REJECTED",
                 ),
                 "成功问题": self._success("evaluation-S02", rows=((1,),)),
             }
         )
 
-        run = run_evaluation(cases, service, _FakeExecutor(self.reference), self.context)
+        run = run_evaluation(
+            cases, service, _FakeExecutor(self.reference), self.context
+        )
 
         self.assertEqual(run.cases[0].status, CaseStatus.FAIL)
         self.assertEqual(run.cases[0].query_error_code, "SQL_REJECTED")
+        self.assertEqual(run.cases[0].failure_stage, "sql_guard")
+        self.assertEqual(run.cases[0].internal_reason, "SQL_REJECTED")
         self.assertEqual(run.cases[1].status, CaseStatus.PASS)
         self.assertEqual(len(service.calls), 2)
 
@@ -164,9 +170,7 @@ class EvaluationRunnerTest(unittest.TestCase):
         truncated_run = run_evaluation(
             (case,),
             service,
-            _FakeExecutor(
-                QueryData(columns=("value",), rows=((1,),), truncated=True)
-            ),
+            _FakeExecutor(QueryData(columns=("value",), rows=((1,),), truncated=True)),
             self.context,
         )
 
@@ -174,7 +178,9 @@ class EvaluationRunnerTest(unittest.TestCase):
         self.assertEqual(truncated_run.cases[0].status, CaseStatus.INVALID_CASE)
         self.assertEqual(service.calls, [])
 
-    def test_service_exception_and_truncated_system_result_do_not_stop_run(self) -> None:
+    def test_service_exception_and_truncated_system_result_do_not_stop_run(
+        self,
+    ) -> None:
         from src.evaluation.runner import CaseStatus, run_evaluation
 
         cases = (
@@ -193,7 +199,9 @@ class EvaluationRunnerTest(unittest.TestCase):
             }
         )
 
-        run = run_evaluation(cases, service, _FakeExecutor(self.reference), self.context)
+        run = run_evaluation(
+            cases, service, _FakeExecutor(self.reference), self.context
+        )
 
         self.assertEqual(
             [result.status for result in run.cases],
@@ -209,9 +217,7 @@ class EvaluationRunnerTest(unittest.TestCase):
         question: str,
         category: str,
         *,
-        expected_sql: str = (
-            "SELECT t.value FROM mart_sales.test_table AS t;"
-        ),
+        expected_sql: str = ("SELECT t.value FROM mart_sales.test_table AS t;"),
     ) -> EvaluationCase:
         return EvaluationCase(
             id=case_id,

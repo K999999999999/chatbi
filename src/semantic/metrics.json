@@ -18,6 +18,23 @@
     "time_field": "fct_sales_order_line.completion_date_key -> dim_date.full_date"
   },
   {
+    "name": "已完成订单明细行数",
+    "level": "原子指标",
+    "aliases": [
+      "订单明细行数"
+    ],
+    "definition": "已完成状态下订单明细记录的行数。",
+    "formula": "COUNT(*)",
+    "sql_template": "SELECT COUNT(*) AS completed_order_line_count FROM mart_sales.fct_sales_order_line AS f WHERE f.order_status = 'completed';",
+    "data_source": "mart_sales.fct_sales_order_line",
+    "depends_on": [],
+    "filters": [
+      "f.order_status = 'completed'"
+    ],
+    "notes": "按事实表订单明细行计数，不按 order_id 去重。时间范围按完成日期统计，使用 completion_date_key 关联 dim_date.full_date。",
+    "time_field": "fct_sales_order_line.completion_date_key -> dim_date.full_date"
+  },
+  {
     "name": "人民币净销售额",
     "level": "原子指标",
     "aliases": [
