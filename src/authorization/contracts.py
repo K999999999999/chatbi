@@ -76,6 +76,14 @@ class AuthorizationPolicyUnavailable(RuntimeError):
     """授权策略暂时不可用，调用方必须 Fail Closed。"""
 
 
+class AuthenticationRequired(RuntimeError):
+    """请求没有可用的经过验证的身份。"""
+
+
+class IdentityProviderUnavailable(RuntimeError):
+    """身份 Provider 暂时不可用，调用方必须 Fail Closed。"""
+
+
 class AuthorizationPolicyStore(Protocol):
     """Application Service 使用的最小授权策略接口。"""
 

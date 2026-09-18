@@ -221,7 +221,7 @@ Query API Adapter 保留针对 HTTP 状态码、错误响应和客户端不可�
 
 - 当前 docs/architecture.md 和 docs/product-scope.md 仍将登录、审计和正式前端列为未来能力；本 Spec 是对已确认新 Feature 的规划 Contract，不在 to-spec 阶段直接改写这些事实文档。
 - 本 Feature 会扩展当前 Query API / Application 边界：现有请求只包含 question，后续需要由服务端认证链路补充可信 AuthContext，而不是让客户端把身份字段放入请求体。
-- 具体静态策略文件的格式、挂载方式、热更新方式和策略版本发布流程尚未确认；实现前需要在 Design / Ticket 阶段固定，但不能因此引入权限管理平台。
+- Ticket 02 已固定最小静态策略文件格式为 JSON object：`policy_version` 字符串和 `allowed_subjects` 字符串数组；策略挂载方式、热更新方式和策略版本发布流程仍未确认，不能因此引入权限管理平台。
 - AuditSink 不可用时是否阻断已授权查询，当前对话未确认；实现前必须选择 Fail Closed 或受控降级策略，并记录安全取舍。
 - /health 等运维端点是否由外部 Gateway 保护，不属于用户数据查询授权 Contract；本 Spec 只要求它们不能成为用户查询授权的旁路。
 - 真实企业 IdP、正式 Web 前端和 RBAC 应根据实际部署环境和用户规模另建 Feature，不应提前写入当前核心 Contract。

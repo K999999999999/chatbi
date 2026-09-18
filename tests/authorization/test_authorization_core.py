@@ -138,6 +138,22 @@ class AuthorizationCoreTest(TestCase):
         )
         self.query_service.query.assert_not_called()
 
+    def test_invalid_policy_decision_fails_closed_before_query(self) -> None:
+        policy = Mock()
+        policy.authorize.return_value = object()
+        service = AuthorizedQueryService(self.query_service, policy)
+
+        result = service.query(
+            QueryRequest(question="查询销售额", request_id="req-invalid-policy"),
+            auth_context=self.authorized,
+        )
+
+        self.assertEqual(
+            getattr(result, "error_code", None),
+            QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
+        )
+        self.query_service.query.assert_not_called()
+
     def test_static_identity_provider_returns_canonical_context(self) -> None:
         adapter = StaticIdentityProviderAdapter(
             identity_provider="test",

@@ -13,7 +13,7 @@ from src.online_query.contracts import (
     QueryRequest,
     QuerySuccess,
 )
-from src.query_api.app import create_app
+from tests.query_api.support import create_test_app
 
 
 class _SuccessService:
@@ -48,7 +48,7 @@ class _FailureService:
 class T4AQueryApiObservabilityTest(unittest.TestCase):
     def test_health_is_outside_query_trace_middleware(self) -> None:
         recorder, exporter = create_in_memory_recorder()
-        client = TestClient(create_app(_SuccessService(), trace_recorder=recorder))
+        client = TestClient(create_test_app(_SuccessService(), trace_recorder=recorder))
 
         response = client.get("/health")
 
@@ -62,7 +62,7 @@ class T4AQueryApiObservabilityTest(unittest.TestCase):
     ) -> None:
         service = _SuccessService()
         recorder, exporter = create_in_memory_recorder()
-        client = TestClient(create_app(service, trace_recorder=recorder))
+        client = TestClient(create_test_app(service, trace_recorder=recorder))
 
         response = client.post(
             "/api/v1/query",
@@ -92,7 +92,7 @@ class T4AQueryApiObservabilityTest(unittest.TestCase):
     def test_invalid_json_gets_request_and_trace_ids_before_body_parse(self) -> None:
         service = _FailureService()
         recorder, exporter = create_in_memory_recorder()
-        client = TestClient(create_app(service, trace_recorder=recorder))
+        client = TestClient(create_test_app(service, trace_recorder=recorder))
 
         response = client.post(
             "/api/v1/query",
@@ -106,7 +106,7 @@ class T4AQueryApiObservabilityTest(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["request_id"], "req-t4a-invalid-json")
         self.assertIn("X-Trace-ID", response.headers)
-        self.assertEqual(service.requests[0].request_id, "req-t4a-invalid-json")
+        self.assertEqual(service.requests, [])
         names = [span.name for span in exporter.get_finished_spans()]
         self.assertEqual(names[-1], "query.request")
         self.assertEqual(names.count("response.serialize"), 1)
@@ -116,7 +116,7 @@ class T4AQueryApiObservabilityTest(unittest.TestCase):
     ) -> None:
         service = _SuccessService()
         recorder, exporter = create_in_memory_recorder()
-        client = TestClient(create_app(service, trace_recorder=recorder))
+        client = TestClient(create_test_app(service, trace_recorder=recorder))
         spoofed_trace_id = "a" * 32
 
         response = client.post(

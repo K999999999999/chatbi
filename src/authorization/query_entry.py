@@ -16,6 +16,7 @@ from .contracts import (
     QUERY_ACTION,
     READ_ONLY_MODE,
     AuthContext,
+    AuthorizationDecision,
     AuthorizationPolicyStore,
     AuthorizationPolicyUnavailable,
 )
@@ -56,7 +57,7 @@ class AuthorizedQueryService:
     ) -> QueryResult:
         request_id = _request_id(request.request_id)
         if auth_context is None:
-            return _authorization_failure(
+            return authorization_failure(
                 request_id,
                 QueryErrorCode.AUTHENTICATION_REQUIRED,
                 internal_reason="AUTH_CONTEXT_MISSING",
@@ -70,7 +71,7 @@ class AuthorizedQueryService:
                 mode=self._mode,
             )
         except AuthorizationPolicyUnavailable:
-            return _authorization_failure(
+            return authorization_failure(
                 request_id,
                 QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
                 internal_reason="POLICY_STORE_UNAVAILABLE",
@@ -80,14 +81,25 @@ class AuthorizedQueryService:
                 "Authorization policy failure: error_type=%s",
                 type(exc).__name__,
             )
-            return _authorization_failure(
+            return authorization_failure(
                 request_id,
                 QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
                 internal_reason="POLICY_STORE_FAILURE",
             )
 
+        if not isinstance(decision, AuthorizationDecision):
+            _LOGGER.warning(
+                "Authorization policy returned invalid decision: value_type=%s",
+                type(decision).__name__,
+            )
+            return authorization_failure(
+                request_id,
+                QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
+                internal_reason="INVALID_POLICY_DECISION",
+            )
+
         if not decision.allowed:
-            return _authorization_failure(
+            return authorization_failure(
                 request_id,
                 QueryErrorCode.AUTHORIZATION_DENIED,
                 internal_reason=decision.reason_code,
@@ -102,7 +114,7 @@ def _request_id(request_id: str | None) -> str:
     return str(uuid4())
 
 
-def _authorization_failure(
+def authorization_failure(
     request_id: str,
     error_code: QueryErrorCode,
     *,

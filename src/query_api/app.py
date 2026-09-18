@@ -1,9 +1,10 @@
 """FastAPI HTTP 适配层。"""
 
+import logging
+import re
 from collections.abc import Iterator
 from contextlib import contextmanager
-import re
-from typing import Any, Protocol
+from typing import Any, NoReturn, Protocol
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
@@ -11,6 +12,18 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, StrictStr
 
+from src.authorization.contracts import (
+    AuthContext,
+    AuthenticationRequired,
+    AuthorizationPolicyStore,
+    AuthorizationPolicyUnavailable,
+    IdentityProviderAdapter,
+    IdentityProviderUnavailable,
+)
+from src.authorization.query_entry import (
+    AuthorizedQueryService,
+    authorization_failure,
+)
 from src.observability.contracts import QuerySource, TraceRecorder
 from src.observability.tracing import create_trace_recorder
 from src.online_query.contracts import (
@@ -21,12 +34,15 @@ from src.online_query.contracts import (
     QuerySuccess,
 )
 
-
 _TRACE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+_LOGGER = logging.getLogger(__name__)
 
 
 _HTTP_STATUS_BY_ERROR = {
     QueryErrorCode.INVALID_REQUEST: 400,
+    QueryErrorCode.AUTHENTICATION_REQUIRED: 401,
+    QueryErrorCode.AUTHORIZATION_DENIED: 403,
+    QueryErrorCode.AUTHENTICATION_UNAVAILABLE: 503,
     QueryErrorCode.CANNOT_ANSWER: 422,
     QueryErrorCode.SQL_REJECTED: 422,
     QueryErrorCode.LLM_ERROR: 502,
@@ -70,12 +86,43 @@ class QueryFailureResponse(BaseModel):
     error_message: str
 
 
+class _MissingIdentityProvider:
+    """没有配置 Provider 时的安全默认值。"""
+
+    identity_provider = "missing"
+
+    def authenticate(self, provider_input: object | None = None) -> AuthContext:
+        del provider_input
+        raise AuthenticationRequired("未配置身份 Provider")
+
+
+class _UnavailablePolicyStore:
+    """没有配置策略时的安全默认值。"""
+
+    def authorize(
+        self,
+        auth_context: AuthContext,
+        *,
+        resource: str,
+        action: str,
+        mode: str,
+    ) -> NoReturn:
+        del auth_context, resource, action, mode
+        raise AuthorizationPolicyUnavailable("未配置授权策略")
+
+
 def create_app(
     service: QueryService,
     trace_recorder: TraceRecorder | None = None,
+    *,
+    identity_provider: IdentityProviderAdapter | None = None,
+    policy_store: AuthorizationPolicyStore | None = None,
 ) -> FastAPI:
     """创建绑定查询服务的 FastAPI 应用。"""
 
+    provider = identity_provider or _MissingIdentityProvider()
+    authorization_store = policy_store or _UnavailablePolicyStore()
+    authorized_service = AuthorizedQueryService(service, authorization_store)
     recorder = trace_recorder or getattr(service, "_trace_recorder", None)
     if recorder is None:
         try:
@@ -87,7 +134,9 @@ def create_app(
         title="ChatBI Query API",
         version="0.1.0",
     )
-    app.state.query_service = service
+    app.state.query_service = authorized_service
+    app.state.identity_provider = provider
+    app.state.authorization_policy_store = authorization_store
     app.state.trace_recorder = recorder
 
     @app.middleware("http")
@@ -113,11 +162,12 @@ def create_app(
         request: Request,
         _: RequestValidationError,
     ) -> JSONResponse:
-        result = service.query(
-            QueryRequest(
-                question="",
-                request_id=_request_id_from_state(request),
-            )
+        result = QueryFailure(
+            request_id=_request_id_from_state(request),
+            error_code=QueryErrorCode.INVALID_REQUEST,
+            error_message="查询问题不能为空或格式错误",
+            failure_stage="request_validation",
+            internal_reason="INVALID_REQUEST_BODY",
         )
         return _result_response(result, trace_recorder=recorder)
 
@@ -126,6 +176,8 @@ def create_app(
         response_model=QuerySuccessResponse,
         responses={
             400: {"model": QueryFailureResponse},
+            401: {"model": QueryFailureResponse},
+            403: {"model": QueryFailureResponse},
             422: {"model": QueryFailureResponse},
             502: {"model": QueryFailureResponse},
             503: {"model": QueryFailureResponse},
@@ -136,15 +188,68 @@ def create_app(
         request: Request,
         body: QueryBody,
     ) -> JSONResponse:
-        result = service.query(
-            QueryRequest(
-                question=body.question,
-                request_id=_request_id_from_state(request),
-            )
+        result = _authorized_query(
+            request,
+            question=body.question,
+            identity_provider=provider,
+            query_service=authorized_service,
         )
         return _result_response(result, trace_recorder=recorder)
 
     return app
+
+
+def _authorized_query(
+    request: Request,
+    *,
+    question: str,
+    identity_provider: IdentityProviderAdapter,
+    query_service: AuthorizedQueryService,
+) -> QueryResult:
+    request_id = _request_id_from_state(request)
+    try:
+        auth_context = identity_provider.authenticate(request)
+    except AuthenticationRequired:
+        return authorization_failure(
+            request_id,
+            QueryErrorCode.AUTHENTICATION_REQUIRED,
+            internal_reason="AUTHENTICATION_REQUIRED",
+        )
+    except IdentityProviderUnavailable:
+        return authorization_failure(
+            request_id,
+            QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
+            internal_reason="IDENTITY_PROVIDER_UNAVAILABLE",
+        )
+    except Exception as exc:  # noqa: BLE001 - authentication must Fail Closed
+        _LOGGER.warning(
+            "Identity Provider failure: error_type=%s",
+            type(exc).__name__,
+        )
+        return authorization_failure(
+            request_id,
+            QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
+            internal_reason="IDENTITY_PROVIDER_FAILURE",
+        )
+
+    if not isinstance(auth_context, AuthContext):
+        _LOGGER.warning(
+            "Identity Provider returned invalid context: value_type=%s",
+            type(auth_context).__name__,
+        )
+        return authorization_failure(
+            request_id,
+            QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
+            internal_reason="INVALID_AUTH_CONTEXT",
+        )
+
+    return query_service.query(
+        QueryRequest(
+            question=question,
+            request_id=request_id,
+        ),
+        auth_context=auth_context,
+    )
 
 
 def _result_response(
