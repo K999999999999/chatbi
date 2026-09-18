@@ -234,7 +234,7 @@ $env:RUN_DATABASE_TESTS = '1'
 uv run --env-file .env --with pytest python -m pytest -q
 ```
 
-本命令会接触本地 PostgreSQL，本次交付不代替用户重新执行；运行前需再次确认数据库状态，并以终端输出作为当前证据。当前不依赖外部服务的全量回归结果为 `251 passed, 6 skipped, 85 subtests passed`；其中真实 LLM、数据库等外部集成测试仍按显式开关单独执行，不能用纯软件测试替代。
+本命令会接触本地 PostgreSQL，本次交付不代替用户重新执行；运行前需再次确认数据库状态，并以终端输出作为当前证据。文档中历史记录的测试数量只作为对应 Commit 的证据快照，不作为当前 checkout 的基线；真实 LLM、数据库等外部集成测试仍按显式开关单独执行，不能用纯软件测试替代。
 
 ### 7.3 GitHub Actions CI
 
@@ -254,19 +254,20 @@ PR（Pull Request，合并请求）不按固定 commit 数量创建。一个 PR 
 → 用户确认
 → 确认 git_dirty=false
 → 必要时更新本地 RAG asset（资产）
-→ 运行完整 Real E2E
-→ 21/21 通过且 Execution Accuracy=100%
+→ 按风险运行最终 Software Test、AI Evaluation、Business Acceptance 或 Real E2E
+→ 检查适用的验收结果和未验证范围
 → Push 并创建或更新 PR
 ```
 
-Agent 的提醒必须明确说明：用户这一次确认会授权先执行本地最终验收，并且在完整 E2E 通过后 Push、创建或更新 PR。用户确认前，Agent 不 Push、不创建 PR。确认后如果完整 E2E 失败，不提交 PR；修复后必须重新形成 candidate commit 并重新验证。完整 E2E 通过后又修改 Retrieval、Prompt、RAG、LLM 或 Evaluation cases 等行为代码时，必须重新运行。
+Agent 的提醒必须明确说明：用户这一次确认会授权先执行本地最终验收，并且在适用的验收通过后 Push、创建或更新 PR。用户确认前，Agent 不 Push、不创建 PR。确认后如果必需验收失败，不提交 PR；修复后必须重新形成 candidate commit 并重新验证。高风险验收通过后又修改 Retrieval、Prompt、RAG、LLM 或 Evaluation cases 等行为代码时，必须重新运行对应验证。
 
 最终 candidate commit 的本地检查可以使用：
 
 ```powershell
 git status --short --branch
 uv run --with pytest python -m pytest -q
-uv run --env-file .env python -m src.evaluation --online-retrieval
+# 如果涉及 Retrieval、Prompt、Semantic、RAG、Embedding、Qdrant、LLM、Evaluation cases 或 SQL 生成：
+# uv run --env-file .env python -m src.evaluation --online-retrieval
 git status --short --branch
 ```
 

@@ -50,12 +50,16 @@
 - 小范围单会话修改可以直接实施，不强制创建 Spec 或 Ticket；
 - 需求、Contract、范围或架构影响不清楚时，先建立并确认 Spec；
 - 多阶段 Feature 在 Spec 确认并通过 `design-review` 后拆分 Ticket；
+- `to-tickets` 形成草案后，必须先通过当前上下文的 Ticket Readiness Review，再由用户确认 Ticket 拆分；
 - 用户确认 Ticket 拆分后，按依赖顺序选择 Ticket 实施；
 - Spec / Ticket 的确认不自动授权 Push、PR 或 Merge。
+
+计划合入 `master` 的变更，无论大小，都在形成 candidate 后通过一个 PR 交付；小变更只跳过不必要的 Spec / Ticket，不跳过 targeted tests、Diff Review、candidate 检查、required checks 和合并后清理。只读咨询、诊断和不准备合入仓库的临时实验不进入 PR 流程。
 
 ### 3. Implement on one branch
 
 - 在同一个 Feature branch 中按 Ticket 实施；
+- 开始实现前确认当前 Ticket 已通过 Ticket Readiness Review，且没有遗留的 Contract / Architecture 决策；
 - 每个逻辑阶段运行对应 targeted tests；
 - 通过 TDD、Code Review 和 Diff Review 收敛实现；
 - 只提交当前目标相关文件；
@@ -88,7 +92,7 @@ Agent 必须先向用户说明：
 ```text
 用户确认
 → 最终确认 branch、HEAD 和 git_dirty=false
-→ 按风险运行 targeted tests / Real E2E
+→ 按风险运行 targeted tests / AI Evaluation / Business Acceptance / Real E2E
 → 检查测试结果、Evaluation 报告和未验证范围
 → Push
 → 创建或更新一个 PR

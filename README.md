@@ -14,7 +14,7 @@ ChatBI 是一个面向业务数据查询的 Domain AI Engine（领域 AI 引擎�
 4. 对应的 [`docs/specs/`](docs/specs/) 和 [`docs/designs/`](docs/designs/)：Module Contract（模块契约）和实现设计。
 5. 对应的 [`tests/`](tests/) 与 [`docs/acceptance/`](docs/acceptance/)：确定性测试和历史验收证据。
 
-当前 Feature 的工作地图见 [`workspace-map.md`](.scratch/repository-structure-readability/workspace-map.md)。
+Feature 的 Spec、Ticket 和过程记录位于 [`.scratch/`](.scratch/)。[`repository-structure-readability` 的 workspace-map](.scratch/repository-structure-readability/workspace-map.md) 是已完成的历史结构地图，不作为当前 active Feature 指针。
 
 ## 主链路
 

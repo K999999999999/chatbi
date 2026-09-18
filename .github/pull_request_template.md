@@ -28,7 +28,7 @@
 
 - [ ] Format（格式检查）
 - [ ] Lint（静态规范检查）
-- [ ] Type-check（类型检查）
+- [ ] Type-check（类型检查；当前未配置为 blocking gate 时填写 N/A）
 
 ### 逻辑
 
@@ -36,6 +36,7 @@
 - [ ] Deterministic tests（确定性测试）
 - [ ] SQL Guard tests（SQL 安全校验测试）
 - [ ] AI Evaluation（AI 评测；仅在相关改动时执行）
+- [ ] Business Acceptance（业务验收；适用时执行）
 - [ ] Real E2E（真实端到端；仅在高风险改动时执行）
 
 ### 集成

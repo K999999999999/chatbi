@@ -33,6 +33,12 @@ Spec、Ticket 和路径规划使用本地 Markdown，详见 `docs/agents/issue-t
 
 已确认的 Spec 在进入 `to-tickets` 前必须经过 `design-review` 的只读审查；审查范围和 Verdict 由该 Skill 负责，审查不修改代码或文档。
 
+### Workflow routing
+
+所有工程请求先由 `ask-matt` 判断当前阶段、范围和风险。`grill-with-docs` 只在目标、成功标准、事实源或边界不清时触发；小范围、单会话且不改变稳定 Contract 的修改可以直接进入 `implement`。多阶段 Feature 必须经过 Spec 确认、`design-review`、Ticket Readiness Review 和 Ticket 确认后再实现。
+
+`Ticket Readiness Review` 是当前上下文中的只读门禁，不启动独立 Agent；它检查 Ticket 的 Scope、依赖、验收行为、验证证据、owned files 和 Done When 是否足以安全实施。它不替代 Spec `design-review`、实现后的 `code-review` 或 PR Review。
+
 ### Domain docs
 
 领域文档的读取位置和边界详见 `docs/agents/domain.md`。
@@ -155,6 +161,7 @@ LLM 输出始终视为 Untrusted Candidate（不可信候选）。LLM 可以提�
 - 每次修改只覆盖已确认的 Scope，不混入无关 Feature、重构、清理或未来能力。
 - 保留用户已有修改，不覆盖、不删除、不回退，也不把无关文件加入当前提交。
 - 默认只做本地 Commit，不 Push、不创建 PR、不创建外部 Issue，除非用户明确要求。
+- 计划合入 `master` 的变更，无论大小，统一采用 `Feature branch → candidate → PR → required checks → Auto-merge → 合并后清理`；小变更可以跳过 Spec / Ticket，但不能跳过相关测试、Diff Review、candidate 检查和 PR 门禁。
 - 只有 Contract、相关验证和 Diff 检查完成后才提交；无法确认修改归属或验证失败时不提交。
 - Commit Message 使用 `<type>(<scope>): <中文摘要>`，完成报告使用中文说明提交内容、验证结果和剩余问题。
 
@@ -194,9 +201,9 @@ Agent 只能在用户明确确认后进入 PR 前验收。该次确认同时授�
 ```text
 用户确认
 → 确认最终 candidate commit 和 git_dirty=false
-→ 按风险运行 targeted tests
-→ 高风险改动运行本地完整 Real E2E
-→ 检查 21/21、Execution Accuracy 和评测报告
+→ 按风险运行 targeted tests / AI Evaluation / Business Acceptance
+→ 影响高风险链路时运行本地完整 Real E2E
+→ 检查适用的测试、Evaluation、Business Acceptance 和 Real E2E 报告
 → 验证通过后 Push / 创建或更新 PR
 ```
 
@@ -208,6 +215,7 @@ Agent 只能在用户明确确认后进入 PR 前验收。该次确认同时授�
 ### 风险与验证级别
 
 - Retrieval、Prompt、Semantic、RAG Offline Build、Embedding、Qdrant、LLM 配置、Evaluation cases 或 SQL 生成链路的改动，默认属于高风险，需要在最终 candidate commit 上运行本地完整 Real E2E。
+- Authorization、State、API Contract 或数据范围变化至少需要对应的模块 / 集成测试和 Business Acceptance 或安全验收；如果同时影响模型、Retrieval 或 SQL 生成链路，再按上一条执行完整 Real E2E。
 - 文档、注释、纯测试、纯 CI 或不影响运行行为的整理，运行相关 targeted tests，不要求完整 Real E2E。
 - 完整 Real E2E 使用本地 `.env`、本地 PostgreSQL、Qdrant、BGE-M3 和真实 LLM；不提交 `.env`，不在日志或报告中暴露 Secret。
 - GitHub Actions 的快速 CI 在 Push / Pull Request 更新后自动运行；独立 Real E2E workflow 只按需手动触发，不作为普通 PR 的自动步骤。
