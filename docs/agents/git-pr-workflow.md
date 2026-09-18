@@ -105,16 +105,57 @@ Agent 必须先向用户说明：
 
 当前仓库的 `.github/workflows/enable-auto-merge.yml` 可能在符合条件的 PR 事件后自动请求 Squash Auto-merge。Agent 不直接 Merge；创建或更新 PR 前必须向用户说明这一自动行为，并在之后验证 PR 的真实状态。Stacked PR 不得默认启用 Auto-merge。
 
-### 6. Finish and clean up
+### 6. PR 后状态检查与自动收尾
 
-PR 合并后：
+每次创建或更新 PR 后，Agent 必须执行一次统一的 Post-PR（PR 后）状态检查，不再要求用户为正常的合并收尾重复确认。
 
-1. 回到 `master`；
-2. 更新本地 `master`；
-3. 确认没有需要保留的用户修改、未推送 Commit 或 backup；
-4. 删除已完成目标的本地 Feature worktree 和 branch；
-5. 保留仍有回滚价值的 backup branch，并明确其用途；
-6. 下一项工作重新从 `master` 创建新的 Feature branch。
+#### 6.1 等待和检查
+
+1. 记录 PR number、URL、head branch、base branch、提交 HEAD 和创建 / 更新时间；
+2. 使用产品提供的 wait / monitor 机制累计等待至少 2 分钟；不要用一次超过 60 秒的阻塞式 sleep，必要时分段等待；
+3. 等待结束后读取真实状态，至少检查：
+   - `state`、`mergedAt`、`mergeStateStatus`；
+   - `headRefName`、`baseRefName`；
+   - `autoMergeRequest` 和 Auto-merge（自动合并）策略；
+   - CI、required checks（必需检查）和失败原因。
+
+推荐使用：
+
+```text
+gh pr view <PR> --json number,url,state,mergedAt,mergeStateStatus,headRefName,baseRefName,autoMergeRequest,statusCheckRollup
+```
+
+#### 6.2 已合并时的自动清理
+
+只有 PR 已明确为 `MERGED`，且满足下方 Routine cleanup authorization 的全部条件时，才执行：
+
+1. `git fetch origin --prune`；
+2. 确认当前 worktree 没有用户的 staged、unstaged 或 untracked 修改；
+3. 确认本次 head branch 没有合并后新增的本地 Commit、未 Push 工作、Open PR、Stacked PR 或其他 worktree 依赖；
+4. 回到 `master`，使用 `git merge --ff-only origin/master` 同步合并结果；
+5. 删除本次 PR 对应的本地 Feature worktree / branch；
+6. 检查远端 head branch；如果仓库没有自动删除，且能够确认它就是本次已合并 PR 的唯一 head branch，则删除远端 branch；
+7. 再次执行 `git fetch origin --prune`，确认当前 branch、HEAD、tracking、工作区和远端 branch 状态；
+8. 保留仍有回滚价值的 `backup/*` 和 `codex/backup-*` branch，不把它们当作日常开发线；
+9. 只有以上检查全部通过，才能在完成报告中明确说明：“当前工作区已恢复到干净的 `master`，可以开始下一个 Feature”。
+
+#### 6.3 PR 尚未合并或异常时
+
+- `OPEN`、`BLOCKED`、CI 仍在运行或 Review 未完成：保留 head branch，不执行分支清理，报告 PR 状态、检查进度和下一等待条件；
+- `CLOSED` 但未 `MERGED`：不删除可能仍有价值的 Feature branch，报告关闭状态并暂停；
+- 发现用户修改、未推送 Commit、Stacked PR、其他 worktree 依赖或 branch 归属不确定：暂停自动收尾并请求用户决定；
+- 不因为 branch 看起来旧、PR 看起来已经过期或名称相似就批量删除历史 branch。
+
+#### 6.4 Post-PR 完成报告
+
+PR 后报告至少包含：
+
+- PR URL、最终 `state`、`mergedAt` 和 merge commit；
+- CI / required checks 的通过、失败或仍在运行状态；
+- 当前 `master`、HEAD 和 `git status`；
+- 删除的本地 / 远端 Feature branch 和保留的 backup branch；
+- 是否存在未处理问题、等待条件或风险；
+- 只有完成自动收尾并验证干净时，明确告知可以开始下一个 Feature。
 
 #### Routine cleanup authorization
 
@@ -126,7 +167,7 @@ PR 合并后：
 - 没有 Open PR、Stacked PR 或其他 worktree 依赖该 branch；
 - 目标不是 `master`、受保护 branch、`backup/*` 或 `codex/backup-*`。
 
-自动清理顺序为：回到 `master` → fast-forward 同步 `master` → 删除当前 Feature 的本地 worktree / branch → 检查仓库的 `delete_branch_on_merge`；如果远端 branch 仍未被仓库自动删除，且仍能确认它就是本次已合并 PR 的 head branch，才删除该远端 branch。
+自动清理顺序为：等待至少 2 分钟并检查 PR 状态 → 回到 `master` → fast-forward 同步 `master` → 删除当前 Feature 的本地 worktree / branch → 检查仓库的 `delete_branch_on_merge` → 必要时删除已确认的远端 head branch → 再次检查工作区和远端引用。
 
 以下情况仍必须暂停并请求用户确认：无法确认 branch 与当前 PR 的唯一归属、PR 未合并、存在 Stacked PR 或其他依赖、发现用户修改、目标是 backup / protected branch，或要批量处理当前交付之外的历史遗留 branch。不得因为“看起来旧”就自动删除历史 branch。
 
