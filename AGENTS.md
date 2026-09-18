@@ -199,6 +199,7 @@ Agent 只能在用户明确确认后进入 PR 前验收。该次确认同时授�
 - 如果最终本地 E2E 失败，Agent 不得声称可以提交 PR；应报告失败案例和原因，修复后重新形成 candidate commit 并验证。
 - 本地 E2E 通过后如果又修改了会影响行为的代码，必须重新验证；只修改文档、注释或不影响运行行为的内容时，可以按风险重新判断。
 - 上述用户确认是 Push、创建或更新 PR 的外部状态授权。当前仓库的 `.github/workflows/enable-auto-merge.yml` 可能在符合条件的 PR 事件后自动请求 Squash Auto-merge；Agent 不直接执行 Merge，必须在 PR 前说明该自动行为、目标 PR、合并策略和当前检查状态，并在执行后验证 PR 状态。Stacked PR 只有在最终 base、required checks（必需检查）和 branch protection（分支保护）明确后才允许启用 Auto-merge；生产部署仍需单独确认。
+- 每次创建或更新 PR 后，Agent 使用等待 / 监控机制累计等待至少 2 分钟，再检查 PR 的真实状态；如果 PR 已 `MERGED`，在满足常规清理条件时无需再次请求用户确认，自动同步 `master`、清理本次 PR 对应的本地和远端无用 Feature branch / worktree、检查工作区和备份分支，并输出“可以开始下一个 Feature”的完成报告。PR 仍在等待、检查失败、已关闭但未合并，或分支归属 / 依赖不明确时，不得清理，必须报告当前状态和阻塞原因。
 
 ### 风险与验证级别
 
