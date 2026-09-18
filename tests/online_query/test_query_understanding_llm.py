@@ -56,6 +56,14 @@ class QueryUnderstandingLLMTest(unittest.TestCase):
         self.assertIn("最小指标表达式", prompt)
         self.assertIn("当前数据状态", prompt)
         self.assertIn("不要输出物理表名、物理字段名", prompt)
+        self.assertIn(
+            "granularity 只能是 day、week、month、quarter 或 year",
+            prompt,
+        )
+        self.assertIn(
+            '"text": "2025 年第一季度", "granularity": "quarter"',
+            prompt,
+        )
 
     def test_provider_exception_retries_once_then_returns_candidate(self) -> None:
         model = Mock()
