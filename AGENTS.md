@@ -29,6 +29,10 @@
 
 Spec、Ticket 和路径规划使用本地 Markdown，详见 `docs/agents/issue-tracker.md`。
 
+### Spec / Design Review
+
+已确认的 Spec 在进入 `to-tickets` 前必须经过 `design-review` 的只读审查；审查范围和 Verdict 由该 Skill 负责，审查不修改代码或文档。
+
 ### Domain docs
 
 领域文档的读取位置和边界详见 `docs/agents/domain.md`。
