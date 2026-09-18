@@ -9,6 +9,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
 
+from src.authorization import (
+    AuthorizedQueryService,
+    BoundAuthorizedQueryService,
+    StaticAuthorizationPolicyStore,
+    StaticIdentityProviderAdapter,
+)
 from src.observability.contracts import TraceRecorder
 from src.observability.tracing import create_trace_recorder
 from src.online_query.context import (
@@ -163,12 +169,13 @@ def run_cli(
             query_understanding=query_understanding,
             trace_recorder=trace_recorder,
         )
+        query_entry = _build_evaluation_query_entry(service)
         state_reader = _read_git_state if git_state_reader is None else git_state_reader
         git_commit, git_dirty = state_reader(PROJECT_ROOT)
 
         run = run_evaluation(
             cases,
-            service,
+            query_entry,
             executor,
             context,
             trace_recorder=trace_recorder,
@@ -313,6 +320,24 @@ def _build_online_retrieval_provider(
         runtime,
         trace_recorder=trace_recorder,
     )
+
+
+def _build_evaluation_query_entry(
+    service: OnlineQueryService,
+) -> BoundAuthorizedQueryService:
+    """为 Evaluation 显式装配 Test Identity，不复用 HTTP 身份配置。"""
+
+    subject_id = "evaluation-test"
+    identity_provider = StaticIdentityProviderAdapter(
+        identity_provider="test",
+        subject_id=subject_id,
+    )
+    auth_context = identity_provider.authenticate()
+    policy_store = StaticAuthorizationPolicyStore(
+        allowed_subjects=frozenset({subject_id}),
+        policy_version="evaluation-test-policy-v1",
+    )
+    return AuthorizedQueryService(service, policy_store).bind(auth_context)
 
 
 def _preflight_online_retrieval(runtime: RagRuntime) -> None:

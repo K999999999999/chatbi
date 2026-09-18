@@ -47,6 +47,19 @@ class AuthorizationCoreTest(TestCase):
         self.assertIsInstance(result, QuerySuccess)
         self.query_service.query.assert_called_once()
 
+    def test_bound_entry_reuses_authorization_with_explicit_context(self) -> None:
+        service = AuthorizedQueryService(self.query_service, self.policy)
+        entry = service.bind(self.authorized)
+
+        result = entry.query(
+            QueryRequest(question="查询销售额", request_id="req-bound")
+        )
+
+        self.assertIsInstance(result, QuerySuccess)
+        self.query_service.query.assert_called_once_with(
+            QueryRequest(question="查询销售额", request_id="req-bound")
+        )
+
     def test_missing_context_returns_authentication_required_before_query(self) -> None:
         service = AuthorizedQueryService(self.query_service, self.policy)
 

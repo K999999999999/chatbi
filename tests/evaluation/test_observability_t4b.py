@@ -6,6 +6,11 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from src.authorization import (
+    AuthorizedQueryService,
+    StaticAuthorizationPolicyStore,
+    StaticIdentityProviderAdapter,
+)
 from src.observability import QuerySource, create_in_memory_recorder
 from src.online_query.contracts import (
     QueryContext,
@@ -163,10 +168,22 @@ class EvaluationObservabilityT4BTest(unittest.TestCase):
             context_loader=lambda: self.context,
             trace_recorder=recorder,
         )
+        query_entry = AuthorizedQueryService(
+            service,
+            StaticAuthorizationPolicyStore(
+                allowed_subjects=frozenset({"evaluation-test"}),
+                policy_version="evaluation-test-policy-v1",
+            ),
+        ).bind(
+            StaticIdentityProviderAdapter(
+                identity_provider="test",
+                subject_id="evaluation-test",
+            ).authenticate()
+        )
 
         run = run_evaluation(
             (self._case("SHARED", "共享 Root"),),
-            service,
+            query_entry,
             executor,
             self.context,
             trace_recorder=recorder,

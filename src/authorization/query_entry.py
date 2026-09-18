@@ -107,6 +107,29 @@ class AuthorizedQueryService:
 
         return self._query_service.query(request)
 
+    def bind(self, auth_context: AuthContext) -> "BoundAuthorizedQueryService":
+        """将显式身份绑定为供内部调用方复用的授权入口。"""
+
+        return BoundAuthorizedQueryService(self, auth_context)
+
+
+class BoundAuthorizedQueryService:
+    """复用 AuthorizedQueryService 的固定身份内部查询入口。"""
+
+    def __init__(
+        self,
+        authorized_query_service: AuthorizedQueryService,
+        auth_context: AuthContext,
+    ) -> None:
+        self._authorized_query_service = authorized_query_service
+        self._auth_context = auth_context
+
+    def query(self, request: QueryRequest) -> QueryResult:
+        return self._authorized_query_service.query(
+            request,
+            auth_context=self._auth_context,
+        )
+
 
 def _request_id(request_id: str | None) -> str:
     if isinstance(request_id, str) and request_id.strip():

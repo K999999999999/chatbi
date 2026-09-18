@@ -3,6 +3,11 @@
 import unittest
 from pathlib import Path
 
+from src.authorization import (
+    AuthorizedQueryService,
+    StaticAuthorizationPolicyStore,
+    StaticIdentityProviderAdapter,
+)
 from src.evaluation.evaluator import load_evaluation_cases
 from src.evaluation.runner import CaseStatus, run_evaluation
 from src.online_query.context import load_query_context
@@ -50,8 +55,19 @@ class V1AcceptanceTest(unittest.TestCase):
             executor,
             context_loader=lambda: context,
         )
+        identity_provider = StaticIdentityProviderAdapter(
+            identity_provider="test",
+            subject_id="evaluation-test",
+        )
+        query_entry = AuthorizedQueryService(
+            service,
+            StaticAuthorizationPolicyStore(
+                allowed_subjects=frozenset({"evaluation-test"}),
+                policy_version="evaluation-test-policy-v1",
+            ),
+        ).bind(identity_provider.authenticate())
 
-        run = run_evaluation(cases, service, executor, context)
+        run = run_evaluation(cases, query_entry, executor, context)
 
         self.assertEqual(run.summary.total_cases, 21)
         self.assertEqual(run.summary.valid_cases, 21)

@@ -12,7 +12,11 @@ from .contracts import (
     StaticAuthorizationPolicyStore,
     StaticIdentityProviderAdapter,
 )
-from .query_entry import AuthorizedQueryService, authorization_failure
+from .query_entry import (
+    AuthorizedQueryService,
+    BoundAuthorizedQueryService,
+    authorization_failure,
+)
 
 __all__ = [
     "AuthContext",
@@ -22,6 +26,7 @@ __all__ = [
     "AuthorizationPolicyStore",
     "AuthorizationPolicyUnavailable",
     "AuthorizedQueryService",
+    "BoundAuthorizedQueryService",
     "IdentityProviderUnavailable",
     "IdentityProviderAdapter",
     "StaticAuthorizationPolicyStore",
