@@ -12,6 +12,7 @@ from typing import TextIO
 from src.authorization import (
     AuthorizedQueryService,
     BoundAuthorizedQueryService,
+    InMemoryAuditSink,
     StaticAuthorizationPolicyStore,
     StaticIdentityProviderAdapter,
 )
@@ -35,8 +36,8 @@ from src.online_query.query_understanding_llm import (
     LangChainQueryUnderstanding,
     QueryUnderstandingAdapter,
 )
-from src.online_query.retrieval.rag_runtime import RagRuntime
 from src.online_query.retrieval import OnlineRetriever
+from src.online_query.retrieval.rag_runtime import RagRuntime
 from src.online_query.service import OnlineQueryService
 
 from .evaluator import EvaluationLoadError, load_evaluation_cases
@@ -337,7 +338,11 @@ def _build_evaluation_query_entry(
         allowed_subjects=frozenset({subject_id}),
         policy_version="evaluation-test-policy-v1",
     )
-    return AuthorizedQueryService(service, policy_store).bind(auth_context)
+    return AuthorizedQueryService(
+        service,
+        policy_store,
+        audit_sink=InMemoryAuditSink(),
+    ).bind(auth_context)
 
 
 def _preflight_online_retrieval(runtime: RagRuntime) -> None:

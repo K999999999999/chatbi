@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 from fastapi.testclient import TestClient
 
-from src.authorization import StaticIdentityProviderAdapter
+from src.authorization import InMemoryAuditSink, StaticIdentityProviderAdapter
 from src.authorization.contracts import IdentityProviderUnavailable
 from src.online_query.contracts import (
     QueryErrorCode,
@@ -109,6 +109,22 @@ class QueryApiAppTest(TestCase):
             service.requests,
             [QueryRequest(question="查询产品销售额", request_id="req-123")],
         )
+
+    def test_query_audit_event_can_be_correlated_by_request_id(self) -> None:
+        service = _SuccessService((("产品A", 10000),))
+        audit_sink = InMemoryAuditSink()
+        client = TestClient(create_test_app(service, audit_sink=audit_sink))
+
+        response = client.post(
+            "/api/v1/query",
+            json={"question": "查询产品销售额"},
+            headers={"X-Request-ID": "req-audit-http"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(audit_sink.events), 1)
+        self.assertEqual(audit_sink.events[0].request_id, "req-audit-http")
+        self.assertEqual(audit_sink.events[0].decision, "allow")
 
     def test_query_without_request_id_returns_empty_success(self) -> None:
         service = _SuccessService(())
@@ -234,7 +250,7 @@ class QueryApiAppTest(TestCase):
 
     def test_missing_identity_returns_401_without_calling_query_service(self) -> None:
         service = _SuccessService((("产品A", 10000),))
-        client = TestClient(create_app(service))
+        client = TestClient(create_app(service, audit_sink=InMemoryAuditSink()))
 
         response = client.post(
             "/api/v1/query",
@@ -272,6 +288,7 @@ class QueryApiAppTest(TestCase):
         service = _SuccessService((("产品A", 10000),))
         policy = Mock()
         policy.authorize.return_value = Mock(allowed=True)
+        audit_sink = InMemoryAuditSink()
         client = TestClient(
             create_app(
                 service,
@@ -279,6 +296,7 @@ class QueryApiAppTest(TestCase):
                     IdentityProviderUnavailable("provider unavailable")
                 ),
                 policy_store=policy,
+                audit_sink=audit_sink,
             )
         )
 
@@ -294,6 +312,10 @@ class QueryApiAppTest(TestCase):
             "AUTHENTICATION_UNAVAILABLE",
         )
         self.assertEqual(service.requests, [])
+        self.assertEqual(len(audit_sink.events), 1)
+        self.assertEqual(audit_sink.events[0].request_id, "req-provider-error")
+        self.assertEqual(audit_sink.events[0].decision, "deny")
+        self.assertEqual(audit_sink.events[0].identity_provider, "test")
 
     def test_missing_policy_returns_503_without_calling_query_service(self) -> None:
         service = _SuccessService((("产品A", 10000),))
@@ -304,6 +326,7 @@ class QueryApiAppTest(TestCase):
                     identity_provider="test",
                     subject_id="analyst-1",
                 ),
+                audit_sink=InMemoryAuditSink(),
             )
         )
 

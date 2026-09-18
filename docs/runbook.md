@@ -65,6 +65,8 @@ Copy-Item .env.example .env
 `config/authorization-policy.example.json` 只包含演示主体 `analyst-1`；实际环境应通过部署配置注入策略文件路径和允许访问的主体。
 `production` / `prod` 环境会拒绝启动 `demo` / `test` Provider，不会自动回退到演示身份。当前版本尚未接入企业 SSO。
 
+授权事件当前由进程内 `InMemoryAuditSink` 收集，供本地 Demo、Evaluation 和确定性测试使用；它不是持久化审计中心。AuditSink 未配置或写入失败时，授权入口 Fail Closed（失败关闭）并返回受控 503，不会继续执行 Online Query。
+
 ## 4. 启动基础设施
 
 启动 PostgreSQL 和 Qdrant：

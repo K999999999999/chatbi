@@ -3,6 +3,7 @@
 from collections.abc import Iterable
 
 from src.authorization import (
+    InMemoryAuditSink,
     StaticAuthorizationPolicyStore,
     StaticIdentityProviderAdapter,
 )
@@ -16,6 +17,7 @@ def create_test_app(
     subject_id: str = "analyst-1",
     allowed_subjects: Iterable[str] = ("analyst-1",),
     identity_provider: str = "test",
+    audit_sink: object | None = None,
 ):
     """使用显式 Test Identity 创建受保护的 Query API。"""
 
@@ -29,5 +31,6 @@ def create_test_app(
             allowed_subjects=frozenset(allowed_subjects),
             policy_version="test-policy-v1",
         ),
+        audit_sink=InMemoryAuditSink() if audit_sink is None else audit_sink,
         trace_recorder=trace_recorder,
     )

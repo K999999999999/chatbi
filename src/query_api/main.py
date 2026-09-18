@@ -2,6 +2,7 @@
 
 import os
 
+from src.authorization import InMemoryAuditSink
 from src.observability.tracing import create_trace_recorder
 from src.online_query.database import PsycopgQueryExecutor
 from src.online_query.llm import LangChainSQLGenerator
@@ -52,6 +53,7 @@ _identity_provider = build_identity_provider()
 _policy_store = build_policy_store()
 app = create_app(
     build_service(),
+    audit_sink=InMemoryAuditSink(),
     identity_provider=_identity_provider,
     policy_store=_policy_store,
 )

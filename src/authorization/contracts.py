@@ -1,12 +1,16 @@
 """身份与数据授权的稳定 Contract。"""
 
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
 from typing import Protocol
 
 AUTHORIZED_RESOURCE = "mart_sales"
 QUERY_ACTION = "query"
 READ_ONLY_MODE = "read_only"
+UNKNOWN_AUDIT_SUBJECT = "anonymous"
+UNKNOWN_AUDIT_PROVIDER = "unknown"
+UNKNOWN_POLICY_VERSION = "unavailable"
 
 
 class AuthorizationDecisionCode(StrEnum):
@@ -17,6 +21,76 @@ class AuthorizationDecisionCode(StrEnum):
     RESOURCE_NOT_ALLOWED = "RESOURCE_NOT_ALLOWED"
     ACTION_NOT_ALLOWED = "ACTION_NOT_ALLOWED"
     MODE_NOT_ALLOWED = "MODE_NOT_ALLOWED"
+
+
+class AuditDecision(StrEnum):
+    """授权审计事件中的最终决策。"""
+
+    ALLOW = "allow"
+    DENY = "deny"
+
+
+@dataclass(frozen=True, slots=True)
+class AuthorizationAuditEvent:
+    """不包含查询载荷的最小授权审计事件。"""
+
+    request_id: str
+    subject_id: str
+    identity_provider: str
+    resource: str
+    action: str
+    decision: AuditDecision
+    reason_code: str
+    policy_version: str
+    timestamp: datetime
+
+    def __post_init__(self) -> None:
+        for name in (
+            "request_id",
+            "subject_id",
+            "identity_provider",
+            "resource",
+            "action",
+            "reason_code",
+            "policy_version",
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{name} 必须是非空字符串")
+        if not isinstance(self.decision, AuditDecision):
+            raise ValueError("decision 必须是 AuditDecision")
+        if (
+            not isinstance(self.timestamp, datetime)
+            or self.timestamp.tzinfo is None
+            or self.timestamp.utcoffset() is None
+        ):
+            raise ValueError("timestamp 必须包含时区")
+
+    def to_record(self) -> dict[str, str]:
+        """转换为可交给外部日志系统的安全结构化记录。"""
+
+        return {
+            "request_id": self.request_id,
+            "subject_id": self.subject_id,
+            "identity_provider": self.identity_provider,
+            "resource": self.resource,
+            "action": self.action,
+            "decision": self.decision.value,
+            "reason_code": self.reason_code,
+            "policy_version": self.policy_version,
+            "timestamp": self.timestamp.isoformat(),
+        }
+
+
+class AuditSinkUnavailable(RuntimeError):
+    """授权审计 Sink 不可用，调用方必须 Fail Closed。"""
+
+
+class AuditSink(Protocol):
+    """接收最小授权审计事件的可替换 Port。"""
+
+    def emit(self, event: AuthorizationAuditEvent) -> None:
+        """写入一条授权审计事件。"""
 
 
 @dataclass(frozen=True, slots=True)

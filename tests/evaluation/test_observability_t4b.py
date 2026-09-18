@@ -8,9 +8,12 @@ from tempfile import TemporaryDirectory
 
 from src.authorization import (
     AuthorizedQueryService,
+    InMemoryAuditSink,
     StaticAuthorizationPolicyStore,
     StaticIdentityProviderAdapter,
 )
+from src.evaluation.evaluator import EvaluationCase
+from src.evaluation.runner import CaseStatus, run_evaluation
 from src.observability import QuerySource, create_in_memory_recorder
 from src.online_query.contracts import (
     QueryContext,
@@ -22,10 +25,6 @@ from src.online_query.contracts import (
     ValidatedSQL,
 )
 from src.online_query.service import OnlineQueryService
-
-from src.evaluation.evaluator import EvaluationCase
-from src.evaluation.runner import CaseStatus, run_evaluation
-
 
 TRACE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 
@@ -174,6 +173,7 @@ class EvaluationObservabilityT4BTest(unittest.TestCase):
                 allowed_subjects=frozenset({"evaluation-test"}),
                 policy_version="evaluation-test-policy-v1",
             ),
+            audit_sink=InMemoryAuditSink(),
         ).bind(
             StaticIdentityProviderAdapter(
                 identity_provider="test",

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from src.authorization import (
     AuthorizedQueryService,
+    InMemoryAuditSink,
     StaticAuthorizationPolicyStore,
     StaticIdentityProviderAdapter,
 )
@@ -65,6 +66,7 @@ class V1AcceptanceTest(unittest.TestCase):
                 allowed_subjects=frozenset({"evaluation-test"}),
                 policy_version="evaluation-test-policy-v1",
             ),
+            audit_sink=InMemoryAuditSink(),
         ).bind(identity_provider.authenticate())
 
         run = run_evaluation(cases, query_entry, executor, context)

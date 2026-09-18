@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, StrictStr
 
 from src.authorization.contracts import (
+    AuditSink,
     AuthContext,
     AuthenticationRequired,
     AuthorizationPolicyStore,
@@ -22,7 +23,6 @@ from src.authorization.contracts import (
 )
 from src.authorization.query_entry import (
     AuthorizedQueryService,
-    authorization_failure,
 )
 from src.observability.contracts import QuerySource, TraceRecorder
 from src.observability.tracing import create_trace_recorder
@@ -115,6 +115,7 @@ def create_app(
     service: QueryService,
     trace_recorder: TraceRecorder | None = None,
     *,
+    audit_sink: AuditSink | None = None,
     identity_provider: IdentityProviderAdapter | None = None,
     policy_store: AuthorizationPolicyStore | None = None,
 ) -> FastAPI:
@@ -122,7 +123,11 @@ def create_app(
 
     provider = identity_provider or _MissingIdentityProvider()
     authorization_store = policy_store or _UnavailablePolicyStore()
-    authorized_service = AuthorizedQueryService(service, authorization_store)
+    authorized_service = AuthorizedQueryService(
+        service,
+        authorization_store,
+        audit_sink=audit_sink,
+    )
     recorder = trace_recorder or getattr(service, "_trace_recorder", None)
     if recorder is None:
         try:
@@ -137,6 +142,7 @@ def create_app(
     app.state.query_service = authorized_service
     app.state.identity_provider = provider
     app.state.authorization_policy_store = authorization_store
+    app.state.audit_sink = audit_sink
     app.state.trace_recorder = recorder
 
     @app.middleware("http")
@@ -210,26 +216,29 @@ def _authorized_query(
     try:
         auth_context = identity_provider.authenticate(request)
     except AuthenticationRequired:
-        return authorization_failure(
+        return query_service.authentication_failure(
             request_id,
-            QueryErrorCode.AUTHENTICATION_REQUIRED,
+            error_code=QueryErrorCode.AUTHENTICATION_REQUIRED,
             internal_reason="AUTHENTICATION_REQUIRED",
+            identity_provider=_provider_name(identity_provider),
         )
     except IdentityProviderUnavailable:
-        return authorization_failure(
+        return query_service.authentication_failure(
             request_id,
-            QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
+            error_code=QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
             internal_reason="IDENTITY_PROVIDER_UNAVAILABLE",
+            identity_provider=_provider_name(identity_provider),
         )
     except Exception as exc:  # noqa: BLE001 - authentication must Fail Closed
         _LOGGER.warning(
             "Identity Provider failure: error_type=%s",
             type(exc).__name__,
         )
-        return authorization_failure(
+        return query_service.authentication_failure(
             request_id,
-            QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
+            error_code=QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
             internal_reason="IDENTITY_PROVIDER_FAILURE",
+            identity_provider=_provider_name(identity_provider),
         )
 
     if not isinstance(auth_context, AuthContext):
@@ -237,10 +246,11 @@ def _authorized_query(
             "Identity Provider returned invalid context: value_type=%s",
             type(auth_context).__name__,
         )
-        return authorization_failure(
+        return query_service.authentication_failure(
             request_id,
-            QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
+            error_code=QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
             internal_reason="INVALID_AUTH_CONTEXT",
+            identity_provider=_provider_name(identity_provider),
         )
 
     return query_service.query(
@@ -250,6 +260,14 @@ def _authorized_query(
         ),
         auth_context=auth_context,
     )
+
+
+def _provider_name(identity_provider: IdentityProviderAdapter) -> str:
+    try:
+        value = identity_provider.identity_provider
+    except Exception:  # noqa: BLE001 - provider identity name must Fail Closed
+        return "unknown"
+    return value.strip() if isinstance(value, str) and value.strip() else "unknown"
 
 
 def _result_response(
