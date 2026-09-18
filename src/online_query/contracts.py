@@ -30,6 +30,7 @@ class QueryErrorCode(StrEnum):
 class QueryRequest:
     question: str
     request_id: str | None = None
+    semantic_query: ValidatedSemanticQuery | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +41,7 @@ class QuerySuccess:
     rows: tuple[tuple[object, ...], ...]
     row_count: int
     truncated: bool
+    semantic_query: ValidatedSemanticQuery | None = None
 
 
 @dataclass(frozen=True, slots=True)

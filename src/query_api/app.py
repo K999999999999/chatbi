@@ -41,6 +41,7 @@ from .conversation import (
     ConversationUnavailableError,
     InMemoryConversationStore,
 )
+from .semantic_revision import SemanticRevisionError, revise_semantic_query
 
 _TRACE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _LOGGER = logging.getLogger(__name__)
@@ -133,6 +134,7 @@ def create_app(
     identity_provider: IdentityProviderAdapter | None = None,
     policy_store: AuthorizationPolicyStore | None = None,
     conversation_store: ConversationStore | None = None,
+    query_understanding: object | None = None,
 ) -> FastAPI:
     """创建绑定查询服务的 FastAPI 应用。"""
 
@@ -165,6 +167,7 @@ def create_app(
     app.state.audit_sink = audit_sink
     app.state.trace_recorder = recorder
     app.state.conversation_store = active_conversation_store
+    app.state.query_understanding = query_understanding
 
     @app.middleware("http")
     async def observability_middleware(
@@ -224,6 +227,7 @@ def create_app(
             identity_provider=provider,
             query_service=authorized_service,
             conversation_store=active_conversation_store,
+            query_understanding=query_understanding,
         )
         query_result, response_conversation_id = result
         return _result_response(
@@ -243,6 +247,7 @@ def _authorized_query(
     identity_provider: IdentityProviderAdapter,
     query_service: AuthorizedQueryService,
     conversation_store: ConversationStore,
+    query_understanding: object | None,
 ) -> tuple[QueryResult, str | None]:
     request_id = _request_id_from_state(request)
     try:
@@ -321,14 +326,37 @@ def _authorized_query(
                 None,
             )
 
+    request = QueryRequest(
+        question=question,
+        request_id=request_id,
+    )
     try:
-        result = query_service.query(
-            QueryRequest(
-                question=question,
-                request_id=request_id,
-            ),
+        authorization_result = query_service.authorize(
+            request,
             auth_context=auth_context,
         )
+        if authorization_result is not None:
+            if lease is not None:
+                conversation_store.abort(lease)
+            return authorization_result, None
+
+        effective_request = request
+        if lease is not None:
+            try:
+                revised_state = revise_semantic_query(
+                    lease.record.structured_query_state,
+                    question,
+                    query_understanding=query_understanding,
+                )
+            except SemanticRevisionError as exc:
+                conversation_store.abort(lease)
+                return _semantic_revision_failure(request_id, exc), None
+            effective_request = QueryRequest(
+                question=question,
+                request_id=request_id,
+                semantic_query=revised_state,
+            )
+        result = query_service.execute_authorized(effective_request)
     except Exception:
         if lease is not None:
             conversation_store.abort(lease)
@@ -336,14 +364,17 @@ def _authorized_query(
 
     if isinstance(result, QuerySuccess):
         if lease is None:
+            state = result.semantic_query
             response_conversation_id = conversation_store.create(
                 subject_id=auth_context.subject_id,
+                structured_query_state=state,
             ).conversation_id
         else:
             try:
+                state = result.semantic_query or effective_request.semantic_query
                 conversation_store.commit(
                     lease,
-                    structured_query_state=lease.record.structured_query_state,
+                    structured_query_state=state,
                 )
             except Exception:
                 conversation_store.abort(lease)
@@ -370,6 +401,26 @@ def _conversation_failure(
         error_message=messages[error_code],
         failure_stage="conversation",
         internal_reason=error_code.value,
+    )
+
+
+def _semantic_revision_failure(
+    request_id: str,
+    error: SemanticRevisionError,
+) -> QueryFailure:
+    messages = {
+        QueryErrorCode.INVALID_REQUEST: "查询问题不能为空或格式错误",
+        QueryErrorCode.CONVERSATION_UNAVAILABLE: "当前会话不可用，请重新开始查询",
+        QueryErrorCode.CLARIFICATION_REQUIRED: "请明确需要新增或修改的查询条件",
+        QueryErrorCode.UNSUPPORTED_ANALYSIS: "当前问题超出单条查询修订范围",
+        QueryErrorCode.LLM_ERROR: "暂时无法理解这个查询，请稍后重试",
+    }
+    return QueryFailure(
+        request_id=request_id,
+        error_code=error.error_code,
+        error_message=messages.get(error.error_code, "暂时无法处理当前查询"),
+        failure_stage="semantic_revision",
+        internal_reason=error.reason,
     )
 
 

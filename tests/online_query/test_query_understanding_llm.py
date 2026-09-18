@@ -9,10 +9,14 @@ from src.online_query.llm import LLMError
 from src.online_query.query_understanding import (
     QueryType,
     SemanticQueryCandidate,
+    candidate_from_payload,
+    validate_candidate,
 )
 from src.online_query.query_understanding_llm import (
     LangChainQueryUnderstanding,
+    QueryRevisionAdapter,
     QueryUnderstandingAdapter,
+    build_query_revision_prompt,
     build_query_understanding_prompt,
 )
 
@@ -44,6 +48,59 @@ class QueryUnderstandingLLMTest(unittest.TestCase):
         adapter = LangChainQueryUnderstanding(model)
 
         self.assertIsInstance(adapter, QueryUnderstandingAdapter)
+
+    def test_adapter_exposes_query_revision_protocol(self) -> None:
+        model = Mock()
+        model.invoke.return_value = SimpleNamespace(
+            content=json.dumps(_payload(), ensure_ascii=False)
+        )
+
+        adapter = LangChainQueryUnderstanding(model)
+
+        self.assertIsInstance(adapter, QueryRevisionAdapter)
+
+    def test_revision_returns_delta_using_previous_semantic_state(self) -> None:
+        model = Mock()
+        model.invoke.return_value = SimpleNamespace(
+            content=json.dumps(
+                {
+                    "query_type": "metric_analysis",
+                    "subjects": [],
+                    "metrics": [],
+                    "dimensions": ["销售区域"],
+                    "time": None,
+                    "filters": [],
+                },
+                ensure_ascii=False,
+            )
+        )
+        adapter = LangChainQueryUnderstanding(model)
+        previous = validate_candidate(
+            candidate_from_payload(_payload()),
+            original_question="2025 年按客户类型统计销售额",
+        )
+
+        result = adapter.understand_revision(previous, "按销售区域拆开")
+
+        self.assertEqual(result.dimensions, ("销售区域",))
+        prompt = model.invoke.call_args.args[0]
+        self.assertIn("<previous_semantic_query>", prompt)
+        self.assertIn("销售额", prompt)
+        self.assertIn("按销售区域拆开", prompt)
+        self.assertNotIn("SELECT", prompt)
+
+    def test_revision_prompt_contains_delta_rules_without_raw_history(self) -> None:
+        previous = validate_candidate(
+            candidate_from_payload(_payload()),
+            original_question="2025 年按客户类型统计销售额",
+        )
+
+        prompt = build_query_revision_prompt(previous, "改看毛利率")
+
+        self.assertIn("这是 delta，不是完整查询", prompt)
+        self.assertIn("metrics 和 subjects 表示替换对应槽位", prompt)
+        self.assertIn('"dimensions":["客户类型"]', prompt)
+        self.assertNotIn("2025 年按客户类型统计销售额", prompt)
 
     def test_prompt_requires_one_object_without_physical_resources(self) -> None:
         prompt = build_query_understanding_prompt("查询销售额")

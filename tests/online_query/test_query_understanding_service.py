@@ -20,6 +20,7 @@ from src.online_query.query_understanding import (
     QueryType,
     ValidatedSemanticQuery,
     candidate_from_payload,
+    validate_candidate,
 )
 from src.observability.contracts import TraceOutcome
 from src.observability.tracing import create_in_memory_recorder
@@ -93,6 +94,36 @@ class QueryUnderstandingServiceTest(unittest.TestCase):
         self.assertEqual(retrieval_request.request_shape, RequestShape.EXPLICIT_MULTI)
         prompt = self.generator.generate.call_args.args[0]
         self.assertIn('"metrics":["销售额","毛利率"]', prompt)
+
+    def test_prevalidated_semantic_query_skips_understanding(self) -> None:
+        provider = Mock()
+        provider.retrieve.return_value = OnlineRetrievalResult(
+            status=RetrievalStatus.SUCCESS,
+            query_context=self.context,
+        )
+        semantic_query = validate_candidate(
+            _candidate(
+                query_type="metric_analysis",
+                subjects=("销售",),
+                metrics=("毛利率",),
+            ),
+            original_question="改看毛利率",
+        )
+        service = self._service(provider)
+
+        result = service.execute(
+            QueryRequest(
+                question="改看毛利率",
+                semantic_query=semantic_query,
+            )
+        )
+
+        self.assertIsInstance(result, QuerySuccess)
+        self.adapter.understand.assert_not_called()
+        retrieval_request = provider.retrieve.call_args.args[0]
+        self.assertEqual(retrieval_request.semantic_query, semantic_query)
+        assert isinstance(result, QuerySuccess)
+        self.assertEqual(result.semantic_query, semantic_query)
 
     def test_query_understanding_failure_stops_before_retrieval_sql_and_database(
         self,

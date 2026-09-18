@@ -20,6 +20,10 @@ from src.online_query.contracts import (
     QueryResult,
     QuerySuccess,
 )
+from src.online_query.query_understanding import (
+    QueryType,
+    ValidatedSemanticQuery,
+)
 from src.query_api.app import create_app
 from src.query_api.conversation import InMemoryConversationStore
 from tests.query_api.support import create_test_app
@@ -48,6 +52,7 @@ class _SuccessService:
             rows=self.rows,
             row_count=len(self.rows),
             truncated=False,
+            semantic_query=request.semantic_query or _default_semantic_query(),
         )
 
 
@@ -139,6 +144,11 @@ class _ScriptedService:
                 rows=outcome.rows,
                 row_count=outcome.row_count,
                 truncated=outcome.truncated,
+                semantic_query=(
+                    outcome.semantic_query
+                    or request.semantic_query
+                    or _default_semantic_query()
+                ),
             )
         return QueryFailure(
             request_id=request.request_id or outcome.request_id,
@@ -168,6 +178,7 @@ class _BlockingAfterFirstService:
             rows=((1,),),
             row_count=1,
             truncated=False,
+            semantic_query=request.semantic_query or _default_semantic_query(),
         )
 
 
@@ -190,6 +201,19 @@ def _success_result() -> QuerySuccess:
         rows=((1,),),
         row_count=1,
         truncated=False,
+        semantic_query=_default_semantic_query(),
+    )
+
+
+def _default_semantic_query() -> ValidatedSemanticQuery:
+    return ValidatedSemanticQuery(
+        query_type=QueryType.METRIC_ANALYSIS,
+        subjects=("销售",),
+        metrics=("销售额",),
+        dimensions=(),
+        time=None,
+        filters=(),
+        original_question="查询销售额",
     )
 
 

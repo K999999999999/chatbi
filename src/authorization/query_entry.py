@@ -71,6 +71,22 @@ class AuthorizedQueryService:
         *,
         auth_context: AuthContext | None,
     ) -> QueryResult:
+        authorization_result = self.authorize(
+            request,
+            auth_context=auth_context,
+        )
+        if authorization_result is not None:
+            return authorization_result
+        return self.execute_authorized(request)
+
+    def authorize(
+        self,
+        request: QueryRequest,
+        *,
+        auth_context: AuthContext | None,
+    ) -> QueryResult | None:
+        """执行一次身份、策略和允许审计；允许时不进入下游查询。"""
+
         request_id = _request_id(request.request_id)
         if auth_context is None:
             result = authorization_failure(
@@ -169,6 +185,11 @@ class AuthorizedQueryService:
                 QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
                 internal_reason="AUDIT_SINK_UNAVAILABLE",
             )
+
+        return None
+
+    def execute_authorized(self, request: QueryRequest) -> QueryResult:
+        """执行已经通过本轮授权的单条查询。"""
 
         return self._query_service.execute(request)
 

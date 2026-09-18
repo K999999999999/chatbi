@@ -40,7 +40,12 @@ class ConversationLease:
 class ConversationStore(Protocol):
     """Application 会话状态存储的最小 Port。"""
 
-    def create(self, *, subject_id: str) -> ConversationRecord:
+    def create(
+        self,
+        *,
+        subject_id: str,
+        structured_query_state: object | None = None,
+    ) -> ConversationRecord:
         """创建首个成功轮次对应的会话。"""
 
     def acquire(
@@ -89,7 +94,12 @@ class InMemoryConversationStore:
         self._entries: dict[str, _StoredConversation] = {}
         self._lock = Lock()
 
-    def create(self, *, subject_id: str) -> ConversationRecord:
+    def create(
+        self,
+        *,
+        subject_id: str,
+        structured_query_state: object | None = None,
+    ) -> ConversationRecord:
         normalized_subject = _required_text(subject_id, "subject_id")
         now = self._now()
         with self._lock:
@@ -101,6 +111,7 @@ class InMemoryConversationStore:
                 conversation_id=conversation_id,
                 subject_id=normalized_subject,
                 last_success_at=now,
+                structured_query_state=structured_query_state,
             )
             self._entries[conversation_id] = _StoredConversation(record=record)
             return record
