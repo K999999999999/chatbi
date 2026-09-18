@@ -51,9 +51,11 @@ def _rag_online_retrieval_enabled() -> bool:
 
 _identity_provider = build_identity_provider()
 _policy_store = build_policy_store()
+_service = build_service()
 app = create_app(
-    build_service(),
+    _service,
     audit_sink=InMemoryAuditSink(),
     identity_provider=_identity_provider,
     policy_store=_policy_store,
+    query_understanding=_service.query_understanding,
 )

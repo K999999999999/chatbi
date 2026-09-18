@@ -1,5 +1,7 @@
 # Query API Adapter Implementation Design
 
+> 本文只描述已经实现的单轮 Query API Adapter baseline。Multi-Turn Query V1 的会话状态、并发和 `conversation_id` 行为以对应 Feature Spec / Query API Spec 为准，尚未形成新的 Implementation Design；不得把本文的单轮请求模型当作该 Feature 的实现授权。
+
 ## 结论
 
 API Adapter（接口适配层）实现为一个最小的 `src/query_api/` 模块，使用 FastAPI 暴露 HTTP 接口。它只负责协议转换，不进入 Online Query（在线查询）内部，也不重复 Prompt、LLM、SQL Guard 或数据库逻辑。

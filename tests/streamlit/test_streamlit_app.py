@@ -3,6 +3,7 @@
 from io import BytesIO
 import json
 from unittest import TestCase
+from unittest.mock import patch
 from urllib.error import HTTPError, URLError
 from urllib.request import Request
 
@@ -15,6 +16,7 @@ from src.streamlit_app import (
     query_api,
     rows_as_records,
 )
+import src.streamlit_app as streamlit_app
 
 
 class _Response:
@@ -74,6 +76,197 @@ class StreamlitQueryClientTest(TestCase):
             {"question": "查询销售额"},
         )
         self.assertEqual(timeout, 90.0)
+
+    def test_query_api_posts_only_question_and_opaque_conversation_id(self) -> None:
+        calls: list[Request] = []
+        payload = {
+            "request_id": "req-follow-up",
+            "sql": "SELECT 1",
+            "columns": ["value"],
+            "rows": [[1]],
+            "row_count": 1,
+            "truncated": False,
+            "conversation_id": "conv-1",
+        }
+
+        def opener(request: Request, *, timeout: float) -> _Response:
+            del timeout
+            calls.append(request)
+            return _Response(payload)
+
+        query_api(
+            "http://127.0.0.1:8000",
+            "按销售区域拆开",
+            conversation_id="conv-1",
+            opener=opener,
+        )
+
+        self.assertEqual(
+            json.loads(calls[0].data.decode("utf-8")),
+            {
+                "question": "按销售区域拆开",
+                "conversation_id": "conv-1",
+            },
+        )
+
+    def test_submit_query_reuses_server_conversation_id_for_follow_up(self) -> None:
+        displayed = _FakeStreamlit()
+        first = QueryAPIResponse(
+            {
+                "request_id": "req-first",
+                "sql": "SELECT 1",
+                "columns": [],
+                "rows": [],
+                "row_count": 0,
+                "truncated": False,
+                "conversation_id": "conv-1",
+            }
+        )
+        second = QueryAPIResponse(
+            {
+                "request_id": "req-second",
+                "sql": "SELECT 1",
+                "columns": [],
+                "rows": [],
+                "row_count": 0,
+                "truncated": False,
+                "conversation_id": "conv-1",
+            }
+        )
+        third = QueryAPIResponse(
+            {
+                "request_id": "req-third",
+                "sql": "SELECT 1",
+                "columns": [],
+                "rows": [],
+                "row_count": 0,
+                "truncated": False,
+                "conversation_id": "conv-1",
+            }
+        )
+
+        with patch.object(
+            streamlit_app,
+            "query_api",
+            side_effect=[first, second, third],
+        ) as api:
+            streamlit_app._submit_query(displayed, "查询销售额")
+            streamlit_app._submit_query(displayed, "按销售区域拆开")
+            streamlit_app._submit_query(displayed, "再按月份拆开")
+
+        self.assertEqual(displayed.session_state.conversation_id, "conv-1")
+        self.assertEqual(api.call_args_list[0].kwargs["conversation_id"], None)
+        self.assertEqual(api.call_args_list[1].kwargs["conversation_id"], "conv-1")
+        self.assertEqual(api.call_args_list[2].kwargs["conversation_id"], "conv-1")
+
+    def test_follow_up_failure_keeps_current_conversation_id(self) -> None:
+        displayed = _FakeStreamlit()
+        displayed.session_state.conversation_id = "conv-1"
+        error = QueryAPIError(
+            "CLARIFICATION_REQUIRED",
+            "请明确需要新增或修改的查询条件",
+        )
+
+        with patch.object(streamlit_app, "query_api", side_effect=error):
+            streamlit_app._submit_query(displayed, "再看看")
+
+        self.assertEqual(displayed.session_state.conversation_id, "conv-1")
+        self.assertIs(displayed.session_state.last_query_error, error)
+
+    def test_expired_conversation_requires_new_session_and_clears_old_id(self) -> None:
+        displayed = _FakeStreamlit()
+        displayed.session_state.conversation_id = "expired-conv"
+        error = QueryAPIError(
+            "CONVERSATION_UNAVAILABLE",
+            "当前会话已失效，请新建会话后重新开始",
+        )
+
+        with patch.object(streamlit_app, "query_api", side_effect=error):
+            streamlit_app._submit_query(displayed, "继续查询")
+
+        self.assertIsNone(displayed.session_state.conversation_id)
+        self.assertTrue(displayed.session_state.conversation_reset_required)
+        self.assertIs(displayed.session_state.last_query_error, error)
+
+        with patch.object(streamlit_app, "query_api") as blocked_api:
+            streamlit_app._submit_query(displayed, "继续查询")
+
+        blocked_api.assert_not_called()
+        self.assertEqual(
+            displayed.session_state.last_query_error.error_code,
+            "CONVERSATION_UNAVAILABLE",
+        )
+
+        streamlit_app._start_new_conversation(displayed)
+
+        self.assertIsNone(displayed.session_state.conversation_id)
+        self.assertFalse(displayed.session_state.conversation_reset_required)
+        self.assertIsNone(displayed.session_state.last_query_response)
+        self.assertIsNone(displayed.session_state.last_query_error)
+
+        response = QueryAPIResponse(
+            {
+                "request_id": "req-new-session",
+                "sql": "SELECT 1",
+                "columns": [],
+                "rows": [],
+                "row_count": 0,
+                "truncated": False,
+                "conversation_id": "conv-new",
+            }
+        )
+        with patch.object(streamlit_app, "query_api", return_value=response) as api:
+            streamlit_app._submit_query(displayed, "重新查询")
+
+        self.assertIsNone(api.call_args.kwargs["conversation_id"])
+        self.assertEqual(displayed.session_state.conversation_id, "conv-new")
+
+    def test_query_api_uses_fixed_messages_for_conversation_failures(self) -> None:
+        cases = (
+            (
+                404,
+                "CONVERSATION_UNAVAILABLE",
+                "当前会话已失效，请点击“新建会话”后重新开始",
+            ),
+            (
+                422,
+                "CLARIFICATION_REQUIRED",
+                "请明确需要新增或修改的查询条件",
+            ),
+            (
+                422,
+                "UNSUPPORTED_ANALYSIS",
+                "当前问题超出单条查询修订范围",
+            ),
+            (
+                409,
+                "CONVERSATION_CONFLICT",
+                "当前会话已有进行中的查询，请稍后重试",
+            ),
+        )
+
+        for status, error_code, expected_message in cases:
+            with self.subTest(error_code=error_code):
+                payload = {
+                    "request_id": f"req-{error_code}",
+                    "error_code": error_code,
+                    "error_message": "internal conversation details",
+                }
+
+                def opener(_request: Request, *, timeout: float) -> _Response:
+                    raise HTTPError(
+                        url="http://127.0.0.1:8000/api/v1/query",
+                        code=status,
+                        msg="HTTP error",
+                        hdrs={},
+                        fp=BytesIO(json.dumps(payload).encode("utf-8")),
+                    )
+
+                with self.assertRaises(QueryAPIError) as raised:
+                    query_api("http://127.0.0.1:8000", "继续查询", opener=opener)
+
+                self.assertEqual(raised.exception.error_code, error_code)
+                self.assertEqual(raised.exception.error_message, expected_message)
 
     def test_query_api_converts_api_failure_to_controlled_error(self) -> None:
         payload = {
@@ -341,6 +534,7 @@ class _FakeStreamlit:
     def __init__(self) -> None:
         self.captions: list[str] = []
         self.errors: list[str] = []
+        self.session_state = _FakeSessionState()
 
     def error(self, message: str) -> None:
         self.errors.append(message)
@@ -362,6 +556,20 @@ class _FakeStreamlit:
 
     def code(self, _code: str, *, language: str) -> None:
         return None
+
+    def spinner(self, _message: str) -> _FakeContext:
+        return _FakeContext()
+
+
+class _FakeSessionState(dict[str, object]):
+    def __getattr__(self, name: str) -> object:
+        try:
+            return self[name]
+        except KeyError:
+            raise AttributeError(name) from None
+
+    def __setattr__(self, name: str, value: object) -> None:
+        self[name] = value
 
 
 if __name__ == "__main__":

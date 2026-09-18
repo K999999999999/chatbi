@@ -107,6 +107,12 @@ class OnlineQueryService:
             except Exception:
                 self._context_failed = True
 
+    @property
+    def query_understanding(self) -> QueryUnderstandingAdapter | None:
+        """返回由正式入口装配的语义理解适配器。"""
+
+        return self._query_understanding
+
     def execute(self, request: QueryRequest) -> QueryResult:
         """执行已由上层 Application Entry 放行的查询请求。"""
 
@@ -149,12 +155,24 @@ class OnlineQueryService:
                 return result
             _safe_enrich(self._trace_recorder, outcome=TraceOutcome.SUCCESS)
 
-        semantic_query, understanding_error = self._understand_query(
-            request.question.strip(),
-            request_id,
-        )
-        if understanding_error is not None:
-            return understanding_error
+        if request.semantic_query is not None and not isinstance(
+            request.semantic_query,
+            ValidatedSemanticQuery,
+        ):
+            return _failure(
+                request_id,
+                QueryErrorCode.CONTEXT_ERROR,
+                internal_reason="SEMANTIC_QUERY_INVALID",
+            )
+        if request.semantic_query is not None:
+            semantic_query = request.semantic_query
+        else:
+            semantic_query, understanding_error = self._understand_query(
+                request.question.strip(),
+                request_id,
+            )
+            if understanding_error is not None:
+                return understanding_error
 
         context, context_error, context_reason = self._resolve_context(
             request.question.strip(),

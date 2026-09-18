@@ -97,6 +97,25 @@ class _GroupingTableStore(_FakeStore):
         )
 
 
+class _TimeDimensionTableStore(_FakeStore):
+    def __init__(self, main_tables, full_tables, columns, metrics) -> None:
+        super().__init__(main_tables, columns, metrics)
+        self.main_tables = tuple(main_tables)
+        self.full_tables = tuple(full_tables)
+
+    def search(self, collection_name, query, *, limit=5, filter_payload=None):
+        if filter_payload is None and collection_name == "table":
+            if query.dense[2] == 1.0:
+                return self.full_tables
+            return self.main_tables
+        return super().search(
+            collection_name,
+            query,
+            limit=limit,
+            filter_payload=filter_payload,
+        )
+
+
 class _RequiredColumnRecoveryStore(_FakeStore):
     def search(self, collection_name, query, *, limit=5, filter_payload=None):
         if filter_payload is not None and "column_name" in filter_payload:
@@ -122,6 +141,17 @@ class _GroupingEmbedding(_FakeEmbedding):
     def embed_query(self, text: str) -> EmbeddedText:
         self.queries.append(text)
         dense = (0.0, 1.0, 0.0, 0.0) if text == "技术路线" else (1.0, 0.0, 0.0, 1.0)
+        return EmbeddedText(
+            dense=dense, sparse=SparseEmbedding(indices=(1,), values=(1.0,))
+        )
+
+
+class _TimeAwareEmbedding(_FakeEmbedding):
+    def embed_query(self, text: str) -> EmbeddedText:
+        self.queries.append(text)
+        dense = (
+            (0.0, 0.0, 1.0, 0.0) if "2025 年第一季度" in text else (1.0, 0.0, 0.0, 1.0)
+        )
         return EmbeddedText(
             dense=dense, sparse=SparseEmbedding(indices=(1,), values=(1.0,))
         )
@@ -402,6 +432,81 @@ def _multi_graph(*, reverse_customer=False, include_unique_keys=True):
 
 
 class RetrievalTest(unittest.TestCase):
+    def test_time_and_grouping_query_keep_required_date_table_in_top_k(self) -> None:
+        fact = _table("table:fct", "fct_sales_order_line", 0.95)
+        region = _table(
+            "table:region",
+            "dim_sales_region",
+            0.94,
+            page_content="销售区域维度",
+        )
+        date = _table("table:date", "dim_date", 0.93, page_content="完成日期维度")
+        distractors = (
+            _table("table:currency", "dim_currency", 0.90),
+            _table("table:product", "dim_product", 0.89),
+            _table("table:exchange", "fct_exchange_rate_daily", 0.88),
+        )
+        columns = {
+            "fct_sales_order_line": (
+                _column("fct_sales_order_line", "net_sales_amount_cny", 0.95),
+                _column("fct_sales_order_line", "completion_date_key", 0.94),
+            ),
+            "dim_sales_region": (
+                _column("dim_sales_region", "sales_region_key", 0.92),
+                _column("dim_sales_region", "sales_region_name", 0.91),
+            ),
+            "dim_date": (
+                _column("dim_date", "date_key", 0.90),
+                _column("dim_date", "full_date", 0.89),
+            ),
+        }
+        embedding = _TimeAwareEmbedding()
+        store = _TimeDimensionTableStore(
+            (fact, region, *distractors),
+            (fact, region, date, *distractors),
+            columns,
+            (
+                _metric(
+                    "人民币销售额",
+                    0.97,
+                    formula="SUM(f.net_sales_amount_cny)",
+                    filters=(),
+                ),
+            ),
+        )
+
+        result = OnlineRetriever(
+            _FakeRuntime(
+                _snapshot(
+                    store,
+                    embedding,
+                    _sales_graph(include_region=True, include_date=True),
+                )
+            )
+        ).retrieve(
+            _request(
+                "2025 年第一季度的人民币销售额按销售区域拆开",
+                subjects=("销售",),
+                metrics=("人民币销售额",),
+                dimensions=("销售区域",),
+                time=("2025 年第一季度", "quarter"),
+            )
+        )
+
+        self.assertEqual(result.status, RetrievalStatus.SUCCESS)
+        assert result.query_context is not None
+        self.assertEqual(
+            result.query_context.allowed_tables,
+            frozenset(
+                {
+                    "mart_sales.fct_sales_order_line",
+                    "mart_sales.dim_sales_region",
+                    "mart_sales.dim_date",
+                }
+            ),
+        )
+        self.assertEqual(result.join_path.unreachable_tables, ())
+
     def test_metric_query_returns_dynamic_context_and_indicator_metadata(self) -> None:
         tables = (
             _table("table:fct", "fct_sales_order_line", 0.95),

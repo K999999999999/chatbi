@@ -20,12 +20,17 @@ class QueryErrorCode(StrEnum):
     SQL_REJECTED = "SQL_REJECTED"
     DATABASE_ERROR = "DATABASE_ERROR"
     QUERY_TIMEOUT = "QUERY_TIMEOUT"
+    CONVERSATION_UNAVAILABLE = "CONVERSATION_UNAVAILABLE"
+    CLARIFICATION_REQUIRED = "CLARIFICATION_REQUIRED"
+    UNSUPPORTED_ANALYSIS = "UNSUPPORTED_ANALYSIS"
+    CONVERSATION_CONFLICT = "CONVERSATION_CONFLICT"
 
 
 @dataclass(frozen=True, slots=True)
 class QueryRequest:
     question: str
     request_id: str | None = None
+    semantic_query: ValidatedSemanticQuery | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +41,7 @@ class QuerySuccess:
     rows: tuple[tuple[object, ...], ...]
     row_count: int
     truncated: bool
+    semantic_query: ValidatedSemanticQuery | None = None
 
 
 @dataclass(frozen=True, slots=True)

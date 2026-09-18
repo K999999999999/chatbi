@@ -159,4 +159,5 @@ def _execute_query(
             rows=data.rows,
             row_count=len(data.rows),
             truncated=data.truncated,
+            semantic_query=semantic_query,
         )

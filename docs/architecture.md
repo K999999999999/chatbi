@@ -12,7 +12,17 @@ ChatBI 是面向业务数据查询的 Domain AI Engine（领域 AI 引擎），�
 
 ### Query API Adapter（查询接口适配层）
 
-负责把 HTTP JSON 请求转换为现有 Online Query 请求，并把查询结果转换为 HTTP JSON 响应。它不重复 Prompt、LLM、SQL Guard 或数据库执行逻辑，也不负责认证、限流和审计。
+负责把 HTTP JSON 请求转换为现有 Online Query 请求，并把查询结果转换为 HTTP JSON 响应。它不重复 Prompt、LLM、SQL Guard 或数据库执行逻辑，也不负责认证、限流和审计。Multi-Turn Query V1 的短期会话状态由其 Application 边界负责，不由 Online Query 或客户端拥有。
+
+### Multi-Turn Query V1（受控多轮查询目标边界）
+
+这是建立在 Query API 之上的 Application 能力，不是第二条查询链路：
+
+- 只保存最后一次成功查询的结构化状态，不保存原始对话、SQL 或结果行；
+- 每一轮先使用当前认证身份和授权策略，再进入现有 `AuthorizedQueryService` 与 `OnlineQueryService`；
+- 只有查询成功才提交状态，失败、澄清、范围拒绝和并发冲突都保持上一成功状态；
+- 会话使用 30 分钟无成功状态更新的 Idle TTL，同一会话同一时刻只允许一个进行中的轮次；
+- 不承担长期历史、Business Analysis、身份事实或业务指标事实。
 
 ### Streamlit（当前 POC / 内部入口）
 
@@ -337,6 +347,8 @@ Online Retrieval V1 已接入 Online Query：实体类、单指标和多指标�
 
 - Online Query 只能通过只读数据库身份访问 `mart_sales`。
 - Query API Adapter 只能调用现有 Online Query 公开入口，不复制查询逻辑。
+- Multi-Turn Application 边界只能保存受控结构化查询状态，不能把会话状态当作身份、授权或业务真相。
+- Multi-Turn 的每一轮必须经过当前授权入口；只有成功结果可以更新状态，状态失效、越权和并发冲突必须 Fail Closed。
 - Streamlit POC 只能调用 Query API，不直接访问 LLM、SQL Guard 或数据库。
 - Evaluation 必须复用正式 Online Query 链路，不维护另一套 SQL 生成逻辑。
 - RAG Offline Build 只能读取已确认 JSON 事实，不得扫描或修改 PostgreSQL。
@@ -351,7 +363,8 @@ Online Retrieval V1 已接入 Online Query：实体类、单指标和多指标�
 - Online Query Module Spec 与 Implementation Design 已确认。
 - Online Query 已实现，Software Test 与真实 PostgreSQL 集成测试已通过。
 - Query API Adapter 已实现，提供 `/health` 和 `/api/v1/query`；API 确定性测试已通过。
-- Streamlit 页面已实现，提供问题输入、结果展示和受控错误提示，并通过三条手工业务验收。
+- Multi-Turn Query V1 的目标边界已确认并记录；Application 会话生命周期、`conversation_id`、TTL、用户归属、单会话并发控制、结构化语义修订和 Streamlit 多轮联动已实现，确定性验收证据见 `docs/acceptance/multi-turn-query-v1-20260919.md`。
+- Streamlit 页面已实现，提供问题输入、当前会话、新建会话、结果展示和受控错误提示；真实 AI Evaluation、Business Acceptance 和 Real E2E 证据见 `docs/acceptance/multi-turn-query-v1-20260919.md`。
 - Evaluation 已实现并复用正式 Online Query 链路；当前分支最近一次真实在线 RAG 评测为 20/21，Execution Accuracy=95.24%，唯一失败为一次 S04 Query Understanding LLM_ERROR，单例重跑已成功；JSON 数据报告和 Markdown 总结报告按本地策略忽略。
 - 旧版扁平 POC 链路及其重复测试已删除。
 - RAG Offline Build 已实现并发布 BGE-M3 / Qdrant 离线资产；TABLE=7、COLUMN=69、METRIC=6、关系边=9，固定检索评测 5/5 通过。
