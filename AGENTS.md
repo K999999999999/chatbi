@@ -161,7 +161,9 @@ LLM 输出始终视为 Untrusted Candidate（不可信候选）。LLM 可以提�
 - 不为每个 Ticket、每个 Commit 或每次测试单独创建 branch；并行 branch、stacked PR 或额外 worktree 只有在用户明确确认并记录 base、依赖和清理责任后才允许。
 - `backup/*` 和 `codex/backup-*` 只用于回滚保护，不作为日常开发线，不创建 PR。
 - 恢复工作前必须重新检查当前 branch、HEAD、worktree、Git status 和相关 `.scratch` 记录；已被主干或其他 candidate supersede 的 branch 不继续追加开发。
-- 一个 Feature 形成唯一 candidate 后，其他同目标候选 branch 停止使用；PR 完成或放弃后，回到 `master`，按确认范围清理本地 worktree 和 Feature branch。
+- 一个 Feature 形成唯一 candidate 后，其他同目标候选 branch 停止使用；PR 合并后，回到 `master`，按本文档的安全清理规则自动收尾，不为同一交付重复请求常规清理确认；明确放弃的 candidate 只有在归属和清理范围明确时才处理。
+- 常规清理只针对当前 PR 对应的唯一 Feature branch：确认 PR 已合并、工作区没有用户修改、没有额外未推送 Commit、没有依赖它的 Open / Stacked PR，且目标不是 `master`、受保护分支或 `backup/*` / `codex/backup-*` 后，Agent 可以删除本地 Feature worktree / branch，并按仓库的 `delete_branch_on_merge` 设置清理远端 branch。
+- 分支归属、合并状态、用户修改或依赖关系有任何不确定时，必须暂停并询问；历史遗留分支的批量清理仍需单独确认。
 - 详细的分支创建、Ticket 实施、candidate、PR 和清理顺序以 `docs/agents/git-pr-workflow.md` 为准。
 
 ## AI Agent Commit & Pull Request Workflow
