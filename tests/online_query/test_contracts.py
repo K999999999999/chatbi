@@ -26,6 +26,10 @@ class ContractTest(unittest.TestCase):
                 "SQL_REJECTED",
                 "DATABASE_ERROR",
                 "QUERY_TIMEOUT",
+                "CONVERSATION_UNAVAILABLE",
+                "CLARIFICATION_REQUIRED",
+                "UNSUPPORTED_ANALYSIS",
+                "CONVERSATION_CONFLICT",
             },
         )
 

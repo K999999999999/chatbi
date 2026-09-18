@@ -34,6 +34,14 @@ from src.online_query.contracts import (
     QuerySuccess,
 )
 
+from .conversation import (
+    ConversationConflictError,
+    ConversationLease,
+    ConversationStore,
+    ConversationUnavailableError,
+    InMemoryConversationStore,
+)
+
 _TRACE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _LOGGER = logging.getLogger(__name__)
 
@@ -49,6 +57,10 @@ _HTTP_STATUS_BY_ERROR = {
     QueryErrorCode.CONTEXT_ERROR: 503,
     QueryErrorCode.DATABASE_ERROR: 503,
     QueryErrorCode.QUERY_TIMEOUT: 504,
+    QueryErrorCode.CONVERSATION_UNAVAILABLE: 404,
+    QueryErrorCode.CLARIFICATION_REQUIRED: 422,
+    QueryErrorCode.UNSUPPORTED_ANALYSIS: 422,
+    QueryErrorCode.CONVERSATION_CONFLICT: 409,
 }
 
 
@@ -65,6 +77,7 @@ class QueryBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     question: StrictStr
+    conversation_id: StrictStr | None = None
 
 
 class QuerySuccessResponse(BaseModel):
@@ -76,6 +89,7 @@ class QuerySuccessResponse(BaseModel):
     rows: list[list[Any]]
     row_count: int
     truncated: bool
+    conversation_id: str
 
 
 class QueryFailureResponse(BaseModel):
@@ -118,11 +132,17 @@ def create_app(
     audit_sink: AuditSink | None = None,
     identity_provider: IdentityProviderAdapter | None = None,
     policy_store: AuthorizationPolicyStore | None = None,
+    conversation_store: ConversationStore | None = None,
 ) -> FastAPI:
     """创建绑定查询服务的 FastAPI 应用。"""
 
     provider = identity_provider or _MissingIdentityProvider()
     authorization_store = policy_store or _UnavailablePolicyStore()
+    active_conversation_store = (
+        conversation_store
+        if conversation_store is not None
+        else InMemoryConversationStore()
+    )
     authorized_service = AuthorizedQueryService(
         service,
         authorization_store,
@@ -144,6 +164,7 @@ def create_app(
     app.state.authorization_policy_store = authorization_store
     app.state.audit_sink = audit_sink
     app.state.trace_recorder = recorder
+    app.state.conversation_store = active_conversation_store
 
     @app.middleware("http")
     async def observability_middleware(
@@ -184,7 +205,9 @@ def create_app(
             400: {"model": QueryFailureResponse},
             401: {"model": QueryFailureResponse},
             403: {"model": QueryFailureResponse},
+            404: {"model": QueryFailureResponse},
             422: {"model": QueryFailureResponse},
+            409: {"model": QueryFailureResponse},
             502: {"model": QueryFailureResponse},
             503: {"model": QueryFailureResponse},
             504: {"model": QueryFailureResponse},
@@ -197,10 +220,17 @@ def create_app(
         result = _authorized_query(
             request,
             question=body.question,
+            conversation_id=body.conversation_id,
             identity_provider=provider,
             query_service=authorized_service,
+            conversation_store=active_conversation_store,
         )
-        return _result_response(result, trace_recorder=recorder)
+        query_result, response_conversation_id = result
+        return _result_response(
+            query_result,
+            conversation_id=response_conversation_id,
+            trace_recorder=recorder,
+        )
 
     return app
 
@@ -209,36 +239,47 @@ def _authorized_query(
     request: Request,
     *,
     question: str,
+    conversation_id: str | None,
     identity_provider: IdentityProviderAdapter,
     query_service: AuthorizedQueryService,
-) -> QueryResult:
+    conversation_store: ConversationStore,
+) -> tuple[QueryResult, str | None]:
     request_id = _request_id_from_state(request)
     try:
         auth_context = identity_provider.authenticate(request)
     except AuthenticationRequired:
-        return query_service.authentication_failure(
-            request_id,
-            error_code=QueryErrorCode.AUTHENTICATION_REQUIRED,
-            internal_reason="AUTHENTICATION_REQUIRED",
-            identity_provider=_provider_name(identity_provider),
+        return (
+            query_service.authentication_failure(
+                request_id,
+                error_code=QueryErrorCode.AUTHENTICATION_REQUIRED,
+                internal_reason="AUTHENTICATION_REQUIRED",
+                identity_provider=_provider_name(identity_provider),
+            ),
+            None,
         )
     except IdentityProviderUnavailable:
-        return query_service.authentication_failure(
-            request_id,
-            error_code=QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
-            internal_reason="IDENTITY_PROVIDER_UNAVAILABLE",
-            identity_provider=_provider_name(identity_provider),
+        return (
+            query_service.authentication_failure(
+                request_id,
+                error_code=QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
+                internal_reason="IDENTITY_PROVIDER_UNAVAILABLE",
+                identity_provider=_provider_name(identity_provider),
+            ),
+            None,
         )
     except Exception as exc:  # noqa: BLE001 - authentication must Fail Closed
         _LOGGER.warning(
             "Identity Provider failure: error_type=%s",
             type(exc).__name__,
         )
-        return query_service.authentication_failure(
-            request_id,
-            error_code=QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
-            internal_reason="IDENTITY_PROVIDER_FAILURE",
-            identity_provider=_provider_name(identity_provider),
+        return (
+            query_service.authentication_failure(
+                request_id,
+                error_code=QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
+                internal_reason="IDENTITY_PROVIDER_FAILURE",
+                identity_provider=_provider_name(identity_provider),
+            ),
+            None,
         )
 
     if not isinstance(auth_context, AuthContext):
@@ -246,19 +287,89 @@ def _authorized_query(
             "Identity Provider returned invalid context: value_type=%s",
             type(auth_context).__name__,
         )
-        return query_service.authentication_failure(
-            request_id,
-            error_code=QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
-            internal_reason="INVALID_AUTH_CONTEXT",
-            identity_provider=_provider_name(identity_provider),
+        return (
+            query_service.authentication_failure(
+                request_id,
+                error_code=QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
+                internal_reason="INVALID_AUTH_CONTEXT",
+                identity_provider=_provider_name(identity_provider),
+            ),
+            None,
         )
 
-    return query_service.query(
-        QueryRequest(
-            question=question,
-            request_id=request_id,
-        ),
-        auth_context=auth_context,
+    lease: ConversationLease | None = None
+    if conversation_id is not None:
+        try:
+            lease = conversation_store.acquire(
+                conversation_id,
+                subject_id=auth_context.subject_id,
+            )
+        except ConversationUnavailableError:
+            return (
+                _conversation_failure(
+                    request_id,
+                    QueryErrorCode.CONVERSATION_UNAVAILABLE,
+                ),
+                None,
+            )
+        except ConversationConflictError:
+            return (
+                _conversation_failure(
+                    request_id,
+                    QueryErrorCode.CONVERSATION_CONFLICT,
+                ),
+                None,
+            )
+
+    try:
+        result = query_service.query(
+            QueryRequest(
+                question=question,
+                request_id=request_id,
+            ),
+            auth_context=auth_context,
+        )
+    except Exception:
+        if lease is not None:
+            conversation_store.abort(lease)
+        raise
+
+    if isinstance(result, QuerySuccess):
+        if lease is None:
+            response_conversation_id = conversation_store.create(
+                subject_id=auth_context.subject_id,
+            ).conversation_id
+        else:
+            try:
+                conversation_store.commit(
+                    lease,
+                    structured_query_state=lease.record.structured_query_state,
+                )
+            except Exception:
+                conversation_store.abort(lease)
+                raise
+            response_conversation_id = lease.record.conversation_id
+        return result, response_conversation_id
+
+    if lease is not None:
+        conversation_store.abort(lease)
+    return result, None
+
+
+def _conversation_failure(
+    request_id: str,
+    error_code: QueryErrorCode,
+) -> QueryFailure:
+    messages = {
+        QueryErrorCode.CONVERSATION_UNAVAILABLE: "当前会话不可用，请重新开始查询",
+        QueryErrorCode.CONVERSATION_CONFLICT: "当前会话已有进行中的查询，请稍后重试",
+    }
+    return QueryFailure(
+        request_id=request_id,
+        error_code=error_code,
+        error_message=messages[error_code],
+        failure_stage="conversation",
+        internal_reason=error_code.value,
     )
 
 
@@ -273,10 +384,13 @@ def _provider_name(identity_provider: IdentityProviderAdapter) -> str:
 def _result_response(
     result: QueryResult,
     *,
+    conversation_id: str | None = None,
     trace_recorder: TraceRecorder | None = None,
 ) -> JSONResponse:
     with _safe_span(trace_recorder, "response.serialize"):
         if isinstance(result, QuerySuccess):
+            if not isinstance(conversation_id, str) or not conversation_id:
+                raise RuntimeError("成功查询缺少会话编号")
             return JSONResponse(
                 status_code=200,
                 content=QuerySuccessResponse(
@@ -286,6 +400,7 @@ def _result_response(
                     rows=[list(row) for row in result.rows],
                     row_count=result.row_count,
                     truncated=result.truncated,
+                    conversation_id=conversation_id,
                 ).model_dump(mode="json"),
             )
         if isinstance(result, QueryFailure):

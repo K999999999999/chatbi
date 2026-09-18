@@ -14,6 +14,7 @@ def create_test_app(
     service: object,
     *,
     trace_recorder: object | None = None,
+    conversation_store: object | None = None,
     subject_id: str = "analyst-1",
     allowed_subjects: Iterable[str] = ("analyst-1",),
     identity_provider: str = "test",
@@ -33,4 +34,5 @@ def create_test_app(
         ),
         audit_sink=InMemoryAuditSink() if audit_sink is None else audit_sink,
         trace_recorder=trace_recorder,
+        conversation_store=conversation_store,
     )
