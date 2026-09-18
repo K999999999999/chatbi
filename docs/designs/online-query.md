@@ -4,7 +4,7 @@
 
 Online Query（在线查询）使用一个扁平模块完成，不增加 `ports/`、`infrastructure/`、`poc/` 等目录，也不使用 LangGraph（工作流框架）或 Agent（智能体）。
 
-公共入口只有 `OnlineQueryService.query()`。模块内部保持同步顺序执行，未来 API 或 Gateway（网关）只需要调用这个入口，不进入核心链路。
+`OnlineQueryService.execute()` 是授权后的内部下游执行操作，不是用户入口。正式 API 或 Evaluation 必须先调用 `AuthorizedQueryService.query()` / `BoundAuthorizedQueryService.query()`，再进入该执行器；Online Query 模块内部保持同步顺序执行。
 
 ## 实现链路
 
@@ -40,7 +40,7 @@ QueryRequest
 | `service.py` | 保留 Query Understanding、请求校验、Retrieval、Prompt、LLM、SQL Guard、Database 主链路并统一转换错误 |
 | `retrieval/` | Online Retrieval 的运行时、资源检索、关系解析、上下文组装和请求规划 |
 | `sql_guard/` | SQL Guard 核心、Join 校验、多指标校验和异常类型 |
-| `__init__.py` | 只导出公共请求、结果和 Service |
+| `__init__.py` | 只导出公共请求和结果 Contract；OnlineQueryService 由组合根按内部下游使用 |
 
 ## 核心 Contract（契约）
 
@@ -88,7 +88,7 @@ QueryRequest
 | `test_service.py` | 成功链路、全部错误映射、上下文失败不调用 LLM、SQL 拒绝不访问数据库 |
 | `test_integration.py` | 使用真实 PostgreSQL 验证只读执行、空结果、100 行截断和至少一条完整查询链路 |
 
-真实模型的 21 条标准测试属于 AI Evaluation（AI 评测），后续通过同一个 `OnlineQueryService` 执行，不复制另一条查询链路。
+真实模型的 21 条标准测试属于 AI Evaluation（AI 评测），通过同一个绑定测试身份的 `BoundAuthorizedQueryService` 执行，并由它调用 `OnlineQueryService.execute()`，不复制另一条查询链路。
 
 ## 开发任务清单
 

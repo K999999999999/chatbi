@@ -13,6 +13,8 @@
 - 本地启动入口自动读取项目根目录的 .env，且不覆盖已经存在的环境变量。
 - 正式环境不依赖 .env 文件，由部署平台注入环境变量或 Secret。
 
+`OnlineQueryService.execute()` 是授权后的内部下游执行操作，不是用户查询入口。Query API 和 Evaluation 必须分别通过 `AuthorizedQueryService.query()` 或绑定身份后的 `BoundAuthorizedQueryService.query()` 进入；Online Query 模块本身不接收身份授权职责。
+
 ## 输入契约
 
 ```text

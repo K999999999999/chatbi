@@ -50,7 +50,7 @@ class ServiceTest(unittest.TestCase):
     def test_success_runs_full_chain_and_returns_result(self) -> None:
         service = self._service()
 
-        result = service.query(
+        result = service.execute(
             QueryRequest(question=" 查询已完成订单 ", request_id=" req-1 ")
         )
 
@@ -67,14 +67,14 @@ class ServiceTest(unittest.TestCase):
         self.executor.execute.assert_called_once_with(ValidatedSQL(self.sql))
 
     def test_missing_request_id_is_generated(self) -> None:
-        result = self._service().query(QueryRequest(question="查询订单"))
+        result = self._service().execute(QueryRequest(question="查询订单"))
 
         self.assertIsInstance(result, QuerySuccess)
         assert isinstance(result, QuerySuccess)
         UUID(result.request_id)
 
     def test_invalid_question_stops_before_llm(self) -> None:
-        result = self._service().query(
+        result = self._service().execute(
             QueryRequest(question="   ", request_id="req-invalid")
         )
 
@@ -90,7 +90,7 @@ class ServiceTest(unittest.TestCase):
             context_loader=loader,
         )
 
-        result = service.query(QueryRequest(question="查询订单"))
+        result = service.execute(QueryRequest(question="查询订单"))
 
         self._assert_failure(result, QueryErrorCode.CONTEXT_ERROR)
         loader.assert_called_once_with()
@@ -105,8 +105,8 @@ class ServiceTest(unittest.TestCase):
             context_loader=loader,
         )
 
-        service.query(QueryRequest(question="第一次查询"))
-        service.query(QueryRequest(question="第二次查询"))
+        service.execute(QueryRequest(question="第一次查询"))
+        service.execute(QueryRequest(question="第二次查询"))
 
         loader.assert_called_once_with()
 
@@ -115,7 +115,7 @@ class ServiceTest(unittest.TestCase):
         service = self._service()
 
         with patch("src.online_query.service._new_validation_session") as guard:
-            result = service.query(QueryRequest(question="查询订单"))
+            result = service.execute(QueryRequest(question="查询订单"))
 
         self._assert_failure(result, QueryErrorCode.LLM_ERROR)
         guard.assert_not_called()
@@ -137,7 +137,7 @@ class ServiceTest(unittest.TestCase):
             query_understanding=query_understanding,
         )
 
-        result = service.query(QueryRequest(question="查询订单"))
+        result = service.execute(QueryRequest(question="查询订单"))
 
         self._assert_failure(result, QueryErrorCode.LLM_ERROR)
         assert isinstance(result, QueryFailure)
@@ -148,7 +148,7 @@ class ServiceTest(unittest.TestCase):
     def test_llm_timeout_is_an_error_without_retry(self) -> None:
         self.generator.generate.side_effect = TimeoutError("provider detail")
 
-        result = self._service().query(QueryRequest(question="查询订单"))
+        result = self._service().execute(QueryRequest(question="查询订单"))
 
         self._assert_failure(result, QueryErrorCode.LLM_ERROR)
         self.generator.generate.assert_called_once()
@@ -159,7 +159,7 @@ class ServiceTest(unittest.TestCase):
         service = self._service()
 
         with patch("src.online_query.service._new_validation_session") as guard:
-            result = service.query(QueryRequest(question="查询不存在的业务"))
+            result = service.execute(QueryRequest(question="查询不存在的业务"))
 
         self._assert_failure(result, QueryErrorCode.CANNOT_ANSWER)
         guard.assert_not_called()
@@ -170,7 +170,7 @@ class ServiceTest(unittest.TestCase):
             "src.online_query.sql_guard.sql_guard._parse_single_select",
             wraps=sql_guard._parse_single_select,
         ) as parse:
-            result = self._service().query(QueryRequest(question="查询订单"))
+            result = self._service().execute(QueryRequest(question="查询订单"))
 
         self.assertIsInstance(result, QuerySuccess)
         self.assertEqual(parse.call_count, 1)
@@ -182,8 +182,8 @@ class ServiceTest(unittest.TestCase):
             "src.online_query.sql_guard.sql_guard._parse_single_select",
             wraps=sql_guard._parse_single_select,
         ) as parse:
-            first = service.query(QueryRequest(question="第一次查询"))
-            second = service.query(QueryRequest(question="第二次查询"))
+            first = service.execute(QueryRequest(question="第一次查询"))
+            second = service.execute(QueryRequest(question="第二次查询"))
 
         self.assertIsInstance(first, QuerySuccess)
         self.assertIsInstance(second, QuerySuccess)
@@ -194,7 +194,7 @@ class ServiceTest(unittest.TestCase):
             "DELETE FROM mart_sales.fct_sales_order_line"
         )
 
-        result = self._service().query(QueryRequest(question="删除订单"))
+        result = self._service().execute(QueryRequest(question="删除订单"))
 
         self._assert_failure(result, QueryErrorCode.SQL_REJECTED)
         self.executor.execute.assert_not_called()
@@ -202,7 +202,7 @@ class ServiceTest(unittest.TestCase):
     def test_database_timeout_maps_to_query_timeout(self) -> None:
         self.executor.execute.side_effect = DatabaseQueryTimeout("detail")
 
-        result = self._service().query(QueryRequest(question="查询订单"))
+        result = self._service().execute(QueryRequest(question="查询订单"))
 
         self._assert_failure(result, QueryErrorCode.QUERY_TIMEOUT)
         self.executor.execute.assert_called_once()
@@ -210,7 +210,7 @@ class ServiceTest(unittest.TestCase):
     def test_database_failure_maps_to_database_error(self) -> None:
         self.executor.execute.side_effect = DatabaseError("detail")
 
-        result = self._service().query(QueryRequest(question="查询订单"))
+        result = self._service().execute(QueryRequest(question="查询订单"))
 
         self._assert_failure(result, QueryErrorCode.DATABASE_ERROR)
 
@@ -221,7 +221,7 @@ class ServiceTest(unittest.TestCase):
             truncated=False,
         )
 
-        result = self._service().query(QueryRequest(question="查询订单"))
+        result = self._service().execute(QueryRequest(question="查询订单"))
 
         self.assertIsInstance(result, QuerySuccess)
         assert isinstance(result, QuerySuccess)

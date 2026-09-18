@@ -197,6 +197,10 @@ jobs:
           POSTGRES_APP_USER=chatbi_app
           POSTGRES_APP_PASSWORD=ci-app-password
           RAG_ONLINE_RETRIEVAL_ENABLED=false
+          CHATBI_ENV=development
+          CHATBI_IDENTITY_PROVIDER=test
+          CHATBI_IDENTITY_SUBJECT_ID=analyst-1
+          CHATBI_AUTH_POLICY_FILE=config/authorization-policy.example.json
           CHATBI_RUNTIME_ENV=ci
           CHATBI_TRACE_CONTENT_ENABLED=false
           EOF

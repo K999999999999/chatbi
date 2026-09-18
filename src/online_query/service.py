@@ -82,7 +82,7 @@ _FAILURE_STAGES = {
 
 
 class OnlineQueryService:
-    """同步执行一次自然语言查询完整链路。"""
+    """授权查询入口之后的同步下游执行器。"""
 
     def __init__(
         self,
@@ -107,7 +107,9 @@ class OnlineQueryService:
             except Exception:
                 self._context_failed = True
 
-    def query(self, request: QueryRequest) -> QueryResult:
+    def execute(self, request: QueryRequest) -> QueryResult:
+        """执行已由上层 Application Entry 放行的查询请求。"""
+
         request_id, request_id_valid = _resolve_request_id(request.request_id)
         with _safe_trace_scope(
             self._trace_recorder,

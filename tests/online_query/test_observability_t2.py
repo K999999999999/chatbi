@@ -52,7 +52,7 @@ class T2ObservabilityTest(unittest.TestCase):
         self.recorder, self.exporter = create_in_memory_recorder()
 
     def test_success_chain_has_one_root_shared_request_and_trace_id(self) -> None:
-        result = self._service().query(
+        result = self._service().execute(
             QueryRequest(question="查询已完成订单", request_id="req-t2-success")
         )
 
@@ -128,7 +128,7 @@ class T2ObservabilityTest(unittest.TestCase):
                     self.generator.generate.return_value = (
                         "DELETE FROM mart_sales.fct_sales_order_line"
                     )
-                result = self._service().query(request)
+                result = self._service().execute(request)
                 self._assert_failure(result, error_code)
                 spans = self.exporter.get_finished_spans()
                 names = {span.name for span in spans}
@@ -147,7 +147,7 @@ class T2ObservabilityTest(unittest.TestCase):
         ) as factory:
             session = factory.return_value
             session.validate_sql.side_effect = RuntimeError("sql-internal-detail")
-            result = self._service().query(QueryRequest(question="查询订单"))
+            result = self._service().execute(QueryRequest(question="查询订单"))
 
         self._assert_failure(result, QueryErrorCode.SQL_REJECTED)
         names = {span.name for span in self.exporter.get_finished_spans()}
@@ -185,7 +185,7 @@ class T2ObservabilityTest(unittest.TestCase):
                     self.generator.generate.side_effect = failure
                 else:
                     self.executor.execute.side_effect = failure
-                result = self._service().query(QueryRequest(question="查询订单"))
+                result = self._service().execute(QueryRequest(question="查询订单"))
                 self._assert_failure(result, error_code)
                 spans = self.exporter.get_finished_spans()
                 failed = next(span for span in spans if span.name == span_name)
@@ -215,7 +215,7 @@ class T2ObservabilityTest(unittest.TestCase):
             trace_recorder=self.recorder,
         )
 
-        result = service.query(QueryRequest(question="查询订单"))
+        result = service.execute(QueryRequest(question="查询订单"))
 
         self._assert_failure(result, QueryErrorCode.CONTEXT_ERROR)
         names = {span.name for span in self.exporter.get_finished_spans()}
@@ -238,7 +238,7 @@ class T2ObservabilityTest(unittest.TestCase):
             asset_version="build-v2",
             warnings=("provider detail must not enter trace",),
         )
-        result = self._service(provider).query(
+        result = self._service(provider).execute(
             QueryRequest(question="查询订单", request_id="req-fallback")
         )
 
@@ -276,7 +276,7 @@ class T2ObservabilityTest(unittest.TestCase):
             fallback_policy=FallbackPolicy.FAIL_CLOSED,
         )
 
-        result = self._service(provider).query(
+        result = self._service(provider).execute(
             QueryRequest(question="按客户类型统计销售额和毛利率")
         )
 
@@ -305,10 +305,10 @@ class T2ObservabilityTest(unittest.TestCase):
                 raise RuntimeError("enrich-detail")
 
         request = QueryRequest(question="查询订单", request_id="req-trace-fault")
-        expected = self._service().query(request)
+        expected = self._service().execute(request)
         self.generator.reset_mock()
         self.executor.reset_mock()
-        actual = self._service(trace_recorder=BrokenRecorder()).query(request)
+        actual = self._service(trace_recorder=BrokenRecorder()).execute(request)
 
         self.assertEqual(actual, expected)
         self.generator.generate.assert_called_once()

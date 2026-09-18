@@ -57,7 +57,7 @@ class RetrievalServiceTest(unittest.TestCase):
         )
         service = self._service(provider)
 
-        result = service.query(QueryRequest(question="查询客户"))
+        result = service.execute(QueryRequest(question="查询客户"))
 
         self.assertIsInstance(result, QuerySuccess)
         assert isinstance(result, QuerySuccess)
@@ -74,7 +74,7 @@ class RetrievalServiceTest(unittest.TestCase):
         )
         service = self._service(provider)
 
-        result = service.query(QueryRequest(question="查询不存在的字段"))
+        result = service.execute(QueryRequest(question="查询不存在的字段"))
 
         self._assert_failure(result, QueryErrorCode.CANNOT_ANSWER)
         assert isinstance(result, QueryFailure)
@@ -97,7 +97,7 @@ class RetrievalServiceTest(unittest.TestCase):
         ):
             with self.subTest(status=status):
                 provider.retrieve.return_value = OnlineRetrievalResult(status=status)
-                result = service.query(QueryRequest(question="查询订单"))
+                result = service.execute(QueryRequest(question="查询订单"))
                 self._assert_failure(result, QueryErrorCode.CANNOT_ANSWER)
 
         self.generator.generate.assert_not_called()
@@ -117,7 +117,7 @@ class RetrievalServiceTest(unittest.TestCase):
         service = self._service(provider)
 
         with self.assertLogs("src.online_query.service", level="WARNING") as logs:
-            result = service.query(QueryRequest(question="查询订单"))
+            result = service.execute(QueryRequest(question="查询订单"))
 
         self._assert_failure(result, QueryErrorCode.CONTEXT_ERROR)
         assert isinstance(result, QueryFailure)
@@ -136,7 +136,7 @@ class RetrievalServiceTest(unittest.TestCase):
         )
         service = self._service(provider)
 
-        result = service.query(QueryRequest(question="查询订单"))
+        result = service.execute(QueryRequest(question="查询订单"))
 
         self._assert_failure(result, QueryErrorCode.CONTEXT_ERROR)
         self.generator.generate.assert_not_called()
@@ -151,7 +151,7 @@ class RetrievalServiceTest(unittest.TestCase):
         )
         service = self._service(provider)
 
-        result = service.query(QueryRequest(question="查询订单"))
+        result = service.execute(QueryRequest(question="查询订单"))
 
         self._assert_failure(result, QueryErrorCode.CONTEXT_ERROR)
         self.generator.generate.assert_not_called()
@@ -172,7 +172,7 @@ class RetrievalServiceTest(unittest.TestCase):
             query_understanding=self.query_understanding,
         )
 
-        result = service.query(QueryRequest(question="查询客户"))
+        result = service.execute(QueryRequest(question="查询客户"))
 
         self.assertIsInstance(result, QuerySuccess)
         loader.assert_not_called()
@@ -189,7 +189,7 @@ class RetrievalServiceTest(unittest.TestCase):
         )
         service = self._service(provider)
 
-        result = service.query(QueryRequest(question="按客户类型统计销售额和毛利率"))
+        result = service.execute(QueryRequest(question="按客户类型统计销售额和毛利率"))
 
         self._assert_failure(result, QueryErrorCode.CONTEXT_ERROR)
         self.generator.generate.assert_not_called()
@@ -208,7 +208,7 @@ class RetrievalServiceTest(unittest.TestCase):
         provider.retrieve.side_effect = RuntimeError("qdrant unavailable")
         service = self._service(provider)
 
-        result = service.query(QueryRequest(question="按客户类型统计销售额和毛利率"))
+        result = service.execute(QueryRequest(question="按客户类型统计销售额和毛利率"))
 
         self._assert_failure(result, QueryErrorCode.CONTEXT_ERROR)
         self.generator.generate.assert_not_called()
@@ -225,7 +225,7 @@ class RetrievalServiceTest(unittest.TestCase):
         )
         service = self._service(provider)
 
-        result = service.query(QueryRequest(question="按客户类型统计销售额和毛利率"))
+        result = service.execute(QueryRequest(question="按客户类型统计销售额和毛利率"))
 
         self.assertIsInstance(result, QuerySuccess)
         self.generator.generate.assert_called_once()
@@ -245,7 +245,7 @@ class RetrievalServiceTest(unittest.TestCase):
         )
         service = self._service(provider)
 
-        result = service.query(
+        result = service.execute(
             QueryRequest(question="按客户类型统计销售额和已完成订单数")
         )
 
@@ -267,7 +267,7 @@ class RetrievalServiceTest(unittest.TestCase):
             query_understanding=self.query_understanding,
         )
 
-        result = service.query(QueryRequest(question="查询订单"))
+        result = service.execute(QueryRequest(question="查询订单"))
 
         self._assert_failure(result, QueryErrorCode.CONTEXT_ERROR)
         self.generator.generate.assert_not_called()
@@ -283,7 +283,7 @@ class RetrievalServiceTest(unittest.TestCase):
         )
         service = self._service(provider)
 
-        result = service.query(QueryRequest(question="查询客户"))
+        result = service.execute(QueryRequest(question="查询客户"))
 
         self._assert_failure(result, QueryErrorCode.SQL_REJECTED)
         self.executor.execute.assert_not_called()

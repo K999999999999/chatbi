@@ -1,9 +1,12 @@
 """Query API Adapter（查询接口适配层）测试。"""
 
 from unittest import TestCase
+from unittest.mock import Mock
 
 from fastapi.testclient import TestClient
 
+from src.authorization import InMemoryAuditSink, StaticIdentityProviderAdapter
+from src.authorization.contracts import IdentityProviderUnavailable
 from src.online_query.contracts import (
     QueryErrorCode,
     QueryFailure,
@@ -12,13 +15,14 @@ from src.online_query.contracts import (
     QuerySuccess,
 )
 from src.query_api.app import create_app
+from tests.query_api.support import create_test_app
 
 
 class _RecordingService:
     def __init__(self) -> None:
         self.requests: list[QueryRequest] = []
 
-    def query(self, request: QueryRequest) -> QueryResult:
+    def execute(self, request: QueryRequest) -> QueryResult:
         self.requests.append(request)
         raise AssertionError("health check must not call OnlineQueryService")
 
@@ -28,7 +32,7 @@ class _SuccessService:
         self.rows = rows
         self.requests: list[QueryRequest] = []
 
-    def query(self, request: QueryRequest) -> QueryResult:
+    def execute(self, request: QueryRequest) -> QueryResult:
         self.requests.append(request)
         return QuerySuccess(
             request_id=request.request_id or "generated-request-id",
@@ -45,7 +49,7 @@ class _FailureService:
         self.error_code = error_code
         self.requests: list[QueryRequest] = []
 
-    def query(self, request: QueryRequest) -> QueryResult:
+    def execute(self, request: QueryRequest) -> QueryResult:
         self.requests.append(request)
         return QueryFailure(
             request_id=request.request_id or "generated-request-id",
@@ -56,10 +60,22 @@ class _FailureService:
         )
 
 
+class _AuthenticationFailureProvider:
+    def __init__(self, error: Exception) -> None:
+        self.error = error
+
+    @property
+    def identity_provider(self) -> str:
+        return "test"
+
+    def authenticate(self, _provider_input: object = None):
+        raise self.error
+
+
 class QueryApiAppTest(TestCase):
     def test_health_returns_ok_without_calling_query_service(self) -> None:
         service = _RecordingService()
-        client = TestClient(create_app(service))
+        client = TestClient(create_test_app(service))
 
         response = client.get("/health")
 
@@ -69,7 +85,7 @@ class QueryApiAppTest(TestCase):
 
     def test_query_returns_success_and_forwards_request_id(self) -> None:
         service = _SuccessService((("产品A", 10000),))
-        client = TestClient(create_app(service))
+        client = TestClient(create_test_app(service))
 
         response = client.post(
             "/api/v1/query",
@@ -94,9 +110,25 @@ class QueryApiAppTest(TestCase):
             [QueryRequest(question="查询产品销售额", request_id="req-123")],
         )
 
+    def test_query_audit_event_can_be_correlated_by_request_id(self) -> None:
+        service = _SuccessService((("产品A", 10000),))
+        audit_sink = InMemoryAuditSink()
+        client = TestClient(create_test_app(service, audit_sink=audit_sink))
+
+        response = client.post(
+            "/api/v1/query",
+            json={"question": "查询产品销售额"},
+            headers={"X-Request-ID": "req-audit-http"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(audit_sink.events), 1)
+        self.assertEqual(audit_sink.events[0].request_id, "req-audit-http")
+        self.assertEqual(audit_sink.events[0].decision, "allow")
+
     def test_query_without_request_id_returns_empty_success(self) -> None:
         service = _SuccessService(())
-        client = TestClient(create_app(service))
+        client = TestClient(create_test_app(service))
 
         response = client.post(
             "/api/v1/query",
@@ -133,7 +165,7 @@ class QueryApiAppTest(TestCase):
             with self.subTest(error_code=error_code):
                 service = _FailureService(error_code)
                 client = TestClient(
-                    create_app(service),
+                    create_test_app(service),
                     raise_server_exceptions=False,
                 )
 
@@ -159,7 +191,7 @@ class QueryApiAppTest(TestCase):
 
     def test_blank_question_returns_invalid_request(self) -> None:
         service = _FailureService(QueryErrorCode.INVALID_REQUEST)
-        client = TestClient(create_app(service))
+        client = TestClient(create_test_app(service))
 
         response = client.post(
             "/api/v1/query",
@@ -185,7 +217,7 @@ class QueryApiAppTest(TestCase):
         for body in invalid_bodies:
             with self.subTest(body=body):
                 service = _FailureService(QueryErrorCode.INVALID_REQUEST)
-                client = TestClient(create_app(service))
+                client = TestClient(create_test_app(service))
 
                 response = client.post(
                     "/api/v1/query",
@@ -200,7 +232,7 @@ class QueryApiAppTest(TestCase):
 
     def test_invalid_json_returns_failure_shape(self) -> None:
         service = _FailureService(QueryErrorCode.INVALID_REQUEST)
-        client = TestClient(create_app(service))
+        client = TestClient(create_test_app(service))
 
         response = client.post(
             "/api/v1/query",
@@ -215,3 +247,112 @@ class QueryApiAppTest(TestCase):
         self.assertEqual(response.json()["error_code"], "INVALID_REQUEST")
         self.assertEqual(response.json()["request_id"], "req-invalid-json")
         self.assertNotIn("detail", response.json())
+
+    def test_missing_identity_returns_401_without_calling_query_service(self) -> None:
+        service = _SuccessService((("产品A", 10000),))
+        client = TestClient(create_app(service, audit_sink=InMemoryAuditSink()))
+
+        response = client.post(
+            "/api/v1/query",
+            json={"question": "查询销售额"},
+            headers={"X-Request-ID": "req-no-auth"},
+        )
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()["error_code"], "AUTHENTICATION_REQUIRED")
+        self.assertEqual(response.json()["request_id"], "req-no-auth")
+        self.assertEqual(service.requests, [])
+
+    def test_unauthorized_identity_returns_403_without_calling_query_service(
+        self,
+    ) -> None:
+        service = _SuccessService((("产品A", 10000),))
+        client = TestClient(
+            create_test_app(service, subject_id="blocked-user"),
+        )
+
+        response = client.post(
+            "/api/v1/query",
+            json={"question": "查询销售额"},
+            headers={"X-Request-ID": "req-denied"},
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["error_code"], "AUTHORIZATION_DENIED")
+        self.assertEqual(response.json()["request_id"], "req-denied")
+        self.assertEqual(service.requests, [])
+
+    def test_identity_provider_failure_returns_503_without_calling_query_service(
+        self,
+    ) -> None:
+        service = _SuccessService((("产品A", 10000),))
+        policy = Mock()
+        policy.authorize.return_value = Mock(allowed=True)
+        audit_sink = InMemoryAuditSink()
+        client = TestClient(
+            create_app(
+                service,
+                identity_provider=_AuthenticationFailureProvider(
+                    IdentityProviderUnavailable("provider unavailable")
+                ),
+                policy_store=policy,
+                audit_sink=audit_sink,
+            )
+        )
+
+        response = client.post(
+            "/api/v1/query",
+            json={"question": "查询销售额"},
+            headers={"X-Request-ID": "req-provider-error"},
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(
+            response.json()["error_code"],
+            "AUTHENTICATION_UNAVAILABLE",
+        )
+        self.assertEqual(service.requests, [])
+        self.assertEqual(len(audit_sink.events), 1)
+        self.assertEqual(audit_sink.events[0].request_id, "req-provider-error")
+        self.assertEqual(audit_sink.events[0].decision, "deny")
+        self.assertEqual(audit_sink.events[0].identity_provider, "test")
+
+    def test_missing_policy_returns_503_without_calling_query_service(self) -> None:
+        service = _SuccessService((("产品A", 10000),))
+        client = TestClient(
+            create_app(
+                service,
+                identity_provider=StaticIdentityProviderAdapter(
+                    identity_provider="test",
+                    subject_id="analyst-1",
+                ),
+                audit_sink=InMemoryAuditSink(),
+            )
+        )
+
+        response = client.post(
+            "/api/v1/query",
+            json={"question": "查询销售额"},
+            headers={"X-Request-ID": "req-policy-error"},
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(
+            response.json()["error_code"],
+            "AUTHENTICATION_UNAVAILABLE",
+        )
+        self.assertEqual(service.requests, [])
+
+    def test_client_identity_fields_are_rejected_from_request_body(self) -> None:
+        service = _SuccessService((("产品A", 10000),))
+        client = TestClient(create_test_app(service))
+
+        response = client.post(
+            "/api/v1/query",
+            json={"question": "查询销售额", "subject_id": "analyst-1"},
+            headers={"X-Request-ID": "req-spoof"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error_code"], "INVALID_REQUEST")
+        self.assertEqual(service.requests, [])

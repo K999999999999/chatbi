@@ -33,7 +33,7 @@ Observability 只记录和关联已有业务行为，不决定业务事实、RAG
 ## 4. 运行方式
 
 - 沿用同步、单次请求/响应的 Online Query 运行方式。
-- API 请求和直接调用 `OnlineQueryService.query()` 的评测路径都必须可以形成完整 Trace。
+- API 请求和调用 `BoundAuthorizedQueryService.query()` 的评测路径都必须可以形成完整 Trace；下游 `OnlineQueryService.execute()` 继续复用活动 Trace。
 - 进程内已有可信活动 Trace 时继续使用；HTTP 客户端传入的 `traceparent` / `tracestate` 在 V1 不视为可信上游，不直接继承；没有可信活动 Trace 时由系统创建。
 - HTTP Middleware 必须在请求体解析前先读取或生成 `request_id`，再创建带该编号的 Root Trace；同一个 `request_id` 必须传入后续 Service 和响应体。
 - 可观测记录属于旁路行为，不增加业务重试，不改变节点顺序和调用次数。

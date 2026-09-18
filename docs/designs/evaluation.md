@@ -4,7 +4,7 @@
 
 Evaluation（评测）实现为一个离线回归评测 Runner（运行器），不建设新的查询系统，不提供 API 或常驻服务。
 
-它读取固定测试集，逐条调用现有 `OnlineQueryService.query()`，执行标准 SQL 得到标准结果，比较两边数据并输出 JSON 报告。第一份报告建立 Baseline（基线），后续报告识别 Regression（能力回退）。
+它读取固定测试集，逐条调用绑定测试身份的 `BoundAuthorizedQueryService.query()`，由其执行现有 `OnlineQueryService.execute()`，再执行标准 SQL 得到标准结果，比较两边数据并输出 JSON 报告。第一份报告建立 Baseline（基线），后续报告识别 Regression（能力回退）。
 
 评测入口支持两种装配模式：Software Test（软件测试）默认使用静态 `QueryContext`，保证确定性测试不依赖本地模型和 Qdrant；真实 AI Evaluation（AI 评测）通过 `--online-retrieval` 显式装配与生产入口一致的 `OnlineRetriever`，用于验证在线 RAG 和后续 SQL 链路。
 
@@ -14,7 +14,7 @@ Evaluation（评测）实现为一个离线回归评测 Runner（运行器），
 加载并检查标准测试集
   -> 标准 SQL 经过现有 SQL Guard
   -> 使用现有只读 QueryExecutor 生成标准结果
-  -> question 调用现有 OnlineQueryService
+  -> question 调用 BoundAuthorizedQueryService
   -> 比较系统结果与标准结果
   -> 汇总 Execution Accuracy
   -> 记录运行指纹并保存 JSON 报告
@@ -67,7 +67,7 @@ OnlineQueryService(
 
 评测 Runner 接收：
 
-- 现有 `OnlineQueryService`
+- 绑定显式测试身份的 `BoundAuthorizedQueryService`
 - 同一个 `QueryExecutor`
 - 同一个 `QueryContext`
 - 已加载的标准案例

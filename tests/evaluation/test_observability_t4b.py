@@ -6,6 +6,14 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from src.authorization import (
+    AuthorizedQueryService,
+    InMemoryAuditSink,
+    StaticAuthorizationPolicyStore,
+    StaticIdentityProviderAdapter,
+)
+from src.evaluation.evaluator import EvaluationCase
+from src.evaluation.runner import CaseStatus, run_evaluation
 from src.observability import QuerySource, create_in_memory_recorder
 from src.online_query.contracts import (
     QueryContext,
@@ -17,10 +25,6 @@ from src.online_query.contracts import (
     ValidatedSQL,
 )
 from src.online_query.service import OnlineQueryService
-
-from src.evaluation.evaluator import EvaluationCase
-from src.evaluation.runner import CaseStatus, run_evaluation
-
 
 TRACE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 
@@ -163,10 +167,23 @@ class EvaluationObservabilityT4BTest(unittest.TestCase):
             context_loader=lambda: self.context,
             trace_recorder=recorder,
         )
+        query_entry = AuthorizedQueryService(
+            service,
+            StaticAuthorizationPolicyStore(
+                allowed_subjects=frozenset({"evaluation-test"}),
+                policy_version="evaluation-test-policy-v1",
+            ),
+            audit_sink=InMemoryAuditSink(),
+        ).bind(
+            StaticIdentityProviderAdapter(
+                identity_provider="test",
+                subject_id="evaluation-test",
+            ).authenticate()
+        )
 
         run = run_evaluation(
             (self._case("SHARED", "共享 Root"),),
-            service,
+            query_entry,
             executor,
             self.context,
             trace_recorder=recorder,

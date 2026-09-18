@@ -37,7 +37,7 @@ expected_sql
 order_sensitive（可选，默认 false）
 ```
 
-- `question` 必须调用正式 `OnlineQueryService`。
+- `question` 必须通过绑定显式测试身份的正式 `BoundAuthorizedQueryService`，由其调用下游 `OnlineQueryService.execute()`。
 - `expected_sql` 只用于生成标准结果，不得替代系统生成 SQL。
 - 标准 SQL 仍须经过现有 SQL Guard（SQL 安全校验），并使用同一个只读数据库执行器。
 - 当前 Online Retrieval V1 的标准 Join 必须使用关系图认证的直接 `LEFT JOIN`；中间表、多跳 Join 和未认证 Join 不属于标准案例。
@@ -51,7 +51,8 @@ Query Understanding（查询理解）使用独立的语义评测集
 
 ```text
 question
-  -> OnlineQueryService
+  -> BoundAuthorizedQueryService.query()
+  -> OnlineQueryService.execute()
   -> Prompt
   -> LLM
   -> SQL Guard
@@ -80,7 +81,7 @@ question
 
 ```text
 读取测试案例
-  -> question 调用 OnlineQueryService
+  -> question 调用 BoundAuthorizedQueryService
   -> expected_sql 生成标准结果
   -> 标准化两边结果
   -> 比较行数、列数和数据值

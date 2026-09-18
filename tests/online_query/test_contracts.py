@@ -1,7 +1,7 @@
 """Online Query（在线查询）核心 Contract（契约）测试。"""
 
-from dataclasses import FrozenInstanceError
 import unittest
+from dataclasses import FrozenInstanceError
 
 from src.online_query.contracts import (
     QueryErrorCode,
@@ -17,6 +17,9 @@ class ContractTest(unittest.TestCase):
             {code.value for code in QueryErrorCode},
             {
                 "INVALID_REQUEST",
+                "AUTHENTICATION_REQUIRED",
+                "AUTHORIZATION_DENIED",
+                "AUTHENTICATION_UNAVAILABLE",
                 "CONTEXT_ERROR",
                 "LLM_ERROR",
                 "CANNOT_ANSWER",
@@ -51,6 +54,12 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(config.table_score_threshold, 0.30)
         self.assertEqual(config.column_score_threshold, 0.25)
         self.assertEqual(config.metric_score_threshold, 0.30)
+
+    def test_online_query_service_is_not_exported_as_user_entry(self) -> None:
+        import src.online_query as online_query
+
+        self.assertNotIn("OnlineQueryService", online_query.__all__)
+        self.assertFalse(hasattr(online_query, "OnlineQueryService"))
 
 
 if __name__ == "__main__":

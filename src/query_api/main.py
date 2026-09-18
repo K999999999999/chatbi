@@ -2,16 +2,21 @@
 
 import os
 
-from .app import create_app
-from .config import load_local_environment
+from src.authorization import InMemoryAuditSink
 from src.observability.tracing import create_trace_recorder
 from src.online_query.database import PsycopgQueryExecutor
 from src.online_query.llm import LangChainSQLGenerator
-from src.online_query.retrieval.rag_runtime import RagRuntime
-from src.online_query.retrieval import OnlineRetriever
 from src.online_query.query_understanding_llm import LangChainQueryUnderstanding
+from src.online_query.retrieval import OnlineRetriever
+from src.online_query.retrieval.rag_runtime import RagRuntime
 from src.online_query.service import OnlineQueryService
 
+from .app import create_app
+from .config import (
+    build_identity_provider,
+    build_policy_store,
+    load_local_environment,
+)
 
 load_local_environment()
 
@@ -44,4 +49,11 @@ def _rag_online_retrieval_enabled() -> bool:
     return value not in {"0", "false", "no", "off"}
 
 
-app = create_app(build_service())
+_identity_provider = build_identity_provider()
+_policy_store = build_policy_store()
+app = create_app(
+    build_service(),
+    audit_sink=InMemoryAuditSink(),
+    identity_provider=_identity_provider,
+    policy_store=_policy_store,
+)

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 import re
 from time import perf_counter
+from typing import Protocol
 from uuid import uuid4
 
 from src.observability.contracts import QuerySource, TraceRecorder
@@ -16,12 +17,19 @@ from src.online_query.contracts import (
     QueryExecutor,
     QueryFailure,
     QueryRequest,
+    QueryResult,
     QuerySuccess,
 )
-from src.online_query.service import OnlineQueryService
 from src.online_query.sql_guard import validate_sql
 
 from .evaluator import EvaluationCase, results_match
+
+
+class EvaluationQueryService(Protocol):
+    """Evaluation 使用的已装配 Query Entry。"""
+
+    def query(self, request: QueryRequest) -> QueryResult:
+        """执行一次带有显式测试身份的查询。"""
 
 
 class CaseStatus(StrEnum):
@@ -65,7 +73,7 @@ class EvaluationRun:
 
 def run_evaluation(
     cases: tuple[EvaluationCase, ...],
-    service: OnlineQueryService,
+    service: EvaluationQueryService,
     query_executor: QueryExecutor,
     context: QueryContext,
     trace_recorder: TraceRecorder | None = None,

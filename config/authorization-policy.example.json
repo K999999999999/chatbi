@@ -1,0 +1,6 @@
+{
+  "policy_version": "policy-v1",
+  "allowed_subjects": [
+    "analyst-1"
+  ]
+}

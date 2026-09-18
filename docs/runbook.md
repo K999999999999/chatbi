@@ -54,11 +54,18 @@ Copy-Item .env.example .env
 然后在 `.env` 中填写本地真实配置：
 
 - PostgreSQL：`POSTGRES_DB`、`POSTGRES_MIGRATOR_USER`、`POSTGRES_MIGRATOR_PASSWORD`、`POSTGRES_APP_USER`、`POSTGRES_APP_PASSWORD`
+- Query API 身份与授权：`CHATBI_ENV`、`CHATBI_IDENTITY_PROVIDER`、`CHATBI_IDENTITY_SUBJECT_ID`、`CHATBI_AUTH_POLICY_FILE`
 - LLM：`LLM_API_KEY`、`LLM_MODEL`，必要时填写 `LLM_BASE_URL`
 - Qdrant：`QDRANT_API_KEY`
 - RAG：通常保持 `RAG_MODEL_DIR=models/bge-m3` 和 `RAG_EMBEDDING_DEVICE=auto`
 
 `.env` 不得提交到 Git。不要在终端回显密码、API Key 或完整连接字符串。
+
+本地 Query API 必须显式选择 `demo` 或 `test` Identity Provider，并配置外部 JSON 授权策略文件。仓库提供的
+`config/authorization-policy.example.json` 只包含演示主体 `analyst-1`；实际环境应通过部署配置注入策略文件路径和允许访问的主体。
+`production` / `prod` 环境会拒绝启动 `demo` / `test` Provider，不会自动回退到演示身份。当前版本尚未接入企业 SSO。
+
+授权事件当前由进程内 `InMemoryAuditSink` 收集，供本地 Demo、Evaluation 和确定性测试使用；它不是持久化审计中心。AuditSink 未配置或写入失败时，授权入口 Fail Closed（失败关闭）并返回受控 503，不会继续执行 Online Query。
 
 ## 4. 启动基础设施
 
