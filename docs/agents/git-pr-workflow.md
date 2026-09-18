@@ -107,7 +107,7 @@ Agent 必须先向用户说明：
 
 ### 6. Finish and clean up
 
-PR 合并或明确放弃后：
+PR 合并后：
 
 1. 回到 `master`；
 2. 更新本地 `master`；
@@ -116,7 +116,19 @@ PR 合并或明确放弃后：
 5. 保留仍有回滚价值的 backup branch，并明确其用途；
 6. 下一项工作重新从 `master` 创建新的 Feature branch。
 
-Remote branch、PR 和外部仓库状态没有得到明确授权或确认时，不擅自删除或修改。
+#### Routine cleanup authorization
+
+当前 PR 的正常合并收尾属于同一交付范围，不需要用户为每一次清理再次确认。满足以下全部条件时，Agent 可以自动完成清理：
+
+- 当前 branch 是本次 PR 的唯一 head branch，PR 已经 `MERGED`；
+- worktree 干净，没有用户的 staged、unstaged 或 untracked 修改；
+- branch 没有 PR 合并后新增的本地 Commit，也没有未 Push 的用户工作；
+- 没有 Open PR、Stacked PR 或其他 worktree 依赖该 branch；
+- 目标不是 `master`、受保护 branch、`backup/*` 或 `codex/backup-*`。
+
+自动清理顺序为：回到 `master` → fast-forward 同步 `master` → 删除当前 Feature 的本地 worktree / branch → 检查仓库的 `delete_branch_on_merge`；如果远端 branch 仍未被仓库自动删除，且仍能确认它就是本次已合并 PR 的 head branch，才删除该远端 branch。
+
+以下情况仍必须暂停并请求用户确认：无法确认 branch 与当前 PR 的唯一归属、PR 未合并、存在 Stacked PR 或其他依赖、发现用户修改、目标是 backup / protected branch，或要批量处理当前交付之外的历史遗留 branch。不得因为“看起来旧”就自动删除历史 branch。
 
 ## Exceptional Flows
 
