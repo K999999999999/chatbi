@@ -99,6 +99,79 @@ class StreamlitQueryClientTest(TestCase):
         self.assertEqual(raised.exception.trace_id, "trace-error")
         self.assertEqual(raised.exception.error_message, "当前结构无法回答该问题")
 
+    def test_query_api_uses_fixed_messages_for_authorization_failures(self) -> None:
+        cases = (
+            (
+                401,
+                "AUTHENTICATION_REQUIRED",
+                "需要有效的身份认证",
+                "req-auth-required",
+                "trace-auth-required",
+            ),
+            (
+                403,
+                "AUTHORIZATION_DENIED",
+                "当前用户没有该数据资源的访问权限",
+                "req-auth-denied",
+                "trace-auth-denied",
+            ),
+            (
+                503,
+                "AUTHENTICATION_UNAVAILABLE",
+                "身份认证服务暂时不可用",
+                "req-auth-unavailable",
+                "trace-auth-unavailable",
+            ),
+        )
+
+        for status, error_code, expected_message, request_id, trace_id in cases:
+            with self.subTest(status=status):
+                payload = {
+                    "request_id": request_id,
+                    "error_code": error_code,
+                    "error_message": "internal secret must not reach the page",
+                }
+
+                def opener(_request: Request, *, timeout: float) -> _Response:
+                    raise HTTPError(
+                        url="http://127.0.0.1:8000/api/v1/query",
+                        code=status,
+                        msg="HTTP error",
+                        hdrs={"X-Trace-ID": trace_id},
+                        fp=BytesIO(json.dumps(payload).encode("utf-8")),
+                    )
+
+                with self.assertRaises(QueryAPIError) as raised:
+                    query_api("http://127.0.0.1:8000", "查询销售额", opener=opener)
+
+                self.assertEqual(raised.exception.error_code, error_code)
+                self.assertEqual(raised.exception.error_message, expected_message)
+                self.assertEqual(raised.exception.request_id, request_id)
+                self.assertEqual(raised.exception.trace_id, trace_id)
+
+    def test_query_api_uses_status_for_malformed_auth_failure_payload(self) -> None:
+        payload = {
+            "request_id": "req-malformed-auth",
+            "error_message": "internal provider details",
+        }
+
+        def opener(_request: Request, *, timeout: float) -> _Response:
+            raise HTTPError(
+                url="http://127.0.0.1:8000/api/v1/query",
+                code=503,
+                msg="Service Unavailable",
+                hdrs={"X-Trace-ID": "trace-malformed-auth"},
+                fp=BytesIO(json.dumps(payload).encode("utf-8")),
+            )
+
+        with self.assertRaises(QueryAPIError) as raised:
+            query_api("http://127.0.0.1:8000", "查询销售额", opener=opener)
+
+        self.assertEqual(raised.exception.error_code, "AUTHENTICATION_UNAVAILABLE")
+        self.assertEqual(raised.exception.error_message, "身份认证服务暂时不可用")
+        self.assertEqual(raised.exception.request_id, "req-malformed-auth")
+        self.assertEqual(raised.exception.trace_id, "trace-malformed-auth")
+
     def test_query_api_keeps_compatibility_when_trace_header_is_missing(self) -> None:
         payload = {
             "request_id": "req-3",

@@ -13,6 +13,16 @@ from urllib.request import Request, urlopen
 
 _DEFAULT_API_BASE_URL = "http://127.0.0.1:8000"
 _DEFAULT_API_TIMEOUT = 90.0
+_AUTHORIZATION_ERROR_MESSAGES = {
+    "AUTHENTICATION_REQUIRED": "需要有效的身份认证",
+    "AUTHORIZATION_DENIED": "当前用户没有该数据资源的访问权限",
+    "AUTHENTICATION_UNAVAILABLE": "身份认证服务暂时不可用",
+}
+_AUTHORIZATION_ERROR_CODES_BY_STATUS = {
+    401: "AUTHENTICATION_REQUIRED",
+    403: "AUTHORIZATION_DENIED",
+    503: "AUTHENTICATION_UNAVAILABLE",
+}
 
 
 class QueryAPIError(RuntimeError):
@@ -75,6 +85,7 @@ def query_api(
             payload,
             "查询服务请求失败",
             trace_id=trace_id,
+            status_code=exc.code,
         ) from None
     except (URLError, TimeoutError, OSError):
         raise QueryAPIError("API_UNAVAILABLE", "无法连接查询服务") from None
@@ -271,14 +282,22 @@ def _error_from_payload(
     fallback_message: str,
     *,
     trace_id: str = "",
+    status_code: int | None = None,
 ) -> QueryAPIError:
-    error_code = payload.get("error_code")
+    payload_error_code = payload.get("error_code")
+    error_code = (
+        payload_error_code
+        if isinstance(payload_error_code, str) and payload_error_code
+        else _AUTHORIZATION_ERROR_CODES_BY_STATUS.get(status_code, "API_ERROR")
+    )
     error_message = payload.get("error_message")
     request_id = payload.get("request_id")
     return QueryAPIError(
-        error_code if isinstance(error_code, str) and error_code else "API_ERROR",
+        error_code,
         (
-            error_message
+            _AUTHORIZATION_ERROR_MESSAGES[error_code]
+            if error_code in _AUTHORIZATION_ERROR_MESSAGES
+            else error_message
             if isinstance(error_message, str) and error_message
             else fallback_message
         ),
