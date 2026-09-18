@@ -23,6 +23,14 @@ _AUTHORIZATION_ERROR_CODES_BY_STATUS = {
     403: "AUTHORIZATION_DENIED",
     503: "AUTHENTICATION_UNAVAILABLE",
 }
+_CONVERSATION_ERROR_MESSAGES = {
+    "CONVERSATION_UNAVAILABLE": "当前会话已失效，请点击“新建会话”后重新开始",
+    "CLARIFICATION_REQUIRED": "请明确需要新增或修改的查询条件",
+    "UNSUPPORTED_ANALYSIS": "当前问题超出单条查询修订范围",
+    "CONVERSATION_CONFLICT": "当前会话已有进行中的查询，请稍后重试",
+}
+_CONVERSATION_ID_KEY = "conversation_id"
+_CONVERSATION_RESET_REQUIRED_KEY = "conversation_reset_required"
 
 
 class QueryAPIError(RuntimeError):
@@ -54,13 +62,18 @@ def query_api(
     base_url: str,
     question: str,
     *,
+    conversation_id: str | None = None,
     timeout: float = _DEFAULT_API_TIMEOUT,
     opener: Callable[..., Any] | None = None,
 ) -> QueryAPIResponse:
     """调用现有查询 API，不在页面层执行 LLM 或数据库逻辑。"""
+    request_payload: dict[str, str] = {"question": question}
+    if isinstance(conversation_id, str) and conversation_id.strip():
+        request_payload["conversation_id"] = conversation_id.strip()
+
     request = Request(
         url=f"{base_url.rstrip('/')}/api/v1/query",
-        data=json.dumps({"question": question}, ensure_ascii=False).encode("utf-8"),
+        data=json.dumps(request_payload, ensure_ascii=False).encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
@@ -156,6 +169,10 @@ def main() -> None:
     st.title("ChatBI 查询")
     st.caption("输入自然语言问题，查询 mart_sales 数据。")
 
+    if st.button("新建会话"):
+        _start_new_conversation(st)
+        st.rerun()
+
     with st.form("query_form"):
         question = st.text_area(
             "问题",
@@ -184,19 +201,58 @@ def _submit_query(st: Any, question: str) -> None:
         )
         return
 
+    if st.session_state.get(_CONVERSATION_RESET_REQUIRED_KEY, False):
+        st.session_state.last_query_response = None
+        st.session_state.last_query_error = QueryAPIError(
+            "CONVERSATION_UNAVAILABLE",
+            _CONVERSATION_ERROR_MESSAGES["CONVERSATION_UNAVAILABLE"],
+        )
+        return
+
     base_url = os.environ.get("CHATBI_API_BASE_URL", _DEFAULT_API_BASE_URL).strip()
     if not base_url:
         base_url = _DEFAULT_API_BASE_URL
+    conversation_id = st.session_state.get(_CONVERSATION_ID_KEY)
+    if not isinstance(conversation_id, str) or not conversation_id.strip():
+        conversation_id = None
+    else:
+        conversation_id = conversation_id.strip()
 
     with st.spinner("正在查询..."):
         try:
-            response = query_api(base_url, question)
+            response = query_api(
+                base_url,
+                question,
+                conversation_id=conversation_id,
+            )
         except QueryAPIError as error:
             st.session_state.last_query_response = None
             st.session_state.last_query_error = error
+            if error.error_code == "CONVERSATION_UNAVAILABLE":
+                st.session_state[_CONVERSATION_ID_KEY] = None
+                st.session_state[_CONVERSATION_RESET_REQUIRED_KEY] = True
         else:
             st.session_state.last_query_response = response
             st.session_state.last_query_error = None
+            response_conversation_id = response.get(_CONVERSATION_ID_KEY)
+            if (
+                isinstance(response_conversation_id, str)
+                and response_conversation_id.strip()
+            ):
+                st.session_state[_CONVERSATION_ID_KEY] = (
+                    response_conversation_id.strip()
+                )
+            elif conversation_id is None:
+                st.session_state[_CONVERSATION_ID_KEY] = None
+            st.session_state[_CONVERSATION_RESET_REQUIRED_KEY] = False
+
+
+def _start_new_conversation(st: Any) -> None:
+    """清除页面层会话引用，不触碰服务端会话或业务状态。"""
+    st.session_state[_CONVERSATION_ID_KEY] = None
+    st.session_state[_CONVERSATION_RESET_REQUIRED_KEY] = False
+    st.session_state.last_query_response = None
+    st.session_state.last_query_error = None
 
 
 def _render_error(st: Any, error: QueryAPIError) -> None:
@@ -297,6 +353,8 @@ def _error_from_payload(
         (
             _AUTHORIZATION_ERROR_MESSAGES[error_code]
             if error_code in _AUTHORIZATION_ERROR_MESSAGES
+            else _CONVERSATION_ERROR_MESSAGES[error_code]
+            if error_code in _CONVERSATION_ERROR_MESSAGES
             else error_message
             if isinstance(error_message, str) and error_message
             else fallback_message
