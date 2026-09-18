@@ -1,6 +1,6 @@
 # Ticket 07：时间条件与分组维度的必需表候选保留
 
-- Status: in-progress
+- Status: done
 - Blocked by: None (can start immediately)
 
 ## What to build
@@ -26,10 +26,11 @@
 
 ## Result
 
-TDD Green 已完成：新增确定性回归 `test_time_and_grouping_query_keep_required_date_table_in_top_k`，修复后返回 `SUCCESS`；完整回归为 `357 passed, 6 skipped, 118 subtests passed`。真实三轮 E2E 和 21 条 AI Evaluation 待最终 candidate 继续验证。
+TDD Green 已完成：新增确定性回归 `test_time_and_grouping_query_keep_required_date_table_in_top_k`，修复后返回 `SUCCESS`；完整回归为 `357 passed, 6 skipped, 118 subtests passed`。最终 candidate `2a1c262a2fd315bf90fe64899ddf33c8bb345a5a` 上，21 条真实 AI Evaluation 为 `21/21 PASS`、`Execution Accuracy=100.00%`，报告 `git_dirty=false`；真实三轮 HTTP E2E 均返回 `200`，第三轮返回列为 `销售区域`、`毛利率`。
 
 ## Comments
 
 - 真实三轮 E2E 的第一轮成功、第二轮 `CANNOT_ANSWER`；只读重放确认默认 `table_top_k=5` 下日期表被分组维度候选挤出。
 - 临时将 Top-K 改为 7 可以通过，但不作为最终方案，因为会扩大所有查询的候选范围和 Schema 暴露面。
+- 上述问题已由本 Ticket 修复：完整结构化查询包含 `time.text`，存在时间条件时跳过维度单独补充查询；保持 `table_top_k=5`，修复后真实三轮和 21 条 AI Evaluation 均通过。
 - 本 Ticket 只修复 Retrieval 候选查询构造，不扩展 Business Analysis、多轮状态或新的查询链路。
