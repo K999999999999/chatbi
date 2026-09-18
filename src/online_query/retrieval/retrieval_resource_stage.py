@@ -29,6 +29,7 @@ from .resource_retrieval import (
     _multi_column_query,
     _parse_time_field,
     _required_columns_many,
+    _table_extra_queries,
     _table_hits,
     _table_query,
 )
@@ -105,7 +106,7 @@ def _retrieve_resources(
             snapshot,
             query_embedding,
             execution.config,
-            extra_queries=semantic_query.dimensions,
+            extra_queries=_table_extra_queries(semantic_query),
             embed_query=lambda text: execution.embed_query(snapshot, text),
             search=lambda collection_name, query, **kwargs: execution.search(
                 "table.search",

@@ -40,16 +40,25 @@ __all__ = [
 
 
 def _table_query(query: ValidatedSemanticQuery) -> str:
-    """将已确认的业务主题、维度、指标和过滤字段拼成 TABLE 查询。"""
+    """将完整已确认语义拼成 TABLE 查询。"""
 
     return _semantic_query_text(
         (
             *query.subjects,
             *query.dimensions,
             *query.metrics,
+            query.time.text if query.time is not None else "",
             *(item.field_text for item in query.filters),
         )
     )
+
+
+def _table_extra_queries(query: ValidatedSemanticQuery) -> tuple[str, ...]:
+    """返回不会挤出时间必需表的 TABLE 补充查询。"""
+
+    if query.time is not None:
+        return ()
+    return query.dimensions
 
 
 def _semantic_query_text(values: tuple[str, ...]) -> str:
