@@ -1,7 +1,7 @@
 """Online Query（在线查询）核心 Contract（契约）测试。"""
 
-from dataclasses import FrozenInstanceError
 import unittest
+from dataclasses import FrozenInstanceError
 
 from src.online_query.contracts import (
     QueryErrorCode,
@@ -17,6 +17,9 @@ class ContractTest(unittest.TestCase):
             {code.value for code in QueryErrorCode},
             {
                 "INVALID_REQUEST",
+                "AUTHENTICATION_REQUIRED",
+                "AUTHORIZATION_DENIED",
+                "AUTHENTICATION_UNAVAILABLE",
                 "CONTEXT_ERROR",
                 "LLM_ERROR",
                 "CANNOT_ANSWER",
