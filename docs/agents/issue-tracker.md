@@ -23,10 +23,12 @@
 - `to-spec` 将已经澄清的需求、领域语言、范围、架构影响、Contract 和验证方向写入 `.scratch/<feature>/spec.md`。
 - 正式的 ChatBI Feature / Module Spec 仍以 `docs/specs/` 下的事实文档为准；`.scratch/` 用于当前新工作的规划产物。
 - Spec 未经用户确认时，只能作为草稿，不能作为实现授权。
+- 用户确认 Spec 后，必须先调用 `design-review` 完成只读 Spec / 设计审查，再进入 `to-tickets`；`PASS` 或 `PASS WITH MINOR FIXES` 才能继续，`NEED FIX` / `BLOCKED` 必须返回 Spec 阶段。
+- `design-review` 不修改 Spec、代码或测试，也不替代实现完成后的 `code-review`；纯文档或小范围 Spec 可以快速审查，但不能静默跳过门禁。
 
 ## 实现 Ticket
 
-- `to-tickets` 将已确认的 Spec 拆分为可独立验证的纵向切片。
+- `to-tickets` 将已确认且通过 `design-review` 的 Spec 拆分为可独立验证的纵向切片。
 - 每个 Ticket 使用独立 Markdown 文件，从 `01` 开始，按直接依赖顺序编号。
 - 初始状态使用 `Status: open`。
 - Ticket 至少包含 `What to build`、`Blocked by`、`Acceptance criteria`、`Result` 和 `Comments`。

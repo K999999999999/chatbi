@@ -49,7 +49,7 @@
 
 - 小范围单会话修改可以直接实施，不强制创建 Spec 或 Ticket；
 - 需求、Contract、范围或架构影响不清楚时，先建立并确认 Spec；
-- 多阶段 Feature 在 Spec 确认后拆分 Ticket；
+- 多阶段 Feature 在 Spec 确认并通过 `design-review` 后拆分 Ticket；
 - 用户确认 Ticket 拆分后，按依赖顺序选择 Ticket 实施；
 - Spec / Ticket 的确认不自动授权 Push、PR 或 Merge。
 
