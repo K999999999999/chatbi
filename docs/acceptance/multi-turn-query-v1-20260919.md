@@ -14,7 +14,7 @@ Retrieval 修复 Commit：`2a1c262a2fd315bf90fe64899ddf33c8bb345a5a`。
 |---|---|---|
 | Software Test（软件测试） | PASS | 多轮 API、会话生命周期、失败状态、授权、Streamlit 当前会话和新建会话均有确定性测试；全量回归通过。 |
 | AI Evaluation（AI 评测） | PASS | 真实 21 条标准案例通过，Execution Accuracy 为 `100.00%`；报告记录 `21/21`、`git_dirty=false`。 |
-| Business Acceptance（业务验收） | NOT ACCEPTED | 技术链路和真实三轮场景已通过，但仍需业务方确认指标、时间、维度继承和真实数据结果。 |
+| Business Acceptance（业务验收） | PASS（本次三轮场景） | 用户通过真实 Streamlit 页面手动执行三轮查询，确认指标、时间、维度继承和结果展示符合预期。 |
 | Real E2E（真实端到端） | PASS | 修复后真实三轮均返回 `200`；第三轮基于第二轮已提交的销售区域分组状态替换为毛利率。 |
 
 本记录证明的是当前 Commit 的确定性软件行为，不代表 Multi-Turn Query V1 已达到面向所有企业用户的 Production Ready（生产可用）状态。
@@ -113,9 +113,8 @@ uv run --env-file .env python -m src.evaluation --online-retrieval
 4. 澄清、范围拒绝和失败后仍可基于最后一次成功状态继续；
 5. 会话失效后用户必须新建会话，页面不会静默复用旧会话。
 
-上述行为已经通过确定性 API / Streamlit 测试和真实 HTTP 三轮 E2E；但真实 Business Acceptance 仍未完成，因为还没有业务人员确认指标口径、时间范围、维度继承、真实数据结果及异常恢复是否符合业务预期。
+上述行为已经通过确定性 API / Streamlit 测试、真实 HTTP 三轮 E2E，并由用户在真实 Streamlit 页面手动执行同组三轮问题确认无误。本结论只覆盖本次三轮场景，不代表整个企业产品已经达到 Production Ready（生产可用）状态。
 
 ## 六、剩余验收门槛
 
-- 由业务方确认真实三轮场景中的指标、时间、维度继承和失败恢复行为；
 - 真实验收通过后，仍需独立完成企业 Production Readiness，包括真实 SSO、持久化审计、限流、性能、部署、监控和回滚。
