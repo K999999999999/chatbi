@@ -4,16 +4,17 @@
 对应 Feature Spec：`.scratch/multi-turn-conversation-v1/spec.md`
 对应 Ticket：`.scratch/multi-turn-conversation-v1/issues/04-multiturn-evaluation-acceptance.md`
 实现 Commit：`ef1546794e61291728f14aa22816a073251863ff`
-验证时 `git_dirty=true`；工作区包含本地 Feature 规划、Architecture、Spec、验收记录和工作记录修改，不包含 Secret。
+真实 AI Evaluation 测试 Commit：`a8356109c6b353b79f2827dfaa9059a79bb1d60d`，报告记录 `git_dirty=false`。
+验收完成后恢复了本地 Feature 规划、Architecture、Spec 和工作记录修改；这些本地修改不属于真实评测 Commit，且不包含 Secret。
 
 ## 一、分层结论
 
 | 证据层 | 结论 | 说明 |
 |---|---|---|
 | Software Test（软件测试） | PASS | 多轮 API、会话生命周期、失败状态、授权、Streamlit 当前会话和新建会话均有确定性测试；全量回归通过。 |
-| AI Evaluation（AI 评测） | NOT RUN | 本 Ticket 未调用真实 LLM、Qdrant 或 PostgreSQL；没有生成真实模型准确率或 Execution Accuracy 结论。 |
-| Business Acceptance（业务验收） | NOT RUN | 本 Ticket 完成了可重复的确定性交互验收，但没有把 Mock/TestClient 结果冒充真实业务用户和真实数据确认。 |
-| Real E2E（真实端到端） | NOT RUN | 未执行真实三轮 LLM → RAG → SQL Guard → PostgreSQL 链路；需要单独授权。 |
+| AI Evaluation（AI 评测） | PASS | 真实 21 条标准案例通过，Execution Accuracy 为 `100.00%`；报告记录 `21/21`、`git_dirty=false`。 |
+| Business Acceptance（业务验收） | NOT ACCEPTED | 确定性测试通过，但真实三轮场景第二轮失败，尚不能由业务方确认多轮维度继承和真实数据结果。 |
+| Real E2E（真实端到端） | FAIL | 真实三轮已执行：第一轮 `200`，第二轮 `422 CANNOT_ANSWER`，第三轮虽为 `200`，但实际基于第一轮状态，不能算完整三轮通过。 |
 
 本记录证明的是当前 Commit 的确定性软件行为，不代表 Multi-Turn Query V1 已达到面向所有企业用户的 Production Ready（生产可用）状态。
 
@@ -65,17 +66,43 @@ uv run --with pytest python -m pytest -q
 
 ## 三、AI Evaluation 证据
 
-本次未执行以下真实评测命令：
+本次已执行以下真实评测命令：
 
 ```text
 uv run --env-file .env python -m src.evaluation --online-retrieval
 ```
 
-原因：该命令会发送测试问题以及结构和指标上下文到真实 LLM，并访问本地 RAG 资产与 PostgreSQL；按照项目边界，需要单独授权。当前没有 AI Evaluation 报告、真实 21 条案例结果或多轮真实准确率结论。
+结果：`PASS`，`Execution Accuracy: 100.00%`，`PASS: 21, FAIL: 0, INVALID_CASE: 0`。
+
+报告：
+
+- JSON：`reports/evaluation/20260918T163056Z-a835610.json`；
+- Summary：`reports/evaluation/20260918T163056Z-a835610.md`；
+- 报告 Commit：`a8356109c6b353b79f2827dfaa9059a79bb1d60d`；
+- 报告 `git_dirty`：`false`；
+- 真实链路：LLM、已发布 RAG 资产、SQL Guard 和本地 PostgreSQL。
 
 确定性 Evaluation 测试属于 Software Test，不能替代本节的真实 AI Evaluation。
 
-## 四、Business Acceptance 证据
+## 四、Real E2E 证据
+
+真实 HTTP 三轮场景使用的问题为：
+
+1. `2025 年第一季度的人民币销售额是多少？`；
+2. `按销售区域拆开`；
+3. `改看毛利率`。
+
+结果：
+
+- 第一轮返回 `200`，创建了 `conversation_id`；
+- 第二轮返回 `422`，公开错误码为 `CANNOT_ANSWER`；
+- 由于第二轮失败，会话状态按 Contract 保留上一轮成功状态；第三轮返回 `200`，但它不是“已按销售区域分组后再替换指标”，因此不能计入三轮业务通过。
+
+只读定位显示，第二轮的确定性 Retrieval 重放返回 `PARTIAL_UNREACHABLE`：带有时间条件和“销售区域”维度时，默认 `table_top_k=5` 的 TABLE 候选没有包含指标 `time_field` 所需的 `mart_sales.dim_date`。临时将 `table_top_k` 提高到 `7` 后，同一结构化查询返回 `SUCCESS`，Join 路径完整。该对照只证明了当前失败机制，不代表已经批准或完成参数修复。
+
+本次 HTTP 验收启动时发现本地 `.env` 没有显式身份配置；运行期间只注入了进程级非 Secret 配置 `CHATBI_ENV=development`、`CHATBI_IDENTITY_PROVIDER=test`、`CHATBI_IDENTITY_SUBJECT_ID=analyst-1` 和示例授权策略路径，未修改 `.env`。服务已停止，端口已释放。
+
+## 五、Business Acceptance 证据
 
 当前已具备可重复的交互行为证据：
 
@@ -85,11 +112,11 @@ uv run --env-file .env python -m src.evaluation --online-retrieval
 4. 澄清、范围拒绝和失败后仍可基于最后一次成功状态继续；
 5. 会话失效后用户必须新建会话，页面不会静默复用旧会话。
 
-上述证据来自确定性 API / Streamlit 测试替身，不是业务人员使用真实页面和真实数据完成的确认。因此真实 Business Acceptance 仍为待执行项，不能据此声称业务口径和真实数据结果已经验收。
+上述证据来自确定性 API / Streamlit 测试替身，不是业务人员使用真实页面和真实数据完成的确认；而真实三轮 E2E 当前也未通过。因此真实 Business Acceptance 仍未完成，不能据此声称业务口径和真实数据结果已经验收。
 
-## 五、剩余验收门槛
+## 六、剩余验收门槛
 
-- 在单独授权后，执行真实三轮 E2E，并记录真实 LLM、RAG、SQL Guard 和 PostgreSQL 结果；
-- 如需完整 AI Evaluation，执行 21 条标准案例，并单独记录模型、运行 Commit、`git_dirty`、结果报告和失败案例；
+- 针对 `table_top_k` 导致的必需时间维度表丢失问题完成最小修复，并补充“时间条件 + 销售区域维度”的确定性回归；
+- 修复后重新执行真实三轮 E2E，确认第二轮成功提交新语义状态，再确认第三轮基于该状态替换指标；
 - 由业务方确认真实三轮场景中的指标、时间、维度继承和失败恢复行为；
 - 真实验收通过后，仍需独立完成企业 Production Readiness，包括真实 SSO、持久化审计、限流、性能、部署、监控和回滚。
