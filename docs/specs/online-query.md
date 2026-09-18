@@ -8,8 +8,8 @@
 
 ## 运行方式
 
-- 同步、单次问答。
-- 核心模块只负责同步、单次问答；API、UI 和流式输出由外部适配层负责，多轮对话不在当前范围内。
+- 同步、每次执行一条有效查询。
+- 核心模块只负责一次有效查询的语义解析、检索、SQL 生成、安全校验和只读执行；短期多轮会话的状态读取、组合和提交由 API/Application 边界负责，Online Query 不拥有会话。
 - 本地启动入口自动读取项目根目录的 .env，且不覆盖已经存在的环境变量。
 - 正式环境不依赖 .env 文件，由部署平台注入环境变量或 Secret。
 
@@ -23,7 +23,7 @@ QueryRequest
 └─ request_id：可选，没有时由系统生成
 ```
 
-`user_id`、`tenant_id`、对话历史、网关信息和分页参数不属于当前输入。未来接入网关时，由外层提供经过验证的身份和追踪上下文。
+`conversation_id`、`user_id`、`tenant_id`、对话历史、网关信息和分页参数不属于当前输入。Multi-Turn Query V1 由外层根据已授权的结构化状态生成本次有效问题，再以同一 `QueryRequest` 调用本模块；未来接入网关时，由外层提供经过验证的身份和追踪上下文。
 
 ## 成功输出
 
@@ -63,6 +63,15 @@ QueryFailure
 | `DATABASE_ERROR` | 数据库连接或执行失败 |
 | `QUERY_TIMEOUT` | 数据库查询超时 |
 
+以下错误由 Query API/Application 的多轮边界产生，不由 `OnlineQueryService.execute()` 产生，但沿用公共 `QueryFailure` 形状：
+
+| error_code | 含义 |
+|---|---|
+| `CONVERSATION_UNAVAILABLE` | 会话未知、已过期或不属于当前认证用户 |
+| `CLARIFICATION_REQUIRED` | 多轮追问无法唯一解析，需要用户澄清 |
+| `UNSUPPORTED_ANALYSIS` | 请求超出 V1 单条查询修订范围 |
+| `CONVERSATION_CONFLICT` | 同一会话已有进行中的轮次 |
+
 响应不得泄露异常堆栈、数据库连接信息、API Key 或其他 Secret。
 
 ## 主链路
@@ -77,6 +86,8 @@ QueryRequest
   -> PostgreSQL 只读执行
   -> QuerySuccess 或 QueryFailure
 ```
+
+多轮请求在进入本链路前由 Application 读取并校验当前会话状态，形成一次有效的 `question`；本链路不读取原始对话历史、不接收 `conversation_id`，也不提交会话状态。
 
 ## 上下文规则
 
@@ -125,7 +136,7 @@ QueryRequest
 
 - 数据库结构导出和指标维护。
 - RAG 离线资产构建、Online Retrieval 检索算法、Schema Linking 和 Relationship Graph 维护；这些能力由对应模块负责，Online Query 只消费其结果。
-- 复杂分析 Agent 和多轮对话。
+- 会话所有权、短期状态存储、并发控制、长期聊天历史和多轮交互编排；这些由 Query API/Application 边界负责。
 - SQL 自动修复和结果自然语言总结。
 - API、UI、网关、认证、租户、限流、审计和生产运维。
 - Evaluation 的批量执行和评测报告。
