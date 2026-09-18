@@ -2,7 +2,6 @@
 
 import logging
 from collections.abc import Callable
-from hashlib import sha256
 from typing import Any
 from uuid import uuid4
 
@@ -21,15 +20,13 @@ from .contracts import (
     QueryFailure,
     QueryRequest,
     QueryResult,
-    QuerySuccess,
     RequestShape,
     RetrievalProvider,
     RetrievalRequest,
     RetrievalStatus,
     SQLGenerator,
 )
-from .database import DatabaseError, DatabaseQueryTimeout
-from .prompt import build_prompt
+from .service_execution import _execute_query
 from .query_trace import (
     enrich_failure_span as _enrich_failure_span,
 )
@@ -171,139 +168,17 @@ class OnlineQueryService:
         if context is None:
             return _failure(request_id, QueryErrorCode.CONTEXT_ERROR)
 
-        with _safe_trace_scope(self._trace_recorder, name="prompt.build"):
-            try:
-                prompt = build_prompt(
-                    semantic_query
-                    if semantic_query is not None
-                    else request.question.strip(),
-                    context,
-                    original_question=(
-                        request.question.strip() if semantic_query is not None else None
-                    ),
-                )
-            except Exception:
-                result = _failure(request_id, QueryErrorCode.CONTEXT_ERROR)
-                _enrich_failure_span(
-                    self._trace_recorder,
-                    result.error_code,
-                    ErrorType.RETRIEVAL,
-                )
-                return result
-            _safe_enrich(
-                self._trace_recorder,
-                attributes={
-                    "chatbi.prompt.length": len(prompt),
-                    "chatbi.prompt.question_length": len(request.question.strip()),
-                    "chatbi.prompt.context_length": len(context.prompt_context),
-                },
-                outcome=TraceOutcome.SUCCESS,
-            )
-
-        with _safe_trace_scope(self._trace_recorder, name="llm.generate"):
-            try:
-                candidate = self._sql_generator.generate(prompt)
-            except Exception:
-                result = _failure(request_id, QueryErrorCode.LLM_ERROR)
-                _enrich_failure_span(
-                    self._trace_recorder,
-                    result.error_code,
-                    ErrorType.LLM,
-                )
-                return result
-
-            if candidate == "CANNOT_ANSWER":
-                result = _failure(request_id, QueryErrorCode.CANNOT_ANSWER)
-                _enrich_failure_span(
-                    self._trace_recorder,
-                    result.error_code,
-                    ErrorType.LLM,
-                )
-                return result
-            _safe_enrich(self._trace_recorder, outcome=TraceOutcome.SUCCESS)
-
-        with _safe_trace_scope(
-            self._trace_recorder,
-            name="candidate_scope.validate",
-        ):
-            try:
-                validation_session = _new_validation_session(candidate, context)
-                validation_session.validate_candidate_scope()
-            except Exception:
-                result = _failure(request_id, QueryErrorCode.SQL_REJECTED)
-                _enrich_failure_span(
-                    self._trace_recorder,
-                    result.error_code,
-                    ErrorType.SQL_GUARD,
-                )
-                return result
-            _safe_enrich(self._trace_recorder, outcome=TraceOutcome.SUCCESS)
-
-        with _safe_trace_scope(self._trace_recorder, name="sql.guard"):
-            try:
-                validated_sql = validation_session.validate_sql()
-            except Exception:
-                result = _failure(request_id, QueryErrorCode.SQL_REJECTED)
-                _enrich_failure_span(
-                    self._trace_recorder,
-                    result.error_code,
-                    ErrorType.SQL_GUARD,
-                )
-                return result
-            _safe_enrich(
-                self._trace_recorder,
-                attributes={
-                    "chatbi.sql.sha256": sha256(
-                        validated_sql.sql.encode("utf-8")
-                    ).hexdigest(),
-                },
-                outcome=TraceOutcome.SUCCESS,
-            )
-
-        with _safe_trace_scope(self._trace_recorder, name="database.execute"):
-            try:
-                data = self._query_executor.execute(validated_sql)
-            except DatabaseQueryTimeout:
-                result = _failure(request_id, QueryErrorCode.QUERY_TIMEOUT)
-                _enrich_failure_span(
-                    self._trace_recorder,
-                    result.error_code,
-                    ErrorType.TIMEOUT,
-                )
-                return result
-            except DatabaseError:
-                result = _failure(request_id, QueryErrorCode.DATABASE_ERROR)
-                _enrich_failure_span(
-                    self._trace_recorder,
-                    result.error_code,
-                    ErrorType.DATABASE,
-                )
-                return result
-            except Exception:
-                result = _failure(request_id, QueryErrorCode.DATABASE_ERROR)
-                _enrich_failure_span(
-                    self._trace_recorder,
-                    result.error_code,
-                    ErrorType.DATABASE,
-                )
-                return result
-
-            _safe_enrich(
-                self._trace_recorder,
-                attributes={
-                    "chatbi.database.row_count": len(data.rows),
-                    "chatbi.database.truncated": data.truncated,
-                },
-                outcome=TraceOutcome.SUCCESS,
-            )
-            return QuerySuccess(
-                request_id=request_id,
-                sql=validated_sql.sql,
-                columns=data.columns,
-                rows=data.rows,
-                row_count=len(data.rows),
-                truncated=data.truncated,
-            )
+        return _execute_query(
+            sql_generator=self._sql_generator,
+            query_executor=self._query_executor,
+            trace_recorder=self._trace_recorder,
+            request_id=request_id,
+            question=request.question.strip(),
+            semantic_query=semantic_query,
+            context=context,
+            failure_factory=_failure,
+            validation_session_factory=_new_validation_session,
+        )
 
     def _resolve_context(
         self,
