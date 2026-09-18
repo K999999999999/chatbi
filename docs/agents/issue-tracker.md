@@ -33,7 +33,14 @@
 - 初始状态使用 `Status: open`。
 - Ticket 至少包含 `What to build`、`Blocked by`、`Acceptance criteria`、`Result` 和 `Comments`。
 - `Blocked by:` 只记录真正阻塞当前 Ticket 的直接前置 Ticket；无阻塞时使用 `None (can start immediately)`。
-- 用户确认 Ticket 拆分后，才能写入 Ticket 文件；写入后仍需用户选择具体 Ticket 才进入 `implement`。
+
+### Ticket Readiness Review
+
+- `to-tickets` 先形成 Ticket 草案；在用户确认拆分前，当前 Agent 必须执行一次只读的 Ticket Readiness Review。
+- Review 至少检查 Scope / Out of Scope、直接依赖、owned files、可观察的成功和失败行为、状态 / 安全边界、确定性测试或 Evaluation 证据，以及可客观判断的 Done When。
+- Review 结果只有 `READY` 或 `NEED FIX`。发现未解决的 Architecture、Domain、公共 Contract、权限或状态决策时，返回 Spec / `design-review` 阶段，不在 Ticket 或代码中猜测。
+- 该 Review 不启动独立 Agent，也不替代实现后的 `code-review` 或 PR Review。
+- 用户确认 Ticket 拆分后，才能写入正式 Ticket 文件；写入后仍需用户选择具体 Ticket 才进入 `implement`。
 
 ## Wayfinder
 
