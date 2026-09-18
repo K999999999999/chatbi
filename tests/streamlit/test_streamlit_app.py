@@ -188,6 +188,15 @@ class StreamlitQueryClientTest(TestCase):
         self.assertTrue(displayed.session_state.conversation_reset_required)
         self.assertIs(displayed.session_state.last_query_error, error)
 
+        with patch.object(streamlit_app, "query_api") as blocked_api:
+            streamlit_app._submit_query(displayed, "继续查询")
+
+        blocked_api.assert_not_called()
+        self.assertEqual(
+            displayed.session_state.last_query_error.error_code,
+            "CONVERSATION_UNAVAILABLE",
+        )
+
         streamlit_app._start_new_conversation(displayed)
 
         self.assertIsNone(displayed.session_state.conversation_id)
