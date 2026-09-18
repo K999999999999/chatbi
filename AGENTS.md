@@ -33,6 +33,10 @@ Spec、Ticket 和路径规划使用本地 Markdown，详见 `docs/agents/issue-t
 
 领域文档的读取位置和边界详见 `docs/agents/domain.md`。
 
+### Git / PR workflow
+
+Branch、worktree、Commit、Pull Request 和完成后的本地清理规则详见 `docs/agents/git-pr-workflow.md`。
+
 ## ChatBI Identity & Core Principles
 
 ChatBI = Domain AI Engine（领域 AI 引擎）
@@ -150,6 +154,16 @@ LLM 输出始终视为 Untrusted Candidate（不可信候选）。LLM 可以提�
 - 只有 Contract、相关验证和 Diff 检查完成后才提交；无法确认修改归属或验证失败时不提交。
 - Commit Message 使用 `<type>(<scope>): <中文摘要>`，完成报告使用中文说明提交内容、验证结果和剩余问题。
 
+## Branch / Worktree Workflow
+
+- `master` 是默认基线；开始新的 Feature、Bug Fix 或工程目标前，先确认 `master` 已同步、工作区干净，再创建一个目标明确的 Feature branch。
+- 一个已确认的目标默认只使用一个 active branch 和一个 active worktree；多个 Ticket、多个逻辑 Commit 在同一个 Feature branch 上完成。
+- 不为每个 Ticket、每个 Commit 或每次测试单独创建 branch；并行 branch、stacked PR 或额外 worktree 只有在用户明确确认并记录 base、依赖和清理责任后才允许。
+- `backup/*` 和 `codex/backup-*` 只用于回滚保护，不作为日常开发线，不创建 PR。
+- 恢复工作前必须重新检查当前 branch、HEAD、worktree、Git status 和相关 `.scratch` 记录；已被主干或其他 candidate supersede 的 branch 不继续追加开发。
+- 一个 Feature 形成唯一 candidate 后，其他同目标候选 branch 停止使用；PR 完成或放弃后，回到 `master`，按确认范围清理本地 worktree 和 Feature branch。
+- 详细的分支创建、Ticket 实施、candidate、PR 和清理顺序以 `docs/agents/git-pr-workflow.md` 为准。
+
 ## AI Agent Commit & Pull Request Workflow
 
 本节定义 Agent（智能代理）在本仓库中的提交与 Pull Request（合并请求）协作流程。它是项目协作约定，不把 PR 或完整 Real E2E（真实端到端）绑定到固定的 commit 数量。
@@ -182,7 +196,7 @@ Agent 只能在用户明确确认后进入 PR 前验收。该次确认同时授�
 
 - 如果最终本地 E2E 失败，Agent 不得声称可以提交 PR；应报告失败案例和原因，修复后重新形成 candidate commit 并验证。
 - 本地 E2E 通过后如果又修改了会影响行为的代码，必须重新验证；只修改文档、注释或不影响运行行为的内容时，可以按风险重新判断。
-- 上述用户确认是 Push、创建或更新 PR，以及使用 GitHub CLI 创建 PR 级 Auto-merge request（自动合并请求）的外部状态授权。创建 Auto-merge request 可能在所有 required checks（必需检查）满足时立即合并，因此执行前必须确认目标 PR、合并策略和当前检查状态，并在执行后验证 PR 状态；生产部署仍需单独确认。
+- 上述用户确认是 Push、创建或更新 PR 的外部状态授权。当前仓库的 `.github/workflows/enable-auto-merge.yml` 可能在符合条件的 PR 事件后自动请求 Squash Auto-merge；Agent 不直接执行 Merge，必须在 PR 前说明该自动行为、目标 PR、合并策略和当前检查状态，并在执行后验证 PR 状态。Stacked PR 只有在最终 base、required checks（必需检查）和 branch protection（分支保护）明确后才允许启用 Auto-merge；生产部署仍需单独确认。
 
 ### 风险与验证级别
 
