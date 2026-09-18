@@ -22,9 +22,9 @@ V1 只实现 Trace：让一次 Online Query（在线查询）从 HTTP、RAG、LL
 
 ### 2.1 当前事实
 
-- `OnlineQueryService.query()` 是同步查询唯一公共入口。
-- Query API 使用 FastAPI，同步调用 `OnlineQueryService`。
-- Evaluation（评测）直接调用同一个 `OnlineQueryService`，不经过 HTTP。
+- `AuthorizedQueryService.query()` 是用户查询的唯一正式 Application Entry；`OnlineQueryService.execute()` 只是授权后的同步下游执行操作。
+- Query API 使用 FastAPI，同步调用 `AuthorizedQueryService`，再进入 `OnlineQueryService`。
+- Evaluation（评测）调用绑定测试身份的 `BoundAuthorizedQueryService`，不经过 HTTP。
 - `request_id` 已存在，但没有 `trace_id` 和统一 Span。
 - `OnlineRetriever` 已能得到资产版本、候选、分数、Join 路径和 Retrieval 状态。
 - `LangChainSQLGenerator` 当前丢弃模型响应里的 Token Metadata（元数据）。
@@ -221,7 +221,8 @@ Query API 增加只覆盖 `/api/v1/query` 的 Middleware（中间件）：
 读取或生成 request_id（早于请求体解析）
   -> 忽略客户端提供的 W3C traceparent / tracestate
   -> 创建带 request_id 的本地 query.request
-  -> 调用 FastAPI 校验、路由和 OnlineQueryService
+  -> 调用 FastAPI 校验、路由和 AuthorizedQueryService
+  -> 调用 OnlineQueryService.execute()
   -> response.serialize
   -> 在响应写入 X-Trace-ID
   -> 结束 query.request
@@ -241,14 +242,14 @@ FastAPI Middleware 持有 HTTP 路径的 Root Trace（根链路），所以能�
 
 ### 6.2 直接调用和 Evaluation 路径
 
-直接调用没有 Middleware，因此 `OnlineQueryService.query()` 使用同一个 `query_trace()` Contract：
+直接调用没有 Middleware，因此 `BoundAuthorizedQueryService.query()` 进入的 `OnlineQueryService.execute()` 使用同一个 `query_trace()` Contract：
 
 - 没有活动 Trace：创建 `query.request`；
 - 已有活动 Trace：继续使用；
 - Evaluation 创建 `QueryRequest(source=EVALUATION)`；
 - Root Span 记录 `evaluation.case_id`，通过现有 `request_id=evaluation-<case_id>` 关联评测案例。
 
-Evaluation 外层拥有自己创建的 Root Trace；`OnlineQueryService` 只借用该 Trace。直接调用没有外层 Trace 时，由 Service 拥有并结束 Root Trace。所有拥有者退出时都必须清理 Context，避免下一次请求继承上一条链路。
+Evaluation 外层拥有自己创建的 Root Trace；`OnlineQueryService` 只借用该 Trace。直接评测入口没有外层 Trace 时，由 Service 拥有并结束 Root Trace。所有拥有者退出时都必须清理 Context，避免下一次请求继承上一条链路。
 
 直接调用没有 HTTP 序列化，因此不得伪造 `response.serialize` Span。
 

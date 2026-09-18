@@ -53,6 +53,7 @@ class QueryApiIntegrationTest(TestCase):
             executor,
             context_loader=load_query_context,
         )
+        self.assertFalse(hasattr(service, "query"))
         client = TestClient(create_test_app(service))
 
         response = client.post(

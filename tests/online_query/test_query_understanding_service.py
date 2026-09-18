@@ -73,7 +73,7 @@ class QueryUnderstandingServiceTest(unittest.TestCase):
         )
         service = self._service(provider)
 
-        result = service.query(QueryRequest(question="完全不同的用户原话"))
+        result = service.execute(QueryRequest(question="完全不同的用户原话"))
 
         self.assertIsInstance(result, QuerySuccess)
         self.assertEqual(events, ["understand", "retrieve"])
@@ -101,7 +101,7 @@ class QueryUnderstandingServiceTest(unittest.TestCase):
         self.adapter.understand.side_effect = LLMError("provider detail")
         service = self._service(provider)
 
-        result = service.query(QueryRequest(question="查询客户"))
+        result = service.execute(QueryRequest(question="查询客户"))
 
         self._assert_failure(result, QueryErrorCode.LLM_ERROR)
         assert isinstance(result, QueryFailure)
@@ -120,7 +120,7 @@ class QueryUnderstandingServiceTest(unittest.TestCase):
         )
         service = self._service(provider)
 
-        result = service.query(QueryRequest(question="随便聊聊天"))
+        result = service.execute(QueryRequest(question="随便聊聊天"))
 
         self._assert_failure(result, QueryErrorCode.CANNOT_ANSWER)
         assert isinstance(result, QueryFailure)
@@ -141,7 +141,7 @@ class QueryUnderstandingServiceTest(unittest.TestCase):
             retrieval_provider=provider,
         )
 
-        result = service.query(QueryRequest(question="查询客户"))
+        result = service.execute(QueryRequest(question="查询客户"))
 
         self._assert_failure(result, QueryErrorCode.LLM_ERROR)
         provider.retrieve.assert_not_called()
@@ -162,7 +162,7 @@ class QueryUnderstandingServiceTest(unittest.TestCase):
             trace_recorder=recorder,
         )
 
-        result = service.query(QueryRequest(question="随便聊聊天"))
+        result = service.execute(QueryRequest(question="随便聊聊天"))
 
         self._assert_failure(result, QueryErrorCode.CANNOT_ANSWER)
         span = next(

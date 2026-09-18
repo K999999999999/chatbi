@@ -20,7 +20,7 @@ class _SuccessService:
     def __init__(self) -> None:
         self.requests: list[QueryRequest] = []
 
-    def query(self, request: QueryRequest) -> QuerySuccess:
+    def execute(self, request: QueryRequest) -> QuerySuccess:
         self.requests.append(request)
         return QuerySuccess(
             request_id=request.request_id or "missing",
@@ -36,7 +36,7 @@ class _FailureService:
     def __init__(self) -> None:
         self.requests: list[QueryRequest] = []
 
-    def query(self, request: QueryRequest) -> QueryFailure:
+    def execute(self, request: QueryRequest) -> QueryFailure:
         self.requests.append(request)
         return QueryFailure(
             request_id=request.request_id or "missing",

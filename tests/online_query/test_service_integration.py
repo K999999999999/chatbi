@@ -40,7 +40,7 @@ class ServiceDatabaseIntegrationTest(unittest.TestCase):
             context_loader=lambda: context,
         )
 
-        result = service.query(
+        result = service.execute(
             QueryRequest(
                 question="当前已完成订单数是多少？",
                 request_id="e2e-database-chain",
@@ -74,7 +74,7 @@ class ServiceIntegrationTest(unittest.TestCase):
         completed_orders_sql = metrics[0]["sql_template"]
         expected = executor.execute(validate_sql(completed_orders_sql, context))
 
-        result = service.query(
+        result = service.execute(
             QueryRequest(
                 question="当前已完成订单数是多少？",
                 request_id="e2e-completed-orders",

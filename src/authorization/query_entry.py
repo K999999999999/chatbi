@@ -39,9 +39,9 @@ class _UnavailableAuditSink:
 
 
 class QueryService(Protocol):
-    """授权入口依赖的最小下游查询接口。"""
+    """授权入口依赖的最小下游执行接口。"""
 
-    def query(self, request: QueryRequest) -> QueryResult:
+    def execute(self, request: QueryRequest) -> QueryResult:
         """执行已经通过授权的在线查询。"""
 
 
@@ -170,7 +170,7 @@ class AuthorizedQueryService:
                 internal_reason="AUDIT_SINK_UNAVAILABLE",
             )
 
-        return self._query_service.query(request)
+        return self._query_service.execute(request)
 
     def authentication_failure(
         self,

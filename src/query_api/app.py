@@ -53,10 +53,10 @@ _HTTP_STATUS_BY_ERROR = {
 
 
 class QueryService(Protocol):
-    """API Adapter 依赖的最小查询服务接口。"""
+    """API Adapter 依赖的最小下游执行接口。"""
 
-    def query(self, request: QueryRequest) -> QueryResult:
-        """执行一次在线查询。"""
+    def execute(self, request: QueryRequest) -> QueryResult:
+        """执行一次已经通过授权的在线查询。"""
 
 
 class QueryBody(BaseModel):

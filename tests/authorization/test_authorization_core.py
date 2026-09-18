@@ -20,7 +20,7 @@ from src.online_query.contracts import QueryErrorCode, QueryRequest, QuerySucces
 class AuthorizationCoreTest(TestCase):
     def setUp(self) -> None:
         self.query_service = Mock()
-        self.query_service.query.return_value = QuerySuccess(
+        self.query_service.execute.return_value = QuerySuccess(
             request_id="req-1",
             sql="SELECT 1",
             columns=("value",),
@@ -55,7 +55,7 @@ class AuthorizationCoreTest(TestCase):
         )
 
         self.assertIsInstance(result, QuerySuccess)
-        self.query_service.query.assert_called_once()
+        self.query_service.execute.assert_called_once()
 
     def test_authorized_query_emits_complete_allow_audit_event(self) -> None:
         service = self._service()
@@ -125,7 +125,7 @@ class AuthorizationCoreTest(TestCase):
         )
 
         self.assertIsInstance(result, QuerySuccess)
-        self.query_service.query.assert_called_once_with(
+        self.query_service.execute.assert_called_once_with(
             QueryRequest(question="查询销售额", request_id="req-bound")
         )
 

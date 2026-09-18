@@ -8,8 +8,10 @@ API Adapter（接口适配层）只负责 HTTP 与内部类型之间的转换：
 
 ```text
 HTTP 请求
+  -> server-side AuthContext
+  -> AuthorizedQueryService.query()
   -> QueryRequest
-  -> OnlineQueryService
+  -> OnlineQueryService.execute()
   -> QuerySuccess / QueryFailure
   -> HTTP JSON 响应
 ```
@@ -20,7 +22,7 @@ HTTP 请求
 
 - 同步、单次请求/响应。
 - 当前使用 JSON，不使用 SSE（流式推送）或 WebSocket（双向实时连接）。
-- API 通过现有 `OnlineQueryService.query()` 调用正式在线查询链路。
+- API 通过 `AuthorizedQueryService.query()` 完成身份与数据授权后，再调用下游 `OnlineQueryService.execute()`。
 - API 不改变 Online Query 的业务规则、超时、结果行数上限和错误码。
 
 ## 接口
@@ -109,8 +111,8 @@ API 对请求体解析失败时，也必须返回上述 `QueryFailure` 形状，
 
 ## 边界与不变量
 
-- API Adapter 是外层 Interface（接口层），只能依赖并调用 Online Query 的公开 Contract（契约）。
-- 一次 HTTP 查询只能调用一次 `OnlineQueryService.query()`；不得维护第二条查询链路。
+- API Adapter 是外层 Interface（接口层），只能通过 `AuthorizedQueryService.query()` 进入 Online Query。
+- 一次 HTTP 查询只能调用一次授权入口；授权成功后由下游 `OnlineQueryService.execute()` 执行，不得维护第二条查询链路。
 - API Adapter 不直接调用 LLM、SQL Guard 或数据库。
 - API Adapter 不实现认证、授权、租户隔离、限流、审计、重试、熔断或成本控制。
 - 当前仅信任 `X-Request-ID` 作为追踪标识，不把它当作身份或授权信息。
@@ -129,7 +131,7 @@ API 对请求体解析失败时，也必须返回上述 `QueryFailure` 形状，
 ### Software Test（软件测试）
 
 - `GET /health` 返回 `200` 与固定响应。
-- 合法 HTTP 请求能映射为 `QueryRequest`，并且只调用一次假的 `OnlineQueryService`。
+- 合法 HTTP 请求能通过授权入口映射为 `QueryRequest`，并且只调用一次假的下游 Online Query Service。
 - `QuerySuccess` 能正确转换为 JSON；列、行、行数和截断标识不丢失。
 - 每个 `QueryErrorCode` 能转换为约定 HTTP 状态和 `QueryFailure` JSON。
 - 无效 JSON、缺少字段、空问题和未知字段返回 `400 / INVALID_REQUEST`，不泄露 FastAPI 默认错误体。
@@ -144,7 +146,7 @@ API 对请求体解析失败时，也必须返回上述 `QueryFailure` 形状，
 
 - API Adapter 已落位于 `src/query_api/`。
 - `app.py` 提供应用工厂、请求/响应模型、路由和错误映射。
-- `main.py` 组装现有 `LangChainSQLGenerator`、`PsycopgQueryExecutor` 和 `OnlineQueryService`。
+- `main.py` 组装现有 `LangChainSQLGenerator`、`PsycopgQueryExecutor` 和 `OnlineQueryService`，再由 `create_app()` 包装为 `AuthorizedQueryService`。
 - FastAPI 运行依赖已写入 `pyproject.toml`，具体解析版本由 `uv.lock` 锁定。
 - API 确定性测试与原有 Online Query、Evaluation 回归测试已通过。
 - 已使用真实 `.env` 完成一次 HTTP 到 LLM、SQL Guard 和 PostgreSQL 的闭环验证，返回 `200` 和 1 行结果。

@@ -52,13 +52,15 @@ tests/query_api/test_main.py
 ```text
 HTTP JSON
   -> QueryBody
+  -> server-side AuthContext
+  -> AuthorizedQueryService.query()
   -> QueryRequest
-  -> OnlineQueryService.query()
+  -> OnlineQueryService.execute()
   -> QuerySuccess / QueryFailure
   -> JSONResponse
 ```
 
-一次 HTTP 查询只能调用一次 `OnlineQueryService.query()`。
+一次 HTTP 查询只能调用一次 `AuthorizedQueryService.query()`；授权通过后才调用一次下游 `OnlineQueryService.execute()`。
 
 ### 请求解析失败
 
@@ -77,10 +79,10 @@ create_app(service) -> FastAPI
 `service` 只要求具有：
 
 ```text
-query(QueryRequest) -> QuerySuccess | QueryFailure
+execute(QueryRequest) -> QuerySuccess | QueryFailure
 ```
 
-生产运行时传入真实 `OnlineQueryService`；软件测试传入 Fake Service（假服务）。这样测试导入 `app.py` 时不读取 API Key、不连接数据库。
+生产运行时传入真实 `OnlineQueryService`，由 `create_app()` 负责装配 `AuthorizedQueryService`；软件测试传入 Fake Service（假服务）。这样测试导入 `app.py` 时不读取 API Key、不连接数据库。
 
 `app.py` 不创建真实 LLM、数据库或环境配置对象。
 
@@ -122,7 +124,7 @@ GET  /health
 POST /api/v1/query
 ```
 
-查询路由使用同步函数，直接调用同步 `OnlineQueryService`，不使用 `async`、SSE 或 WebSocket。
+查询路由使用同步函数，先调用同步 `AuthorizedQueryService`，再由授权入口调用 `OnlineQueryService.execute()`；不使用 `async`、SSE 或 WebSocket。
 
 ## `main.py` 设计
 

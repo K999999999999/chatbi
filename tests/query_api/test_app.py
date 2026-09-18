@@ -22,7 +22,7 @@ class _RecordingService:
     def __init__(self) -> None:
         self.requests: list[QueryRequest] = []
 
-    def query(self, request: QueryRequest) -> QueryResult:
+    def execute(self, request: QueryRequest) -> QueryResult:
         self.requests.append(request)
         raise AssertionError("health check must not call OnlineQueryService")
 
@@ -32,7 +32,7 @@ class _SuccessService:
         self.rows = rows
         self.requests: list[QueryRequest] = []
 
-    def query(self, request: QueryRequest) -> QueryResult:
+    def execute(self, request: QueryRequest) -> QueryResult:
         self.requests.append(request)
         return QuerySuccess(
             request_id=request.request_id or "generated-request-id",
@@ -49,7 +49,7 @@ class _FailureService:
         self.error_code = error_code
         self.requests: list[QueryRequest] = []
 
-    def query(self, request: QueryRequest) -> QueryResult:
+    def execute(self, request: QueryRequest) -> QueryResult:
         self.requests.append(request)
         return QueryFailure(
             request_id=request.request_id or "generated-request-id",

@@ -1,4 +1,4 @@
-"""Online Query（在线查询）模块公共入口。"""
+"""Online Query（在线查询）模块的稳定数据 Contract。"""
 
 from .contracts import (
     QueryFailure,
@@ -6,11 +6,8 @@ from .contracts import (
     QueryResult,
     QuerySuccess,
 )
-from .service import OnlineQueryService
-
 
 __all__ = [
-    "OnlineQueryService",
     "QueryFailure",
     "QueryRequest",
     "QueryResult",

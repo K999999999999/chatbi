@@ -55,6 +55,12 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(config.column_score_threshold, 0.25)
         self.assertEqual(config.metric_score_threshold, 0.30)
 
+    def test_online_query_service_is_not_exported_as_user_entry(self) -> None:
+        import src.online_query as online_query
+
+        self.assertNotIn("OnlineQueryService", online_query.__all__)
+        self.assertFalse(hasattr(online_query, "OnlineQueryService"))
+
 
 if __name__ == "__main__":
     unittest.main()
