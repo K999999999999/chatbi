@@ -25,6 +25,7 @@ Design review: PASS WITH MINOR FIXES
 在现有 Streamlit 页面中增加 `Conversation Timeline V1`：
 
 - 同一页面会话中的每一轮查询按时间顺序追加展示；
+- 最新一轮置于时间线顶部并默认展开，较早轮次默认折叠但可只读查看；
 - 成功轮次展示用户问题、成功状态、结果表和结果摘要；
 - 失败或受控拒绝轮次展示用户问题、失败状态和用户可理解的错误信息；
 - SQL、`Request ID`、`Trace ID` 等技术信息放在可展开详情中；
@@ -113,6 +114,7 @@ Design review: PASS WITH MINOR FIXES
 9. 页面刷新或重新初始化时不会从后端恢复 Timeline；
 10. API 请求仍只包含问题和可选 `conversation_id`，不包含 Timeline 或完整历史；
 11. 现有 Streamlit、Query API 和 Multi-Turn 确定性测试继续通过。
+12. 最新轮次默认置顶展开，历史轮次默认折叠；展开历史轮次只查看记录，不恢复状态或重新执行查询。
 
 本 Feature 不改变语义解析、Retrieval、LLM、SQL Guard、数据库执行或后端会话 Contract，因此不以新的 AI Evaluation 或 Real E2E 作为本 Feature 的必要验收证据。若实现阶段影响上述链路，应按实际影响范围重新评估验证级别。
 
@@ -145,6 +147,7 @@ Design review: PASS WITH MINOR FIXES
 
 - 采用当前页面 Timeline，而不是后端持久化历史：因为当前需求是改善内部查询体验，现有会话系统明确只保证短期当前会话；
 - 采用只读历史轮次，而不是恢复或分叉：避免改变已确认的 Multi-Turn 状态语义和授权边界；
+- 采用最新轮次置顶展开、历史轮次默认折叠：减少多轮查询时的页面滚动，同时保留历史记录的只读回看能力；
 - 采用 Streamlit 页面侧实现，而不是修改 Query API：保持既有公共 Contract 和后端会话系统稳定。
 
 ### Canonical Source（权威事实源）

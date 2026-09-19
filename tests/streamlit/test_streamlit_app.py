@@ -210,6 +210,13 @@ class StreamlitQueryClientTest(TestCase):
             displayed.errors,
             ["CLARIFICATION_REQUIRED：请明确需要新增或修改的查询条件"],
         )
+        self.assertEqual(
+            displayed.expander_calls,
+            [
+                ("第 2 轮 · 失败 · 改看毛利率 · CLARIFICATION_REQUIRED", True),
+                ("第 1 轮 · 成功 · 查询销售额 · 1 行", False),
+            ],
+        )
 
     def test_follow_up_failure_keeps_current_conversation_id(self) -> None:
         displayed = _FakeStreamlit()
@@ -592,6 +599,7 @@ class _FakeStreamlit:
     def __init__(self) -> None:
         self.captions: list[str] = []
         self.errors: list[str] = []
+        self.expander_calls: list[tuple[str, bool]] = []
         self.subheaders: list[str] = []
         self.session_state = _FakeSessionState()
 
@@ -619,7 +627,8 @@ class _FakeStreamlit:
     def columns(self, count: int) -> list[_FakeMetricColumn]:
         return [_FakeMetricColumn() for _ in range(count)]
 
-    def expander(self, _label: str) -> _FakeContext:
+    def expander(self, label: str, *, expanded: bool = False) -> _FakeContext:
+        self.expander_calls.append((label, expanded))
         return _FakeContext()
 
     def code(self, _code: str, *, language: str) -> None:

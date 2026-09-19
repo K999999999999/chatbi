@@ -1,6 +1,6 @@
 # Ticket 01：Streamlit 当前会话 Conversation Timeline V1
 
-Status: done
+Status: in-progress
 
 Owner: 当前 ChatBI Feature Owner
 
@@ -57,6 +57,7 @@ Blocked by: None (can start immediately)
 10. 页面刷新或重新初始化时，不从后端恢复 Timeline。
 11. 现有 Streamlit、Query API 和 Multi-Turn 确定性测试继续通过。
 12. 通过现有内部 Streamlit 入口完成一次页面验收，确认三轮记录、失败记录和新建会话行为可观察。
+13. 多轮记录较多时，最新轮次置顶并默认展开，历史轮次默认折叠；展开历史轮次只查看，不恢复状态或重新执行查询。
 
 ## Verification evidence
 
@@ -85,7 +86,18 @@ Blocked by: None (can start immediately)
 
 ## Result
 
-已完成 Streamlit 当前会话 Timeline：成功、失败和会话失效轮次按顺序记录并展示；新建会话清空 Timeline；既有 Query API 和 Multi-Turn 会话 Contract 保持不变。代码、确定性测试、真实接口链路和页面交互验收均已完成，用户确认无问题。
+本次补充修复 Streamlit 时间线的多轮展示体验：最新轮次置顶并默认展开，历史轮次默认折叠；历史轮次展开后仍只读查看，不恢复状态、不分叉查询、不重新执行查询。未修改 API、后端会话、授权或查询链路。
+
+本次代码验证结果：
+
+- `17 passed, 7 subtests passed`：Streamlit 定向测试；
+- `358 passed, 6 skipped, 118 subtests passed`：完整确定性测试；
+- `uv run python -m compileall -q src tests`：通过；
+- `git diff --check`：通过。
+
+页面交互复验：待用户确认本次折叠 / 置顶布局。
+
+此前基础版本已完成 Streamlit 当前会话 Timeline：成功、失败和会话失效轮次按顺序记录并展示；新建会话清空 Timeline；既有 Query API 和 Multi-Turn 会话 Contract 保持不变。基础版本的代码、确定性测试、真实接口链路和页面交互验收均已完成，用户确认无问题。
 
 验证结果：
 
@@ -105,5 +117,5 @@ Blocked by: None (can start immediately)
 - Design Review：`PASS WITH MINOR FIXES`；
 - Ticket Readiness：`READY`；
 - Implementation：已完成，未修改 API、后端会话、授权或查询链路；
-- Remaining：None；本 Ticket 的实现和验收已完成。
+- Remaining：本次 UI 修复的页面交互复验；通过后再将 Ticket 恢复为 `done`。
 - 本 Ticket 未授权 Push、PR、生产部署或生产数据操作。

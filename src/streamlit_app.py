@@ -298,19 +298,48 @@ def _render_timeline(st: Any, timeline: list[dict[str, Any]]) -> None:
         return
 
     st.subheader("会话记录")
-    for index, record in enumerate(timeline, start=1):
-        question = record.get("question", "")
-        st.caption(f"第 {index} 轮问题：{question}")
-        if record.get("status") == "success":
-            st.caption("状态：成功")
-            response = record.get("response")
-            if isinstance(response, dict):
-                _render_success(st, response, title=f"第 {index} 轮结果")
-        else:
-            st.caption("状态：失败")
-            error = record.get("error")
-            if isinstance(error, QueryAPIError):
-                _render_error(st, error)
+    latest_index = len(timeline)
+    for index in range(latest_index, 0, -1):
+        record = timeline[index - 1]
+        with st.expander(
+            _timeline_label(index, record),
+            expanded=index == latest_index,
+        ):
+            question = record.get("question", "")
+            st.caption(f"第 {index} 轮问题：{question}")
+            if record.get("status") == "success":
+                st.caption("状态：成功")
+                response = record.get("response")
+                if isinstance(response, dict):
+                    _render_success(
+                        st,
+                        response,
+                        title=f"第 {index} 轮结果",
+                        show_sql_expander=False,
+                    )
+            else:
+                st.caption("状态：失败")
+                error = record.get("error")
+                if isinstance(error, QueryAPIError):
+                    _render_error(st, error)
+
+
+def _timeline_label(index: int, record: dict[str, Any]) -> str:
+    question = record.get("question", "")
+    if record.get("status") == "success":
+        response = record.get("response")
+        if isinstance(response, dict):
+            rows = response.get("rows", [])
+            row_count = response.get("row_count", len(rows))
+            summary = f"{row_count} 行"
+            if response.get("truncated", False):
+                summary += " · 已截断"
+            return f"第 {index} 轮 · 成功 · {question} · {summary}"
+        return f"第 {index} 轮 · 成功 · {question}"
+
+    error = record.get("error")
+    error_code = error.error_code if isinstance(error, QueryAPIError) else "错误"
+    return f"第 {index} 轮 · 失败 · {question} · {error_code}"
 
 
 def _render_error(st: Any, error: QueryAPIError) -> None:
@@ -326,6 +355,7 @@ def _render_success(
     response: dict[str, Any],
     *,
     title: str = "查询结果",
+    show_sql_expander: bool = True,
 ) -> None:
     st.subheader(title)
     columns = response.get("columns", [])
@@ -346,7 +376,10 @@ def _render_success(
         "已截断" if response.get("truncated", False) else "完整",
     )
 
-    with st.expander("查看 SQL"):
+    if show_sql_expander:
+        with st.expander("查看 SQL"):
+            st.code(response.get("sql", ""), language="sql")
+    else:
         st.code(response.get("sql", ""), language="sql")
 
     request_id = response.get("request_id")
