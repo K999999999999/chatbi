@@ -31,6 +31,7 @@ _CONVERSATION_ERROR_MESSAGES = {
 }
 _CONVERSATION_ID_KEY = "conversation_id"
 _CONVERSATION_RESET_REQUIRED_KEY = "conversation_reset_required"
+_CONVERSATION_TIMELINE_KEY = "conversation_timeline"
 
 
 class QueryAPIError(RuntimeError):
@@ -184,21 +185,19 @@ def main() -> None:
     if submitted:
         _submit_query(st, question)
 
-    response = st.session_state.get("last_query_response")
-    error = st.session_state.get("last_query_error")
-    if error is not None:
-        _render_error(st, error)
-    elif response is not None:
-        _render_success(st, response)
+    timeline = st.session_state.get(_CONVERSATION_TIMELINE_KEY, [])
+    _render_timeline(st, timeline)
 
 
 def _submit_query(st: Any, question: str) -> None:
     if not question.strip():
-        st.session_state.last_query_response = None
-        st.session_state.last_query_error = QueryAPIError(
+        error = QueryAPIError(
             "INVALID_REQUEST",
             "请输入问题",
         )
+        st.session_state.last_query_response = None
+        st.session_state.last_query_error = error
+        _append_timeline_error(st, question, error)
         return
 
     if st.session_state.get(_CONVERSATION_RESET_REQUIRED_KEY, False):
@@ -228,12 +227,14 @@ def _submit_query(st: Any, question: str) -> None:
         except QueryAPIError as error:
             st.session_state.last_query_response = None
             st.session_state.last_query_error = error
+            _append_timeline_error(st, question, error)
             if error.error_code == "CONVERSATION_UNAVAILABLE":
                 st.session_state[_CONVERSATION_ID_KEY] = None
                 st.session_state[_CONVERSATION_RESET_REQUIRED_KEY] = True
         else:
             st.session_state.last_query_response = response
             st.session_state.last_query_error = None
+            _append_timeline_success(st, question, response)
             response_conversation_id = response.get(_CONVERSATION_ID_KEY)
             if (
                 isinstance(response_conversation_id, str)
@@ -253,6 +254,63 @@ def _start_new_conversation(st: Any) -> None:
     st.session_state[_CONVERSATION_RESET_REQUIRED_KEY] = False
     st.session_state.last_query_response = None
     st.session_state.last_query_error = None
+    st.session_state[_CONVERSATION_TIMELINE_KEY] = []
+
+
+def _timeline_records(st: Any) -> list[dict[str, Any]]:
+    records = st.session_state.get(_CONVERSATION_TIMELINE_KEY)
+    if not isinstance(records, list):
+        records = []
+        st.session_state[_CONVERSATION_TIMELINE_KEY] = records
+    return records
+
+
+def _append_timeline_success(
+    st: Any,
+    question: str,
+    response: QueryAPIResponse,
+) -> None:
+    _timeline_records(st).append(
+        {
+            "question": question,
+            "status": "success",
+            "response": response,
+        }
+    )
+
+
+def _append_timeline_error(
+    st: Any,
+    question: str,
+    error: QueryAPIError,
+) -> None:
+    _timeline_records(st).append(
+        {
+            "question": question,
+            "status": "error",
+            "error": error,
+        }
+    )
+
+
+def _render_timeline(st: Any, timeline: list[dict[str, Any]]) -> None:
+    if not timeline:
+        return
+
+    st.subheader("会话记录")
+    for index, record in enumerate(timeline, start=1):
+        question = record.get("question", "")
+        st.caption(f"第 {index} 轮问题：{question}")
+        if record.get("status") == "success":
+            st.caption("状态：成功")
+            response = record.get("response")
+            if isinstance(response, dict):
+                _render_success(st, response, title=f"第 {index} 轮结果")
+        else:
+            st.caption("状态：失败")
+            error = record.get("error")
+            if isinstance(error, QueryAPIError):
+                _render_error(st, error)
 
 
 def _render_error(st: Any, error: QueryAPIError) -> None:
@@ -263,8 +321,13 @@ def _render_error(st: Any, error: QueryAPIError) -> None:
         st.caption(f"链路编号：{error.trace_id}")
 
 
-def _render_success(st: Any, response: dict[str, Any]) -> None:
-    st.subheader("查询结果")
+def _render_success(
+    st: Any,
+    response: dict[str, Any],
+    *,
+    title: str = "查询结果",
+) -> None:
+    st.subheader(title)
     columns = response.get("columns", [])
     rows = response.get("rows", [])
     if rows:

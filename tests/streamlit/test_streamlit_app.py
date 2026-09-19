@@ -159,6 +159,58 @@ class StreamlitQueryClientTest(TestCase):
         self.assertEqual(api.call_args_list[1].kwargs["conversation_id"], "conv-1")
         self.assertEqual(api.call_args_list[2].kwargs["conversation_id"], "conv-1")
 
+        timeline = displayed.session_state.conversation_timeline
+        self.assertEqual(
+            [record["question"] for record in timeline],
+            ["查询销售额", "按销售区域拆开", "再按月份拆开"],
+        )
+        self.assertEqual(
+            [record["status"] for record in timeline],
+            ["success", "success", "success"],
+        )
+
+    def test_timeline_renders_success_and_failure_turns_in_order(self) -> None:
+        displayed = _FakeStreamlit()
+        timeline = [
+            {
+                "question": "查询销售额",
+                "status": "success",
+                "response": QueryAPIResponse(
+                    {
+                        "request_id": "req-success",
+                        "sql": "SELECT 1",
+                        "columns": ["value"],
+                        "rows": [[1]],
+                        "row_count": 1,
+                        "truncated": False,
+                    }
+                ),
+            },
+            {
+                "question": "改看毛利率",
+                "status": "error",
+                "error": QueryAPIError(
+                    "CLARIFICATION_REQUIRED",
+                    "请明确需要新增或修改的查询条件",
+                ),
+            },
+        ]
+
+        streamlit_app._render_timeline(displayed, timeline)
+
+        self.assertEqual(
+            displayed.subheaders,
+            ["会话记录", "第 1 轮结果"],
+        )
+        self.assertIn("第 1 轮问题：查询销售额", displayed.captions)
+        self.assertIn("第 2 轮问题：改看毛利率", displayed.captions)
+        self.assertIn("状态：成功", displayed.captions)
+        self.assertIn("状态：失败", displayed.captions)
+        self.assertEqual(
+            displayed.errors,
+            ["CLARIFICATION_REQUIRED：请明确需要新增或修改的查询条件"],
+        )
+
     def test_follow_up_failure_keeps_current_conversation_id(self) -> None:
         displayed = _FakeStreamlit()
         displayed.session_state.conversation_id = "conv-1"
@@ -187,6 +239,10 @@ class StreamlitQueryClientTest(TestCase):
         self.assertIsNone(displayed.session_state.conversation_id)
         self.assertTrue(displayed.session_state.conversation_reset_required)
         self.assertIs(displayed.session_state.last_query_error, error)
+        self.assertEqual(
+            displayed.session_state.conversation_timeline[0]["status"],
+            "error",
+        )
 
         with patch.object(streamlit_app, "query_api") as blocked_api:
             streamlit_app._submit_query(displayed, "继续查询")
@@ -196,6 +252,7 @@ class StreamlitQueryClientTest(TestCase):
             displayed.session_state.last_query_error.error_code,
             "CONVERSATION_UNAVAILABLE",
         )
+        self.assertEqual(len(displayed.session_state.conversation_timeline), 1)
 
         streamlit_app._start_new_conversation(displayed)
 
@@ -203,6 +260,7 @@ class StreamlitQueryClientTest(TestCase):
         self.assertFalse(displayed.session_state.conversation_reset_required)
         self.assertIsNone(displayed.session_state.last_query_response)
         self.assertIsNone(displayed.session_state.last_query_error)
+        self.assertEqual(displayed.session_state.conversation_timeline, [])
 
         response = QueryAPIResponse(
             {
@@ -534,6 +592,7 @@ class _FakeStreamlit:
     def __init__(self) -> None:
         self.captions: list[str] = []
         self.errors: list[str] = []
+        self.subheaders: list[str] = []
         self.session_state = _FakeSessionState()
 
     def error(self, message: str) -> None:
@@ -542,11 +601,20 @@ class _FakeStreamlit:
     def caption(self, message: str) -> None:
         self.captions.append(message)
 
-    def subheader(self, _message: str) -> None:
-        return None
+    def subheader(self, message: str) -> None:
+        self.subheaders.append(message)
 
     def info(self, _message: str) -> None:
         return None
+
+    def dataframe(
+        self,
+        _data: object,
+        *,
+        use_container_width: bool,
+        hide_index: bool,
+    ) -> None:
+        del use_container_width, hide_index
 
     def columns(self, count: int) -> list[_FakeMetricColumn]:
         return [_FakeMetricColumn() for _ in range(count)]
