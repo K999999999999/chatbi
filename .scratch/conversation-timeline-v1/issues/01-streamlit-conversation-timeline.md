@@ -1,6 +1,6 @@
 # Ticket 01：Streamlit 当前会话 Conversation Timeline V1
 
-Status: done
+Status: in-progress
 
 Owner: 当前 ChatBI Feature Owner
 
@@ -85,7 +85,7 @@ Blocked by: None (can start immediately)
 
 ## Result
 
-已完成 Streamlit 当前会话 Timeline：成功、失败和会话失效轮次按顺序记录并展示；新建会话清空 Timeline；既有 Query API 和 Multi-Turn 会话 Contract 保持不变。
+已完成 Streamlit 当前会话 Timeline：成功、失败和会话失效轮次按顺序记录并展示；新建会话清空 Timeline；既有 Query API 和 Multi-Turn 会话 Contract 保持不变。代码实现和确定性验证已完成，真实页面交互验收因当前环境没有可用 Browser 尚未完成。
 
 验证结果：
 
@@ -95,6 +95,7 @@ Blocked by: None (can start immediately)
 - Streamlit `/_stcore/health`：`ok`；
 - `git diff --check`：通过；
 - Code Review：`PASS`。
+- 页面交互验收：`PENDING`；Streamlit 服务启动和 `/_stcore/health` 已通过，但当前 Browser 列表为空，无法执行真实点击验证。
 
 ## Comments
 
@@ -103,4 +104,5 @@ Blocked by: None (can start immediately)
 - Design Review：`PASS WITH MINOR FIXES`；
 - Ticket Readiness：`READY`；
 - Implementation：已完成，未修改 API、后端会话、授权或查询链路；
+- Remaining：补做真实页面三轮场景、失败记录和“新建会话”交互验收后，才能将 Ticket 标记为 `done`；
 - 本 Ticket 未授权 Push、PR、生产部署或生产数据操作。
