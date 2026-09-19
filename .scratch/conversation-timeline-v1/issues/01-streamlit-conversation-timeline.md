@@ -1,6 +1,6 @@
 # Ticket 01：Streamlit 当前会话 Conversation Timeline V1
 
-Status: in-progress
+Status: done
 
 Owner: 当前 ChatBI Feature Owner
 
@@ -95,7 +95,7 @@ Blocked by: None (can start immediately)
 - `uv run python -m compileall -q src tests`：通过；
 - `git diff --check`：通过。
 
-页面交互复验：待用户确认本次折叠 / 置顶布局。
+页面交互复验：`PASS`；用户确认最新轮次置顶展开、历史轮次折叠的页面行为无问题。
 
 此前基础版本已完成 Streamlit 当前会话 Timeline：成功、失败和会话失效轮次按顺序记录并展示；新建会话清空 Timeline；既有 Query API 和 Multi-Turn 会话 Contract 保持不变。基础版本的代码、确定性测试、真实接口链路和页面交互验收均已完成，用户确认无问题。
 
@@ -117,5 +117,5 @@ Blocked by: None (can start immediately)
 - Design Review：`PASS WITH MINOR FIXES`；
 - Ticket Readiness：`READY`；
 - Implementation：已完成，未修改 API、后端会话、授权或查询链路；
-- Remaining：本次 UI 修复的页面交互复验；通过后再将 Ticket 恢复为 `done`。
+- Remaining：None；本次 UI 修复已完成实现、验证和页面验收。
 - 本 Ticket 未授权 Push、PR、生产部署或生产数据操作。
