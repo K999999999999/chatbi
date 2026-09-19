@@ -93,6 +93,7 @@ Blocked by: None (can start immediately)
 - `358 passed, 6 skipped, 118 subtests passed`：完整确定性测试；
 - `uv run python -m compileall -q src tests`：通过；
 - Streamlit `/_stcore/health`：`ok`；
+- 真实 HTTP 三轮 Multi-Turn：三次 `POST /api/v1/query` 均返回 `200`，首轮创建会话，后续两轮复用会话并成功返回结果；
 - `git diff --check`：通过；
 - Code Review：`PASS`。
 - 页面交互验收：`PENDING`；Streamlit 服务启动和 `/_stcore/health` 已通过，但当前 Browser 列表为空，无法执行真实点击验证。
