@@ -1,19 +1,50 @@
 # ChatBI 项目路线图
 
-具体范围、Contract（契约）、技术选择和验收标准在进入对应阶段时再讨论确认。
+本路线图只用于确认产品当前处于哪个阶段，以及后续可能开发什么功能。
 
-## 当前状态
+具体需求、边界、技术设计、Ticket、测试和发布条件，分别记录在对应的 Feature Spec、Ticket、验收记录和发布文档中，不在本路线图展开。
 
-- Online Query、Online Retrieval V1 和 RAG Offline Build 已实现；实体类、单指标和离线资产链路已完成相应软件测试与验收。
-- 基础 Multi-Metric Retrieval（多指标在线检索）已按当前 V1 统一为 `metrics=0/1/N` 流程，支持最多 5 个指标，完成软件实现和确定性验收；当前分支最近一次真实在线 RAG Evaluation（评测）为 20/21，唯一失败为一次受控的 Query Understanding LLM_ERROR。
-- Observability V1 已完成 T1～T5；阿里云 OTLP / Trace 外部验收已通过。当前仍不能称为 Production Ready（生产可用）。
-- 当前全量确定性测试数量以本次验证输出为准；最近一次真实在线 RAG Evaluation 为当前分支 20/21。三类证据仍分别记录，不互相替代。
+## 产品方向
 
-## 后续路线
+- 目标用户：公司内部员工。
+- 首期用户：销售 / 经营分析人员。
+- 首期数据域：`mart_sales`。
+- 产品方向：先做好单业务域的自然语言查询，再逐步增加受控的分析能力和生产能力。
 
-1. **Quality Automation（质量自动化）**：自动执行软件测试、AI Evaluation（AI 评测）入口、安全检查和构建验证。
-2. **User & Data Authorization（用户与数据权限）**：完成用户身份、角色、数据范围、审计以及按真实需求启用的租户隔离。
-3. **Multi-Turn Conversation（多轮对话）**：实现用户隔离的结构化对话状态、上下文继承和每轮重新授权查询。
-4. **Business Analysis（经营分析）**：实现受控任务拆解、多查询执行、证据汇总和可继续追问的分析闭环。
-5. **Production Hardening（生产强化）**：补齐性能与负载验证、资源治理、Secret、安全发布、监控、部署和回滚。
-6. **Platform Evolution（平台演进）**：仅根据真实规模和需求扩展多租户、AI Gateway（AI 网关）、集群和平台治理能力。
+## 当前阶段
+
+### Query Product V1：内部查询体验闭环
+
+状态：`current`
+
+当前 V1 基线已经具备单轮查询、受控多轮查询、基础授权、Query API 和内部 Streamlit 入口。
+
+当前下一功能：`Conversation Timeline V1`
+
+目标：让用户能够在当前会话中回看连续提问、结果和失败信息，而不只是看到最后一次查询结果。
+
+## 后续阶段
+
+| 阶段 | 状态 | 方向 |
+| --- | --- | --- |
+| Query Product V1 | `current` | 完成内部查询体验闭环 |
+| Internal Pilot | `planned` | 让有限范围的内部员工受控试用并收集反馈 |
+| Production V1 | `planned` | 在明确的内部用户和 `mart_sales` 范围内稳定运行 |
+| Business Analysis V1 | `planned` | 增加有边界的经营分析能力 |
+| Platform Evolution | `conditional` | 根据真实规模和需求演进到多业务域、异步或平台化能力 |
+
+## 未来功能方向
+
+以下是方向，不代表已经进入开发：
+
+- `Conversation Timeline V1`：当前会话记录和查询过程回看；
+- `Internal Pilot` 相关能力：内部用户使用、反馈和问题追踪；
+- `Business Analysis V1`：有限范围的拆解、对比和结果汇总；
+- 平台演进：多业务域、多数据源、异步任务和规模化运行。
+
+## 当前决定
+
+- 当前阶段：`Query Product V1`。
+- 下一功能：`Conversation Timeline V1`。
+- `Production V1` 的发布条件：在进入内部试点和正式生产准备时再单独确认。
+- 详细内容：不写入路线图，以对应 Feature Spec、Ticket 和验收文档为准。
