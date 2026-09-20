@@ -221,6 +221,34 @@ class AuthService:
         return raw_token
 
 
+class LocalSessionIdentityProvider:
+    """从 Bearer Header 校验 ChatBI 自有数据库 Session。"""
+
+    identity_provider = "local"
+
+    def __init__(self, auth_service: AuthService) -> None:
+        self._auth_service = auth_service
+
+    def authenticate(self, provider_input: object | None = None) -> AuthContext:
+        headers = getattr(provider_input, "headers", None)
+        authorization = headers.get("Authorization", "") if headers is not None else ""
+        scheme, separator, token = authorization.partition(" ")
+        if scheme.lower() != "bearer" or not separator or not token.strip():
+            from .contracts import AuthenticationRequired
+
+            raise AuthenticationRequired("需要有效的身份认证")
+        try:
+            return self._auth_service.authenticate_session(token.strip())
+        except SessionExpired as exc:
+            from .contracts import AuthenticationRequired
+
+            raise AuthenticationRequired("需要有效的身份认证") from exc
+        except Exception as exc:  # noqa: BLE001 - identity must Fail Closed
+            from .contracts import IdentityProviderUnavailable
+
+            raise IdentityProviderUnavailable("本地 Session 暂时不可用") from exc
+
+
 class LoginResult:
     """登录成功后短暂返回给边缘适配器的原始 Token 和身份。"""
 

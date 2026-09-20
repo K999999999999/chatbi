@@ -40,6 +40,8 @@ class ControlDatabaseConfig:
     def from_environment(
         cls,
         environ: dict[str, str] | None = None,
+        *,
+        require_migrator: bool = True,
     ) -> ControlDatabaseConfig:
         values = os.environ if environ is None else environ
         business_database = values.get("POSTGRES_DB", "chatbi_mvp").strip()
@@ -72,7 +74,11 @@ class ControlDatabaseConfig:
             app_user=app_user,
             app_password=_required(values, "POSTGRES_CONTROL_APP_PASSWORD"),
             migrator_user=migrator_user,
-            migrator_password=_required(values, "POSTGRES_MIGRATOR_PASSWORD"),
+            migrator_password=(
+                _required(values, "POSTGRES_MIGRATOR_PASSWORD")
+                if require_migrator
+                else values.get("POSTGRES_MIGRATOR_PASSWORD", "").strip()
+            ),
             bootstrap_database=values.get(
                 "POSTGRES_CONTROL_BOOTSTRAP_DB", "postgres"
             ).strip()

@@ -4,6 +4,7 @@ from .audit import InMemoryAuditSink
 from .auth_service import (
     AuthenticationFailed,
     AuthService,
+    LocalSessionIdentityProvider,
     SessionExpired,
 )
 from .contracts import (
@@ -31,6 +32,7 @@ from .query_entry import (
     BoundAuthorizedQueryService,
     authorization_failure,
 )
+from .rbac import RoleAuthorizationPolicyStore
 
 __all__ = [
     "UNKNOWN_AUDIT_PROVIDER",
@@ -53,6 +55,8 @@ __all__ = [
     "IdentityProviderAdapter",
     "IdentityProviderUnavailable",
     "InMemoryAuditSink",
+    "LocalSessionIdentityProvider",
+    "RoleAuthorizationPolicyStore",
     "SessionExpired",
     "StaticAuthorizationPolicyStore",
     "StaticIdentityProviderAdapter",

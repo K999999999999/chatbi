@@ -92,6 +92,10 @@ class QueryApiIntegrationTest(TestCase):
                     "POSTGRES_DB": "chatbi_mvp",
                     "POSTGRES_APP_USER": "chatbi_app",
                     "POSTGRES_APP_PASSWORD": "test-password",
+                    "POSTGRES_CONTROL_DB": "chatbi_control",
+                    "POSTGRES_CONTROL_APP_USER": "chatbi_control_user",
+                    "POSTGRES_CONTROL_APP_PASSWORD": "test-control-password",
+                    "CHATBI_ADMIN_SECRET_KEY": "test-admin-secret",
                     "PYTHONPATH": str(root),
                 }
             )

@@ -13,6 +13,8 @@ from src.streamlit_app import (
     _render_error,
     _render_success,
     format_display_rows,
+    change_password_api,
+    login_api,
     query_api,
     rows_as_records,
 )
@@ -41,6 +43,78 @@ class _Response:
 
 
 class StreamlitQueryClientTest(TestCase):
+    def test_query_api_attaches_bearer_token_when_available(self) -> None:
+        calls: list[Request] = []
+
+        def opener(request: Request, *, timeout: float) -> _Response:
+            del timeout
+            calls.append(request)
+            return _Response(
+                {
+                    "request_id": "req-auth",
+                    "sql": "SELECT 1",
+                    "columns": ["value"],
+                    "rows": [[1]],
+                    "row_count": 1,
+                    "truncated": False,
+                }
+            )
+
+        query_api(
+            "http://127.0.0.1:8000",
+            "查询销售额",
+            access_token="token-1",
+            opener=opener,
+        )
+
+        self.assertEqual(calls[0].get_header("Authorization"), "Bearer token-1")
+
+    def test_login_and_change_password_use_json_auth_contract(self) -> None:
+        calls: list[Request] = []
+
+        def login_opener(request: Request, *, timeout: float) -> _Response:
+            del timeout
+            calls.append(request)
+            return _Response(
+                {
+                    "access_token": "token-1",
+                    "token_type": "Bearer",
+                    "username": "analyst-1",
+                    "must_change_password": True,
+                }
+            )
+
+        login = login_api(
+            "http://127.0.0.1:8000",
+            "analyst-1",
+            "password-123456",
+            opener=login_opener,
+        )
+        self.assertEqual(login["access_token"], "token-1")
+        self.assertEqual(calls[0].full_url, "http://127.0.0.1:8000/auth/login")
+        self.assertNotIn("Authorization", calls[0].headers)
+
+        def change_opener(request: Request, *, timeout: float) -> _Response:
+            del timeout
+            calls.append(request)
+            return _Response({}, status=204)
+
+        change_password_api(
+            "http://127.0.0.1:8000",
+            "token-1",
+            "password-123456",
+            "new-password-123456",
+            opener=change_opener,
+        )
+        self.assertEqual(calls[1].get_header("Authorization"), "Bearer token-1")
+        self.assertEqual(
+            json.loads(calls[1].data.decode("utf-8")),
+            {
+                "current_password": "password-123456",
+                "new_password": "new-password-123456",
+            },
+        )
+
     def test_query_api_posts_question_and_returns_success_payload(self) -> None:
         calls: list[tuple[Request, float]] = []
         payload = {
