@@ -7,11 +7,16 @@ from contextlib import contextmanager
 from typing import Any, NoReturn, Protocol
 from uuid import uuid4
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, StrictStr
 
+from src.authorization.auth_service import (
+    AuthenticationFailed,
+    AuthService,
+    SessionExpired,
+)
 from src.authorization.contracts import (
     AuditSink,
     AuthContext,
@@ -81,6 +86,33 @@ class QueryBody(BaseModel):
     conversation_id: StrictStr | None = None
 
 
+class LoginBody(BaseModel):
+    """本地账号登录请求。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    username: StrictStr
+    password: StrictStr
+
+
+class ChangePasswordBody(BaseModel):
+    """当前用户修改密码请求。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    current_password: StrictStr
+    new_password: StrictStr
+
+
+class LoginResponse(BaseModel):
+    """登录成功响应；Token 不写入日志或审计。"""
+
+    access_token: str
+    token_type: str
+    username: str
+    must_change_password: bool
+
+
 class QuerySuccessResponse(BaseModel):
     """HTTP 查询成功响应。"""
 
@@ -133,6 +165,7 @@ def create_app(
     audit_sink: AuditSink | None = None,
     identity_provider: IdentityProviderAdapter | None = None,
     policy_store: AuthorizationPolicyStore | None = None,
+    auth_service: AuthService | None = None,
     conversation_store: ConversationStore | None = None,
     query_understanding: object | None = None,
 ) -> FastAPI:
@@ -164,6 +197,7 @@ def create_app(
     app.state.query_service = authorized_service
     app.state.identity_provider = provider
     app.state.authorization_policy_store = authorization_store
+    app.state.auth_service = auth_service
     app.state.audit_sink = audit_sink
     app.state.trace_recorder = recorder
     app.state.conversation_store = active_conversation_store
@@ -186,6 +220,75 @@ def create_app(
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.post("/auth/login", response_model=LoginResponse)
+    def login(body: LoginBody) -> LoginResponse:
+        if auth_service is None:
+            raise _auth_service_unavailable()
+        try:
+            result = auth_service.login(body.username, body.password)
+        except AuthenticationFailed as exc:
+            raise _unauthorized(str(exc)) from None
+        except Exception as exc:  # noqa: BLE001 - authentication must Fail Closed
+            _LOGGER.warning(
+                "Local authentication failure: error_type=%s", type(exc).__name__
+            )
+            raise _auth_service_unavailable() from None
+        context = result.auth_context
+        return LoginResponse(
+            access_token=result.token,
+            token_type="Bearer",
+            username=context.username or context.subject_id,
+            must_change_password=context.must_change_password,
+        )
+
+    @app.get("/auth/me")
+    def current_identity(request: Request) -> dict[str, object]:
+        context = _authenticate_local_request(request, auth_service)
+        return {
+            "user_id": context.user_id,
+            "username": context.username or context.subject_id,
+            "permissions": sorted(context.permissions),
+            "must_change_password": context.must_change_password,
+        }
+
+    @app.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
+    def logout(request: Request) -> Response:
+        token = _bearer_token(request)
+        _authenticate_local_request(request, auth_service)
+        assert auth_service is not None
+        try:
+            auth_service.logout(token)
+        except SessionExpired:
+            raise _unauthorized("需要有效的身份认证") from None
+        except Exception as exc:  # noqa: BLE001 - authentication must Fail Closed
+            _LOGGER.warning("Local logout failure: error_type=%s", type(exc).__name__)
+            raise _auth_service_unavailable() from None
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @app.post("/auth/change-password", status_code=status.HTTP_204_NO_CONTENT)
+    def change_password(request: Request, body: ChangePasswordBody) -> Response:
+        token = _bearer_token(request)
+        if auth_service is None:
+            raise _auth_service_unavailable()
+        try:
+            auth_service.change_password(
+                token,
+                current_password=body.current_password,
+                new_password=body.new_password,
+            )
+        except SessionExpired:
+            raise _unauthorized("需要有效的身份认证") from None
+        except AuthenticationFailed as exc:
+            raise _unauthorized(str(exc)) from None
+        except ValueError as exc:
+            raise _bad_request(str(exc)) from None
+        except Exception as exc:  # noqa: BLE001 - authentication must Fail Closed
+            _LOGGER.warning(
+                "Local password change failure: error_type=%s", type(exc).__name__
+            )
+            raise _auth_service_unavailable() from None
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @app.exception_handler(RequestValidationError)
     def request_validation_error(
@@ -237,6 +340,47 @@ def create_app(
         )
 
     return app
+
+
+def _authenticate_local_request(
+    request: Request,
+    auth_service: AuthService | None,
+) -> AuthContext:
+    if auth_service is None:
+        raise _auth_service_unavailable()
+    token = _bearer_token(request)
+    try:
+        return auth_service.authenticate_session(token)
+    except SessionExpired:
+        raise _unauthorized("需要有效的身份认证") from None
+    except Exception as exc:  # noqa: BLE001 - authentication must Fail Closed
+        _LOGGER.warning(
+            "Local session validation failure: error_type=%s", type(exc).__name__
+        )
+        raise _auth_service_unavailable() from None
+
+
+def _bearer_token(request: Request) -> str:
+    value = request.headers.get("Authorization", "")
+    scheme, separator, token = value.partition(" ")
+    if scheme.lower() != "bearer" or not separator or not token.strip():
+        raise _unauthorized("需要有效的身份认证")
+    return token.strip()
+
+
+def _unauthorized(message: str) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=message)
+
+
+def _bad_request(message: str) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message)
+
+
+def _auth_service_unavailable() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="身份认证服务暂时不可用",
+    )
 
 
 def _authorized_query(

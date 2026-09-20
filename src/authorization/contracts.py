@@ -99,6 +99,10 @@ class AuthContext:
 
     subject_id: str
     identity_provider: str
+    user_id: int | None = None
+    username: str | None = None
+    permissions: frozenset[str] = frozenset()
+    must_change_password: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.subject_id, str) or not self.subject_id.strip():
@@ -114,6 +118,19 @@ class AuthContext:
             "identity_provider",
             self.identity_provider.strip(),
         )
+        if self.user_id is not None and self.user_id <= 0:
+            raise ValueError("user_id 必须是正整数")
+        if self.username is not None:
+            if not isinstance(self.username, str) or not self.username.strip():
+                raise ValueError("username 必须是非空字符串")
+            object.__setattr__(self, "username", self.username.strip())
+        if not isinstance(self.permissions, frozenset):
+            object.__setattr__(self, "permissions", frozenset(self.permissions))
+        if any(
+            not isinstance(permission, str) or not permission.strip()
+            for permission in self.permissions
+        ):
+            raise ValueError("permissions 必须是非空字符串集合")
 
 
 @dataclass(frozen=True, slots=True)
