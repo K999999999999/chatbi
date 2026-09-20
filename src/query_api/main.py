@@ -12,7 +12,9 @@ from src.authorization import (
 )
 from src.chatbi_control.database import (
     ControlDatabaseConfig,
+    ControlDatabaseMigrationError,
     create_control_engine,
+    verify_control_schema,
 )
 from src.observability.tracing import create_trace_recorder
 from src.online_query.database import PsycopgQueryExecutor
@@ -25,9 +27,11 @@ from src.online_query.service import OnlineQueryService
 from .app import create_app
 from .config import (
     load_local_environment,
+    validate_runtime_configuration,
 )
 
 load_local_environment()
+_runtime_environment = validate_runtime_configuration()
 
 
 def build_service() -> OnlineQueryService:
@@ -68,6 +72,8 @@ _policy_store = RoleAuthorizationPolicyStore()
 _admin_secret_key = os.getenv("CHATBI_ADMIN_SECRET_KEY", "").strip()
 if not _admin_secret_key:
     raise RuntimeError("CHATBI_ADMIN_SECRET_KEY 必须显式设置")
+if _runtime_environment in {"production", "prod"} and len(_admin_secret_key) < 32:
+    raise RuntimeError("production 的 CHATBI_ADMIN_SECRET_KEY 至少需要 32 个字符")
 
 _service = build_service()
 app = create_app(
@@ -81,3 +87,14 @@ app = create_app(
     admin_session_factory=_control_session_factory,
     query_understanding=_service.query_understanding,
 )
+
+
+@app.on_event("startup")
+def verify_startup_dependencies() -> None:
+    """Schema 未完整迁移时阻止认证、管理和查询入口启动。"""
+
+    try:
+        verify_control_schema(_control_engine)
+    except ControlDatabaseMigrationError:
+        _control_engine.dispose()
+        raise

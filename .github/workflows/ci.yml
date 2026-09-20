@@ -160,6 +160,20 @@ jobs:
   application-smoke:
     name: Application startup smoke
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: chatbi_mvp
+          POSTGRES_USER: chatbi_migrator
+          POSTGRES_PASSWORD: ci-migrator-password
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U chatbi_migrator -d chatbi_mvp"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
 
     steps:
       - name: Check out repository
@@ -194,16 +208,25 @@ jobs:
           POSTGRES_HOST=127.0.0.1
           POSTGRES_PORT=5433
           POSTGRES_DB=chatbi_mvp
+          POSTGRES_MIGRATOR_USER=chatbi_migrator
+          POSTGRES_MIGRATOR_PASSWORD=ci-migrator-password
           POSTGRES_APP_USER=chatbi_app
           POSTGRES_APP_PASSWORD=ci-app-password
+          POSTGRES_CONTROL_DB=chatbi_control
+          POSTGRES_CONTROL_APP_USER=chatbi_control_user
+          POSTGRES_CONTROL_APP_PASSWORD=ci-control-password
+          POSTGRES_CONTROL_MIGRATOR_USER=chatbi_migrator
+          POSTGRES_CONTROL_BOOTSTRAP_DB=postgres
+          CHATBI_ADMIN_SECRET_KEY=ci-smoke-admin-secret-0123456789012345
           RAG_ONLINE_RETRIEVAL_ENABLED=false
           CHATBI_ENV=development
-          CHATBI_IDENTITY_PROVIDER=test
-          CHATBI_IDENTITY_SUBJECT_ID=analyst-1
-          CHATBI_AUTH_POLICY_FILE=config/authorization-policy.example.json
           CHATBI_RUNTIME_ENV=ci
           CHATBI_TRACE_CONTENT_ENABLED=false
           EOF
+
+          printf 'admin-password-123\nadmin-password-123\n' |
+            uv run --python 3.11 --locked --no-sync --env-file .env.ci \
+              python -m src.chatbi_control --username admin-1
 
           uv run --python 3.11 --locked --no-sync --env-file .env.ci \
             uvicorn src.query_api.main:app --host 127.0.0.1 --port 8000 \

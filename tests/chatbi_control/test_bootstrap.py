@@ -15,6 +15,8 @@ from src.chatbi_control.bootstrap import (
 from src.chatbi_control.database import (
     ControlDatabaseConfig,
     ControlDatabaseConfigurationError,
+    ControlDatabaseMigrationError,
+    verify_control_schema,
 )
 from src.chatbi_control.models import Base, Permission, Role, User
 
@@ -143,3 +145,17 @@ class ControlBootstrapTest(TestCase):
             ControlDatabaseConfig.from_environment(
                 {**values, "POSTGRES_CONTROL_APP_USER": "chatbi_migrator"}
             )
+
+    def test_runtime_schema_version_must_be_present(self) -> None:
+        with self.assertRaises(ControlDatabaseMigrationError):
+            verify_control_schema(self.engine)
+
+        with self.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "CREATE TABLE schema_migrations (version TEXT PRIMARY KEY)"
+            )
+            connection.exec_driver_sql(
+                "INSERT INTO schema_migrations(version) VALUES ('chatbi-control-v1')"
+            )
+
+        verify_control_schema(self.engine)

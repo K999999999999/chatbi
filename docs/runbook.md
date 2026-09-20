@@ -2,9 +2,9 @@
 
 ## 1. 用途与边界
 
-本文档用于本地 ChatBI POC 的启动、验证、RAG Offline Build（RAG 离线构建）、评测和停止。
+本文档用于本地 ChatBI 的启动、账号初始化、验证、RAG Offline Build（RAG 离线构建）、评测和停止。
 
-当前系统是本地单用户、同步运行的 POC，不是 Production Ready（生产可用）部署。本文档中的命令默认在仓库根目录执行：
+当前系统仍是本地开发 / 内部验证部署，不是 Production Ready（生产可用）部署。ChatBI 已使用内置账号、角色权限和持久化审计；云端 SSO、租户隔离、限流、备份和正式部署仍是后续边界。本文档中的命令默认在仓库根目录执行：
 
 `E:/Kaifa/project 2026/chatbi-engine`
 
@@ -21,6 +21,7 @@
 ```text
 PostgreSQL（127.0.0.1:5433）
     └─ mart_sales / chatbi_app 只读
+    └─ chatbi_control / chatbi_control_user 认证、Session、RBAC、审计
 
 Qdrant（127.0.0.1:6333）
     └─ TABLE / COLUMN / METRIC 版本化集合
@@ -53,19 +54,37 @@ Copy-Item .env.example .env
 
 然后在 `.env` 中填写本地真实配置：
 
-- PostgreSQL：`POSTGRES_DB`、`POSTGRES_MIGRATOR_USER`、`POSTGRES_MIGRATOR_PASSWORD`、`POSTGRES_APP_USER`、`POSTGRES_APP_PASSWORD`
-- Query API 身份与授权：`CHATBI_ENV`、`CHATBI_IDENTITY_PROVIDER`、`CHATBI_IDENTITY_SUBJECT_ID`、`CHATBI_AUTH_POLICY_FILE`
+- 业务数据库：`POSTGRES_DB`、`POSTGRES_APP_USER`、`POSTGRES_APP_PASSWORD`。`chatbi_app` 只读访问业务库 `chatbi_mvp`。
+- ChatBI 应用库：`POSTGRES_CONTROL_DB`、`POSTGRES_CONTROL_APP_USER`、`POSTGRES_CONTROL_APP_PASSWORD`、`CHATBI_ADMIN_SECRET_KEY`。`chatbi_control_user` 只访问应用库，保存账号、Session、固定 RBAC 和审计事件。
+- 一次性迁移账号：`POSTGRES_MIGRATOR_USER`、`POSTGRES_MIGRATOR_PASSWORD`、`POSTGRES_CONTROL_MIGRATOR_USER`。迁移账号不进入 API 运行进程。
+- 运行模式：`CHATBI_ENV`。真实入口使用应用库内置账号，不再配置 `CHATBI_IDENTITY_PROVIDER`、`CHATBI_IDENTITY_SUBJECT_ID` 或 `CHATBI_AUTH_POLICY_FILE`。
 - LLM：`LLM_API_KEY`、`LLM_MODEL`，必要时填写 `LLM_BASE_URL`
 - Qdrant：`QDRANT_API_KEY`
 - RAG：通常保持 `RAG_MODEL_DIR=models/bge-m3` 和 `RAG_EMBEDDING_DEVICE=auto`
 
 `.env` 不得提交到 Git。不要在终端回显密码、API Key 或完整连接字符串。
 
-本地 Query API 必须显式选择 `demo` 或 `test` Identity Provider，并配置外部 JSON 授权策略文件。仓库提供的
-`config/authorization-policy.example.json` 只包含演示主体 `analyst-1`；实际环境应通过部署配置注入策略文件路径和允许访问的主体。
-`production` / `prod` 环境会拒绝启动 `demo` / `test` Provider，不会自动回退到演示身份。当前版本尚未接入企业 SSO。
+`src/query_api/config.py` 中的 Static Provider（静态身份适配器）只保留给确定性测试和离线 Evaluation；真实入口 `src/query_api/main.py` 不读取这些配置。`production` / `prod` 环境如果仍注入旧静态身份配置会拒绝启动，也不会自动回退到演示身份。
 
-授权事件当前由进程内 `InMemoryAuditSink` 收集，供本地 Demo、Evaluation 和确定性测试使用；它不是持久化审计中心。AuditSink 未配置或写入失败时，授权入口 Fail Closed（失败关闭）并返回受控 503，不会继续执行 Online Query。
+### 3.3 初始化应用库和首个管理员
+
+先启动 PostgreSQL，然后使用迁移账号执行一次应用库初始化。该命令会创建独立的 `chatbi_control` 数据库、运行时账号、表、固定角色 / 权限和审计表，再创建首个管理员：
+
+```powershell
+uv run --env-file .env python -m src.chatbi_control --username admin-1
+```
+
+命令会交互读取管理员密码并要求确认，密码至少 12 位。初始化完成后，API 运行进程只需要 `POSTGRES_CONTROL_APP_PASSWORD`，不需要迁移密码。迁移命令可以幂等重跑；首个管理员只能创建一次。
+
+启动 API 时会用 `chatbi_control_user` 检查 `schema_migrations` 中的 `chatbi-control-v1`。Schema 未完整迁移时，认证、SQLAdmin 和查询入口不会启动。
+
+### 3.4 登录、首次改密和管理后台
+
+- Streamlit 打开后先使用内置账号登录；首个管理员首次登录必须修改密码。
+- HTTP 客户端先调用 `POST /auth/login`，再把返回的 `access_token` 作为 `Authorization: Bearer <token>` 访问 `/auth/me`、`/auth/change-password`、`/auth/logout` 和查询接口。
+- 管理员访问 `http://127.0.0.1:8000/admin`，使用同一套 ChatBI 账号。只有 `admin` 角色可以进入 SQLAdmin；`analyst` 只能执行查询。
+- SQLAdmin 的用户、角色、权限和审计事件页面使用 `chatbi_control`；用户禁止物理删除，角色 / 权限 / 审计事件只读。
+- 审计事件保存登录、密码、用户 / 角色变更、授权决策和查询结果状态，但不保存 Password Hash、Session Token、Secret、完整 SQL、问题文本或结果行。
 
 ## 4. 启动基础设施
 
@@ -139,7 +158,7 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 }
 ```
 
-`/health` 只表示 HTTP 服务正在运行，不检查 LLM、PostgreSQL 或静态上下文是否可用。
+`/health` 表示应用已通过启动检查并正在运行；启动检查至少验证 `chatbi_control` Schema 版本。它不代表 LLM、业务 PostgreSQL、Qdrant 或真实查询链路可用。
 
 ### 5.3 手动启动 Streamlit
 
@@ -384,6 +403,7 @@ Streamlit 的 `CHATBI_API_BASE_URL` 默认是 `http://127.0.0.1:8000`；只有 A
 当前仍属于后续边界：
 
 - 多轮对话和复杂分析 Agent。
-- 认证、租户、审计、限流、监控和生产部署。
+- 企业 SSO、租户隔离、细粒度数据范围 / 行列权限。
+- 云端审计导出、限流、性能与负载、Secret 管理、生产部署、备份和回滚。
 
 下一阶段如果继续，应单独设计多指标组合编排和生产化治理；当前 V1 已完成最小在线检索闭环。

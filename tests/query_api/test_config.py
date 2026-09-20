@@ -13,10 +13,29 @@ from src.query_api.config import (
     build_identity_provider,
     build_policy_store,
     load_local_environment,
+    RuntimeConfigurationError,
+    validate_runtime_configuration,
 )
 
 
 class QueryApiConfigTest(unittest.TestCase):
+    def test_real_runtime_requires_explicit_environment(self) -> None:
+        self.assertEqual(
+            validate_runtime_configuration({"CHATBI_ENV": "development"}),
+            "development",
+        )
+        with self.assertRaises(RuntimeConfigurationError):
+            validate_runtime_configuration({})
+
+    def test_production_rejects_legacy_static_identity_configuration(self) -> None:
+        with self.assertRaises(RuntimeConfigurationError):
+            validate_runtime_configuration(
+                {
+                    "CHATBI_ENV": "production",
+                    "CHATBI_IDENTITY_PROVIDER": "test",
+                }
+            )
+
     def test_builds_explicit_test_identity_provider(self) -> None:
         provider = build_identity_provider(
             {

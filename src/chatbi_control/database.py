@@ -9,7 +9,7 @@ from typing import Any
 
 import psycopg
 from psycopg import sql
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL, Engine
 
 from .bootstrap import control_sql_directory
@@ -21,6 +21,9 @@ class ControlDatabaseConfigurationError(RuntimeError):
 
 class ControlDatabaseMigrationError(RuntimeError):
     """应用库迁移失败。"""
+
+
+CONTROL_SCHEMA_VERSION = "chatbi-control-v1"
 
 
 @dataclass(frozen=True)
@@ -124,6 +127,26 @@ def create_control_engine(config: ControlDatabaseConfig) -> Engine:
         database=config.database,
     )
     return create_engine(url, pool_pre_ping=True)
+
+
+def verify_control_schema(engine: Engine) -> None:
+    """确认运行时账号看到的是完整的 ChatBI 应用库版本。"""
+
+    try:
+        with engine.connect() as connection:
+            versions = set(
+                connection.execute(
+                    text("SELECT version FROM schema_migrations")
+                ).scalars()
+            )
+    except Exception as exc:  # noqa: BLE001 - startup must fail closed
+        raise ControlDatabaseMigrationError(
+            "ChatBI 应用库 Schema 不可用，请先使用 chatbi_migrator 完成迁移"
+        ) from exc
+    if CONTROL_SCHEMA_VERSION not in versions:
+        raise ControlDatabaseMigrationError(
+            "ChatBI 应用库 Schema 版本不完整，请先使用 chatbi_migrator 完成迁移"
+        )
 
 
 def initialize_control_database(
