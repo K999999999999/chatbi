@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from src.authorization.passwords import hash_password
 
 from .models import Permission, Role, User
+from .username import normalize_username
 
 FIXED_PERMISSIONS: tuple[tuple[str, str], ...] = (
     ("query.execute", "执行 ChatBI 查询"),
@@ -27,19 +28,6 @@ FIXED_ROLES: tuple[tuple[str, str], ...] = (
 
 class BootstrapError(RuntimeError):
     """应用库初始化失败。"""
-
-
-def normalize_username(username: str) -> str:
-    """规范化用户名，避免大小写造成重复账号。"""
-
-    normalized = username.strip().lower()
-    if (
-        not normalized
-        or len(normalized) > 128
-        or any(char.isspace() for char in normalized)
-    ):
-        raise BootstrapError("用户名不能为空、不能包含空白字符且长度不能超过 128 位")
-    return normalized
 
 
 def seed_rbac(session: Session) -> Mapping[str, Role]:

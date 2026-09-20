@@ -10,8 +10,8 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from src.chatbi_control.bootstrap import normalize_username
 from src.chatbi_control.models import User, UserSession
+from src.chatbi_control.username import normalize_username
 
 from .contracts import AuthContext
 from .audit_service import AuditRecord, AuditUnavailable

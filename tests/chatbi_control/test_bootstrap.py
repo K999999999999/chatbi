@@ -1,6 +1,8 @@
 """ChatBI 应用库和首个管理员初始化测试。"""
 
 from pathlib import Path
+import subprocess
+import sys
 from unittest import TestCase
 
 from sqlalchemy import create_engine, select
@@ -159,3 +161,20 @@ class ControlBootstrapTest(TestCase):
             )
 
         verify_control_schema(self.engine)
+
+    def test_chatbi_control_cli_imports_without_circular_dependency(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from src.chatbi_control.cli import main; print('CLI_READY')",
+            ],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("CLI_READY", result.stdout)
