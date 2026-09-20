@@ -41,7 +41,15 @@ class AuthApiTest(TestCase):
             clock=lambda: datetime(2026, 9, 20, 12, tzinfo=UTC),
             token_factory=self._next_token,
         )
-        self.client = TestClient(create_app(Mock(), auth_service=self.auth_service))
+        self.client = TestClient(
+            create_app(
+                Mock(),
+                auth_service=self.auth_service,
+                admin_engine=self.engine,
+                admin_secret_key="test-admin-secret",
+                admin_session_factory=self.session_factory,
+            )
+        )
 
     def tearDown(self) -> None:
         self.engine.dispose()

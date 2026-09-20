@@ -11,7 +11,9 @@ from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, StrictStr
+from sqlalchemy.engine import Engine
 
+from src.chatbi_control.admin import mount_admin
 from src.authorization.auth_service import (
     AuthenticationFailed,
     AuthService,
@@ -166,6 +168,9 @@ def create_app(
     identity_provider: IdentityProviderAdapter | None = None,
     policy_store: AuthorizationPolicyStore | None = None,
     auth_service: AuthService | None = None,
+    admin_engine: Engine | None = None,
+    admin_secret_key: str | None = None,
+    admin_session_factory: Any | None = None,
     conversation_store: ConversationStore | None = None,
     query_understanding: object | None = None,
 ) -> FastAPI:
@@ -198,6 +203,16 @@ def create_app(
     app.state.identity_provider = provider
     app.state.authorization_policy_store = authorization_store
     app.state.auth_service = auth_service
+    if admin_engine is not None:
+        if auth_service is None or not admin_secret_key:
+            raise ValueError("SQLAdmin 需要统一 AuthService 和显式 secret key")
+        mount_admin(
+            app,
+            engine=admin_engine,
+            auth_service=auth_service,
+            secret_key=admin_secret_key,
+            session_factory=admin_session_factory,
+        )
     app.state.audit_sink = audit_sink
     app.state.trace_recorder = recorder
     app.state.conversation_store = active_conversation_store
