@@ -4,6 +4,7 @@ version = "0.1.0"
 requires-python = ">=3.11,<3.12"
 dependencies = [
     "accelerate>=1.15,<2",
+    "argon2-cffi>=23.1,<26",
     "FlagEmbedding>=1.3,<2",
     "fastapi[standard-no-fastapi-cloud-cli]>=0.115,<1",
     "langchain-openai>=1,<2",
@@ -13,6 +14,8 @@ dependencies = [
     "psycopg[binary]>=3.2,<4",
     "python-dotenv>=1,<2",
     "qdrant-client>=1.19,<2",
+    "sqladmin>=0.20,<1",
+    "sqlalchemy>=2,<3",
     "sqlglot>=27,<31",
     "streamlit>=1.40,<2",
 ]

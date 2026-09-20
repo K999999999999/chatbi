@@ -20,6 +20,7 @@ from .contracts import (
     StaticAuthorizationPolicyStore,
     StaticIdentityProviderAdapter,
 )
+from .passwords import hash_password, validate_password, verify_password
 from .query_entry import (
     AuthorizedQueryService,
     BoundAuthorizedQueryService,
@@ -27,25 +28,28 @@ from .query_entry import (
 )
 
 __all__ = [
-    "AuthContext",
+    "UNKNOWN_AUDIT_PROVIDER",
+    "UNKNOWN_AUDIT_SUBJECT",
+    "UNKNOWN_POLICY_VERSION",
     "AuditDecision",
     "AuditSink",
     "AuditSinkUnavailable",
+    "AuthContext",
     "AuthenticationRequired",
+    "AuthorizationAuditEvent",
     "AuthorizationDecision",
     "AuthorizationDecisionCode",
-    "AuthorizationAuditEvent",
     "AuthorizationPolicyStore",
     "AuthorizationPolicyUnavailable",
     "AuthorizedQueryService",
     "BoundAuthorizedQueryService",
+    "IdentityProviderAdapter",
     "IdentityProviderUnavailable",
     "InMemoryAuditSink",
-    "IdentityProviderAdapter",
     "StaticAuthorizationPolicyStore",
     "StaticIdentityProviderAdapter",
-    "UNKNOWN_AUDIT_PROVIDER",
-    "UNKNOWN_AUDIT_SUBJECT",
-    "UNKNOWN_POLICY_VERSION",
     "authorization_failure",
+    "hash_password",
+    "validate_password",
+    "verify_password",
 ]
