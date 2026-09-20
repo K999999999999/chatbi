@@ -9,17 +9,25 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from src.authorization import AuthService, hash_password, verify_password
+from src.authorization import PersistentAuditSink
 from src.chatbi_control.admin import (
     AdminPolicyError,
     LastAdminError,
+    AuditEventAdmin,
     PermissionAdmin,
     RoleAdmin,
     UserAdmin,
     set_user_roles,
 )
 from src.chatbi_control.bootstrap import seed_rbac
-from src.chatbi_control.models import Base, Role, User
+from src.chatbi_control.models import AuditEvent, Base, Role, User
 from src.query_api.app import create_app
+
+
+class _FailingAuditSink:
+    def write(self, session, record) -> None:
+        del session, record
+        raise RuntimeError("audit database unavailable")
 
 
 class SqlAdminIntegrationTest(TestCase):
@@ -53,12 +61,15 @@ class SqlAdminIntegrationTest(TestCase):
             )
             session.commit()
         self.token_number = 0
+        self.audit_sink = PersistentAuditSink(self.session_factory)
         self.auth_service = AuthService(
             self.session_factory,
             token_factory=self._next_token,
+            audit_sink=self.audit_sink,
         )
         self.app = create_app(
             Mock(),
+            audit_sink=self.audit_sink,
             auth_service=self.auth_service,
             admin_engine=self.engine,
             admin_secret_key="admin-test-secret",
@@ -136,6 +147,17 @@ class SqlAdminIntegrationTest(TestCase):
             )
             self.assertEqual([role.name for role in user.roles], ["analyst"])
 
+        with self.session_factory() as session:
+            audit_types = [
+                event.event_type
+                for event in session.query(AuditEvent).order_by(AuditEvent.id).all()
+            ]
+            audit_text = str(session.query(AuditEvent).all())
+        self.assertIn("auth.login", audit_types)
+        self.assertIn("user.create", audit_types)
+        self.assertNotIn("new-user-password-123", audit_text)
+        self.assertNotIn("admin-test-token", audit_text)
+
     def test_user_delete_and_role_permission_mutation_are_disabled(self) -> None:
         self.assertFalse(UserAdmin.can_delete)
         self.assertFalse(RoleAdmin.can_create)
@@ -144,6 +166,9 @@ class SqlAdminIntegrationTest(TestCase):
         self.assertFalse(PermissionAdmin.can_create)
         self.assertFalse(PermissionAdmin.can_edit)
         self.assertFalse(PermissionAdmin.can_delete)
+        self.assertFalse(AuditEventAdmin.can_create)
+        self.assertFalse(AuditEventAdmin.can_edit)
+        self.assertFalse(AuditEventAdmin.can_delete)
 
     def test_last_active_admin_cannot_be_demoted(self) -> None:
         with self.session_factory() as session:
@@ -166,4 +191,50 @@ class SqlAdminIntegrationTest(TestCase):
                 self.session_factory,
                 user_id=admin_id,
                 role_names={"unknown"},
+            )
+
+    def test_admin_mutation_is_not_committed_when_audit_fails(self) -> None:
+        app = create_app(
+            Mock(),
+            audit_sink=_FailingAuditSink(),
+            auth_service=AuthService(
+                self.session_factory,
+                token_factory=self._next_token,
+            ),
+            admin_engine=self.engine,
+            admin_secret_key="admin-test-secret",
+            admin_session_factory=self.session_factory,
+        )
+        client = TestClient(app, raise_server_exceptions=False)
+        self.assertEqual(
+            client.post(
+                "/admin/login",
+                data={"username": "admin-1", "password": "admin-password-123"},
+            ).status_code,
+            200,
+        )
+        with self.session_factory() as session:
+            analyst_role_id = session.scalar(
+                select(Role.id).where(Role.name == "analyst")
+            )
+
+        response = client.post(
+            "/admin/user/create",
+            data={
+                "username": "audit-failure-user",
+                "password_hash": "audit-failure-password-123",
+                "is_active": "y",
+                "must_change_password": "y",
+                "roles": str(analyst_role_id),
+            },
+            follow_redirects=False,
+        )
+
+        self.assertGreaterEqual(response.status_code, 400)
+        self.assertNotEqual(response.status_code, 302)
+        with self.session_factory() as session:
+            self.assertIsNone(
+                session.scalar(
+                    select(User).where(User.username == "audit-failure-user")
+                )
             )

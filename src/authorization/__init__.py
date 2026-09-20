@@ -1,6 +1,7 @@
 """ChatBI 身份与数据授权核心。"""
 
 from .audit import InMemoryAuditSink
+from .audit_service import AuditRecord, AuditUnavailable, PersistentAuditSink
 from .auth_service import (
     AuthenticationFailed,
     AuthService,
@@ -39,8 +40,10 @@ __all__ = [
     "UNKNOWN_AUDIT_SUBJECT",
     "UNKNOWN_POLICY_VERSION",
     "AuditDecision",
+    "AuditRecord",
     "AuditSink",
     "AuditSinkUnavailable",
+    "AuditUnavailable",
     "AuthContext",
     "AuthService",
     "AuthenticationFailed",
@@ -57,6 +60,7 @@ __all__ = [
     "InMemoryAuditSink",
     "LocalSessionIdentityProvider",
     "RoleAuthorizationPolicyStore",
+    "PersistentAuditSink",
     "SessionExpired",
     "StaticAuthorizationPolicyStore",
     "StaticIdentityProviderAdapter",

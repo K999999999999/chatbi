@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import FastAPI
-from sqlalchemy import func, inspect, select, update
+from sqlalchemy import event, func, inspect, select, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqladmin import Admin, ModelView
@@ -21,14 +21,17 @@ from src.authorization.auth_service import (
     AuthService,
     SessionExpired,
 )
+from src.authorization.audit_service import AuditRecord, AuditUnavailable
 from src.authorization.contracts import AuthContext
 from src.authorization.passwords import hash_password
 
 from .bootstrap import FIXED_ROLES, normalize_username
-from .models import Permission, Role, User, UserSession
+from .models import AuditEvent, Permission, Role, User, UserSession
 
 FIXED_ROLE_NAMES = frozenset(name for name, _ in FIXED_ROLES)
 ADMIN_PERMISSION_NAMES = frozenset({"admin.users", "admin.roles", "admin.audit"})
+_ADMIN_AUDIT_RECORDS = "_chatbi_admin_audit_records"
+_ADMIN_AUDIT_SINK = "_chatbi_admin_audit_sink"
 
 
 class AdminPolicyError(RuntimeError):
@@ -190,7 +193,6 @@ class UserAdmin(ModelView, model=User):
         is_created: bool,
         request: Request,
     ) -> None:
-        del request
         if "username" in data:
             data["username"] = normalize_username(data["username"])
 
@@ -219,6 +221,70 @@ class UserAdmin(ModelView, model=User):
             if raw_password:
                 _revoke_sessions(session, model.id)
 
+            pending_events: list[AuditRecord] = []
+            actor_user_id = _actor_user_id(request)
+            if data.get("is_active", model.is_active) != model.is_active:
+                pending_events.append(
+                    AuditRecord(
+                        event_type=(
+                            "user.enable"
+                            if data.get("is_active", model.is_active)
+                            else "user.disable"
+                        ),
+                        target_type="user",
+                        target_id=str(model.id),
+                        outcome="success",
+                        actor_user_id=actor_user_id,
+                        reason=(
+                            "USER_ENABLED"
+                            if data.get("is_active", model.is_active)
+                            else "USER_DISABLED"
+                        ),
+                    )
+                )
+            if raw_password:
+                pending_events.append(
+                    AuditRecord(
+                        event_type="auth.password_reset",
+                        target_type="user",
+                        target_id=str(model.id),
+                        outcome="success",
+                        actor_user_id=actor_user_id,
+                        reason="PASSWORD_RESET",
+                    )
+                )
+            if "roles" in data and _role_names(data["roles"]) != _role_names(
+                model.roles
+            ):
+                pending_events.append(
+                    AuditRecord(
+                        event_type="user.roles_update",
+                        target_type="user",
+                        target_id=str(model.id),
+                        outcome="success",
+                        actor_user_id=actor_user_id,
+                        reason="ROLES_UPDATED",
+                    )
+                )
+            _mark_admin_audit(model, request, pending_events)
+
+        elif is_created:
+            _mark_admin_audit(
+                model,
+                request,
+                [
+                    AuditRecord(
+                        event_type="user.create",
+                        target_type="user",
+                        target_id=str(data.get("username") or model.username),
+                        outcome="success",
+                        actor_user_id=_actor_user_id(request),
+                        request_id=_request_id(request),
+                        reason="USER_CREATED",
+                    )
+                ],
+            )
+
 
 class RoleAdmin(ModelView, model=Role):
     """V1 角色目录只读，避免后台自由制造权限语义。"""
@@ -246,6 +312,28 @@ class PermissionAdmin(ModelView, model=Permission):
     form_columns = [Permission.name, Permission.description]
 
 
+class AuditEventAdmin(ModelView, model=AuditEvent):
+    """审计事件只读展示，避免后台修改或删除安全记录。"""
+
+    name = "审计事件"
+    name_plural = "审计事件"
+    icon = "fa-solid fa-clipboard-list"
+    can_create = False
+    can_edit = False
+    can_delete = False
+    column_list = [
+        AuditEvent.id,
+        AuditEvent.event_type,
+        AuditEvent.target_type,
+        AuditEvent.target_id,
+        AuditEvent.outcome,
+        AuditEvent.request_id,
+        AuditEvent.reason,
+        AuditEvent.created_at,
+    ]
+    form_columns = column_list
+
+
 def mount_admin(
     app: FastAPI,
     *,
@@ -253,6 +341,7 @@ def mount_admin(
     auth_service: AuthService,
     secret_key: str,
     session_factory: Any | None = None,
+    audit_sink: object | None = None,
 ) -> Admin:
     """把 SQLAdmin 挂载到 FastAPI，并确保它只使用应用库 Engine。"""
 
@@ -269,8 +358,13 @@ def mount_admin(
     admin.add_view(UserAdmin)
     admin.add_view(RoleAdmin)
     admin.add_view(PermissionAdmin)
+    admin.add_view(AuditEventAdmin)
     app.state.sqladmin = admin
     app.state.sqladmin_engine = engine
+    app.state.audit_sink = audit_sink
+    # SQLAdmin 请求落在它自己的 Starlette 子应用上，不会自动继承 FastAPI
+    # 根应用的 State；审计 Sink 必须显式放到这个请求边界上。
+    admin.admin.state.audit_sink = audit_sink
     return admin
 
 
@@ -280,3 +374,65 @@ def _revoke_sessions(session: Session, user_id: int) -> None:
         .where(UserSession.user_id == user_id, UserSession.revoked_at.is_(None))
         .values(revoked_at=datetime.now(UTC))
     )
+
+
+def _actor_user_id(request: Request) -> int | None:
+    context = getattr(request.state, "chatbi_auth_context", None)
+    return context.user_id if isinstance(context, AuthContext) else None
+
+
+def _request_id(request: Request) -> str:
+    value = request.headers.get("X-Request-ID")
+    return value.strip() if isinstance(value, str) and value.strip() else "sqladmin"
+
+
+def _role_names(roles: Any) -> frozenset[str]:
+    return frozenset(role.name for role in roles if hasattr(role, "name"))
+
+
+def _write_admin_audit(
+    sink: object,
+    session: Session,
+    record: AuditRecord,
+) -> None:
+    writer = getattr(sink, "write", None)
+    if not callable(writer):
+        raise AuditUnavailable("ChatBI 审计 Sink 不支持事务内写入")
+    try:
+        writer(session, record)
+    except AuditUnavailable:
+        raise
+    except Exception as exc:  # noqa: BLE001 - management audit must Fail Closed
+        raise AuditUnavailable("ChatBI 审计写入失败") from exc
+
+
+def _mark_admin_audit(
+    model: User,
+    request: Request,
+    records: list[AuditRecord],
+) -> None:
+    sink = getattr(request.app.state, "audit_sink", None)
+    if sink is None or not records:
+        return
+    setattr(model, _ADMIN_AUDIT_RECORDS, records)
+    setattr(model, _ADMIN_AUDIT_SINK, sink)
+
+
+@event.listens_for(Session, "before_flush")
+def _write_marked_admin_audit(
+    session: Session,
+    flush_context: object,
+    instances: object,
+) -> None:
+    del flush_context, instances
+    for model in [*session.new, *session.dirty]:
+        records = getattr(model, _ADMIN_AUDIT_RECORDS, None)
+        if not isinstance(model, User) or not records:
+            continue
+        sink = getattr(model, _ADMIN_AUDIT_SINK, None)
+        delattr(model, _ADMIN_AUDIT_RECORDS)
+        delattr(model, _ADMIN_AUDIT_SINK)
+        if sink is None:
+            continue
+        for record in records:
+            _write_admin_audit(sink, session, record)

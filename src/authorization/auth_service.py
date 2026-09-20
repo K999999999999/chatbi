@@ -14,6 +14,7 @@ from src.chatbi_control.bootstrap import normalize_username
 from src.chatbi_control.models import User, UserSession
 
 from .contracts import AuthContext
+from .audit_service import AuditRecord, AuditUnavailable
 from .passwords import hash_password, verify_password
 
 IDLE_TTL = timedelta(minutes=30)
@@ -39,12 +40,20 @@ class AuthService:
         *,
         clock: Callable[[], datetime] | None = None,
         token_factory: Callable[[], str] | None = None,
+        audit_sink: object | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._clock = clock or (lambda: datetime.now(UTC))
         self._token_factory = token_factory or (lambda: secrets.token_urlsafe(32))
+        self._audit_sink = audit_sink
 
-    def login(self, username: str, password: str) -> LoginResult:
+    def login(
+        self,
+        username: str,
+        password: str,
+        *,
+        request_id: str | None = None,
+    ) -> LoginResult:
         """验证凭证并创建数据库 Session。"""
 
         try:
@@ -54,6 +63,7 @@ class AuthService:
 
         now = _as_utc(self._clock())
         login_failed = False
+        failure_reason = "INVALID_CREDENTIALS"
         raw_token = ""
         context: AuthContext | None = None
         with self._session_factory() as session, session.begin():
@@ -66,11 +76,19 @@ class AuthService:
                 or (user.locked_until is not None and _as_utc(user.locked_until) > now)
             ):
                 login_failed = True
+                failure_reason = (
+                    "USER_DISABLED"
+                    if user is not None and not user.is_active
+                    else "LOGIN_LOCKED"
+                    if user is not None and user.locked_until is not None
+                    else "INVALID_CREDENTIALS"
+                )
             elif not verify_password(password, user.password_hash):
                 user.failed_login_count += 1
                 if user.failed_login_count >= MAX_FAILED_LOGIN_ATTEMPTS:
                     user.locked_until = now + FAILED_LOGIN_LOCK_DURATION
                 login_failed = True
+                failure_reason = "INVALID_CREDENTIALS"
             else:
                 user.failed_login_count = 0
                 user.locked_until = None
@@ -86,6 +104,33 @@ class AuthService:
                     )
                 )
                 context = _context_for_user(user)
+
+            if login_failed:
+                self._write_security_audit(
+                    session,
+                    AuditRecord(
+                        event_type="auth.login",
+                        target_type="user",
+                        target_id=normalized_username,
+                        outcome="failure",
+                        request_id=request_id,
+                        reason=failure_reason,
+                        actor_user_id=user.id if user is not None else None,
+                    ),
+                )
+            else:
+                self._write_security_audit(
+                    session,
+                    AuditRecord(
+                        event_type="auth.login",
+                        target_type="user",
+                        target_id=normalized_username,
+                        outcome="success",
+                        request_id=request_id,
+                        reason="AUTHENTICATED",
+                        actor_user_id=user.id if user is not None else None,
+                    ),
+                )
 
         if login_failed or context is None:
             raise AuthenticationFailed("用户名或密码错误")
@@ -115,7 +160,7 @@ class AuthService:
             record.expires_at = min(now + IDLE_TTL, _as_utc(record.absolute_expires_at))
             return _context_for_user(record.user)
 
-    def logout(self, raw_token: str) -> bool:
+    def logout(self, raw_token: str, *, request_id: str | None = None) -> bool:
         """撤销当前 Session；未知或已撤销 Token 视为幂等成功。"""
 
         token_hash = _hash_token_or_raise(raw_token)
@@ -127,6 +172,18 @@ class AuthService:
             if record is None or record.revoked_at is not None:
                 return False
             record.revoked_at = now
+            self._write_security_audit(
+                session,
+                AuditRecord(
+                    event_type="auth.logout",
+                    target_type="session",
+                    target_id=str(record.user_id),
+                    outcome="success",
+                    request_id=request_id,
+                    reason="LOGOUT",
+                    actor_user_id=record.user_id,
+                ),
+            )
             return True
 
     def change_password(
@@ -135,6 +192,7 @@ class AuthService:
         *,
         current_password: str,
         new_password: str,
+        request_id: str | None = None,
     ) -> None:
         """修改当前用户密码，并撤销该用户全部旧 Session。"""
 
@@ -151,8 +209,27 @@ class AuthService:
             record.user.locked_until = None
             record.user.updated_at = now
             _revoke_user_sessions(session, record.user.id, now)
+            self._write_security_audit(
+                session,
+                AuditRecord(
+                    event_type="auth.password_change",
+                    target_type="user",
+                    target_id=str(record.user.id),
+                    outcome="success",
+                    request_id=request_id,
+                    reason="PASSWORD_CHANGED",
+                    actor_user_id=record.user.id,
+                ),
+            )
 
-    def reset_password(self, user_id: int, *, new_password: str) -> None:
+    def reset_password(
+        self,
+        user_id: int,
+        *,
+        new_password: str,
+        actor_user_id: int | None = None,
+        request_id: str | None = None,
+    ) -> None:
         """管理员重置用户密码，并撤销该用户全部旧 Session。"""
 
         new_hash = hash_password(new_password)
@@ -167,8 +244,26 @@ class AuthService:
             user.locked_until = None
             user.updated_at = now
             _revoke_user_sessions(session, user.id, now)
+            self._write_security_audit(
+                session,
+                AuditRecord(
+                    event_type="auth.password_reset",
+                    target_type="user",
+                    target_id=str(user.id),
+                    outcome="success",
+                    request_id=request_id,
+                    reason="PASSWORD_RESET",
+                    actor_user_id=actor_user_id,
+                ),
+            )
 
-    def disable_user(self, user_id: int) -> None:
+    def disable_user(
+        self,
+        user_id: int,
+        *,
+        actor_user_id: int | None = None,
+        request_id: str | None = None,
+    ) -> None:
         """禁用用户并立即撤销其全部 Session。"""
 
         now = _as_utc(self._clock())
@@ -179,8 +274,26 @@ class AuthService:
             user.is_active = False
             user.updated_at = now
             _revoke_user_sessions(session, user.id, now)
+            self._write_security_audit(
+                session,
+                AuditRecord(
+                    event_type="user.disable",
+                    target_type="user",
+                    target_id=str(user.id),
+                    outcome="success",
+                    request_id=request_id,
+                    reason="USER_DISABLED",
+                    actor_user_id=actor_user_id,
+                ),
+            )
 
-    def enable_user(self, user_id: int) -> None:
+    def enable_user(
+        self,
+        user_id: int,
+        *,
+        actor_user_id: int | None = None,
+        request_id: str | None = None,
+    ) -> None:
         """启用用户；启用不自动创建 Session。"""
 
         now = _as_utc(self._clock())
@@ -190,6 +303,18 @@ class AuthService:
                 raise AuthenticationFailed("用户不存在")
             user.is_active = True
             user.updated_at = now
+            self._write_security_audit(
+                session,
+                AuditRecord(
+                    event_type="user.enable",
+                    target_type="user",
+                    target_id=str(user.id),
+                    outcome="success",
+                    request_id=request_id,
+                    reason="USER_ENABLED",
+                    actor_user_id=actor_user_id,
+                ),
+            )
 
     @staticmethod
     def can_execute_query(auth_context: AuthContext) -> bool:
@@ -219,6 +344,19 @@ class AuthService:
         if not isinstance(raw_token, str) or not raw_token:
             raise RuntimeError("Session Token 生成失败")
         return raw_token
+
+    def _write_security_audit(self, session: Session, record: AuditRecord) -> None:
+        if self._audit_sink is None:
+            return
+        writer = getattr(self._audit_sink, "write", None)
+        if not callable(writer):
+            raise AuditUnavailable("ChatBI 审计 Sink 不支持事务内写入")
+        try:
+            writer(session, record)
+        except AuditUnavailable:
+            raise
+        except Exception as exc:  # noqa: BLE001 - security audit must Fail Closed
+            raise AuditUnavailable("ChatBI 审计写入失败") from exc
 
 
 class LocalSessionIdentityProvider:

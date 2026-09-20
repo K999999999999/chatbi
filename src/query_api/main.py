@@ -6,8 +6,8 @@ from sqlalchemy.orm import sessionmaker
 
 from src.authorization import (
     AuthService,
-    InMemoryAuditSink,
     LocalSessionIdentityProvider,
+    PersistentAuditSink,
     RoleAuthorizationPolicyStore,
 )
 from src.chatbi_control.database import (
@@ -61,7 +61,8 @@ def _rag_online_retrieval_enabled() -> bool:
 _control_config = ControlDatabaseConfig.from_environment(require_migrator=False)
 _control_engine = create_control_engine(_control_config)
 _control_session_factory = sessionmaker(_control_engine, expire_on_commit=False)
-_auth_service = AuthService(_control_session_factory)
+_audit_sink = PersistentAuditSink(_control_session_factory)
+_auth_service = AuthService(_control_session_factory, audit_sink=_audit_sink)
 _identity_provider = LocalSessionIdentityProvider(_auth_service)
 _policy_store = RoleAuthorizationPolicyStore()
 _admin_secret_key = os.getenv("CHATBI_ADMIN_SECRET_KEY", "").strip()
@@ -71,7 +72,7 @@ if not _admin_secret_key:
 _service = build_service()
 app = create_app(
     _service,
-    audit_sink=InMemoryAuditSink(),
+    audit_sink=_audit_sink,
     identity_provider=_identity_provider,
     policy_store=_policy_store,
     auth_service=_auth_service,

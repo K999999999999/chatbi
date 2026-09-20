@@ -77,7 +77,7 @@ class AuthorizedQueryService:
         )
         if authorization_result is not None:
             return authorization_result
-        return self.execute_authorized(request)
+        return self.execute_authorized(request, auth_context=auth_context)
 
     def authorize(
         self,
@@ -188,10 +188,62 @@ class AuthorizedQueryService:
 
         return None
 
-    def execute_authorized(self, request: QueryRequest) -> QueryResult:
+    def execute_authorized(
+        self,
+        request: QueryRequest,
+        *,
+        auth_context: AuthContext | None = None,
+    ) -> QueryResult:
         """执行已经通过本轮授权的单条查询。"""
 
-        return self._query_service.execute(request)
+        try:
+            result = self._query_service.execute(request)
+        except Exception as exc:
+            self._emit_query_outcome(
+                request_id=_request_id(request.request_id),
+                auth_context=auth_context,
+                outcome="failure",
+                reason=type(exc).__name__,
+            )
+            raise
+        self._emit_query_outcome(
+            request_id=_request_id(request.request_id),
+            auth_context=auth_context,
+            outcome="failure" if isinstance(result, QueryFailure) else "success",
+            reason=(
+                result.error_code.value
+                if isinstance(result, QueryFailure)
+                else "QUERY_SUCCEEDED"
+            ),
+        )
+        return result
+
+    def _emit_query_outcome(
+        self,
+        *,
+        request_id: str,
+        auth_context: AuthContext | None,
+        outcome: str,
+        reason: str,
+    ) -> None:
+        emitter = getattr(self._audit_sink, "emit_query_outcome", None)
+        if not callable(emitter):
+            return
+        try:
+            emitter(
+                request_id=request_id,
+                actor_user_id=(
+                    auth_context.user_id if auth_context is not None else None
+                ),
+                outcome=outcome,
+                reason=reason,
+            )
+        except Exception as exc:  # noqa: BLE001 - post-query audit is best effort
+            _LOGGER.warning(
+                "Query outcome audit degraded: request_id=%s error_type=%s",
+                request_id,
+                type(exc).__name__,
+            )
 
     def authentication_failure(
         self,

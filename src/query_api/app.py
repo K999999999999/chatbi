@@ -212,6 +212,7 @@ def create_app(
             auth_service=auth_service,
             secret_key=admin_secret_key,
             session_factory=admin_session_factory,
+            audit_sink=audit_sink,
         )
     app.state.audit_sink = audit_sink
     app.state.trace_recorder = recorder
@@ -237,11 +238,15 @@ def create_app(
         return {"status": "ok"}
 
     @app.post("/auth/login", response_model=LoginResponse)
-    def login(body: LoginBody) -> LoginResponse:
+    def login(request: Request, body: LoginBody) -> LoginResponse:
         if auth_service is None:
             raise _auth_service_unavailable()
         try:
-            result = auth_service.login(body.username, body.password)
+            result = auth_service.login(
+                body.username,
+                body.password,
+                request_id=_request_id_from_header(request.headers.get("X-Request-ID")),
+            )
         except AuthenticationFailed as exc:
             raise _unauthorized(str(exc)) from None
         except Exception as exc:  # noqa: BLE001 - authentication must Fail Closed
@@ -273,7 +278,10 @@ def create_app(
         _authenticate_local_request(request, auth_service)
         assert auth_service is not None
         try:
-            auth_service.logout(token)
+            auth_service.logout(
+                token,
+                request_id=_request_id_from_header(request.headers.get("X-Request-ID")),
+            )
         except SessionExpired:
             raise _unauthorized("需要有效的身份认证") from None
         except Exception as exc:  # noqa: BLE001 - authentication must Fail Closed
@@ -291,6 +299,7 @@ def create_app(
                 token,
                 current_password=body.current_password,
                 new_password=body.new_password,
+                request_id=_request_id_from_header(request.headers.get("X-Request-ID")),
             )
         except SessionExpired:
             raise _unauthorized("需要有效的身份认证") from None
@@ -515,7 +524,10 @@ def _authorized_query(
                 request_id=request_id,
                 semantic_query=revised_state,
             )
-        result = query_service.execute_authorized(effective_request)
+        result = query_service.execute_authorized(
+            effective_request,
+            auth_context=auth_context,
+        )
     except Exception:
         if lease is not None:
             conversation_store.abort(lease)
