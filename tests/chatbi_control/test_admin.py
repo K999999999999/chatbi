@@ -238,3 +238,33 @@ class SqlAdminIntegrationTest(TestCase):
                     select(User).where(User.username == "audit-failure-user")
                 )
             )
+
+    def test_admin_can_disable_and_enable_user_from_edit_form(self) -> None:
+        client = TestClient(self.app)
+        client.post(
+            "/admin/login",
+            data={"username": "admin-1", "password": "admin-password-123"},
+        )
+
+        disabled = client.post(
+            "/admin/user/edit/2",
+            data={"username": "analyst-1", "password_hash": "", "roles": "2"},
+            follow_redirects=False,
+        )
+        self.assertEqual(disabled.status_code, 302)
+        with self.session_factory() as session:
+            self.assertFalse(session.get(User, 2).is_active)
+
+        enabled = client.post(
+            "/admin/user/edit/2",
+            data={
+                "username": "analyst-1",
+                "password_hash": "",
+                "is_active": "y",
+                "roles": "2",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(enabled.status_code, 302)
+        with self.session_factory() as session:
+            self.assertTrue(session.get(User, 2).is_active)

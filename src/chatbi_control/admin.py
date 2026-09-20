@@ -209,7 +209,11 @@ class UserAdmin(ModelView, model=User):
             session = inspect(model).session
             if session is None:
                 raise AdminPolicyError("无法确认用户变更事务")
-            roles = data.get("roles", model.roles)
+            roles = _resolve_roles(
+                session,
+                data.get("roles"),
+                current_roles=model.roles,
+            )
             validate_user_mutation(
                 session,
                 user_id=model.id,
@@ -253,9 +257,7 @@ class UserAdmin(ModelView, model=User):
                         reason="PASSWORD_RESET",
                     )
                 )
-            if "roles" in data and _role_names(data["roles"]) != _role_names(
-                model.roles
-            ):
+            if "roles" in data and _role_names(roles) != _role_names(model.roles):
                 pending_events.append(
                     AuditRecord(
                         event_type="user.roles_update",
@@ -388,6 +390,31 @@ def _request_id(request: Request) -> str:
 
 def _role_names(roles: Any) -> frozenset[str]:
     return frozenset(role.name for role in roles if hasattr(role, "name"))
+
+
+def _resolve_roles(
+    session: Session,
+    raw_roles: Any,
+    *,
+    current_roles: list[Role],
+) -> list[Role]:
+    """把 SQLAdmin 表单中的角色 ID 转换为已认证的 Role 对象。"""
+
+    if raw_roles is None:
+        return list(current_roles)
+    values = [raw_roles] if isinstance(raw_roles, (str, int)) else list(raw_roles)
+    if not values:
+        return []
+    if all(isinstance(value, Role) for value in values):
+        return values
+    try:
+        role_ids = [int(value) for value in values]
+    except (TypeError, ValueError) as exc:
+        raise AdminPolicyError("角色表单值无效") from exc
+    roles = list(session.scalars(select(Role).where(Role.id.in_(role_ids))).all())
+    if len(roles) != len(set(role_ids)):
+        raise AdminPolicyError("只能分配代码固定的 admin 或 analyst 角色")
+    return roles
 
 
 def _write_admin_audit(
