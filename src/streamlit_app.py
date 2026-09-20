@@ -23,6 +23,7 @@ _AUTHORIZATION_ERROR_CODES_BY_STATUS = {
     403: "AUTHORIZATION_DENIED",
     503: "AUTHENTICATION_UNAVAILABLE",
 }
+_AUTHENTICATION_FAILED_MESSAGE = "用户名或密码错误"
 _CONVERSATION_ERROR_MESSAGES = {
     "CONVERSATION_UNAVAILABLE": "当前会话已失效，请点击“新建会话”后重新开始",
     "CLARIFICATION_REQUIRED": "请明确需要新增或修改的查询条件",
@@ -32,6 +33,9 @@ _CONVERSATION_ERROR_MESSAGES = {
 _CONVERSATION_ID_KEY = "conversation_id"
 _CONVERSATION_RESET_REQUIRED_KEY = "conversation_reset_required"
 _CONVERSATION_TIMELINE_KEY = "conversation_timeline"
+_AUTH_TOKEN_KEY = "auth_token"
+_AUTH_USERNAME_KEY = "auth_username"
+_AUTH_MUST_CHANGE_KEY = "auth_must_change_password"
 
 
 class QueryAPIError(RuntimeError):
@@ -59,12 +63,21 @@ class QueryAPIResponse(dict[str, Any]):
         self.trace_id = trace_id
 
 
+class AuthAPIResponse(dict[str, Any]):
+    """登录 API 响应的安全 JSON shape。"""
+
+    def __init__(self, payload: dict[str, Any], *, trace_id: str = "") -> None:
+        super().__init__(payload)
+        self.trace_id = trace_id
+
+
 def query_api(
     base_url: str,
     question: str,
     *,
     conversation_id: str | None = None,
     timeout: float = _DEFAULT_API_TIMEOUT,
+    access_token: str | None = None,
     opener: Callable[..., Any] | None = None,
 ) -> QueryAPIResponse:
     """调用现有查询 API，不在页面层执行 LLM 或数据库逻辑。"""
@@ -72,10 +85,13 @@ def query_api(
     if isinstance(conversation_id, str) and conversation_id.strip():
         request_payload["conversation_id"] = conversation_id.strip()
 
+    headers = {"Content-Type": "application/json"}
+    if isinstance(access_token, str) and access_token.strip():
+        headers["Authorization"] = f"Bearer {access_token.strip()}"
     request = Request(
         url=f"{base_url.rstrip('/')}/api/v1/query",
         data=json.dumps(request_payload, ensure_ascii=False).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers=headers,
         method="POST",
     )
     open_request = urlopen if opener is None else opener
@@ -117,6 +133,125 @@ def query_api(
             trace_id=trace_id,
         )
     return QueryAPIResponse(payload, trace_id=trace_id)
+
+
+def login_api(
+    base_url: str,
+    username: str,
+    password: str,
+    *,
+    timeout: float = _DEFAULT_API_TIMEOUT,
+    opener: Callable[..., Any] | None = None,
+) -> AuthAPIResponse:
+    """调用本地账号登录 API；Token 只返回给当前页面状态。"""
+
+    payload = _auth_json_request(
+        base_url,
+        "/auth/login",
+        {"username": username, "password": password},
+        timeout=timeout,
+        opener=opener,
+    )
+    return AuthAPIResponse(payload)
+
+
+def change_password_api(
+    base_url: str,
+    access_token: str,
+    current_password: str,
+    new_password: str,
+    *,
+    timeout: float = _DEFAULT_API_TIMEOUT,
+    opener: Callable[..., Any] | None = None,
+) -> None:
+    """修改密码；成功后服务端会撤销旧 Token。"""
+
+    _auth_json_request(
+        base_url,
+        "/auth/change-password",
+        {"current_password": current_password, "new_password": new_password},
+        access_token=access_token,
+        timeout=timeout,
+        opener=opener,
+        expect_json=False,
+    )
+
+
+def logout_api(
+    base_url: str,
+    access_token: str,
+    *,
+    timeout: float = _DEFAULT_API_TIMEOUT,
+    opener: Callable[..., Any] | None = None,
+) -> None:
+    """撤销当前本地账号 Session。"""
+
+    _auth_json_request(
+        base_url,
+        "/auth/logout",
+        {},
+        access_token=access_token,
+        timeout=timeout,
+        opener=opener,
+        expect_json=False,
+    )
+
+
+def _auth_json_request(
+    base_url: str,
+    path: str,
+    payload: dict[str, str],
+    *,
+    access_token: str | None = None,
+    timeout: float,
+    opener: Callable[..., Any] | None,
+    expect_json: bool = True,
+) -> dict[str, Any]:
+    headers = {"Content-Type": "application/json"}
+    if isinstance(access_token, str) and access_token.strip():
+        headers["Authorization"] = f"Bearer {access_token.strip()}"
+    request = Request(
+        url=f"{base_url.rstrip('/')}{path}",
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    open_request = urlopen if opener is None else opener
+    try:
+        with open_request(request, timeout=timeout) as response:
+            trace_id = _trace_id_from_response(response)
+            body = response.read()
+    except HTTPError as exc:
+        trace_id = _trace_id_from_response(exc)
+        try:
+            error_payload = _read_json(exc.read())
+        except (UnicodeDecodeError, ValueError, TypeError):
+            error_payload = {}
+        if path == "/auth/login" and exc.code == 401:
+            raise QueryAPIError(
+                "AUTHENTICATION_FAILED",
+                _AUTHENTICATION_FAILED_MESSAGE,
+                trace_id=trace_id,
+            ) from None
+        raise _error_from_payload(
+            error_payload,
+            "账号服务请求失败",
+            trace_id=trace_id,
+            status_code=exc.code,
+        ) from None
+    except (URLError, TimeoutError, OSError):
+        raise QueryAPIError("API_UNAVAILABLE", "无法连接账号服务") from None
+
+    if not expect_json:
+        return {}
+    try:
+        return _read_json(body)
+    except (UnicodeDecodeError, ValueError, TypeError):
+        raise QueryAPIError(
+            "API_ERROR",
+            "账号服务返回了无效响应",
+            trace_id=trace_id,
+        ) from None
 
 
 def rows_as_records(
@@ -170,6 +305,19 @@ def main() -> None:
     st.title("ChatBI 查询")
     st.caption("输入自然语言问题，查询 mart_sales 数据。")
 
+    _initialize_auth_state(st)
+    if not _access_token(st):
+        _render_login(st)
+        return
+    if st.session_state.get(_AUTH_MUST_CHANGE_KEY, False):
+        _render_change_password(st)
+        return
+
+    st.sidebar.caption(f"当前用户：{st.session_state.get(_AUTH_USERNAME_KEY, '')}")
+    if st.sidebar.button("退出登录"):
+        _logout_current_user(st)
+        st.rerun()
+
     if st.button("新建会话"):
         _start_new_conversation(st)
         st.rerun()
@@ -187,6 +335,82 @@ def main() -> None:
 
     timeline = st.session_state.get(_CONVERSATION_TIMELINE_KEY, [])
     _render_timeline(st, timeline)
+
+
+def _initialize_auth_state(st: Any) -> None:
+    st.session_state.setdefault(_AUTH_TOKEN_KEY, None)
+    st.session_state.setdefault(_AUTH_USERNAME_KEY, "")
+    st.session_state.setdefault(_AUTH_MUST_CHANGE_KEY, False)
+
+
+def _access_token(st: Any) -> str | None:
+    token = st.session_state.get(_AUTH_TOKEN_KEY)
+    return token.strip() if isinstance(token, str) and token.strip() else None
+
+
+def _render_login(st: Any) -> None:
+    st.subheader("登录")
+    with st.form("login_form"):
+        username = st.text_input("用户名")
+        password = st.text_input("密码", type="password")
+        submitted = st.form_submit_button("登录", type="primary")
+    if not submitted:
+        return
+    base_url = _api_base_url()
+    try:
+        response = login_api(base_url, username, password)
+    except QueryAPIError as error:
+        _render_error(st, error)
+        return
+    st.session_state[_AUTH_TOKEN_KEY] = response.get("access_token")
+    st.session_state[_AUTH_USERNAME_KEY] = response.get("username", username)
+    st.session_state[_AUTH_MUST_CHANGE_KEY] = bool(
+        response.get("must_change_password", False)
+    )
+    st.rerun()
+
+
+def _render_change_password(st: Any) -> None:
+    st.subheader("首次登录需要修改密码")
+    with st.form("change_password_form"):
+        current_password = st.text_input("当前密码", type="password")
+        new_password = st.text_input("新密码（至少 12 位）", type="password")
+        submitted = st.form_submit_button("修改密码", type="primary")
+    if not submitted:
+        return
+    try:
+        change_password_api(
+            _api_base_url(),
+            _access_token(st) or "",
+            current_password,
+            new_password,
+        )
+    except QueryAPIError as error:
+        if error.error_code == "AUTHENTICATION_REQUIRED":
+            _logout_current_user(st)
+            st.rerun()
+        _render_error(st, error)
+        return
+    st.session_state[_AUTH_TOKEN_KEY] = None
+    st.session_state[_AUTH_MUST_CHANGE_KEY] = False
+    st.success("密码已修改，请重新登录。")
+
+
+def _logout_current_user(st: Any) -> None:
+    token = _access_token(st)
+    if token:
+        try:
+            logout_api(_api_base_url(), token)
+        except QueryAPIError:
+            pass
+    st.session_state[_AUTH_TOKEN_KEY] = None
+    st.session_state[_AUTH_USERNAME_KEY] = ""
+    st.session_state[_AUTH_MUST_CHANGE_KEY] = False
+
+
+def _api_base_url() -> str:
+    base_url = os.environ.get("CHATBI_API_BASE_URL", _DEFAULT_API_BASE_URL).strip()
+    return base_url or _DEFAULT_API_BASE_URL
 
 
 def _submit_query(st: Any, question: str) -> None:
@@ -208,9 +432,8 @@ def _submit_query(st: Any, question: str) -> None:
         )
         return
 
-    base_url = os.environ.get("CHATBI_API_BASE_URL", _DEFAULT_API_BASE_URL).strip()
-    if not base_url:
-        base_url = _DEFAULT_API_BASE_URL
+    base_url = _api_base_url()
+    access_token = _access_token(st)
     conversation_id = st.session_state.get(_CONVERSATION_ID_KEY)
     if not isinstance(conversation_id, str) or not conversation_id.strip():
         conversation_id = None
@@ -223,11 +446,15 @@ def _submit_query(st: Any, question: str) -> None:
                 base_url,
                 question,
                 conversation_id=conversation_id,
+                access_token=access_token,
             )
         except QueryAPIError as error:
             st.session_state.last_query_response = None
             st.session_state.last_query_error = error
             _append_timeline_error(st, question, error)
+            if error.error_code == "AUTHENTICATION_REQUIRED":
+                _logout_current_user(st)
+                st.rerun()
             if error.error_code == "CONVERSATION_UNAVAILABLE":
                 st.session_state[_CONVERSATION_ID_KEY] = None
                 st.session_state[_CONVERSATION_RESET_REQUIRED_KEY] = True

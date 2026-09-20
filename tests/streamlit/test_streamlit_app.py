@@ -3,7 +3,7 @@
 from io import BytesIO
 import json
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from urllib.error import HTTPError, URLError
 from urllib.request import Request
 
@@ -13,6 +13,8 @@ from src.streamlit_app import (
     _render_error,
     _render_success,
     format_display_rows,
+    change_password_api,
+    login_api,
     query_api,
     rows_as_records,
 )
@@ -41,6 +43,100 @@ class _Response:
 
 
 class StreamlitQueryClientTest(TestCase):
+    def test_query_api_attaches_bearer_token_when_available(self) -> None:
+        calls: list[Request] = []
+
+        def opener(request: Request, *, timeout: float) -> _Response:
+            del timeout
+            calls.append(request)
+            return _Response(
+                {
+                    "request_id": "req-auth",
+                    "sql": "SELECT 1",
+                    "columns": ["value"],
+                    "rows": [[1]],
+                    "row_count": 1,
+                    "truncated": False,
+                }
+            )
+
+        query_api(
+            "http://127.0.0.1:8000",
+            "查询销售额",
+            access_token="token-1",
+            opener=opener,
+        )
+
+        self.assertEqual(calls[0].get_header("Authorization"), "Bearer token-1")
+
+    def test_login_and_change_password_use_json_auth_contract(self) -> None:
+        calls: list[Request] = []
+
+        def login_opener(request: Request, *, timeout: float) -> _Response:
+            del timeout
+            calls.append(request)
+            return _Response(
+                {
+                    "access_token": "token-1",
+                    "token_type": "Bearer",
+                    "username": "analyst-1",
+                    "must_change_password": True,
+                }
+            )
+
+        login = login_api(
+            "http://127.0.0.1:8000",
+            "analyst-1",
+            "password-123456",
+            opener=login_opener,
+        )
+        self.assertEqual(login["access_token"], "token-1")
+        self.assertEqual(calls[0].full_url, "http://127.0.0.1:8000/auth/login")
+        self.assertNotIn("Authorization", calls[0].headers)
+
+        def change_opener(request: Request, *, timeout: float) -> _Response:
+            del timeout
+            calls.append(request)
+            return _Response({}, status=204)
+
+        change_password_api(
+            "http://127.0.0.1:8000",
+            "token-1",
+            "password-123456",
+            "new-password-123456",
+            opener=change_opener,
+        )
+        self.assertEqual(calls[1].get_header("Authorization"), "Bearer token-1")
+        self.assertEqual(
+            json.loads(calls[1].data.decode("utf-8")),
+            {
+                "current_password": "password-123456",
+                "new_password": "new-password-123456",
+            },
+        )
+
+    def test_login_failure_uses_credentials_message(self) -> None:
+        def opener(_request: Request, *, timeout: float) -> _Response:
+            del timeout
+            raise HTTPError(
+                url="http://127.0.0.1:8000/auth/login",
+                code=401,
+                msg="Unauthorized",
+                hdrs={},
+                fp=BytesIO(json.dumps({"detail": "用户名或密码错误"}).encode("utf-8")),
+            )
+
+        with self.assertRaises(QueryAPIError) as raised:
+            login_api(
+                "http://127.0.0.1:8000",
+                "wrong-user",
+                "wrong-password",
+                opener=opener,
+            )
+
+        self.assertEqual(raised.exception.error_code, "AUTHENTICATION_FAILED")
+        self.assertEqual(raised.exception.error_message, "用户名或密码错误")
+
     def test_query_api_posts_question_and_returns_success_payload(self) -> None:
         calls: list[tuple[Request, float]] = []
         payload = {
@@ -231,6 +327,40 @@ class StreamlitQueryClientTest(TestCase):
 
         self.assertEqual(displayed.session_state.conversation_id, "conv-1")
         self.assertIs(displayed.session_state.last_query_error, error)
+
+    def test_authentication_failure_returns_page_to_login(self) -> None:
+        displayed = _FakeStreamlit()
+        error = QueryAPIError(
+            "AUTHENTICATION_REQUIRED",
+            "需要有效的身份认证",
+        )
+        displayed.rerun = Mock()
+
+        with (
+            patch.object(streamlit_app, "query_api", side_effect=error),
+            patch.object(streamlit_app, "_logout_current_user") as logout,
+        ):
+            streamlit_app._submit_query(displayed, "查询销售额")
+
+        logout.assert_called_once_with(displayed)
+        displayed.rerun.assert_called_once_with()
+
+    def test_expired_auth_during_password_change_returns_to_login(self) -> None:
+        displayed = _FakeStreamlit()
+        error = QueryAPIError(
+            "AUTHENTICATION_REQUIRED",
+            "需要有效的身份认证",
+        )
+        displayed.rerun = Mock()
+
+        with (
+            patch.object(streamlit_app, "change_password_api", side_effect=error),
+            patch.object(streamlit_app, "_logout_current_user") as logout,
+        ):
+            streamlit_app._render_change_password(displayed)
+
+        logout.assert_called_once_with(displayed)
+        displayed.rerun.assert_called_once_with()
 
     def test_expired_conversation_requires_new_session_and_clears_old_id(self) -> None:
         displayed = _FakeStreamlit()
@@ -611,6 +741,20 @@ class _FakeStreamlit:
 
     def subheader(self, message: str) -> None:
         self.subheaders.append(message)
+
+    def form(self, _name: str) -> _FakeContext:
+        return _FakeContext()
+
+    def text_input(self, _label: str, *, type: str) -> str:
+        del type
+        return "password-123456"
+
+    def form_submit_button(self, _label: str, *, type: str = "secondary") -> bool:
+        del type
+        return True
+
+    def success(self, _message: str) -> None:
+        return None
 
     def info(self, _message: str) -> None:
         return None

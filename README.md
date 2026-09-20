@@ -39,6 +39,7 @@ Natural Language
 | Online Query | [`src/online_query/`](src/online_query/)；`OnlineQueryService.execute()`、`OnlineRetriever.retrieve()` | 授权后的查询编排、上下文、Online Retrieval、SQL Guard 和数据库执行 | 已实现；见 [`docs/specs/online-query.md`](docs/specs/online-query.md)、[`docs/specs/online-retrieval.md`](docs/specs/online-retrieval.md) 和 [`tests/online_query/`](tests/online_query/) |
 | Query API Adapter | [`src/query_api/`](src/query_api/)；`src/query_api/main.py`、`AuthorizedQueryService.query()` | HTTP `POST /api/v1/query` 和 `GET /health`，负责服务端身份授权后调用 Online Query | 已实现；见 [`docs/specs/query-api.md`](docs/specs/query-api.md) 和 [`tests/query_api/`](tests/query_api/) |
 | Streamlit | [`src/streamlit_app.py`](src/streamlit_app.py) | 通过 HTTP 调用 Query API 的当前验证页面和内部入口 | POC / 内部入口；见 [`tests/streamlit/`](tests/streamlit/) |
+| ChatBI Account & Admin | [`src/chatbi_control/`](src/chatbi_control/)、[`src/authorization/`](src/authorization/) | 内置账号、数据库 Session、固定角色权限、SQLAdmin 和持久化安全审计 | V1 已实现；启动和初始化见 [`docs/runbook.md`](docs/runbook.md)，确定性测试见 [`tests/chatbi_control/`](tests/chatbi_control/) 和 [`tests/authorization/`](tests/authorization/) |
 | RAG Offline Build | [`src/rag_offline/`](src/rag_offline/)；`python -m src.rag_offline` | 事实校验、文档构建、Embedding、Qdrant、关系图和资产发布 | 已实现；见 [`docs/specs/rag-offline-build.md`](docs/specs/rag-offline-build.md) 和 [`tests/rag_offline/`](tests/rag_offline/) |
 | Evaluation | [`src/evaluation/`](src/evaluation/)；`python -m src.evaluation` | 标准案例执行、结果比较和评测报告 | 已实现；见 [`docs/specs/evaluation.md`](docs/specs/evaluation.md) 和 [`tests/evaluation/`](tests/evaluation/) |
 | Observability | [`src/observability/`](src/observability/) | Trace Contract、No-op、OpenTelemetry 和安全属性处理 | V1 已实现；见 [`docs/specs/observability.md`](docs/specs/observability.md)、[`tests/observability/`](tests/observability/) 和验收记录 |
@@ -66,7 +67,7 @@ Natural Language
 - 开发状态：Online Query、Online Retrieval V1、RAG Offline Build、Query API、Evaluation 和 Observability V1 已有代码与对应测试 / 验收文档。
 - POC 范围：`Streamlit` 是当前内部验证页面；测试入口和部分评测场景可以使用 POC 术语。
 - 验证证据：Software Test、真实 PostgreSQL/Qdrant 集成、BGE-M3/RAG Build、真实 LLM Evaluation 和 Business Acceptance 是不同证据层级，不能互相替代。
-- 生产状态：当前仍不是 Production Ready；认证、用户和数据权限、审计、限流、性能与负载、Secret 管理、生产部署和回滚仍需按真实需求推进。
+- 生产状态：当前仍不是 Production Ready；内置认证、用户权限和持久化审计 V1 已完成，但企业 SSO、租户隔离、细粒度数据范围、限流、性能与负载、Secret 管理、生产部署、备份和回滚仍需按真实需求推进。
 
 常用确定性回归命令：
 
@@ -80,6 +81,7 @@ uv run --with pytest python -m pytest -q
 
 - 本地配置：复制 [`.env.example`](.env.example) 为 `.env`，只在本地填写真实配置。
 - 基础设施：按 [`docs/runbook.md`](docs/runbook.md) 启动 PostgreSQL 和 Qdrant。
+- 应用库初始化：`uv run --env-file .env python -m src.chatbi_control --username admin-1`（一次性迁移并创建首个管理员）。
 - API：`uv run uvicorn src.query_api.main:app --host 127.0.0.1 --port 8000`。
 - 页面：`uv run streamlit run src/streamlit_app.py --server.address 127.0.0.1 --server.port 8501`。
 - 结构事实导出：[`scripts/metadata/export_schema.py`](scripts/metadata/export_schema.py)，只读取数据库系统目录并生成结构资产。

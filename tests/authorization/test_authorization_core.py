@@ -282,6 +282,42 @@ class AuthorizationCoreTest(TestCase):
         )
         self.query_service.query.assert_not_called()
 
+    def test_post_query_audit_failure_does_not_change_success_result(self) -> None:
+        audit_sink = Mock()
+        audit_sink.emit_query_outcome.side_effect = RuntimeError(
+            "audit database unavailable"
+        )
+        service = self._service(audit_sink=audit_sink)
+
+        result = service.query(
+            QueryRequest(question="查询销售额", request_id="req-post-audit"),
+            auth_context=self.authorized,
+        )
+
+        self.assertIsInstance(result, QuerySuccess)
+        audit_sink.emit_query_outcome.assert_called_once_with(
+            request_id="req-post-audit",
+            actor_user_id=None,
+            outcome="success",
+            reason="QUERY_SUCCEEDED",
+        )
+
+    def test_downstream_failure_is_not_replaced_by_post_query_audit_failure(
+        self,
+    ) -> None:
+        audit_sink = Mock()
+        audit_sink.emit_query_outcome.side_effect = RuntimeError(
+            "audit database unavailable"
+        )
+        self.query_service.execute.side_effect = RuntimeError("downstream failed")
+        service = self._service(audit_sink=audit_sink)
+
+        with self.assertRaisesRegex(RuntimeError, "downstream failed"):
+            service.query(
+                QueryRequest(question="查询销售额", request_id="req-post-failure"),
+                auth_context=self.authorized,
+            )
+
     def test_static_identity_provider_returns_canonical_context(self) -> None:
         adapter = StaticIdentityProviderAdapter(
             identity_provider="test",

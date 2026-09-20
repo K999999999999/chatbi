@@ -5,7 +5,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from unittest import TestCase
 
 from fastapi.testclient import TestClient
@@ -71,47 +70,42 @@ class QueryApiIntegrationTest(TestCase):
 
     def test_main_module_assembles_real_dependencies_without_connecting(self) -> None:
         root = Path(__file__).resolve().parents[2]
-        with TemporaryDirectory() as directory:
-            policy_file = Path(directory) / "authorization.json"
-            policy_file.write_text(
-                '{"policy_version":"policy-v1","allowed_subjects":["analyst-1"]}',
-                encoding="utf-8",
-            )
-            environment = os.environ.copy()
-            environment.update(
-                {
-                    "CHATBI_ENV": "development",
-                    "CHATBI_IDENTITY_PROVIDER": "test",
-                    "CHATBI_IDENTITY_SUBJECT_ID": "analyst-1",
-                    "CHATBI_AUTH_POLICY_FILE": str(policy_file),
-                    "LLM_API_KEY": "test-key",
-                    "LLM_BASE_URL": "http://127.0.0.1:1/v1",
-                    "LLM_MODEL": "test-model",
-                    "POSTGRES_HOST": "127.0.0.1",
-                    "POSTGRES_PORT": "5433",
-                    "POSTGRES_DB": "chatbi_mvp",
-                    "POSTGRES_APP_USER": "chatbi_app",
-                    "POSTGRES_APP_PASSWORD": "test-password",
-                    "PYTHONPATH": str(root),
-                }
-            )
-            result = subprocess.run(
-                [
-                    sys.executable,
-                    "-c",
-                    (
-                        "from fastapi import FastAPI; "
-                        "from src.query_api.main import app; "
-                        "assert isinstance(app, FastAPI); "
-                        "print('API_APP_READY')"
-                    ),
-                ],
-                cwd=root,
-                env=environment,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "CHATBI_ENV": "development",
+                "LLM_API_KEY": "test-key",
+                "LLM_BASE_URL": "http://127.0.0.1:1/v1",
+                "LLM_MODEL": "test-model",
+                "POSTGRES_HOST": "127.0.0.1",
+                "POSTGRES_PORT": "5433",
+                "POSTGRES_DB": "chatbi_mvp",
+                "POSTGRES_APP_USER": "chatbi_app",
+                "POSTGRES_APP_PASSWORD": "test-password",
+                "POSTGRES_CONTROL_DB": "chatbi_control",
+                "POSTGRES_CONTROL_APP_USER": "chatbi_control_user",
+                "POSTGRES_CONTROL_APP_PASSWORD": "test-control-password",
+                "CHATBI_ADMIN_SECRET_KEY": "test-admin-secret",
+                "PYTHONPATH": str(root),
+            }
+        )
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "from fastapi import FastAPI; "
+                    "from src.query_api.main import app; "
+                    "assert isinstance(app, FastAPI); "
+                    "print('API_APP_READY')"
+                ),
+            ],
+            cwd=root,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("API_APP_READY", result.stdout)

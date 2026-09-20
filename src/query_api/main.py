@@ -2,7 +2,20 @@
 
 import os
 
-from src.authorization import InMemoryAuditSink
+from sqlalchemy.orm import sessionmaker
+
+from src.authorization import (
+    AuthService,
+    LocalSessionIdentityProvider,
+    PersistentAuditSink,
+    RoleAuthorizationPolicyStore,
+)
+from src.chatbi_control.database import (
+    ControlDatabaseConfig,
+    ControlDatabaseMigrationError,
+    create_control_engine,
+    verify_control_schema,
+)
 from src.observability.tracing import create_trace_recorder
 from src.online_query.database import PsycopgQueryExecutor
 from src.online_query.llm import LangChainSQLGenerator
@@ -13,12 +26,12 @@ from src.online_query.service import OnlineQueryService
 
 from .app import create_app
 from .config import (
-    build_identity_provider,
-    build_policy_store,
     load_local_environment,
+    validate_runtime_configuration,
 )
 
 load_local_environment()
+_runtime_environment = validate_runtime_configuration()
 
 
 def build_service() -> OnlineQueryService:
@@ -49,13 +62,39 @@ def _rag_online_retrieval_enabled() -> bool:
     return value not in {"0", "false", "no", "off"}
 
 
-_identity_provider = build_identity_provider()
-_policy_store = build_policy_store()
+_control_config = ControlDatabaseConfig.from_environment(require_migrator=False)
+_control_engine = create_control_engine(_control_config)
+_control_session_factory = sessionmaker(_control_engine, expire_on_commit=False)
+_audit_sink = PersistentAuditSink(_control_session_factory)
+_auth_service = AuthService(_control_session_factory, audit_sink=_audit_sink)
+_identity_provider = LocalSessionIdentityProvider(_auth_service)
+_policy_store = RoleAuthorizationPolicyStore()
+_admin_secret_key = os.getenv("CHATBI_ADMIN_SECRET_KEY", "").strip()
+if not _admin_secret_key:
+    raise RuntimeError("CHATBI_ADMIN_SECRET_KEY 必须显式设置")
+if _runtime_environment in {"production", "prod"} and len(_admin_secret_key) < 32:
+    raise RuntimeError("production 的 CHATBI_ADMIN_SECRET_KEY 至少需要 32 个字符")
+
 _service = build_service()
 app = create_app(
     _service,
-    audit_sink=InMemoryAuditSink(),
+    audit_sink=_audit_sink,
     identity_provider=_identity_provider,
     policy_store=_policy_store,
+    auth_service=_auth_service,
+    admin_engine=_control_engine,
+    admin_secret_key=_admin_secret_key,
+    admin_session_factory=_control_session_factory,
     query_understanding=_service.query_understanding,
 )
+
+
+@app.on_event("startup")
+def verify_startup_dependencies() -> None:
+    """Schema 未完整迁移时阻止认证、管理和查询入口启动。"""
+
+    try:
+        verify_control_schema(_control_engine)
+    except ControlDatabaseMigrationError:
+        _control_engine.dispose()
+        raise

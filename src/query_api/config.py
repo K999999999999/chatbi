@@ -29,6 +29,22 @@ class AuthorizationPolicyConfigurationError(RuntimeError):
     """授权策略文件缺失、不可读或格式不符合 Contract。"""
 
 
+class RuntimeConfigurationError(RuntimeError):
+    """真实 Query API 运行模式缺失或包含已废弃的静态身份配置。"""
+
+
+_SUPPORTED_RUNTIME_ENVIRONMENTS = frozenset(
+    {"development", "dev", "test", "testing", "staging", "production", "prod"}
+)
+_STATIC_AUTH_KEYS = frozenset(
+    {
+        "CHATBI_IDENTITY_PROVIDER",
+        "CHATBI_IDENTITY_SUBJECT_ID",
+        "CHATBI_AUTH_POLICY_FILE",
+    }
+)
+
+
 def load_local_environment(env_file: Path | None = None) -> None:
     """加载本地 .env，并保留外部环境变量的优先级。
 
@@ -39,6 +55,26 @@ def load_local_environment(env_file: Path | None = None) -> None:
 
     path = _PROJECT_ROOT / ".env" if env_file is None else env_file
     load_dotenv(dotenv_path=path, override=False)
+
+
+def validate_runtime_configuration(
+    environ: Mapping[str, str] | None = None,
+) -> str:
+    """校验真实入口的运行模式；静态身份配置只允许测试代码直接调用。"""
+
+    values = os.environ if environ is None else environ
+    environment = values.get("CHATBI_ENV", "").strip().lower()
+    if environment not in _SUPPORTED_RUNTIME_ENVIRONMENTS:
+        raise RuntimeConfigurationError(
+            "CHATBI_ENV 必须显式设置为 development、staging 或 production"
+        )
+    if environment in _PRODUCTION_ENVIRONMENTS and any(
+        values.get(key, "").strip() for key in _STATIC_AUTH_KEYS
+    ):
+        raise RuntimeConfigurationError(
+            "production 运行入口不支持 CHATBI_IDENTITY_* 或 CHATBI_AUTH_POLICY_FILE"
+        )
+    return environment
 
 
 def build_identity_provider(
