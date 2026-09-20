@@ -23,6 +23,7 @@ _AUTHORIZATION_ERROR_CODES_BY_STATUS = {
     403: "AUTHORIZATION_DENIED",
     503: "AUTHENTICATION_UNAVAILABLE",
 }
+_AUTHENTICATION_FAILED_MESSAGE = "用户名或密码错误"
 _CONVERSATION_ERROR_MESSAGES = {
     "CONVERSATION_UNAVAILABLE": "当前会话已失效，请点击“新建会话”后重新开始",
     "CLARIFICATION_REQUIRED": "请明确需要新增或修改的查询条件",
@@ -226,6 +227,12 @@ def _auth_json_request(
             error_payload = _read_json(exc.read())
         except (UnicodeDecodeError, ValueError, TypeError):
             error_payload = {}
+        if path == "/auth/login" and exc.code == 401:
+            raise QueryAPIError(
+                "AUTHENTICATION_FAILED",
+                _AUTHENTICATION_FAILED_MESSAGE,
+                trace_id=trace_id,
+            ) from None
         raise _error_from_payload(
             error_payload,
             "账号服务请求失败",
@@ -379,6 +386,9 @@ def _render_change_password(st: Any) -> None:
             new_password,
         )
     except QueryAPIError as error:
+        if error.error_code == "AUTHENTICATION_REQUIRED":
+            _logout_current_user(st)
+            st.rerun()
         _render_error(st, error)
         return
     st.session_state[_AUTH_TOKEN_KEY] = None
@@ -444,6 +454,7 @@ def _submit_query(st: Any, question: str) -> None:
             _append_timeline_error(st, question, error)
             if error.error_code == "AUTHENTICATION_REQUIRED":
                 _logout_current_user(st)
+                st.rerun()
             if error.error_code == "CONVERSATION_UNAVAILABLE":
                 st.session_state[_CONVERSATION_ID_KEY] = None
                 st.session_state[_CONVERSATION_RESET_REQUIRED_KEY] = True
