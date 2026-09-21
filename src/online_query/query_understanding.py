@@ -18,6 +18,7 @@ _CANDIDATE_FIELDS = frozenset(
 _TIME_FIELDS = frozenset({"text", "granularity"})
 _FILTER_FIELDS = frozenset({"field_text", "operator", "values"})
 _RECENT_DAYS_PATTERN = re.compile(r"最近([1-9][0-9]*)天")
+_RECENT_MONTHS_PATTERN = re.compile(r"最近([1-9][0-9]*|[一二三四五六七八九十百]+)个月")
 _YEAR_PATTERN = re.compile(r"([0-9]{4})年?$")
 _YEAR_MONTH_PATTERN = re.compile(r"([0-9]{4})(?:年([0-9]{1,2})月?|[-/]([0-9]{1,2}))$")
 _YEAR_QUARTER_PATTERN = re.compile(
@@ -395,6 +396,21 @@ def _resolve_dates(
             )
         return TimeGranularity.DAY, start, today + timedelta(days=1)
 
+    recent_months_match = _RECENT_MONTHS_PATTERN.fullmatch(text)
+    if recent_months_match is not None:
+        months = _parse_positive_number(recent_months_match.group(1))
+        if months is None:
+            raise _cannot_answer("最近 N 个月的范围无法标准化", "DATE_NOT_NORMALIZABLE")
+        try:
+            current_month = date(today.year, today.month, 1)
+            start = _shift_month(current_month, -(months - 1))
+            end = _shift_month(current_month, 1)
+        except (OverflowError, ValueError):
+            raise _cannot_answer(
+                "最近 N 个月的范围超出日期支持范围", "DATE_NOT_NORMALIZABLE"
+            ) from None
+        return TimeGranularity.MONTH, start, end
+
     range_match = _DATE_RANGE_PATTERN.fullmatch(text)
     if range_match is not None:
         start = _parse_absolute_day(range_match.group(1))
@@ -466,6 +482,42 @@ def _shift_month(value: date, offset: int) -> date:
     absolute_month = value.year * 12 + value.month - 1 + offset
     year, month_index = divmod(absolute_month, 12)
     return date(year, month_index + 1, 1)
+
+
+def _parse_positive_number(value: str) -> int | None:
+    if value.isdigit():
+        parsed = int(value)
+        return parsed if parsed > 0 else None
+
+    digits = {
+        "一": 1,
+        "二": 2,
+        "三": 3,
+        "四": 4,
+        "五": 5,
+        "六": 6,
+        "七": 7,
+        "八": 8,
+        "九": 9,
+    }
+    if value == "十":
+        return 10
+    if value.startswith("十"):
+        tail = value[1:]
+        return 10 + digits.get(tail, 0) if tail in digits else None
+    if value.endswith("十"):
+        head = value[:-1]
+        return digits.get(head, 0) * 10 if head in digits else None
+    if (
+        len(value) == 3
+        and value[1] == "十"
+        and value[0] in digits
+        and value[2] in digits
+    ):
+        return digits[value[0]] * 10 + digits[value[2]]
+    if len(value) == 1:
+        return digits.get(value)
+    return None
 
 
 def _query_timezone(timezone_name: str) -> ZoneInfo:

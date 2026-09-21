@@ -33,6 +33,7 @@ _CONVERSATION_ERROR_MESSAGES = {
 _CONVERSATION_ID_KEY = "conversation_id"
 _CONVERSATION_RESET_REQUIRED_KEY = "conversation_reset_required"
 _CONVERSATION_TIMELINE_KEY = "conversation_timeline"
+_ANALYSIS_TIMELINE_KEY = "analysis_timeline"
 _AUTH_TOKEN_KEY = "auth_token"
 _AUTH_USERNAME_KEY = "auth_username"
 _AUTH_MUST_CHANGE_KEY = "auth_must_change_password"
@@ -76,13 +77,20 @@ def query_api(
     question: str,
     *,
     conversation_id: str | None = None,
+    mode: str = "query",
     timeout: float = _DEFAULT_API_TIMEOUT,
     access_token: str | None = None,
     opener: Callable[..., Any] | None = None,
 ) -> QueryAPIResponse:
     """调用现有查询 API，不在页面层执行 LLM 或数据库逻辑。"""
     request_payload: dict[str, str] = {"question": question}
-    if isinstance(conversation_id, str) and conversation_id.strip():
+    if mode != "query":
+        request_payload["mode"] = mode
+    if (
+        mode != "analysis"
+        and isinstance(conversation_id, str)
+        and conversation_id.strip()
+    ):
         request_payload["conversation_id"] = conversation_id.strip()
 
     headers = {"Content-Type": "application/json"}
@@ -322,19 +330,37 @@ def main() -> None:
         _start_new_conversation(st)
         st.rerun()
 
-    with st.form("query_form"):
-        question = st.text_area(
-            "问题",
-            placeholder="例如：当前已完成订单数量是多少？",
-            height=100,
+    selected_mode = st.radio(
+        "模式",
+        options=("普通查询", "经营分析"),
+        horizontal=True,
+    )
+    if selected_mode == "经营分析":
+        with st.form("analysis_form"):
+            question = st.text_area(
+                "经营问题",
+                placeholder="例如：最近三个月销售额为什么下降？",
+                height=100,
+            )
+            submitted = st.form_submit_button("开始经营分析", type="primary")
+        if submitted:
+            _submit_analysis(st, question)
+        _render_analysis_timeline(
+            st,
+            st.session_state.get(_ANALYSIS_TIMELINE_KEY, []),
         )
-        submitted = st.form_submit_button("查询", type="primary")
-
-    if submitted:
-        _submit_query(st, question)
-
-    timeline = st.session_state.get(_CONVERSATION_TIMELINE_KEY, [])
-    _render_timeline(st, timeline)
+    else:
+        with st.form("query_form"):
+            question = st.text_area(
+                "问题",
+                placeholder="例如：当前已完成订单数量是多少？",
+                height=100,
+            )
+            submitted = st.form_submit_button("查询", type="primary")
+        if submitted:
+            _submit_query(st, question)
+        timeline = st.session_state.get(_CONVERSATION_TIMELINE_KEY, [])
+        _render_timeline(st, timeline)
 
 
 def _initialize_auth_state(st: Any) -> None:
@@ -473,6 +499,127 @@ def _submit_query(st: Any, question: str) -> None:
             elif conversation_id is None:
                 st.session_state[_CONVERSATION_ID_KEY] = None
             st.session_state[_CONVERSATION_RESET_REQUIRED_KEY] = False
+
+
+def _submit_analysis(st: Any, question: str) -> None:
+    """提交经营分析；不读取或修改普通查询 conversation_id。"""
+
+    if not question.strip():
+        error = QueryAPIError("INVALID_REQUEST", "请输入经营分析问题")
+        st.session_state.last_analysis_response = None
+        st.session_state.last_analysis_error = error
+        _append_analysis_timeline_error(st, question, error)
+        return
+
+    with st.spinner("正在生成经营分析报告..."):
+        try:
+            response = query_api(
+                _api_base_url(),
+                question,
+                mode="analysis",
+                access_token=_access_token(st),
+            )
+        except QueryAPIError as error:
+            st.session_state.last_analysis_response = None
+            st.session_state.last_analysis_error = error
+            _append_analysis_timeline_error(st, question, error)
+            if error.error_code == "AUTHENTICATION_REQUIRED":
+                _logout_current_user(st)
+                st.rerun()
+        else:
+            st.session_state.last_analysis_response = response
+            st.session_state.last_analysis_error = None
+            _append_analysis_timeline_success(st, question, response)
+
+
+def _analysis_timeline_records(st: Any) -> list[dict[str, Any]]:
+    records = st.session_state.get(_ANALYSIS_TIMELINE_KEY)
+    if not isinstance(records, list):
+        records = []
+        st.session_state[_ANALYSIS_TIMELINE_KEY] = records
+    return records
+
+
+def _append_analysis_timeline_success(
+    st: Any,
+    question: str,
+    response: QueryAPIResponse,
+) -> None:
+    _analysis_timeline_records(st).append(
+        {"question": question, "status": "success", "response": response}
+    )
+
+
+def _append_analysis_timeline_error(
+    st: Any,
+    question: str,
+    error: QueryAPIError,
+) -> None:
+    _analysis_timeline_records(st).append(
+        {"question": question, "status": "error", "error": error}
+    )
+
+
+def _render_analysis_timeline(st: Any, timeline: list[dict[str, Any]]) -> None:
+    if not timeline:
+        return
+    st.subheader("经营分析记录")
+    latest_index = len(timeline)
+    for index in range(latest_index, 0, -1):
+        record = timeline[index - 1]
+        with st.expander(
+            f"第 {index} 次 · {'成功' if record.get('status') == 'success' else '失败'}",
+            expanded=index == latest_index,
+        ):
+            st.caption(f"问题：{record.get('question', '')}")
+            if record.get("status") == "success":
+                response = record.get("response")
+                if isinstance(response, dict):
+                    _render_analysis_report(st, response)
+            else:
+                error = record.get("error")
+                if isinstance(error, QueryAPIError):
+                    _render_error(st, error)
+
+
+def _render_analysis_report(st: Any, response: dict[str, Any]) -> None:
+    report = response.get("report")
+    if not isinstance(report, dict):
+        st.error("经营分析报告格式无效")
+        return
+    title = report.get("title")
+    if isinstance(title, str) and title.strip():
+        st.subheader(title)
+    for label, key in (
+        ("分析摘要", "executive_summary"),
+        ("趋势判断", "trend_judgment"),
+        ("关键发现", "key_findings"),
+        ("原因分析", "root_causes"),
+        ("行动建议", "action_suggestions"),
+    ):
+        value = report.get(key)
+        if isinstance(value, list):
+            value = "\n".join(f"- {item}" for item in value)
+        if isinstance(value, str) and value.strip():
+            st.markdown(f"**{label}**\n\n{value}")
+
+    task_results = response.get("task_results", [])
+    if isinstance(task_results, list):
+        st.caption(f"已执行 {len(task_results)} 个分析 Task")
+        for item in task_results:
+            if not isinstance(item, dict):
+                continue
+            task_id = item.get("task_id", "unknown")
+            status = item.get("status", "unknown")
+            st.caption(f"Task {task_id}：{status}")
+            rows = item.get("rows", [])
+            columns = item.get("columns", [])
+            if isinstance(rows, list) and rows:
+                st.dataframe(
+                    rows_as_records(columns, rows),
+                    use_container_width=True,
+                    hide_index=True,
+                )
 
 
 def _start_new_conversation(st: Any) -> None:

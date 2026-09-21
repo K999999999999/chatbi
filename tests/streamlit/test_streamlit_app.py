@@ -205,6 +205,60 @@ class StreamlitQueryClientTest(TestCase):
             },
         )
 
+    def test_query_api_posts_analysis_mode_without_conversation_id(self) -> None:
+        calls: list[Request] = []
+
+        def opener(request: Request, *, timeout: float) -> _Response:
+            del timeout
+            calls.append(request)
+            return _Response(
+                {
+                    "request_id": "analysis-1",
+                    "mode": "analysis",
+                    "report": {"title": "分析报告"},
+                    "task_results": [],
+                }
+            )
+
+        query_api(
+            "http://127.0.0.1:8000",
+            "分析销售额",
+            mode="analysis",
+            conversation_id="must-not-be-sent",
+            opener=opener,
+        )
+
+        self.assertEqual(
+            json.loads(calls[0].data.decode("utf-8")),
+            {"question": "分析销售额", "mode": "analysis"},
+        )
+
+    def test_submit_analysis_keeps_normal_query_conversation_isolated(self) -> None:
+        displayed = _FakeStreamlit()
+        displayed.session_state.conversation_id = "normal-conversation"
+        response = QueryAPIResponse(
+            {
+                "request_id": "analysis-1",
+                "mode": "analysis",
+                "report": {
+                    "title": "分析报告",
+                    "executive_summary": "摘要",
+                },
+                "task_results": [],
+            }
+        )
+
+        with patch.object(streamlit_app, "query_api", return_value=response) as api:
+            streamlit_app._submit_analysis(displayed, "分析销售额")
+
+        self.assertEqual(displayed.session_state.conversation_id, "normal-conversation")
+        self.assertEqual(api.call_args.kwargs["mode"], "analysis")
+        self.assertNotIn("conversation_id", api.call_args.kwargs)
+        self.assertEqual(
+            displayed.session_state.analysis_timeline[0]["status"],
+            "success",
+        )
+
     def test_submit_query_reuses_server_conversation_id_for_follow_up(self) -> None:
         displayed = _FakeStreamlit()
         first = QueryAPIResponse(

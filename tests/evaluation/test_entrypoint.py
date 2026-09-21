@@ -7,6 +7,10 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from src.business_analysis.application import BusinessAnalysisSuccess
+from src.business_analysis.contracts import AnalysisPlan, AnalysisTask, AnalysisTaskType
+from src.business_analysis.execution import TaskResult, TaskStatus
+from src.business_analysis.reporting import BusinessAnalysisReport
 from src.online_query.contracts import (
     OnlineRetrievalResult,
     QueryContext,
@@ -36,6 +40,15 @@ class _FakeExecutor:
     def execute(self, sql: ValidatedSQL) -> QueryData:
         self.calls.append(sql)
         return self._data
+
+
+class _FakeAnalysisApplication:
+    def __init__(self, result: BusinessAnalysisSuccess) -> None:
+        self._result = result
+
+    def analyze(self, question, *, request_id, auth_context):
+        del question, request_id, auth_context
+        return self._result
 
 
 class _FakeRetrievalProvider:
@@ -108,6 +121,126 @@ class _FakeSemanticQueryUnderstanding:
 
 
 class EvaluationEntrypointTest(unittest.TestCase):
+    def test_business_analysis_mode_writes_layered_report(self) -> None:
+        from src.evaluation.__main__ import run_cli
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            cases_path = root / "business-analysis-cases.json"
+            sql = "SELECT t.value FROM mart_sales.test_table AS t;"
+            cases_path.write_text(
+                json.dumps(
+                    [
+                        {
+                            "id": "BA01",
+                            "question": "按销售区域分析销售额。",
+                            "expected": {
+                                "outcome": "plan",
+                                "min_tasks": 1,
+                                "required_task_types": ["breakdown"],
+                                "required_metrics": ["人民币净销售额"],
+                                "required_dimensions": ["销售区域"],
+                                "tasks": [
+                                    {
+                                        "key": "breakdown",
+                                        "task_type": "breakdown",
+                                        "metrics": ["人民币净销售额"],
+                                        "dimensions": ["销售区域"],
+                                        "depends_on": [],
+                                        "expected_sql": sql,
+                                    }
+                                ],
+                                "report": {
+                                    "required_evidence_tasks": ["breakdown"],
+                                    "expected_incomplete_tasks": [],
+                                },
+                            },
+                        }
+                    ],
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            context_file = root / "context.json"
+            context_file.write_text("[]", encoding="utf-8")
+            output_dir = root / "reports"
+            context = QueryContext(
+                prompt_context="{}",
+                allowed_tables=frozenset({"mart_sales.test_table"}),
+                allowed_columns={"mart_sales.test_table": frozenset({"value"})},
+            )
+            data = QueryData(
+                columns=("value",),
+                rows=((1,),),
+                truncated=False,
+            )
+            analysis_result = BusinessAnalysisSuccess(
+                request_id="analysis-evaluation-BA01",
+                report=BusinessAnalysisReport(
+                    title="销售额分析",
+                    executive_summary="基于任务结果生成。",
+                    key_findings=("存在销售额结果。",),
+                    trend_judgment="无趋势任务。",
+                    root_causes=(),
+                    action_suggestions=(),
+                    evidence_task_ids=("task_1",),
+                    incomplete_tasks=(),
+                ),
+                task_results=(
+                    TaskResult(
+                        task_id="task_1",
+                        status=TaskStatus.COMPLETED,
+                        columns=("value",),
+                        rows=((1,),),
+                        row_count=1,
+                    ),
+                ),
+                plan=AnalysisPlan(
+                    tasks=(
+                        AnalysisTask(
+                            task_id="task_1",
+                            task_type=AnalysisTaskType.BREAKDOWN,
+                            description="按区域分析",
+                            metrics=("人民币净销售额",),
+                            dimensions=("销售区域",),
+                            time_range=None,
+                            filters=(),
+                            depends_on=(),
+                            expected_output="结构化结果",
+                        ),
+                    )
+                ),
+            )
+            stdout = StringIO()
+            exit_code = run_cli(
+                [
+                    "--business-analysis",
+                    "--cases",
+                    str(cases_path),
+                    "--output-dir",
+                    str(output_dir),
+                ],
+                environ={"LLM_MODEL": "test-model"},
+                context_loader=lambda: context,
+                generator_factory=lambda environ: _FakeGenerator(sql),
+                executor_factory=lambda environ: _FakeExecutor(data),
+                analysis_application_factory=lambda authorized, environ: (
+                    _FakeAnalysisApplication(analysis_result)
+                ),
+                git_state_reader=lambda project_root: ("abcdef123456", False),
+                context_paths={"context": context_file},
+                stdout=stdout,
+                stderr=StringIO(),
+            )
+            reports = list(output_dir.glob("*-business-analysis.json"))
+            report = json.loads(reports[0].read_text(encoding="utf-8"))
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(report["summary"]["end_to_end_accuracy"], 1.0)
+        self.assertIn(
+            "Business Analysis End-to-End Accuracy: 100.00%", stdout.getvalue()
+        )
+
     def test_runs_same_online_service_and_writes_report(self) -> None:
         from src.evaluation.__main__ import run_cli
 

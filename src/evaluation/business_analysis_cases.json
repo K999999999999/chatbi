@@ -1,0 +1,121 @@
+[
+  {
+    "id": "trend-sales-q1-2025",
+    "question": "2025年第一季度的人民币净销售额趋势如何？",
+    "expected": {
+      "outcome": "plan",
+      "min_tasks": 1,
+      "required_task_types": ["trend"],
+      "required_metrics": ["人民币净销售额"],
+      "required_dimensions": ["月份"],
+      "tasks": [
+        {
+          "key": "trend",
+          "task_type": "trend",
+          "metrics": ["人民币净销售额"],
+          "dimensions": ["月份"],
+          "depends_on": [],
+          "expected_sql": "SELECT d.month,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\nGROUP BY d.month\nORDER BY d.month;"
+        }
+      ],
+      "report": {
+        "required_evidence_tasks": ["trend"],
+        "expected_incomplete_tasks": []
+      }
+    }
+  },
+  {
+    "id": "compare-2024-and-2025",
+    "question": "比较2024年和2025年的人民币净销售额，哪个年份更好？",
+    "expected": {
+      "outcome": "plan",
+      "min_tasks": 1,
+      "required_task_types": ["comparison"],
+      "required_metrics": ["人民币净销售额"],
+      "required_dimensions": ["年份"],
+      "tasks": [
+        {
+          "key": "comparison",
+          "task_type": "comparison",
+          "metrics": ["人民币净销售额"],
+          "dimensions": ["年份"],
+          "depends_on": [],
+          "expected_sql": "SELECT d.year,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\nGROUP BY d.year\nORDER BY d.year;"
+        }
+      ],
+      "report": {
+        "required_evidence_tasks": ["comparison"],
+        "expected_incomplete_tasks": []
+      }
+    }
+  },
+  {
+    "id": "breakdown-sales-region-q1-2025",
+    "question": "2025年第一季度销售额按销售区域拆解。",
+    "expected": {
+      "outcome": "plan",
+      "min_tasks": 1,
+      "required_task_types": ["breakdown"],
+      "required_metrics": ["人民币净销售额"],
+      "required_dimensions": ["销售区域"],
+      "tasks": [
+        {
+          "key": "breakdown",
+          "task_type": "breakdown",
+          "metrics": ["人民币净销售额"],
+          "dimensions": ["销售区域"],
+          "depends_on": [],
+          "expected_sql": "SELECT r.sales_region_name,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_sales_region AS r\n  ON r.sales_region_key = f.sales_region_key\nLEFT JOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\nGROUP BY r.sales_region_name\nORDER BY r.sales_region_name;"
+        }
+      ],
+      "report": {
+        "required_evidence_tasks": ["breakdown"],
+        "expected_incomplete_tasks": []
+      }
+    }
+  },
+  {
+    "id": "root-cause-by-product-line-q1-2025",
+    "question": "2025年第一季度销售额为什么变化？请先看趋势，再定位到产品线。",
+    "expected": {
+      "outcome": "plan",
+      "min_tasks": 2,
+      "required_task_types": ["trend", "breakdown"],
+      "required_metrics": ["人民币净销售额"],
+      "required_dimensions": ["月份", "产品线"],
+      "tasks": [
+        {
+          "key": "trend",
+          "task_type": "trend",
+          "metrics": ["人民币净销售额"],
+          "dimensions": ["月份"],
+          "depends_on": [],
+          "expected_sql": "SELECT d.month,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\nGROUP BY d.month\nORDER BY d.month;"
+        },
+        {
+          "key": "product_line_breakdown",
+          "task_type": "breakdown",
+          "metrics": ["人民币净销售额"],
+          "dimensions": ["产品线"],
+          "depends_on": ["trend"],
+          "expected_sql": "SELECT p.product_line,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_product AS p\n  ON p.product_key = f.product_key\nLEFT JOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\nGROUP BY p.product_line\nORDER BY p.product_line;"
+        }
+      ],
+      "report": {
+        "required_evidence_tasks": ["trend", "product_line_breakdown"],
+        "expected_incomplete_tasks": []
+      }
+    }
+  },
+  {
+    "id": "ambiguous-profit",
+    "question": "最近利润为什么下降？",
+    "expected": {
+      "outcome": "clarification_required",
+      "min_tasks": 0,
+      "required_task_types": [],
+      "required_metrics": [],
+      "required_dimensions": []
+    }
+  }
+]

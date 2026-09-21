@@ -43,6 +43,7 @@ def create_test_app(
     trace_recorder: object | None = None,
     conversation_store: object | None = None,
     query_understanding: object | None = None,
+    analysis_service: object | None = None,
     subject_id: str = "analyst-1",
     allowed_subjects: Iterable[str] = ("analyst-1",),
     identity_provider: str = "test",
@@ -68,4 +69,5 @@ def create_test_app(
             if query_understanding is None
             else query_understanding
         ),
+        analysis_service=analysis_service,
     )
