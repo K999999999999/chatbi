@@ -59,10 +59,23 @@
 
 ## Result
 
-Not started.
+已完成经营分析计划 Contract、确定性校验和 Task Decomposer：
+
+- 新增 `AnalysisTask`、`AnalysisPlan`、Semantic Catalog、计划错误和 LLM 错误 Contract；
+- 支持指标别名规范化，未明确的“利润”不会自动映射为“毛利”；
+- 校验 Task ID、依赖引用、循环依赖、最大下钻深度 2 和最多 12 个 Task；
+- 拒绝 SQL、物理字段和未允许的 Task 字段；
+- Task Decomposer Prompt 固定为业务语义计划，不输出 SQL 或动态 Replanning；
+- LLM Provider、非法 JSON 和结构化 Contract 错误均转换为安全的公开错误。
+
+验证结果：
+
+- `uv run pytest -q tests/business_analysis`：10 passed；
+- `uv run python -m compileall -q src/business_analysis tests/business_analysis`：通过；
+- `git diff --cached --check`：通过。
 
 ## Comments
 
 - Ticket Readiness Review：READY。
 - 不引入 `langgraph` 或其他新的编排 Framework；具体 LLM Provider 复用现有工程配置，留在 Implementation Design 中确定。
-
+- 当前 Ticket 不装配真实 LLM、Retrieval 或数据库；完整链路由后续 Ticket 负责。
