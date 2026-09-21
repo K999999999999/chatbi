@@ -86,7 +86,11 @@ def query_api(
     request_payload: dict[str, str] = {"question": question}
     if mode != "query":
         request_payload["mode"] = mode
-    if mode != "analysis" and isinstance(conversation_id, str) and conversation_id.strip():
+    if (
+        mode != "analysis"
+        and isinstance(conversation_id, str)
+        and conversation_id.strip()
+    ):
         request_payload["conversation_id"] = conversation_id.strip()
 
     headers = {"Content-Type": "application/json"}

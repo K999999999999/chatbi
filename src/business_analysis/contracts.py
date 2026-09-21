@@ -134,8 +134,7 @@ class AnalysisSemanticCatalog:
                 key: frozenset(values) for key, values in metric_matches.items()
             },
             dimension_matches={
-                key: frozenset(values)
-                for key, values in dimension_matches.items()
+                key: frozenset(values) for key, values in dimension_matches.items()
             },
         )
 

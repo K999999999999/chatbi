@@ -489,7 +489,17 @@ def _parse_positive_number(value: str) -> int | None:
         parsed = int(value)
         return parsed if parsed > 0 else None
 
-    digits = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+    digits = {
+        "一": 1,
+        "二": 2,
+        "三": 3,
+        "四": 4,
+        "五": 5,
+        "六": 6,
+        "七": 7,
+        "八": 8,
+        "九": 9,
+    }
     if value == "十":
         return 10
     if value.startswith("十"):
@@ -498,7 +508,12 @@ def _parse_positive_number(value: str) -> int | None:
     if value.endswith("十"):
         head = value[:-1]
         return digits.get(head, 0) * 10 if head in digits else None
-    if len(value) == 3 and value[1] == "十" and value[0] in digits and value[2] in digits:
+    if (
+        len(value) == 3
+        and value[1] == "十"
+        and value[0] in digits
+        and value[2] in digits
+    ):
         return digits[value[0]] * 10 + digits[value[2]]
     if len(value) == 1:
         return digits.get(value)

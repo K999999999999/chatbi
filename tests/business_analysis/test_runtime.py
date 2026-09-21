@@ -10,7 +10,9 @@ class AnalysisRuntimeTest(unittest.TestCase):
         context = load_analysis_context()
 
         self.assertTrue(context.metric_records)
-        self.assertIn("人民币净销售额", {record["name"] for record in context.metric_records})
+        self.assertIn(
+            "人民币净销售额", {record["name"] for record in context.metric_records}
+        )
         self.assertIn("销售区域", context.dimensions)
         self.assertNotIn("sales_region_name", context.dimensions)
         self.assertTrue(context.current_time)
