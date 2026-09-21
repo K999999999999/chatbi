@@ -1,6 +1,6 @@
 # Ticket 03：经营分析报告与 Summary LLM
 
-- Status: open
+- Status: done
 - Owner: Business Analysis Application / Reporting
 - Blocked by: Ticket 02
 - Canonical Source: `.scratch/business-analysis-v1/spec.md`
@@ -60,10 +60,16 @@
 
 ## Result
 
-Not started.
+已完成 `BusinessAnalysisReport`、Summary LLM 适配和报告事实校验：
+
+- Summary LLM 只接收原始问题和结构化 `TaskResult`，不接收 SQL，也不参与 Task 状态裁决。
+- 程序严格校验报告字段、证据 Task 引用和 `incomplete_tasks`；失败、跳过、空结果和截断结果均由程序记录。
+- 没有任何 `completed` Task 时返回 `CANNOT_ANSWER` 且不调用 Summary LLM；Provider 失败和非法结构统一返回 `LLM_ERROR`。
+- `BusinessAnalysisReport` 提供面向 API 的自然语言报告序列化结果，建议字段不会表示系统已执行经营动作。
+
+验证：`uv run pytest -q tests/business_analysis` → 20 passed；`uv run python -m compileall -q src/business_analysis tests/business_analysis` → 通过。
 
 ## Comments
 
 - Ticket Readiness Review：READY。
 - Summary LLM 是不可信候选；程序以实际 TaskResult 和 Task 状态为准。
-
