@@ -1,6 +1,6 @@
 # Ticket 02：Task Semantic Adapter 与依赖感知执行
 
-- Status: open
+- Status: done
 - Owner: Business Analysis Application / Query Orchestration
 - Blocked by: Ticket 01
 - Canonical Source: `.scratch/business-analysis-v1/spec.md`
@@ -68,10 +68,16 @@
 
 ## Result
 
-Not started.
+已完成 Task Semantic Adapter 与依赖感知 Executor：
+
+- 通过现有 `validate_candidate` 将已校验的 `AnalysisTask` 转换为 `ValidatedSemanticQuery` 和 `QueryRequest`。
+- 生成稳定的 `canonical_task_question`，不重新调用 Query Understanding LLM，不生成 SQL，不直接访问数据库。
+- 使用注入的已绑定查询服务执行 Task，按依赖串行调度；独立失败继续执行，依赖失败下游标记为 `skipped`。
+- 保留空结果和 `truncated` 状态，并将失败转换为不泄露内部细节的公开 Task 错误。
+
+验证：`uv run pytest -q tests/business_analysis` → 14 passed；`uv run python -m compileall -q src/business_analysis tests/business_analysis` → 通过；`git diff --check` → 通过。
 
 ## Comments
 
 - Ticket Readiness Review：READY。
 - Task Adapter 的业务事实必须来自当前 Semantic Source of Truth，不允许用 LLM 结果覆盖指标口径或授权结论。
-
