@@ -32,6 +32,8 @@ class AnalysisDecomposerTest(unittest.TestCase):
         self.assertIn("销售区域", prompt)
         self.assertIn("最多 12 个 Task", prompt)
         self.assertIn("不要输出 SQL", prompt)
+        self.assertIn("time_range 格式", prompt)
+        self.assertIn('"text": "最近三个月", "granularity": "month"', prompt)
         self.assertIn("最近三个月销售额为什么下降", prompt)
 
     def test_decomposer_parses_one_json_plan(self) -> None:

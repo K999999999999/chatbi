@@ -23,6 +23,7 @@ from src.online_query.retrieval.rag_runtime import (
     RetrievalUnavailableError,
 )
 from src.online_query.retrieval import OnlineRetriever
+from src.online_query.retrieval.retrieval_selection import table_content_matches
 
 
 class _FakeEmbedding:
@@ -35,6 +36,12 @@ class _FakeEmbedding:
             dense=(1.0, 0.0, 0.0, 1.0),
             sparse=SparseEmbedding(indices=(1,), values=(1.0,)),
         )
+
+
+class RetrievalSelectionContractTest(unittest.TestCase):
+    def test_calendar_dimension_alias_matches_structural_month_text(self) -> None:
+        self.assertTrue(table_content_matches("月份", "按自然日记录的日期及其年、季度、月、日属性。"))
+        self.assertTrue(table_content_matches("年份", "按自然日记录的日期及其年、季度、月、日属性。"))
 
 
 class _FakeStore:

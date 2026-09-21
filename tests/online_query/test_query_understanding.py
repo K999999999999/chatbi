@@ -198,6 +198,28 @@ class QueryUnderstandingContractTest(unittest.TestCase):
             datetime(2026, 9, 18, tzinfo=QUERY_TIMEZONE),
         )
 
+    def test_recent_months_uses_calendar_month_boundaries(self) -> None:
+        for text in ("最近三个月", "最近 3 个月"):
+            payload = _payload()
+            payload["time"] = {"text": text, "granularity": "month"}
+
+            with self.subTest(text=text):
+                validated = validate_candidate(
+                    candidate_from_payload(payload),
+                    original_question=f"{text}的销售额",
+                    now=NOW,
+                )
+
+                assert validated.time is not None
+                self.assertEqual(
+                    validated.time.start,
+                    datetime(2026, 7, 1, tzinfo=QUERY_TIMEZONE),
+                )
+                self.assertEqual(
+                    validated.time.end,
+                    datetime(2026, 10, 1, tzinfo=QUERY_TIMEZONE),
+                )
+
     def test_current_context_words_do_not_create_time_filter(self) -> None:
         for text in ("当前", "目前", "现在"):
             payload = _payload()

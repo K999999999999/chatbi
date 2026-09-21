@@ -10,7 +10,7 @@
 - Lifetime：经营分析 V1 的验收证据和回归保护。
 - Size：中等；主要增加测试、标准案例和验收文档。
 - Risk：高，因为涉及 Task Decomposer、Online Query、Summary LLM 的完整链路。
-- Evidence：Software Test、AI Evaluation、Business Acceptance，Real E2E 单独授权后执行。
+- Evidence：Software Test、AI Evaluation、Business Acceptance；Real E2E 已在用户授权后执行本地真实链路，hosted CI 和批量真实 AI Evaluation 仍单独记录。
 - Delivery：不改变产品范围，不以报告流畅度替代业务正确性。
 
 ## What to build
@@ -21,7 +21,7 @@
 - 验证普通查询回归不受影响。
 - 记录 Software Test、AI Evaluation 和 Business Acceptance 证据。
 - 形成 `docs/acceptance/` 下的经营分析 V1 验收记录。
-- Real E2E 只有获得单独授权后执行；未执行时必须如实记录。
+- Real E2E 获得授权后执行；执行范围、失败传播、空结果和未覆盖范围必须如实记录。
 
 ## Owned paths
 
@@ -61,16 +61,18 @@
 
 ## Result
 
-已完成经营分析标准案例、确定性评测器和验收记录：
+已完成经营分析标准案例、确定性评测器、本地真实端到端验收和验收记录：
 
 - 新增 5 个标准案例，覆盖趋势、期间对比、维度拆解、原因分析和歧义“利润”；评测器验证 Task 类型、指标、维度、最小 Task 数量和澄清行为。
 - 复用 Business Analysis 单元测试覆盖正常多 Task、依赖失败、独立失败、跳过、空结果、截断、报告证据引用和普通查询回归。
 - 验收记录写入 `docs/acceptance/business-analysis-v1-20260921.md`，明确区分 Software Test、AI Evaluation、Business Acceptance 和 Real E2E。
-- 本次 Real E2E 未执行，未把 Fake / 固定模型结果当成真实 LLM、RAG、SQL Guard 或 PostgreSQL 验收证据。
+- 已执行真实 LLM、BGE-M3、Qdrant、Retrieval、SQL Guard、只读 PostgreSQL、认证和 HTTP API 链路；有数据的明确期间案例成功，空结果和依赖失败均按 Contract 标记不完整。
+- 真实 5-case 批量 AI Evaluation、hosted CI 21-case 和人工业务复核仍未执行，未把本地样本通过扩大解释为全量准确率或 Production Ready。
+- Real E2E 期间发现并补充了最近月份时间标准化、时间维度别名和 Summary 列表字段 Prompt 的确定性保护及回归测试。
 
-验证：`uv run --with pytest python -m pytest -q` → 433 passed、6 skipped、121 subtests；`uv run python -m compileall -q src tests` → 通过；`git diff --check` → 通过。
+验证：`uv run --with pytest python -m pytest -q` → 435 passed、6 skipped、123 subtests；`uv run python -m compileall -q src tests` → 通过；`git diff --check` → 通过。
 
 ## Comments
 
 - Ticket Readiness Review：READY。
-- 本 Ticket 只建立验收证据，不扩大到预测、模拟、自动经营动作或 Production Readiness。
+- 本 Ticket 只建立验收证据和必要的 Contract 修复，不扩大到预测、模拟、自动经营动作或 Production Readiness。

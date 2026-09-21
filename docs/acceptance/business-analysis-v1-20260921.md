@@ -1,12 +1,12 @@
 # Business Analysis V1（经营分析 V1）验收记录
 
-日期：2026-09-21
+初始记录：2026-09-21；Real E2E 补充验收：2026-09-22
 
 ## 结论
 
-本记录确认 Business Analysis V1 的确定性 Software Test、标准案例评测器和边界行为证据已经形成。普通查询、Multi-Turn、授权和 Online Query 回归未改变。
+本记录确认 Business Analysis V1 的确定性 Software Test、标准案例评测器、边界行为和本地完整 Real E2E 证据已经形成。普通查询、Multi-Turn、授权和 Online Query 回归未改变。
 
-本次没有执行真实 LLM、RAG、SQL Guard、PostgreSQL 串联的 Real E2E，也没有把固定模型、Fake Query Service 或静态样例结果当作真实业务准确性证据。Real E2E 需要单独授权，当前状态为 `NOT RUN`。
+本次已获得用户授权并执行本地真实 LLM、BGE-M3、Qdrant、Retrieval、SQL Guard、只读 PostgreSQL、认证和 HTTP API 串联的 Real E2E。结论为 `PASS（本地真实链路）`；该结论不替代 hosted CI、完整 21-case Real E2E、人工业务复核或 Production Readiness。
 
 ## Software Test（软件测试）
 
@@ -30,7 +30,7 @@ Software Test 覆盖：
 
 最终命令结果以本次 candidate commit 的终端输出和提交前测试记录为准；没有通过的测试不得被解释为通过。
 
-本次结果：`433 passed, 6 skipped, 121 subtests passed`。
+本次最终结果：`435 passed, 6 skipped, 123 subtests passed`；`compileall` 和 `git diff --check` 均通过。
 
 ## AI Evaluation（AI 评测）
 
@@ -46,7 +46,7 @@ Software Test 覆盖：
 | `root-cause-by-product-line` | 趋势后按产品线下钻 | Task 数量、依赖、Task 类型和维度 |
 | `ambiguous-profit` | “利润”无法唯一确定 | 必须返回 `CLARIFICATION_REQUIRED`，不得改写为毛利 |
 
-评测器只比较结构化计划和确定性校验结果，不评分自然语言流畅度，也不把 Fake Decomposer 的结果当成真实模型准确率。真实 LLM 评测本次未执行，状态为 `NOT RUN`。
+评测器只比较结构化计划和确定性校验结果，不评分自然语言流畅度，也不把 Fake Decomposer 的结果当成真实模型准确率。真实 LLM 的 5 个标准案例批量评测本次未执行，状态为 `NOT RUN`；本次 Real E2E 只执行了代表性的动态拆解和报告场景，不把样本结果外推为完整 AI Evaluation 准确率。
 
 ## Business Acceptance（业务验收）
 
@@ -60,13 +60,37 @@ Software Test 覆盖：
 6. “利润”没有唯一业务口径时触发澄清，不自动解释为“毛利”；
 7. 经营分析不读取、创建或修改普通查询会话，切回普通查询后原会话仍可继续。
 
-上述是软件 Contract 和固定结果的业务行为验收，不等价于真实业务数据上的数值验收。真实数值、Retrieval 命中、SQL Guard 和 PostgreSQL 结果需要 Real E2E 与业务人员复核。
+上述是软件 Contract 和固定结果的业务行为验收；真实数据场景见下方 Real E2E，仍不替代业务人员对报告数值和经营解释的复核。
 
 ## Real E2E（真实端到端）
 
-状态：`NOT RUN`。
+状态：`PASS（本地真实链路）`。
 
-未使用真实 `.env`、真实 LLM、Qdrant、BGE-M3 或 PostgreSQL 执行经营分析链路，因此不声称 Business Analysis V1 已完成真实生产数据验收，也不声称报告数值准确率已经达标。
+验收环境和资产：
+
+- 本地 `.env` 和真实 LLM 配置；不记录 API Key、Token、Password 或连接字符串；
+- PostgreSQL 容器健康，业务库只读查询；Qdrant 容器健康；
+- 本地 BGE-M3 模型 `models/bge-m3`；
+- 依据当前结构 / Semantic 事实重新构建并发布 RAG 资产：`20260921-bge-m3-business-analysis-e2e`，TABLE 7、COLUMN 69、METRIC 6、Relationship Graph 边 9；
+- 真实 FastAPI 启动检查：`GET /health` 返回 `{"status":"ok"}`。
+
+执行的真实链路：
+
+1. 真实 Task Decomposer 生成计划，确定性 Plan Validator 校验，Task Executor 通过授权查询入口进入 Online Retrieval、SQL 生成、SQL Guard 和只读 PostgreSQL，Summary LLM 生成自然语言报告。
+2. 有数据的明确期间案例“请分析 2025 年第一季度按销售区域统计人民币净销售额”返回 `BusinessAnalysisSuccess`，3 个 Task 均为 `completed`，行数为 `[1, 3, 6]`，报告引用全部 3 个完成 Task，`incomplete_tasks=[]`。
+3. 空结果案例“请分析最近三个月的人民币净销售额趋势，并按销售区域拆解可能原因”相对于本地数据最大完成日期 `2025-12-31` 的当前时间范围没有数据；2 个 Task 均完成但行数为 0，报告将 Task 标记为不完整，没有把空结果包装为结论。
+4. 真实 HTTP / Auth：使用唯一临时 analyst 身份调用 `POST /auth/login` 返回 `200`，随后携 Bearer Token 调用 `POST /api/v1/query` 且 `mode=analysis` 返回 `200`；单 Task 明确案例返回 6 行、Task 为 `completed`，报告字段齐全，响应不包含 `sql` 或 `conversation_id`。临时身份、Session 和本次测试审计记录已清理，数据库核对 `TEMP_USER_COUNT=0`。
+5. 失败传播案例：同一 HTTP 链路的一次动态多 Task 调用返回 `200`，Task 状态为 `completed / failed / completed / skipped`；报告仍生成并标记不完整，证明依赖失败不会伪装为完整成功。
+
+本次真实验收过程中发现并修复的 Contract 问题：
+
+- 补充 `最近 N 个月`（含“最近三个月”）的确定性时间标准化，并在 Task Decomposer Prompt 中明确 `time_range` 对象格式；
+- 补充“月份/年份”到结构事实“月/年”的时间维度别名匹配，避免合法时间维度被 Retrieval 错误判为不可达；
+- 明确 Summary LLM 的列表字段类型，并规定 `incomplete_tasks` 只输出 task_id，不拼接 reason 或输出对象。
+
+以上修复均有确定性回归测试；旧的 RAG 资产未删除，新的本地资产使用独立 build id 发布。
+
+未覆盖范围：`.github/workflows/real-e2e.yml` 的 hosted CI 21-case、真实 LLM 5-case 批量 AI Evaluation、人工业务人员对报告数值和经营解释的复核、生产部署 / 负载 / 多租户 / Secret 管理。因此不能据此声称 Production Ready 或所有问题上的业务准确率达标。
 
 ## 变更追踪
 
@@ -75,3 +99,4 @@ Software Test 覆盖：
 - Ticket 03：`b1fc4db`，报告 Contract 与 Summary LLM；
 - Ticket 04：`c72c4e4`，API、Streamlit 和会话隔离；
 - Ticket 05：本记录、标准案例和评测器完成后形成独立提交。
+- Real E2E 补充修复：时间范围 Prompt / 标准化、时间维度别名和 Summary 列表 Contract；待最终验收后形成独立本地提交。

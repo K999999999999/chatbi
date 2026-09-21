@@ -170,6 +170,7 @@ def build_summary_prompt(
 6. incomplete_tasks 必须原样列出程序提供的 task_id，不能新增、删除或修改；原因也必须与程序提供的原因一致。
 7. action_suggestions 只能表达建议，不表示系统已经执行任何经营动作。
 8. 如果数据为空、被截断、失败或跳过，必须在摘要或关键发现中明确说明，不能包装成完整结论。
+9. key_findings、root_causes、action_suggestions、evidence_task_ids、incomplete_tasks 等列表字段必须是字符串数组；title、executive_summary、trend_judgment 必须是字符串。incomplete_tasks 只填 task_id，不要拼接 reason，不要输出对象；例如程序给出 task_id=task_1、reason=empty_result 时，只输出 ["task_1"]。
 
 <analysis_input>
 {serialized}

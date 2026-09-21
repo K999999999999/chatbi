@@ -14,6 +14,10 @@ from .retrieval_errors import (
 _GENERIC_GROUPING_TERMS = frozenset(
     {"类型", "属性", "业务", "数据", "信息", "记录", "完成", "订单", "金额", "统计"}
 )
+_DIMENSION_ALIASES = {
+    "月份": ("月份", "月"),
+    "年份": ("年份", "年"),
+}
 
 
 def select_anchor(
@@ -126,7 +130,16 @@ def requires_date_context(query: ValidatedSemanticQuery) -> bool:
 
 def table_content_matches(question: str, page_content: str) -> bool:
     normalized_content = normalize_text(page_content)
-    return any(term in normalized_content for term in cjk_bigrams(question))
+    aliases = _DIMENSION_ALIASES.get(question.strip(), (question,))
+    return any(
+        term in normalized_content
+        for alias in aliases
+        for term in cjk_bigrams(alias)
+    ) or any(
+        normalize_text(alias) in normalized_content
+        for alias in aliases
+        if len(normalize_text(alias)) == 1
+    )
 
 
 def cjk_bigrams(value: str) -> tuple[str, ...]:

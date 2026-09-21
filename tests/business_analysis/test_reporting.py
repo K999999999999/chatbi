@@ -36,6 +36,8 @@ class ReportingTest(unittest.TestCase):
         self.assertEqual(report.incomplete_tasks, ())
         self.assertNotIn("SELECT", model.prompt.upper())
         self.assertIn('"rows"', model.prompt)
+        self.assertIn("key_findings、root_causes、action_suggestions", model.prompt)
+        self.assertIn("incomplete_tasks 只填 task_id，不要拼接 reason", model.prompt)
 
     def test_evidence_must_reference_completed_task(self) -> None:
         model = _FakeModel(_payload(evidence_task_ids=["failed"]))
