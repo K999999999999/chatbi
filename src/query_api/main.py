@@ -23,6 +23,7 @@ from src.online_query.query_understanding_llm import LangChainQueryUnderstanding
 from src.online_query.retrieval import OnlineRetriever
 from src.online_query.retrieval.rag_runtime import RagRuntime
 from src.online_query.service import OnlineQueryService
+from src.business_analysis.runtime import build_analysis_application
 
 from .app import create_app
 from .config import (
@@ -86,6 +87,7 @@ app = create_app(
     admin_secret_key=_admin_secret_key,
     admin_session_factory=_control_session_factory,
     query_understanding=_service.query_understanding,
+    analysis_service_factory=build_analysis_application,
 )
 
 

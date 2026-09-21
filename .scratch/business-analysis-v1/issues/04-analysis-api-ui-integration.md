@@ -1,6 +1,6 @@
 # Ticket 04：经营分析 API、UI 与普通查询状态隔离
 
-- Status: open
+- Status: done
 - Owner: Query API / Streamlit Application
 - Blocked by: Ticket 01、Ticket 02、Ticket 03
 - Canonical Source: `.scratch/business-analysis-v1/spec.md`
@@ -66,10 +66,17 @@
 
 ## Result
 
-Not started.
+已完成经营分析 API、Application Workflow、Streamlit 模式入口和普通查询状态隔离：
+
+- `POST /api/v1/query` 增加可选 `mode`，缺失时兼容默认为 `query`；未知模式返回统一 `INVALID_REQUEST`。
+- `mode=analysis` 在读取普通会话前拒绝 `conversation_id`，认证后调用注入的 Business Analysis Application；成功响应包含自然语言 `report` 和有界 `task_results`，失败沿用 `QueryFailure`。
+- 真实入口通过 `analysis_service_factory` 将 API 已装配的 `AuthorizedQueryService` 绑定给分析 Application；Task 仍逐个通过授权查询入口执行。
+- Streamlit 增加“普通查询 / 经营分析”模式入口；经营分析请求不携带 `conversation_id`，分析结果使用独立页面状态，不写入普通查询时间线。
+- 增加显式 `src/semantic/dimensions.json` 作为计划拆解可用的业务维度事实，不把数据库字段名直接暴露给 Task Decomposer。
+
+验证：`uv run --with pytest python -m pytest -q tests/business_analysis tests/query_api/test_analysis_mode.py tests/query_api/test_app.py tests/query_api/test_main.py tests/streamlit/test_streamlit_app.py` → 75 passed、21 subtests；`uv run python -m compileall -q src/business_analysis src/query_api src/semantic tests/business_analysis tests/query_api tests/streamlit` → 通过；`git diff --check` → 通过。
 
 ## Comments
 
 - Ticket Readiness Review：READY。
 - 该 Ticket 不引入自动 `QueryRouter`，用户选择的 UI mode 就是顶层路由。
-

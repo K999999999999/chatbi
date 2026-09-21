@@ -4,6 +4,7 @@ import logging
 import re
 from collections.abc import Iterator
 from contextlib import contextmanager
+from enum import StrEnum
 from typing import Any, NoReturn, Protocol
 from uuid import uuid4
 
@@ -13,6 +14,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, StrictStr
 from sqlalchemy.engine import Engine
 
+from src.business_analysis.application import BusinessAnalysisSuccess
+from src.business_analysis.execution import TaskResult
 from src.chatbi_control.admin import mount_admin
 from src.authorization.auth_service import (
     AuthenticationFailed,
@@ -79,6 +82,27 @@ class QueryService(Protocol):
         """执行一次已经通过授权的在线查询。"""
 
 
+class AnalysisService(Protocol):
+    def analyze(
+        self,
+        question: str,
+        *,
+        request_id: str,
+        auth_context: AuthContext,
+    ) -> BusinessAnalysisSuccess | QueryFailure:
+        """执行不读取普通会话的单轮经营分析。"""
+
+
+class AnalysisServiceFactory(Protocol):
+    def __call__(self, authorized_service: AuthorizedQueryService) -> AnalysisService:
+        """使用 API 已装配的授权入口创建经营分析应用。"""
+
+
+class QueryMode(StrEnum):
+    QUERY = "query"
+    ANALYSIS = "analysis"
+
+
 class QueryBody(BaseModel):
     """HTTP 查询请求体。"""
 
@@ -86,6 +110,7 @@ class QueryBody(BaseModel):
 
     question: StrictStr
     conversation_id: StrictStr | None = None
+    mode: QueryMode = QueryMode.QUERY
 
 
 class LoginBody(BaseModel):
@@ -125,6 +150,15 @@ class QuerySuccessResponse(BaseModel):
     row_count: int
     truncated: bool
     conversation_id: str
+
+
+class AnalysisSuccessResponse(BaseModel):
+    """HTTP 经营分析成功响应。"""
+
+    request_id: str
+    mode: str = "analysis"
+    report: dict[str, Any]
+    task_results: list[dict[str, Any]]
 
 
 class QueryFailureResponse(BaseModel):
@@ -173,6 +207,8 @@ def create_app(
     admin_session_factory: Any | None = None,
     conversation_store: ConversationStore | None = None,
     query_understanding: object | None = None,
+    analysis_service: AnalysisService | None = None,
+    analysis_service_factory: AnalysisServiceFactory | None = None,
 ) -> FastAPI:
     """创建绑定查询服务的 FastAPI 应用。"""
 
@@ -188,6 +224,9 @@ def create_app(
         authorization_store,
         audit_sink=audit_sink,
     )
+    active_analysis_service = analysis_service
+    if active_analysis_service is None and analysis_service_factory is not None:
+        active_analysis_service = analysis_service_factory(authorized_service)
     recorder = trace_recorder or getattr(service, "_trace_recorder", None)
     if recorder is None:
         try:
@@ -218,6 +257,7 @@ def create_app(
     app.state.trace_recorder = recorder
     app.state.conversation_store = active_conversation_store
     app.state.query_understanding = query_understanding
+    app.state.analysis_service = active_analysis_service
 
     @app.middleware("http")
     async def observability_middleware(
@@ -330,7 +370,7 @@ def create_app(
 
     @app.post(
         "/api/v1/query",
-        response_model=QuerySuccessResponse,
+        response_model=QuerySuccessResponse | AnalysisSuccessResponse,
         responses={
             400: {"model": QueryFailureResponse},
             401: {"model": QueryFailureResponse},
@@ -347,6 +387,23 @@ def create_app(
         request: Request,
         body: QueryBody,
     ) -> JSONResponse:
+        if body.mode is QueryMode.ANALYSIS:
+            if body.conversation_id is not None:
+                return _result_response(
+                    _analysis_invalid_request(_request_id_from_state(request)),
+                    trace_recorder=recorder,
+                )
+            analysis_result = _authorized_analysis(
+                request,
+                question=body.question,
+                identity_provider=provider,
+                query_service=authorized_service,
+                analysis_service=active_analysis_service,
+            )
+            return _analysis_result_response(
+                analysis_result,
+                trace_recorder=recorder,
+            )
         result = _authorized_query(
             request,
             question=body.question,
@@ -558,6 +615,97 @@ def _authorized_query(
     return result, None
 
 
+def _authorized_analysis(
+    request: Request,
+    *,
+    question: str,
+    identity_provider: IdentityProviderAdapter,
+    query_service: AuthorizedQueryService,
+    analysis_service: AnalysisService | None,
+) -> BusinessAnalysisSuccess | QueryFailure:
+    request_id = _request_id_from_state(request)
+    try:
+        auth_context = identity_provider.authenticate(request)
+    except AuthenticationRequired:
+        return query_service.authentication_failure(
+            request_id=request_id,
+            error_code=QueryErrorCode.AUTHENTICATION_REQUIRED,
+            internal_reason="AUTHENTICATION_REQUIRED",
+            identity_provider=_provider_name(identity_provider),
+        )
+    except IdentityProviderUnavailable:
+        return query_service.authentication_failure(
+            request_id=request_id,
+            error_code=QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
+            internal_reason="IDENTITY_PROVIDER_UNAVAILABLE",
+            identity_provider=_provider_name(identity_provider),
+        )
+    except Exception as exc:  # noqa: BLE001 - authentication must Fail Closed
+        _LOGGER.warning(
+            "Identity Provider failure for analysis: error_type=%s",
+            type(exc).__name__,
+        )
+        return query_service.authentication_failure(
+            request_id=request_id,
+            error_code=QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
+            internal_reason="IDENTITY_PROVIDER_FAILURE",
+            identity_provider=_provider_name(identity_provider),
+        )
+
+    if not isinstance(auth_context, AuthContext):
+        return query_service.authentication_failure(
+            request_id=request_id,
+            error_code=QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
+            internal_reason="INVALID_AUTH_CONTEXT",
+            identity_provider=_provider_name(identity_provider),
+        )
+    if analysis_service is None:
+        return QueryFailure(
+            request_id=request_id,
+            error_code=QueryErrorCode.CONTEXT_ERROR,
+            error_message="经营分析上下文暂时不可用",
+            failure_stage="business_analysis",
+            internal_reason="ANALYSIS_SERVICE_MISSING",
+        )
+    try:
+        result = analysis_service.analyze(
+            question,
+            request_id=request_id,
+            auth_context=auth_context,
+        )
+    except Exception as exc:  # noqa: BLE001 - adapter must not leak internals
+        _LOGGER.warning(
+            "Business Analysis failure: error_type=%s",
+            type(exc).__name__,
+        )
+        return QueryFailure(
+            request_id=request_id,
+            error_code=QueryErrorCode.CONTEXT_ERROR,
+            error_message="经营分析上下文暂时不可用",
+            failure_stage="business_analysis",
+            internal_reason="ANALYSIS_SERVICE_FAILURE",
+        )
+    if isinstance(result, (BusinessAnalysisSuccess, QueryFailure)):
+        return result
+    return QueryFailure(
+        request_id=request_id,
+        error_code=QueryErrorCode.CONTEXT_ERROR,
+        error_message="经营分析上下文暂时不可用",
+        failure_stage="business_analysis",
+        internal_reason="ANALYSIS_RESULT_INVALID",
+    )
+
+
+def _analysis_invalid_request(request_id: str) -> QueryFailure:
+    return QueryFailure(
+        request_id=request_id,
+        error_code=QueryErrorCode.INVALID_REQUEST,
+        error_message="经营分析请求不能携带普通查询 conversation_id",
+        failure_stage="request_validation",
+        internal_reason="ANALYSIS_CONVERSATION_CONFLICT",
+    )
+
+
 def _conversation_failure(
     request_id: str,
     error_code: QueryErrorCode,
@@ -593,6 +741,47 @@ def _semantic_revision_failure(
         failure_stage="semantic_revision",
         internal_reason=error.reason,
     )
+
+
+def _analysis_result_response(
+    result: BusinessAnalysisSuccess | QueryFailure,
+    *,
+    trace_recorder: TraceRecorder | None = None,
+) -> JSONResponse:
+    if isinstance(result, QueryFailure):
+        return _result_response(result, trace_recorder=trace_recorder)
+    with _safe_span(trace_recorder, "response.serialize"):
+        return JSONResponse(
+            status_code=200,
+            content=AnalysisSuccessResponse(
+                request_id=result.request_id,
+                mode="analysis",
+                report=result.report.to_payload(),
+                task_results=[
+                    _analysis_task_result_payload(task_result)
+                    for task_result in result.task_results
+                ],
+            ).model_dump(mode="json"),
+        )
+
+
+def _analysis_task_result_payload(result: TaskResult) -> dict[str, object]:
+    rows = [list(row) for row in result.rows[:100]]
+    payload: dict[str, object] = {
+        "task_id": result.task_id,
+        "status": result.status.value,
+        "columns": list(result.columns),
+        "rows": rows,
+        "row_count": result.row_count,
+        "truncated": result.truncated or len(result.rows) > len(rows),
+        "error": None,
+    }
+    if result.error is not None:
+        payload["error"] = {
+            "code": result.error.code,
+            "message": result.error.message,
+        }
+    return payload
 
 
 def _provider_name(identity_provider: IdentityProviderAdapter) -> str:

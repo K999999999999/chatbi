@@ -9,14 +9,9 @@ API Adapter（接口适配层）只负责 HTTP 与内部类型之间的转换：
 ```text
 HTTP 请求
   -> server-side AuthContext
-  -> Application 会话边界（读取、校验当前会话状态）
-  -> AuthorizedQueryService.authorize()
-  -> Application 语义修订（已有会话）
-  -> AuthorizedQueryService.execute_authorized()
-  -> QueryRequest
-  -> OnlineQueryService.execute()
-  -> 成功后提交 Structured Query State
-  -> QuerySuccess / QueryFailure
+  -> mode=query：现有 Application 会话边界和普通查询链路
+  -> mode=analysis：Business Analysis Application Workflow
+  -> QuerySuccess / AnalysisSuccess / QueryFailure
   -> HTTP JSON 响应
 ```
 
@@ -26,7 +21,8 @@ HTTP 请求
 
 - 同步、每次请求/响应；每次下游执行仍然只处理一条有效查询。
 - 当前使用 JSON，不使用 SSE（流式推送）或 WebSocket（双向实时连接）。
-- API 通过 `AuthorizedQueryService.authorize()` 完成身份与数据授权；已有会话在授权通过后完成语义修订，再由 `execute_authorized()` 调用下游 `OnlineQueryService.execute()`。
+- `mode=query` 通过 `AuthorizedQueryService.authorize()` 完成身份与数据授权；已有会话在授权通过后完成语义修订，再由 `execute_authorized()` 调用下游 `OnlineQueryService.execute()`。
+- `mode=analysis` 只调用被注入的 Business Analysis Application Workflow；Task 的授权、执行和报告生成不下沉到 API Adapter。
 - API 不改变 Online Query 的业务规则、超时和结果行数上限；短期会话边界使用本 Spec 定义的 Application 错误码。
 
 ## 接口
@@ -39,17 +35,19 @@ Content-Type: application/json
 X-Request-ID: 可选
 ```
 
-请求体接受必填 `question` 和可选 `conversation_id`：
+请求体接受必填 `question`、可选 `conversation_id` 和可选 `mode`：
 
 ```json
 {
   "question": "按销售区域拆开。",
-  "conversation_id": "server-generated-id"
+  "conversation_id": "server-generated-id",
+  "mode": "query"
 }
 ```
 
 - `question` 必填，必须是去除首尾空白后非空的字符串。
 - `conversation_id` 可选，只接受服务端生成的会话编号；不接受 `user_id`、`tenant_id`、对话历史、结构化状态、SQL、分页参数或网关内部信息。
+- `mode` 可选，只能是 `query` 或 `analysis`；缺失时默认为 `query`。未知值返回 `INVALID_REQUEST`。
 - 请求体格式错误、缺少 `question`、`question` 为空或存在未知字段时，返回 `INVALID_REQUEST`。
 - `X-Request-ID` 可由调用方或未来网关传入；未传入或为空时沿用 Online Query 自动生成的 `request_id`。
 
@@ -86,6 +84,53 @@ X-Request-ID: 可选
 - `error_code` 和 `error_message` 完全沿用 `QueryFailure`。
 - 失败响应不创建新的会话，也不返回新的 `conversation_id`；已有会话的调用方继续使用原编号重试。
 - 响应不得包含 Python 异常堆栈、数据库连接信息、API Key 或其他 Secret（密钥）。
+
+### Business Analysis V1（经营分析）
+
+当 `mode=analysis` 时，API 只负责校验模式、认证当前用户、调用 Business Analysis Application Workflow 和序列化响应：
+
+```json
+{
+  "question": "最近三个月销售额为什么下降",
+  "mode": "analysis"
+}
+```
+
+- `mode=analysis` 不读取、不创建、不修改普通查询 `conversation_id`；如果请求携带该字段，必须在会话 Store、授权查询、Task Decomposer、Retrieval、LLM、SQL Guard 或数据库之前返回 `400 / INVALID_REQUEST`。
+- `mode=analysis` 不提交普通查询 `QueryState`，也不创建长期 `AnalysisState`；每次请求都是独立的单轮经营分析。
+- 经营分析 Application 内部负责 Task Decomposer、计划校验、绑定当前用户身份的 Task 执行、TaskResult 汇总和 Summary LLM；API 不直接调用这些组件。
+- 成功响应不返回 SQL 或普通查询 `conversation_id`，只返回自然语言报告和有界的结构化 TaskResult：
+
+```json
+{
+  "request_id": "analysis-123",
+  "mode": "analysis",
+  "report": {
+    "title": "销售额趋势分析",
+    "executive_summary": "销售额在观察期内下降。",
+    "key_findings": ["整体销售额下降"],
+    "trend_judgment": "呈下降趋势",
+    "root_causes": ["华东区域贡献下降"],
+    "action_suggestions": ["进一步检查华东区域产品结构"],
+    "evidence_task_ids": ["trend"],
+    "incomplete_tasks": []
+  },
+  "task_results": [
+    {
+      "task_id": "trend",
+      "status": "completed",
+      "columns": ["month", "sales"],
+      "rows": [["2026-09", 90]],
+      "row_count": 1,
+      "truncated": false,
+      "error": null
+    }
+  ]
+}
+```
+
+- `task_results` 只保留结构化数据、状态和安全公开错误，不包含 SQL、连接信息、异常堆栈或 Secret；返回行数仍受 Online Query 当前边界约束。
+- 经营分析失败沿用 `QueryFailure` 形状和本 Spec 的 HTTP 错误映射；分析报告不写入普通查询时间线。
 
 ### Multi-Turn Query V1（受控多轮查询）
 
@@ -136,7 +181,7 @@ API 对请求体解析失败时，也必须返回上述 `QueryFailure` 形状，
 
 - API Adapter 是外层 Interface（接口层），只能通过 `AuthorizedQueryService` 的授权门禁和 `execute_authorized()` 进入 Online Query。
 - 一个可执行的 HTTP 查询最多调用一次授权入口；会话不存在、过期、越权或并发冲突时不得调用授权入口，不得维护第二条查询链路。
-- API Adapter 不直接调用 LLM、SQL Guard 或数据库。
+- API Adapter 不直接调用 LLM、SQL Guard 或数据库，也不在适配层生成经营分析报告；这些职责属于被注入的 Application Workflow。
 - 会话状态由 Application 边界拥有；API Adapter 不让客户端提交完整状态，也不把会话状态当作授权凭证。
 - API Adapter 不实现认证、授权、租户隔离、限流、审计、重试、熔断或成本控制。
 - 当前仅信任 `X-Request-ID` 作为追踪标识，不把它当作身份或授权信息。
@@ -144,7 +189,7 @@ API 对请求体解析失败时，也必须返回上述 `QueryFailure` 形状，
 
 ## 不负责
 
-- SSE、WebSocket、流式输出和自然语言总结。
+- SSE、WebSocket 和流式输出；经营分析报告由 Business Analysis Application Workflow 负责，API 只做响应序列化。
 - Streamlit、Gradio、React 或 Vue 前端页面。
 - 用户登录、`user_id`、`tenant_id`、权限控制和数据行级隔离。
 - 长期聊天历史、跨服务恢复、复杂分析 Agent、RAG、自动修复和模型重试。
