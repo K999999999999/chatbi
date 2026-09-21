@@ -1,0 +1,57 @@
+[
+  {
+    "id": "trend-sales-last-three-months",
+    "question": "最近三个月销售额趋势如何？",
+    "expected": {
+      "outcome": "plan",
+      "min_tasks": 1,
+      "required_task_types": ["trend"],
+      "required_metrics": ["人民币净销售额"],
+      "required_dimensions": []
+    }
+  },
+  {
+    "id": "compare-current-and-previous-year",
+    "question": "比较今年和去年销售额，哪个时期更好？",
+    "expected": {
+      "outcome": "plan",
+      "min_tasks": 1,
+      "required_task_types": ["comparison"],
+      "required_metrics": ["人民币净销售额"],
+      "required_dimensions": ["年份"]
+    }
+  },
+  {
+    "id": "breakdown-by-sales-region",
+    "question": "最近三个月销售额按销售区域拆解。",
+    "expected": {
+      "outcome": "plan",
+      "min_tasks": 1,
+      "required_task_types": ["breakdown"],
+      "required_metrics": ["人民币净销售额"],
+      "required_dimensions": ["销售区域"]
+    }
+  },
+  {
+    "id": "root-cause-by-product-line",
+    "question": "最近三个月销售额为什么下降？请先看趋势，再定位到产品线。",
+    "expected": {
+      "outcome": "plan",
+      "min_tasks": 2,
+      "required_task_types": ["trend", "breakdown"],
+      "required_metrics": ["人民币净销售额"],
+      "required_dimensions": ["产品线"]
+    }
+  },
+  {
+    "id": "ambiguous-profit",
+    "question": "最近利润为什么下降？",
+    "expected": {
+      "outcome": "clarification_required",
+      "min_tasks": 0,
+      "required_task_types": [],
+      "required_metrics": [],
+      "required_dimensions": []
+    }
+  }
+]

@@ -1,6 +1,6 @@
 # Ticket 05：经营分析回归、AI Evaluation 与 Business Acceptance
 
-- Status: open
+- Status: done
 - Owner: Evaluation / Business Acceptance
 - Blocked by: Ticket 04
 - Canonical Source: `.scratch/business-analysis-v1/spec.md`
@@ -61,10 +61,16 @@
 
 ## Result
 
-Not started.
+已完成经营分析标准案例、确定性评测器和验收记录：
+
+- 新增 5 个标准案例，覆盖趋势、期间对比、维度拆解、原因分析和歧义“利润”；评测器验证 Task 类型、指标、维度、最小 Task 数量和澄清行为。
+- 复用 Business Analysis 单元测试覆盖正常多 Task、依赖失败、独立失败、跳过、空结果、截断、报告证据引用和普通查询回归。
+- 验收记录写入 `docs/acceptance/business-analysis-v1-20260921.md`，明确区分 Software Test、AI Evaluation、Business Acceptance 和 Real E2E。
+- 本次 Real E2E 未执行，未把 Fake / 固定模型结果当成真实 LLM、RAG、SQL Guard 或 PostgreSQL 验收证据。
+
+验证：`uv run --with pytest python -m pytest -q` → 433 passed、6 skipped、121 subtests；`uv run python -m compileall -q src tests` → 通过；`git diff --check` → 通过。
 
 ## Comments
 
 - Ticket Readiness Review：READY。
 - 本 Ticket 只建立验收证据，不扩大到预测、模拟、自动经营动作或 Production Readiness。
-
