@@ -7,12 +7,17 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime, time
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from typing import Protocol
 
 from src.online_query.contracts import QueryData
 
 from .reporting_errors import ReportingError
 from .reporting_markdown import render_markdown_report
 from .runner import CaseStatus, EvaluationRun
+
+
+class EvaluationReferenceRun(Protocol):
+    reference_results: Mapping[str, QueryData]
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,7 +39,7 @@ class RunMetadata:
 
 
 def collect_run_metadata(
-    run: EvaluationRun,
+    run: EvaluationReferenceRun,
     *,
     git_commit: str,
     git_dirty: bool,

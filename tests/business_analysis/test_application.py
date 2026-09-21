@@ -2,7 +2,6 @@
 
 import unittest
 
-from src.online_query.contracts import QuerySuccess
 from src.business_analysis.application import (
     BusinessAnalysisApplication,
     BusinessAnalysisSuccess,
@@ -15,6 +14,7 @@ from src.business_analysis.contracts import (
 )
 from src.business_analysis.execution import TaskStatus
 from src.business_analysis.reporting import BusinessAnalysisReport
+from src.online_query.contracts import QueryErrorCode, QueryFailure, QuerySuccess
 
 
 class BusinessAnalysisApplicationTest(unittest.TestCase):
@@ -45,6 +45,24 @@ class BusinessAnalysisApplicationTest(unittest.TestCase):
         self.assertEqual(authorized.bound_contexts, ["auth-context"])
         self.assertEqual(decomposer.questions, ["分析销售额"])
         self.assertEqual(summarizer.inputs[0][0], "分析销售额")
+
+    def test_ambiguous_profit_is_clarified_before_task_execution(self) -> None:
+        application = BusinessAnalysisApplication(
+            _AuthorizedService(_BoundService()),
+            decomposer=_ProfitDecomposer(),
+            summarizer=_Summarizer(),
+            context_provider=lambda: _context(),
+        )
+
+        result = application.analyze(
+            "最近利润为什么下降？",
+            request_id="analysis-profit",
+            auth_context="auth-context",
+        )
+
+        self.assertIsInstance(result, QueryFailure)
+        self.assertEqual(result.error_code, QueryErrorCode.CLARIFICATION_REQUIRED)
+        self.assertEqual(result.internal_reason, "METRIC_NOT_UNIQUE")
 
 
 class _Decomposer:
@@ -85,6 +103,26 @@ class _Summarizer:
             action_suggestions=("建议继续观察",),
             evidence_task_ids=("root",),
             incomplete_tasks=(),
+        )
+
+
+class _ProfitDecomposer:
+    def decompose(self, question, context):
+        del question, context
+        return AnalysisPlanCandidate(
+            tasks=(
+                AnalysisTaskCandidate(
+                    task_id="profit",
+                    task_type=AnalysisTaskType.TREND,
+                    description="分析利润趋势",
+                    metrics=("人民币毛利", "毛利率"),
+                    dimensions=(),
+                    time_range=None,
+                    filters=(),
+                    depends_on=(),
+                    expected_output="利润结果",
+                ),
+            )
         )
 
 

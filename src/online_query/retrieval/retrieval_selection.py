@@ -4,12 +4,11 @@ import re
 
 from ..contracts import MetricHit, TableHit
 from ..query_understanding import ValidatedSemanticQuery
-from .resource_retrieval import _TimeField, _metric_data_source
+from .resource_retrieval import _metric_data_source, _TimeField
 from .retrieval_errors import (
     RequiredCandidateUnavailableError,
     RetrievalContractError,
 )
-
 
 _GENERIC_GROUPING_TERMS = frozenset(
     {"类型", "属性", "业务", "数据", "信息", "记录", "完成", "订单", "金额", "统计"}
@@ -18,6 +17,11 @@ _DIMENSION_ALIASES = {
     "月份": ("月份", "月"),
     "年份": ("年份", "年"),
 }
+_CALENDAR_CONTEXT = {
+    "年": ("年份", "年季度", "年月"),
+    "月": ("月份", "年月", "季度月", "月日"),
+}
+_CALENDAR_DIMENSIONS = frozenset({"年份", "季度", "月份", "日期"})
 
 
 def select_anchor(
@@ -123,23 +127,30 @@ def grouping_text_from_dimensions(dimensions: tuple[str, ...]) -> str:
 
 
 def requires_date_context(query: ValidatedSemanticQuery) -> bool:
-    """只有结构化查询存在已标准化时间条件时才启用指标 time_field。"""
+    """时间条件或日历维度都需要确定指标的 time_field。"""
 
-    return query.time is not None
+    return query.time is not None or any(
+        dimension in _CALENDAR_DIMENSIONS for dimension in query.dimensions
+    )
 
 
 def table_content_matches(question: str, page_content: str) -> bool:
     normalized_content = normalize_text(page_content)
     aliases = _DIMENSION_ALIASES.get(question.strip(), (question,))
-    return any(
-        term in normalized_content
-        for alias in aliases
-        for term in cjk_bigrams(alias)
-    ) or any(
-        normalize_text(alias) in normalized_content
-        for alias in aliases
-        if len(normalize_text(alias)) == 1
-    )
+    for alias in aliases:
+        normalized_alias = normalize_text(alias)
+        if len(normalized_alias) == 1:
+            if any(
+                context in normalized_content
+                for context in _CALENDAR_CONTEXT.get(normalized_alias, ())
+            ):
+                return True
+            continue
+        if any(term in normalized_content for term in cjk_bigrams(alias)):
+            return True
+        if normalized_alias in normalized_content:
+            return True
+    return False
 
 
 def cjk_bigrams(value: str) -> tuple[str, ...]:

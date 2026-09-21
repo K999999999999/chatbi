@@ -1,10 +1,7 @@
 """Business Analysis Task Adapter 和 Executor 测试。"""
 
-from datetime import datetime
 import unittest
-
-from src.online_query.contracts import QueryErrorCode, QueryFailure, QuerySuccess
-from src.online_query.query_understanding import QueryType, TimeGranularity
+from datetime import datetime
 
 from src.business_analysis.contracts import (
     AnalysisPlan,
@@ -14,12 +11,12 @@ from src.business_analysis.contracts import (
 )
 from src.business_analysis.execution import (
     TaskExecutor,
-    TaskResult,
     TaskSemanticAdapter,
     TaskSemanticAdapterError,
     TaskStatus,
 )
-
+from src.online_query.contracts import QueryErrorCode, QueryFailure, QuerySuccess
+from src.online_query.query_understanding import QueryType, TimeGranularity
 
 NOW = datetime(2026, 9, 21, 12, 0)
 
@@ -47,6 +44,29 @@ class TaskExecutionTest(unittest.TestCase):
         self.assertEqual(request.semantic_query.query_type, QueryType.METRIC_ANALYSIS)
         self.assertEqual(request.semantic_query.original_question, request.question)
         self.assertIsNone(request.semantic_query.time)
+        self.assertIn("时间=无", request.question)
+
+    def test_canonical_comparison_question_drops_discrete_time_range(self) -> None:
+        task = AnalysisTask(
+            task_id="comparison",
+            task_type=AnalysisTaskType.COMPARISON,
+            description="比较年份",
+            metrics=("人民币净销售额",),
+            dimensions=("年份",),
+            time_range=AnalysisTimeRange(
+                text="2024年和2025年",
+                granularity=TimeGranularity.YEAR,
+            ),
+            filters=(),
+            depends_on=(),
+            expected_output="年度比较",
+        )
+
+        request = TaskSemanticAdapter().to_query_request(task, now=NOW)
+
+        self.assertIn("维度=年份", request.question)
+        self.assertIn("时间=无", request.question)
+        self.assertNotIn("2024年和2025年", request.question)
 
     def test_adapter_rejects_invalid_semantics_before_query(self) -> None:
         task = _task("invalid", metrics=())
@@ -56,13 +76,38 @@ class TaskExecutionTest(unittest.TestCase):
 
         self.assertEqual(raised.exception.reason, "METRIC_REQUIRED")
 
-    def test_executor_runs_dependencies_serially_and_skips_downstream_failure(self) -> None:
+    def test_comparison_by_year_does_not_use_discrete_years_as_one_range(self) -> None:
+        task = AnalysisTask(
+            task_id="comparison",
+            task_type=AnalysisTaskType.COMPARISON,
+            description="比较两个年份",
+            metrics=("人民币净销售额",),
+            dimensions=("年份",),
+            time_range=AnalysisTimeRange(
+                text="2024年和2025年",
+                granularity=TimeGranularity.YEAR,
+            ),
+            filters=(),
+            depends_on=(),
+            expected_output="按年份比较",
+        )
+
+        request = TaskSemanticAdapter().to_query_request(task, now=NOW)
+
+        self.assertIsNotNone(request.semantic_query)
+        assert request.semantic_query is not None
+        self.assertIsNone(request.semantic_query.time)
+
+    def test_executor_runs_dependencies_serially_and_skips_downstream_failure(
+        self,
+    ) -> None:
         service = _BoundQueryService(
             [
                 QueryFailure(
                     request_id="analysis:root",
                     error_code=QueryErrorCode.DATABASE_ERROR,
                     error_message="数据库暂时不可用",
+                    internal_reason="DATABASE_CONNECTION_LOST",
                 ),
                 QuerySuccess(
                     request_id="analysis:independent",
@@ -102,6 +147,10 @@ class TaskExecutionTest(unittest.TestCase):
         self.assertEqual(results[1].error.code, "DEPENDENCY_FAILED")
         self.assertEqual(results[2].row_count, 1)
         self.assertNotIn("database", results[0].error.message.lower())
+        self.assertEqual(
+            results[0].error.internal_reason,
+            "DATABASE_CONNECTION_LOST",
+        )
 
     def test_empty_result_is_completed_and_does_not_skip_ready_task(self) -> None:
         service = _BoundQueryService(
@@ -124,9 +173,7 @@ class TaskExecutionTest(unittest.TestCase):
                 ),
             ]
         )
-        plan = AnalysisPlan(
-            tasks=(_task("root"), _task("child", depends_on=("root",)))
-        )
+        plan = AnalysisPlan(tasks=(_task("root"), _task("child", depends_on=("root",))))
 
         results = TaskExecutor(service, TaskSemanticAdapter()).execute(
             plan,

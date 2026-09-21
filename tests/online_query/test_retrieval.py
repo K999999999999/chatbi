@@ -3,8 +3,6 @@
 import json
 import unittest
 
-from src.rag_offline.embedding import EmbeddedText, SparseEmbedding
-from src.rag_offline.qdrant_store import SearchHit
 from src.online_query.contracts import (
     FallbackPolicy,
     RequestShape,
@@ -18,12 +16,14 @@ from src.online_query.query_understanding import (
     candidate_from_payload,
     validate_candidate,
 )
+from src.online_query.retrieval import OnlineRetriever
 from src.online_query.retrieval.rag_runtime import (
     AssetSnapshot,
     RetrievalUnavailableError,
 )
-from src.online_query.retrieval import OnlineRetriever
 from src.online_query.retrieval.retrieval_selection import table_content_matches
+from src.rag_offline.embedding import EmbeddedText, SparseEmbedding
+from src.rag_offline.qdrant_store import SearchHit
 
 
 class _FakeEmbedding:
@@ -40,8 +40,17 @@ class _FakeEmbedding:
 
 class RetrievalSelectionContractTest(unittest.TestCase):
     def test_calendar_dimension_alias_matches_structural_month_text(self) -> None:
-        self.assertTrue(table_content_matches("月份", "按自然日记录的日期及其年、季度、月、日属性。"))
-        self.assertTrue(table_content_matches("年份", "按自然日记录的日期及其年、季度、月、日属性。"))
+        self.assertTrue(
+            table_content_matches(
+                "月份", "按自然日记录的日期及其年、季度、月、日属性。"
+            )
+        )
+        self.assertTrue(
+            table_content_matches(
+                "年份", "按自然日记录的日期及其年、季度、月、日属性。"
+            )
+        )
+        self.assertFalse(table_content_matches("年份", "订单年度收入及客户信息。"))
 
 
 class _FakeStore:
@@ -634,6 +643,58 @@ class RetrievalTest(unittest.TestCase):
         self.assertIn(
             "full_date",
             {column["column_name"] for column in dynamic_schema["columns"]},
+        )
+
+    def test_calendar_dimension_without_time_uses_metric_time_field(self) -> None:
+        tables = (
+            _table("table:fct", "fct_sales_order_line", 0.95),
+            _table("table:date", "dim_date", 0.85, page_content="年份月份维度"),
+        )
+        columns = {
+            "fct_sales_order_line": (
+                _column("fct_sales_order_line", "net_sales_amount_cny", 0.95),
+                _column("fct_sales_order_line", "completion_date_key", 0.93),
+                _column("fct_sales_order_line", "order_status", 0.92),
+            ),
+            "dim_date": (
+                _column("dim_date", "date_key", 0.90),
+                _column("dim_date", "full_date", 0.895),
+                _column("dim_date", "year", 0.89),
+            ),
+        }
+        store = _FakeStore(
+            tables,
+            columns,
+            (
+                _metric(
+                    "人民币净销售额",
+                    0.97,
+                    formula="SUM(f.net_sales_amount_cny)",
+                ),
+            ),
+        )
+
+        result = OnlineRetriever(
+            _FakeRuntime(
+                _snapshot(
+                    store,
+                    _FakeEmbedding(),
+                    _sales_graph(include_region=False, include_date=True),
+                )
+            )
+        ).retrieve(
+            _request(
+                "按年份比较人民币净销售额",
+                subjects=("销售",),
+                metrics=("人民币净销售额",),
+                dimensions=("年份",),
+            )
+        )
+
+        self.assertEqual(result.status, RetrievalStatus.SUCCESS)
+        self.assertEqual(
+            [edge.edge_id for edge in result.join_path.joins],
+            ["fk_completion_date"],
         )
 
     def test_explicit_date_without_date_table_stops_before_context(self) -> None:

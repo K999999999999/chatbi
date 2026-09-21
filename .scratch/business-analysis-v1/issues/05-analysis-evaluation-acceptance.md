@@ -67,10 +67,12 @@
 - 复用 Business Analysis 单元测试覆盖正常多 Task、依赖失败、独立失败、跳过、空结果、截断、报告证据引用和普通查询回归。
 - 验收记录写入 `docs/acceptance/business-analysis-v1-20260921.md`，明确区分 Software Test、AI Evaluation、Business Acceptance 和 Real E2E。
 - 已执行真实 LLM、BGE-M3、Qdrant、Retrieval、SQL Guard、只读 PostgreSQL、认证和 HTTP API 链路；有数据的明确期间案例成功，空结果和依赖失败均按 Contract 标记不完整。
-- 真实 5-case 批量 AI Evaluation、hosted CI 21-case 和人工业务复核仍未执行，未把本地样本通过扩大解释为全量准确率或 Production Ready。
+- 真实 5-case 批量 AI Evaluation 已执行并通过：`5/5 PASS`、`INVALID_CASE=0`；Plan Accuracy、Task Execution Accuracy、Report Grounded Accuracy、End-to-End Accuracy 均为 `100%`。该结果只证明当前 Golden Set 通过，不扩大解释为全量准确率或 Production Ready。
+- hosted CI 21-case、人工业务复核和 Summary 自然语言质量的独立 LLM Judge 仍未执行。
 - Real E2E 期间发现并补充了最近月份时间标准化、时间维度别名和 Summary 列表字段 Prompt 的确定性保护及回归测试。
+- 另外补充了日历维度的指标 `time_field` Join 选择、离散年份比较 canonical query、利润口径程序级澄清和 Task 内部失败原因记录。
 
-验证：`uv run --with pytest python -m pytest -q` → 435 passed、6 skipped、123 subtests；`uv run python -m compileall -q src tests` → 通过；`git diff --check` → 通过。
+验证：`uv run --with pytest python -m pytest -q` → 445 passed、6 skipped、123 subtests；真实 5-case Golden Set → 5/5 PASS；`uv run python -m compileall -q src tests` → 通过；`git diff --check` → 通过。
 
 ## Comments
 

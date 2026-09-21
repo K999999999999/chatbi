@@ -16,9 +16,7 @@ class AnalysisDecomposerTest(unittest.TestCase):
     def setUp(self) -> None:
         self.context = AnalysisDecompositionContext(
             current_time="2026-09-21T12:00:00+08:00",
-            metric_records=(
-                {"name": "人民币净销售额", "aliases": ["销售额"]},
-            ),
+            metric_records=({"name": "人民币净销售额", "aliases": ["销售额"]},),
             dimensions=("销售区域", "产品线"),
         )
 
@@ -34,6 +32,10 @@ class AnalysisDecomposerTest(unittest.TestCase):
         self.assertIn("不要输出 SQL", prompt)
         self.assertIn("time_range 格式", prompt)
         self.assertIn('"text": "最近三个月", "granularity": "month"', prompt)
+        self.assertIn("metrics 必须保留用户的“利润”表达", prompt)
+        self.assertIn("比较多个明确时期时", prompt)
+        self.assertIn("先生成趋势 Task，再生成下钻 breakdown Task", prompt)
+        self.assertIn("filters 格式", prompt)
         self.assertIn("最近三个月销售额为什么下降", prompt)
 
     def test_decomposer_parses_one_json_plan(self) -> None:

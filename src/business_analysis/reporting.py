@@ -84,7 +84,7 @@ class LangChainAnalysisSummarizer:
             raise AnalysisReportError(
                 "没有任何已完成的分析 Task",
                 code="CANNOT_ANSWER",
-                reason="NO_COMPLETED_TASK",
+                reason=_no_completed_task_reason(results),
             )
 
         incomplete_tasks = _incomplete_tasks(results)
@@ -291,6 +291,25 @@ def _incomplete_tasks(results: tuple[TaskResult, ...]) -> tuple[IncompleteTask, 
                 IncompleteTask(task_id=result.task_id, reasons=tuple(reasons))
             )
     return tuple(incomplete)
+
+
+def _no_completed_task_reason(results: tuple[TaskResult, ...]) -> str:
+    details = tuple(
+        ":".join(
+            value
+            for value in (
+                result.task_id,
+                result.error.code,
+                result.error.internal_reason,
+            )
+            if value
+        )
+        for result in results
+        if result.error is not None
+    )
+    if not details:
+        return "NO_COMPLETED_TASK"
+    return "NO_COMPLETED_TASK:" + ",".join(details)
 
 
 def _task_result_payload(result: TaskResult) -> dict[str, object]:

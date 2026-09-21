@@ -7,7 +7,6 @@ from pathlib import Path
 
 from src.business_analysis.contracts import (
     AnalysisDecompositionContext,
-    AnalysisPlanCandidate,
     AnalysisPlanClarificationRequired,
     AnalysisSemanticCatalog,
     AnalysisTaskType,
@@ -21,6 +20,19 @@ class BusinessAnalysisEvaluationLoadError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
+class BusinessAnalysisExpectedTask:
+    """黄金案例中的一个标准 Task。"""
+
+    key: str
+    task_type: AnalysisTaskType
+    metrics: tuple[str, ...]
+    dimensions: tuple[str, ...]
+    depends_on: tuple[str, ...]
+    expected_sql: str
+    order_sensitive: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class BusinessAnalysisCase:
     case_id: str
     question: str
@@ -29,6 +41,9 @@ class BusinessAnalysisCase:
     required_task_types: tuple[AnalysisTaskType, ...]
     required_metrics: tuple[str, ...]
     required_dimensions: tuple[str, ...]
+    expected_tasks: tuple[BusinessAnalysisExpectedTask, ...] = ()
+    required_evidence_tasks: tuple[str, ...] = ()
+    expected_incomplete_tasks: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +80,20 @@ def load_business_analysis_cases(path: Path) -> tuple[BusinessAnalysisCase, ...]
         min_tasks = expected.get("min_tasks", 0)
         if not isinstance(min_tasks, int) or min_tasks < 0:
             raise BusinessAnalysisEvaluationLoadError("经营分析案例 min_tasks 无效")
+        expected_tasks = _expected_tasks(expected.get("tasks", []))
+        required_evidence_tasks = _text_list(
+            _report_field(expected, "required_evidence_tasks", []),
+            "expected.report.required_evidence_tasks",
+        )
+        expected_incomplete_tasks = _text_list(
+            _report_field(expected, "expected_incomplete_tasks", []),
+            "expected.report.expected_incomplete_tasks",
+        )
+        _validate_report_task_references(
+            expected_tasks,
+            required_evidence_tasks,
+            expected_incomplete_tasks,
+        )
         result.append(
             BusinessAnalysisCase(
                 case_id=case_id,
@@ -82,6 +111,9 @@ def load_business_analysis_cases(path: Path) -> tuple[BusinessAnalysisCase, ...]
                     expected.get("required_dimensions", []),
                     "expected.required_dimensions",
                 ),
+                expected_tasks=expected_tasks,
+                required_evidence_tasks=required_evidence_tasks,
+                expected_incomplete_tasks=expected_incomplete_tasks,
             )
         )
     return tuple(result)
@@ -117,9 +149,7 @@ def evaluate_business_analysis_plans(
                 )
             continue
         except Exception as exc:
-            results.append(
-                _failed(case, "计划未通过确定性校验", _safe_reason(exc))
-            )
+            results.append(_failed(case, "计划未通过确定性校验", _safe_reason(exc)))
             continue
 
         task_types = {task.task_type for task in plan.tasks}
@@ -137,7 +167,9 @@ def evaluate_business_analysis_plans(
         elif missing_dimensions:
             results.append(_failed(case, "缺少期望的维度", "DIMENSION_MISSING"))
         else:
-            results.append(BusinessAnalysisEvaluation(case_id=case.case_id, passed=True))
+            results.append(
+                BusinessAnalysisEvaluation(case_id=case.case_id, passed=True)
+            )
     return tuple(results)
 
 
@@ -148,6 +180,82 @@ def _task_types(value: object) -> tuple[AnalysisTaskType, ...]:
         return tuple(AnalysisTaskType(item) for item in value)
     except (TypeError, ValueError):
         raise BusinessAnalysisEvaluationLoadError("required_task_types 无效") from None
+
+
+def _expected_tasks(value: object) -> tuple[BusinessAnalysisExpectedTask, ...]:
+    if not isinstance(value, list):
+        raise BusinessAnalysisEvaluationLoadError("expected.tasks 必须是数组")
+    result: list[BusinessAnalysisExpectedTask] = []
+    keys: set[str] = set()
+    for item in value:
+        if not isinstance(item, Mapping):
+            raise BusinessAnalysisEvaluationLoadError("expected.tasks 结构无效")
+        key = _required_text(item.get("key"), "expected.tasks.key")
+        if key in keys:
+            raise BusinessAnalysisEvaluationLoadError("expected.tasks.key 重复")
+        keys.add(key)
+        try:
+            task_type = AnalysisTaskType(item.get("task_type"))
+        except (TypeError, ValueError):
+            raise BusinessAnalysisEvaluationLoadError(
+                "expected.tasks.task_type 无效"
+            ) from None
+        expected_sql = _required_text(
+            item.get("expected_sql"),
+            "expected.tasks.expected_sql",
+        )
+        order_sensitive = item.get("order_sensitive", False)
+        if not isinstance(order_sensitive, bool):
+            raise BusinessAnalysisEvaluationLoadError(
+                "expected.tasks.order_sensitive 必须是布尔值"
+            )
+        result.append(
+            BusinessAnalysisExpectedTask(
+                key=key,
+                task_type=task_type,
+                metrics=_text_list(item.get("metrics", []), "expected.tasks.metrics"),
+                dimensions=_text_list(
+                    item.get("dimensions", []),
+                    "expected.tasks.dimensions",
+                ),
+                depends_on=_text_list(
+                    item.get("depends_on", []),
+                    "expected.tasks.depends_on",
+                ),
+                expected_sql=expected_sql,
+                order_sensitive=order_sensitive,
+            )
+        )
+    key_set = {item.key for item in result}
+    if any(
+        dependency not in key_set for item in result for dependency in item.depends_on
+    ):
+        raise BusinessAnalysisEvaluationLoadError(
+            "expected.tasks.depends_on 引用了不存在的 Task"
+        )
+    return tuple(result)
+
+
+def _report_field(
+    expected: Mapping[str, object], field: str, default: object
+) -> object:
+    report = expected.get("report", {})
+    if report is None:
+        return default
+    if not isinstance(report, Mapping):
+        raise BusinessAnalysisEvaluationLoadError("expected.report 必须是对象")
+    return report.get(field, default)
+
+
+def _validate_report_task_references(
+    expected_tasks: tuple[BusinessAnalysisExpectedTask, ...],
+    required_evidence_tasks: tuple[str, ...],
+    expected_incomplete_tasks: tuple[str, ...],
+) -> None:
+    task_keys = {task.key for task in expected_tasks}
+    references = (*required_evidence_tasks, *expected_incomplete_tasks)
+    if any(reference not in task_keys for reference in references):
+        raise BusinessAnalysisEvaluationLoadError("expected.report 引用了不存在的 Task")
 
 
 def _text_list(value: object, field: str) -> tuple[str, ...]:

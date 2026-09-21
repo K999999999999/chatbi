@@ -11,7 +11,9 @@ from src.business_analysis.reporting import (
 
 
 class ReportingTest(unittest.TestCase):
-    def test_summary_returns_human_readable_report_with_completed_evidence(self) -> None:
+    def test_summary_returns_human_readable_report_with_completed_evidence(
+        self,
+    ) -> None:
         model = _FakeModel(
             {
                 "title": "销售额趋势分析",
@@ -58,19 +60,33 @@ class ReportingTest(unittest.TestCase):
         self.assertEqual(raised.exception.code, "LLM_ERROR")
         self.assertEqual(raised.exception.reason, "EVIDENCE_TASK_INVALID")
 
-    def test_all_tasks_incomplete_returns_cannot_answer_without_calling_model(self) -> None:
+    def test_all_tasks_incomplete_returns_cannot_answer_without_calling_model(
+        self,
+    ) -> None:
         model = _FakeModel(_payload())
 
         with self.assertRaises(AnalysisReportError) as raised:
             LangChainAnalysisSummarizer(model).summarize(
                 "分析销售额",
-                (_result("failed", status=TaskStatus.FAILED),),
+                (
+                    _result(
+                        "failed",
+                        status=TaskStatus.FAILED,
+                        error=TaskError("TASK_EXECUTION_ERROR", "查询失败"),
+                    ),
+                ),
             )
 
         self.assertEqual(raised.exception.code, "CANNOT_ANSWER")
+        self.assertEqual(
+            raised.exception.reason,
+            "NO_COMPLETED_TASK:failed:TASK_EXECUTION_ERROR",
+        )
         self.assertEqual(model.calls, 0)
 
-    def test_program_computes_incomplete_tasks_for_empty_and_truncated_results(self) -> None:
+    def test_program_computes_incomplete_tasks_for_empty_and_truncated_results(
+        self,
+    ) -> None:
         model = _FakeModel(_payload(incomplete_tasks=["empty", "truncated"]))
 
         report = LangChainAnalysisSummarizer(model).summarize(

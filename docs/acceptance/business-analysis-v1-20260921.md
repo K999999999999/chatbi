@@ -30,7 +30,7 @@ Software Test 覆盖：
 
 最终命令结果以本次 candidate commit 的终端输出和提交前测试记录为准；没有通过的测试不得被解释为通过。
 
-本次最终结果：`435 passed, 6 skipped, 123 subtests passed`；`compileall` 和 `git diff --check` 均通过。
+本次最终结果：`445 passed, 6 skipped, 123 subtests passed`；`compileall` 和 `git diff --check` 均通过。
 
 ## AI Evaluation（AI 评测）
 
@@ -40,13 +40,19 @@ Software Test 覆盖：
 
 | 案例 | 目标 | 确定性检查 |
 |---|---|---|
-| `trend-sales-last-three-months` | 趋势 Task、人民币净销售额 | Task 类型和指标 |
-| `compare-current-and-previous-year` | 期间对比、年份维度 | Task 类型、指标和维度 |
-| `breakdown-by-sales-region` | 销售区域拆解 | Task 类型、指标和维度 |
-| `root-cause-by-product-line` | 趋势后按产品线下钻 | Task 数量、依赖、Task 类型和维度 |
+| `trend-sales-q1-2025` | 2025 Q1 趋势 Task、人民币净销售额 | Task 计划、Task 结果和报告证据 |
+| `compare-2024-and-2025` | 2024 / 2025 年份对比 | Task 计划、Task 结果和报告证据 |
+| `breakdown-sales-region-q1-2025` | 2025 Q1 销售区域拆解 | Task 计划、Task 结果和报告证据 |
+| `root-cause-by-product-line-q1-2025` | 趋势后按产品线下钻 | Task 数量、依赖、Task 结果和报告证据 |
 | `ambiguous-profit` | “利润”无法唯一确定 | 必须返回 `CLARIFICATION_REQUIRED`，不得改写为毛利 |
 
-评测器只比较结构化计划和确定性校验结果，不评分自然语言流畅度，也不把 Fake Decomposer 的结果当成真实模型准确率。真实 LLM 的 5 个标准案例批量评测本次未执行，状态为 `NOT RUN`；本次 Real E2E 只执行了代表性的动态拆解和报告场景，不把样本结果外推为完整 AI Evaluation 准确率。
+评测器分层比较结构化计划、每个 Task 的真实查询结果和报告证据，不评分自然语言流畅度，也不把 Fake Decomposer 的结果当成真实模型准确率。真实 5-case 批量评测已执行，命令为：
+
+```text
+uv run --env-file .env python -c "import os, runpy; os.environ['LLM_TEMPERATURE']='0'; runpy.run_module('src.evaluation', run_name='__main__')" --business-analysis --online-retrieval
+```
+
+结果：`5/5 PASS`、`INVALID_CASE=0`；Plan Accuracy、Task Execution Accuracy、Report Grounded Accuracy、End-to-End Accuracy 均为 `100%`。报告：`reports/evaluation/20260921T184034Z-b4bb546-business-analysis.json`。该评测证明当前 5 条 Golden Case 的真实链路通过，不等价于任意自然语言问题的业务准确率；Summary 自然语言质量仍需人工 Business Review 或后续 LLM Judge。
 
 ## Business Acceptance（业务验收）
 
@@ -58,7 +64,8 @@ Software Test 覆盖：
 4. 截断结果：保留 `truncated=true`，报告不得声称完整排名或确定性原因；
 5. 失败/跳过/不存在的 Task 不能作为 `evidence_task_ids`；
 6. “利润”没有唯一业务口径时触发澄清，不自动解释为“毛利”；
-7. 经营分析不读取、创建或修改普通查询会话，切回普通查询后原会话仍可继续。
+7. 经营分析不读取、创建或修改普通查询会话，切回普通查询后原会话仍可继续；
+8. 没有显式时间过滤但按年份、季度或月份分组时，Retrieval 能依据指标 `time_field` 选择唯一日期 Join。
 
 上述是软件 Contract 和固定结果的业务行为验收；真实数据场景见下方 Real E2E，仍不替代业务人员对报告数值和经营解释的复核。
 
@@ -81,16 +88,20 @@ Software Test 覆盖：
 3. 空结果案例“请分析最近三个月的人民币净销售额趋势，并按销售区域拆解可能原因”相对于本地数据最大完成日期 `2025-12-31` 的当前时间范围没有数据；2 个 Task 均完成但行数为 0，报告将 Task 标记为不完整，没有把空结果包装为结论。
 4. 真实 HTTP / Auth：使用唯一临时 analyst 身份调用 `POST /auth/login` 返回 `200`，随后携 Bearer Token 调用 `POST /api/v1/query` 且 `mode=analysis` 返回 `200`；单 Task 明确案例返回 6 行、Task 为 `completed`，报告字段齐全，响应不包含 `sql` 或 `conversation_id`。临时身份、Session 和本次测试审计记录已清理，数据库核对 `TEMP_USER_COUNT=0`。
 5. 失败传播案例：同一 HTTP 链路的一次动态多 Task 调用返回 `200`，Task 状态为 `completed / failed / completed / skipped`；报告仍生成并标记不完整，证明依赖失败不会伪装为完整成功。
+6. 真实 5-case Golden Set 批量评测全部通过：趋势、年份比较、区域拆解、两级下钻和利润歧义澄清；每个计划的参考 SQL 先经过 SQL Guard 并在只读 PostgreSQL 执行，Task 结果按行列和值与参考结果比较，报告按证据 Task 和不完整 Task 标记比较。
 
 本次真实验收过程中发现并修复的 Contract 问题：
 
 - 补充 `最近 N 个月`（含“最近三个月”）的确定性时间标准化，并在 Task Decomposer Prompt 中明确 `time_range` 对象格式；
 - 补充“月份/年份”到结构事实“月/年”的时间维度别名匹配，避免合法时间维度被 Retrieval 错误判为不可达；
+- 修复没有显式时间过滤但按日历维度分组时未启用指标 `time_field` 的问题，避免 `dim_date` 的多个日期关系产生 Join 歧义；
+- 修复年份单字 alias 把无关表扩大为日期维度候选的问题，并补充离散年份比较的 canonical query 规则；
+- 对未定义口径的“利润”增加程序级澄清门禁，对 Task 失败保留内部失败原因，便于 Evaluation 定位链路层级；
 - 明确 Summary LLM 的列表字段类型，并规定 `incomplete_tasks` 只输出 task_id，不拼接 reason 或输出对象。
 
 以上修复均有确定性回归测试；旧的 RAG 资产未删除，新的本地资产使用独立 build id 发布。
 
-未覆盖范围：`.github/workflows/real-e2e.yml` 的 hosted CI 21-case、真实 LLM 5-case 批量 AI Evaluation、人工业务人员对报告数值和经营解释的复核、生产部署 / 负载 / 多租户 / Secret 管理。因此不能据此声称 Production Ready 或所有问题上的业务准确率达标。
+未覆盖范围：`.github/workflows/real-e2e.yml` 的 hosted CI 21-case、人工业务人员对报告数值和经营解释的复核、Summary 自然语言质量的独立 LLM Judge、生产部署 / 负载 / 多租户 / Secret 管理。因此不能据此声称 Production Ready 或所有问题上的业务准确率达标。
 
 ## 变更追踪
 

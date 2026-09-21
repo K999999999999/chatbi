@@ -21,7 +21,12 @@ from src.online_query.query_understanding import (
     validate_candidate,
 )
 
-from .contracts import AnalysisPlan, AnalysisTask, AnalysisFilter, AnalysisTimeRange
+from .contracts import (
+    AnalysisFilter,
+    AnalysisPlan,
+    AnalysisTask,
+    AnalysisTaskType,
+)
 
 
 class TaskSemanticAdapterError(ValueError):
@@ -42,6 +47,7 @@ class TaskStatus(StrEnum):
 class TaskError:
     code: str
     message: str
+    internal_reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,7 +80,7 @@ class TaskSemanticAdapter:
                 reason="TASK_TYPE_INVALID",
             )
         question = canonical_task_question(task)
-        time = _time_candidate(task.time_range)
+        time = _time_candidate(task)
         filters = tuple(_filter_candidate(item) for item in task.filters)
         try:
             semantic_query = validate_candidate(
@@ -219,6 +225,7 @@ class TaskExecutor:
                 error=TaskError(
                     code=str(result.error_code.value),
                     message=str(result.error_message),
+                    internal_reason=result.internal_reason,
                 ),
             )
         return TaskResult(
@@ -236,7 +243,7 @@ def canonical_task_question(task: AnalysisTask) -> str:
 
     metrics = "、".join(task.metrics) if task.metrics else "无"
     dimensions = "、".join(task.dimensions) if task.dimensions else "无"
-    time_range = _canonical_time_range(task.time_range)
+    time_range = _canonical_time_range(task)
     filters = "、".join(_canonical_filter(item) for item in task.filters) or "无"
     return f"指标={metrics}；维度={dimensions}；时间={time_range}；筛选={filters}"
 
@@ -257,8 +264,17 @@ def _candidate(
     )
 
 
-def _time_candidate(time_range: AnalysisTimeRange | None) -> TimeCandidate | None:
+def _time_candidate(task: AnalysisTask) -> TimeCandidate | None:
+    time_range = task.time_range
     if time_range is None:
+        return None
+    if (
+        task.task_type is AnalysisTaskType.COMPARISON
+        and "年份" in task.dimensions
+        and any(separator in time_range.text for separator in ("和", "与", "、"))
+    ):
+        # 离散年份由“年份”维度表达；不能把“2024年和2025年”当成一个
+        # 连续时间范围交给 Natural Query 的日期校验器。
         return None
     return TimeCandidate(
         text=time_range.text,
@@ -274,10 +290,11 @@ def _filter_candidate(item: AnalysisFilter) -> FilterCandidate:
     )
 
 
-def _canonical_time_range(time_range: AnalysisTimeRange | None) -> str:
-    if time_range is None:
+def _canonical_time_range(task: AnalysisTask) -> str:
+    time_candidate = _time_candidate(task)
+    if time_candidate is None:
         return "无"
-    return f"{time_range.text}({time_range.granularity.value})"
+    return f"{time_candidate.text}({time_candidate.granularity.value})"
 
 
 def _canonical_filter(item: AnalysisFilter) -> str:
