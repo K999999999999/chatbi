@@ -241,7 +241,7 @@ status: READY
 ### 7.1 纯软件回归
 
 ```powershell
-uv run --with pytest python -m pytest -q
+uv run python -m pytest -q
 ```
 
 ### 7.2 包含本地 PostgreSQL 集成测试
@@ -250,7 +250,7 @@ uv run --with pytest python -m pytest -q
 
 ```powershell
 $env:RUN_DATABASE_TESTS = '1'
-uv run --env-file .env --with pytest python -m pytest -q
+uv run --env-file .env python -m pytest -q
 ```
 
 本命令会接触本地 PostgreSQL，本次交付不代替用户重新执行；运行前需再次确认数据库状态，并以终端输出作为当前证据。文档中历史记录的测试数量只作为对应 Commit 的证据快照，不作为当前 checkout 的基线；真实 LLM、数据库等外部集成测试仍按显式开关单独执行，不能用纯软件测试替代。
@@ -284,7 +284,7 @@ Agent 的提醒必须明确说明：用户这一次确认会授权先执行本�
 
 ```powershell
 git status --short --branch
-uv run --with pytest python -m pytest -q
+uv run python -m pytest -q
 # 如果涉及 Retrieval、Prompt、Semantic、RAG、Embedding、Qdrant、LLM、Evaluation cases 或 SQL 生成：
 # uv run --env-file .env python -m src.evaluation --online-retrieval
 git status --short --branch

@@ -7,8 +7,12 @@
 .venv/
 .uv-cache/
 node_modules/
+.pytest_cache/
+.ruff_cache/
 __pycache__/
 *.py[cod]
+*.log
+logs/
 
 data/postgres/
 data/qdrant/
