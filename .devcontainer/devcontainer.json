@@ -1,0 +1,37 @@
+	// For format details, see https://aka.ms/devcontainer.json.
+	// For config options, see the README at:
+	// https://github.com/devcontainers/templates/tree/main/src/python
+	{
+		"name": "Python 3",
+
+		// Python 3.11 开发环境
+		"image": "mcr.microsoft.com/devcontainers/python:3-3.11-bookworm",
+
+		// 开发工具
+		"features": {
+			"ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
+				"moby": true,
+				"installDockerBuildx": true,
+				"version": "latest"
+			},
+			"ghcr.io/devcontainers/features/github-cli:1": {
+				"installDirectlyFromGitHubRelease": true,
+				"version": "latest"
+			},
+			"ghcr.io/devcontainers/features/node:2": {
+				"version": "24"
+			}
+		},
+
+		// 容器首次创建后安装锁定版本 uv，并按 uv.lock 同步运行与开发依赖
+		"postCreateCommand": "python -m pip install --user uv==0.12.2 && uv sync --locked"
+
+		// 后续如果需要端口映射，可在这里增加：
+		// "forwardPorts": [],
+
+		// 后续如果需要 VS Code 扩展，可在这里增加：
+		// "customizations": {},
+
+		// 默认使用 vscode 用户，不使用 root
+		// "remoteUser": "root"
+	}

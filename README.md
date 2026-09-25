@@ -72,7 +72,7 @@ Natural Language
 常用确定性回归命令：
 
 ```powershell
-uv run --with pytest python -m pytest -q
+uv run python -m pytest -q
 ```
 
 该命令证明给定输入下的软件行为，不证明真实 LLM 准确率或 Production Readiness。完整启动、数据库集成、RAG Build 和真实 LLM Evaluation 命令见 [`docs/runbook.md`](docs/runbook.md)。历史验收入口见 [`docs/acceptance/`](docs/acceptance/)，其中的结果是对应运行时的证据快照，重新修改代码后应按当前 commit 重新验证。
