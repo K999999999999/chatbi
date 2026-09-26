@@ -2,17 +2,18 @@
 
 ## 1. 用途与边界
 
-本文档用于本地 ChatBI 的启动、账号初始化、验证、RAG Offline Build（RAG 离线构建）、评测和停止。
+本文档说明新 clone 的首次准备、日常开发、数据库和索引重建、测试与评测。命令从仓库根目录执行；流程不依赖固定电脑路径，也不使用旧项目的数据目录。
 
-当前系统仍是本地开发 / 内部验证部署，不是 Production Ready（生产可用）部署。ChatBI 已使用内置账号、角色权限和持久化审计；云端 SSO、租户隔离、限流、备份和正式部署仍是后续边界。先在终端进入当前 clone 的仓库根目录，再执行本文档中的命令；本流程不依赖固定电脑路径。
+当前系统是本地开发 / 内部验证环境，不是 Production Ready（生产可用）部署。自动测试使用隔离 PostgreSQL 和 CI Fixture；黄金评测复用开发库 `chatbi_mvp`；生产数据库不属于本文档范围。
 
-当前运行边界：
+按目标选择流程：
 
-- PostgreSQL 保存 `mart_sales` 业务数据，使用 `chatbi_app` 只读身份执行查询。
-- FastAPI 提供 Query API（查询接口）。
-- Streamlit 是当前 POC 页面。
-- BGE-M3 和 Qdrant 用于离线检索资产构建、评测，以及 Online Retrieval V1 的在线查询向量和上下文检索。
-- 已发布 RAG 资产默认接入 Online Query V1：实体类、单指标和多指标问题统一走 `metrics=0/1/N` 动态检索上下文；在线 RAG 技术故障 Fail Closed（失败关闭）并返回 `CONTEXT_ERROR`，不回退静态全量 Schema。多指标最多 5 个，直接关系只使用认证 FK→PK 和 `LEFT JOIN`。
+- **新 clone 首次初始化：** §3 选择入口 → §4.1–4.3 配置并初始化 PostgreSQL、显式创建首个管理员 → §5 启动 Qdrant → §7 准备模型并构建索引 → §6 启动 ChatBI → §8 确定性验证；真实 LLM 评测见 §9。空 PostgreSQL volume 会自动创建数据库、Schema、固定 RBAC 和 Seed；空 Qdrant 需单独构建索引。
+- **日常开发：** §5 启动服务 → §6 启动 ChatBI。PostgreSQL 数据和已发布 Qdrant 索引都会保留；不重播 Seed，也不自动重建索引。
+- **重置开发数据库：** 执行 §4.4，只删除当前 Compose 项目的 PostgreSQL volume；账号也会清空，需重新创建管理员。
+- **重建 Qdrant 索引：** 按 §7 操作，只处理当前 Compose 项目的 Qdrant volume，不清除 PostgreSQL。
+
+Dev Container Rebuild（重建开发容器）只重建工作区服务，不重置 PostgreSQL 或 Qdrant named volume。日常停止服务也不要使用 `docker compose down -v`。
 
 ## 2. 系统拓扑
 
@@ -33,32 +34,13 @@ Streamlit（Dev Container 内监听 0.0.0.0:8501；宿主机入口使用 127.0.0
 
 ## 3. 新 clone 与开发入口
 
-推荐用 Dev Container 运行 Python、ChatBI 和 RAG 构建。Dev Container、PostgreSQL、Qdrant 使用同一 Compose 项目网络：容器内 `.env` 默认通过 `postgres:5432` 和 `qdrant:6333` 连接。Compose 发布端口仍绑定宿主机回环地址，不能从局域网访问。
+推荐用 Dev Container 运行 Python、ChatBI 和 RAG 构建。Dev Container、PostgreSQL、Qdrant 使用同一 Compose 项目网络：容器内 `.env` 默认通过 `postgres:5432` 和 `qdrant:6333` 连接。首次创建 Dev Container 会执行 `uv sync --locked`。
 
-WSL / Linux 本地运行也是支持入口，使用同一 `.env.example`、`uv.lock`、Compose 文件、数据库初始化和测试流程。该入口中的应用进程经宿主机回环地址连接容器，因此 `.env` 中需要将 `POSTGRES_HOST` 改成 `127.0.0.1`、`POSTGRES_PORT` 改成 `5433`，并将 `RAG_QDRANT_URL` 改成 `http://127.0.0.1:6333`。Compose 对外发布端口使用 `POSTGRES_PUBLISHED_PORT`，不受应用连接端口设置影响。
+WSL / Linux 本地运行是支持入口，与 Dev Container 共用 `.env.example`、`uv.lock`、Compose 文件、数据库初始化和测试流程。宿主机应用进程使用回环地址连接服务，因此 `.env` 中设置 `POSTGRES_HOST=127.0.0.1`、`POSTGRES_PORT=5433` 和 `RAG_QDRANT_URL=http://127.0.0.1:6333`。Compose 发布端口由 `POSTGRES_PUBLISHED_PORT` 控制，与应用连接端口分开。
 
-新开发者按以下顺序开始：
+首次配置 `.env` 的复制命令见 §4.2。WSL / Linux 还需安装 Python 3.11 和 `uv` 并运行 `uv sync --locked`；Dev Container 会自动同步依赖。然后按 §1 的首次初始化顺序操作。
 
-1. Clone 项目并进入仓库根目录。
-2. 从 `.env.example` 复制 `.env`。在 WSL / Linux 本地环境中按上文修改三个服务端点；Dev Container 保持模板中的 Compose 服务名。
-3. 推荐入口：打开 Dev Container。它会创建开发工作区并运行 `uv sync --locked`，不会启动或删除 PostgreSQL / Qdrant 数据卷。
-4. WSL / Linux 本地入口：安装 Python 3.11 和 `uv`，执行 `uv sync --locked`。
-5. 从仓库根目录执行 `docker compose up -d --wait postgres qdrant`。空 PostgreSQL named volume 会自动初始化；日常重复启动不会重播 Seed。
-6. 构建 RAG 索引、创建首个管理员、启动 ChatBI 和运行测试，继续使用本手册后续章节的命令。
-
-PowerShell 复制环境模板：
-
-```powershell
-Copy-Item .env.example .env
-```
-
-WSL / Linux 复制环境模板：
-
-```bash
-cp .env.example .env
-```
-
-Dev Container 的 `docker-outside-of-docker` 配置把宿主机 workspace 路径传给 Compose，使 Compose 能在宿主 Docker Engine 上挂载仓库中的只读数据库初始化文件。Dev Container Rebuild 只重建工作区服务；PostgreSQL 和 Qdrant 使用独立 named volume，重建不会清除其中的数据或索引。不要使用 `docker compose down -v` 做日常停止或重建。
+Dev Container 的 `docker-outside-of-docker` 配置把宿主机 workspace 路径传给 Compose，使 Compose 能在宿主 Docker Engine 上挂载仓库中的只读数据库初始化文件。重建 Dev Container 不会删除 PostgreSQL 或 Qdrant 数据卷。Compose 发布端口只绑定宿主机回环地址，不能从局域网访问。
 
 ## 4. 首次准备
 
@@ -137,6 +119,8 @@ uv run python -m scripts.reset_dev_postgres
 
 该重置会清除 `chatbi_mvp`、`chatbi_control` 中所有开发数据、账号、Session 和审计记录。它不会删除 Qdrant volume 或其他 Compose 项目的数据。正常启动和关闭使用 Compose 服务命令，不使用 `docker compose down -v`。
 
+重置后需按 §4.3 再次显式创建首个管理员；Qdrant volume 和已发布 RAG 索引仍保留。
+
 ### 4.5 登录、首次改密和管理后台
 
 - Streamlit 打开后先使用内置账号登录；首个管理员首次登录必须修改密码。
@@ -150,14 +134,14 @@ uv run python -m scripts.reset_dev_postgres
 启动 PostgreSQL 和 Qdrant：
 
 ```bash
-docker compose up -d postgres qdrant
+docker compose up -d --wait postgres qdrant
 docker compose ps
 ```
 
 预期：
 
 - PostgreSQL 状态为 `healthy`。
-- Qdrant 容器处于 `Up`。
+- Qdrant 容器处于 `Up`。首次启动的空 Qdrant 尚无 ChatBI 检索索引，按 §7 构建后才可用于在线检索。
 - 两个服务只绑定本机回环地址。
 
 Qdrant 健康检查会从 `.env` 读取本地 API Key，并且不会回显密钥：
@@ -267,6 +251,10 @@ query.request -> retrieval -> llm -> sql -> database
 
 ## 7. 构建 RAG Offline 资产
 
+Qdrant 服务启动与索引构建是两个独立步骤：Compose 负责启动有持久 volume 的 Qdrant；以下流程从 Git 跟踪的结构和 Semantic 源资产重新生成 Embedding、集合和关系图。
+
+### 7.1 准备 Embedding 模型
+
 RAG Offline Build 读取以下权威事实源：
 
 - `src/structure/generated/tables.json`
@@ -282,7 +270,9 @@ uv run --env-file .env python -m scripts.prepare_embedding_model
 
 该 revision 是 Hugging Face 仓库的完整 commit SHA。首次下载约 2.3 GB 的 PyTorch 模型文件；准备脚本跳过不被 `BGEM3FlagModel` 使用的 ONNX 模型和示例图片。后续运行复用 `.model-cache/bge-m3-5617a9f61b02`。不要用浮动的 `main` 代替该 revision。
 
-然后从 Git 中的结构与 Semantic 源资产构建索引。`--build-id` 可省略；省略时 Builder 会生成唯一版本号：
+### 7.2 首次构建或发布新索引
+
+从 Git 中的结构与 Semantic 源资产构建索引。`--build-id` 可省略；省略时 Builder 会生成唯一版本号：
 
 ```bash
 uv run --env-file .env python -m src.rag_offline
@@ -297,13 +287,23 @@ uv run --env-file .env python -m src.rag_offline
 5. 原子更新 `data/rag/current.json`。
 
 构建失败时，旧的 `current.json` 和旧版本集合应保持不变。
-Compose 启动只启动 Qdrant，不加载 Embedding 模型，也不自动构建索引。索引构建完成后先检查发布结果：
+Compose 启动不会下载 Embedding 模型，也不会自动构建索引。
+
+### 7.3 验证当前发布资产
+
+索引构建完成后检查当前发布结果：
 
 ```bash
 uv run --env-file .env python -c "from src.rag_offline import OfflineBuildConfig,load_published_asset; c=OfflineBuildConfig.from_environment(); a=load_published_asset(c.output_dir); print(a.build_id, a.manifest['status'], dict(a.collection_names))"
 ```
 
-需要重新构建索引时，在现有数据卷上再次运行 `python -m src.rag_offline`，Builder 会建立新版本并在校验通过后切换当前版本。需要清空 Qdrant 开发数据并从头恢复时，执行：
+新环境的集合数量以当前 tracked 源资产生成结果为准；构建摘要会报告每个集合的文档数、关系边数和检索验证结果。
+
+### 7.4 重建索引或重置 Qdrant
+
+更新源资产后重新运行 §7.2 的构建命令。Builder 会创建新版本，并在校验通过后切换当前版本，旧发布仍可用。
+
+需要清空 Qdrant 开发数据并从头恢复时，执行：
 
 ```bash
 uv run python -m scripts.reset_dev_qdrant
@@ -313,14 +313,6 @@ uv run --env-file .env python -m src.rag_offline
 ```
 
 重置命令会确认并只删除当前 Compose 项目的 `qdrant_data`，然后重新启动 Qdrant。它不会删除 PostgreSQL 数据卷。清空后必须重新构建索引，再启动依赖 RAG 的 ChatBI。
-
-构建完成后可复查当前发布资产：
-
-```bash
-uv run --env-file .env python -c "from src.rag_offline import OfflineBuildConfig,load_published_asset; c=OfflineBuildConfig.from_environment(); a=load_published_asset(c.output_dir); print(a.build_id, a.manifest['status'], dict(a.collection_names))"
-```
-
-新环境的集合数量以当前 tracked 源资产生成结果为准；构建摘要会报告每个集合的文档数、关系边数和检索验证结果。
 
 ## 8. 运行测试
 
@@ -360,36 +352,7 @@ uv run --python 3.11 --locked python -m pytest -q
 
 ### 8.4 PR 前本地验收流程
 
-PR（Pull Request，合并请求）不按固定 commit 数量创建。一个 PR 对应一个清晰目标；多个相关 commit 可以属于同一个 PR，较大功能按逻辑边界拆分。开发过程中先运行针对性测试，准备提交 PR 的最终 candidate commit（候选提交）再进行一次完整本地验收。
-
-推荐顺序：
-
-```text
-逻辑阶段 commit
-→ 运行 targeted tests（针对性测试）
-→ Agent 判断是否已经形成 candidate commit
-→ Agent 提醒用户准备 PR
-→ 用户确认
-→ 确认 git_dirty=false
-→ 必要时更新本地 RAG asset（资产）
-→ 按风险运行最终 Software Test、AI Evaluation、Business Acceptance 或 Real E2E
-→ 检查适用的验收结果和未验证范围
-→ Push 并创建或更新 PR
-```
-
-Agent 的提醒必须明确说明：用户这一次确认会授权先执行本地最终验收，并且在适用的验收通过后 Push、创建或更新 PR。用户确认前，Agent 不 Push、不创建 PR。确认后如果必需验收失败，不提交 PR；修复后必须重新形成 candidate commit 并重新验证。高风险验收通过后又修改 Retrieval、Prompt、RAG、LLM 或 Evaluation cases 等行为代码时，必须重新运行对应验证。
-
-最终 candidate commit 的本地检查可以使用：
-
-```bash
-git status --short --branch
-uv run --python 3.11 --locked python -m pytest -q
-# 如果涉及 Retrieval、Prompt、Semantic、RAG、Embedding、Qdrant、LLM、Evaluation cases 或 SQL 生成：
-# uv run --env-file .env python -m src.evaluation --online-retrieval
-git status --short --branch
-```
-
-如果改动影响结构 Metadata、`metrics.json`、离线构建逻辑、Embedding 配置或已发布集合，先按本地 RAG Offline Build 流程更新资产，再运行上述 Evaluation。文档、注释、纯 CI 或不影响运行行为的修改不要求完整 Real E2E。
+PR 前的分支、candidate、用户授权、验收和交付顺序以 [`docs/agents/git-pr-workflow.md`](agents/git-pr-workflow.md) 为准。本节只列本地验证入口：按改动运行 §8.1 软件回归、§8.2 PostgreSQL 集成测试；涉及 Retrieval、RAG、Embedding、Qdrant、LLM 或 SQL 生成行为时，按仓库规则再执行 §9 的真实 Evaluation。
 
 ## 9. 运行真实 LLM Evaluation
 
@@ -491,28 +454,3 @@ Streamlit 的 `CHATBI_API_BASE_URL` 默认是 `http://127.0.0.1:8000`；只有 A
 - `FILESYSTEM`：本地目录或权限问题。
 
 先确认 `current.json` 仍指向旧版本，再处理失败构建；不要直接删除旧集合。
-
-## 11. 当前明确边界
-
-当前已经完成：
-
-- Online Query POC。
-- Query API。
-- Streamlit 页面。
-- Evaluation 评测模块。
-- RAG Offline Build、BGE-M3 和 Qdrant 离线资产。
-
-当前已完成：
-
-- Online Retrieval V1。
-- Schema Linking。
-- 关系图在线路径搜索。
-- RAG 上下文接入 Online Query。
-
-当前仍属于后续边界：
-
-- 多轮对话和复杂分析 Agent。
-- 企业 SSO、租户隔离、细粒度数据范围 / 行列权限。
-- 云端审计导出、限流、性能与负载、Secret 管理、生产部署、备份和回滚。
-
-下一阶段如果继续，应单独设计多指标组合编排和生产化治理；当前 V1 已完成最小在线检索闭环。
