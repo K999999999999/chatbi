@@ -1,6 +1,7 @@
 """经营分析评估报告测试。"""
 
 import unittest
+from dataclasses import replace
 
 from src.evaluation.business_analysis_reporting import (
     create_business_analysis_report,
@@ -25,6 +26,9 @@ class BusinessAnalysisReportingTest(unittest.TestCase):
         self.assertEqual(report["summary"]["end_to_end_accuracy"], 1.0)
         self.assertEqual(report["cases"][0]["status"], "PASS")
         markdown = render_business_analysis_markdown(report)
+        self.assertIn("Sales Mart Seed：dev-seed-v1", markdown)
+        self.assertIn("d" * 64, markdown)
+        self.assertIn("10 行", markdown)
         self.assertIn("经营分析 Evaluation（评估）", markdown)
         self.assertIn("端到端案例准确率", markdown)
         self.assertIn("CASE-1", markdown)
@@ -40,6 +44,28 @@ class BusinessAnalysisReportingTest(unittest.TestCase):
         comparison = current["baseline_comparison"]
         self.assertTrue(comparison["comparable"])
         self.assertEqual(comparison["regressions"], ["CASE-1"])
+
+    def test_report_marks_seed_version_change_when_data_is_still_comparable(
+        self,
+    ) -> None:
+        baseline_metadata = _metadata()
+        current_metadata = replace(
+            baseline_metadata,
+            sales_mart_seed_version="dev-seed-v2",
+        )
+        baseline = create_business_analysis_report(_run(), baseline_metadata)
+        report = create_business_analysis_report(
+            _run(),
+            current_metadata,
+            baseline,
+        )
+
+        self.assertTrue(report["baseline_comparison"]["comparable"])
+        self.assertTrue(report["baseline_comparison"]["seed_version_changed"])
+        self.assertIn(
+            "Seed 版本与 Baseline 不同",
+            render_business_analysis_markdown(report),
+        )
 
 
 def _run(
@@ -86,6 +112,14 @@ def _metadata() -> RunMetadata:
         test_set_hash="same-test",
         context_hash="context",
         reference_result_hash="same-reference",
+        sales_mart_seed_version="dev-seed-v1",
+        sales_mart_data_summary={
+            "total_rows": 10,
+            "table_counts": {"dim_date": 10},
+            "date_range": {"start": "2025-01-01", "end": "2025-01-10"},
+        },
+        sales_mart_data_hash="d" * 64,
+        sales_mart_data_hash_algorithm="sha256-sales-mart-row-snapshot-v1",
     )
 
 

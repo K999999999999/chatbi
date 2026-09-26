@@ -20,6 +20,19 @@ class EvaluationReferenceRun(Protocol):
     reference_results: Mapping[str, QueryData]
 
 
+SALES_MART_DATA_HASH_ALGORITHM = "sha256-sales-mart-row-snapshot-v1"
+
+
+@dataclass(frozen=True, slots=True)
+class SalesMartDataFingerprint:
+    """非敏感的开发数据版本、摘要和实际记录 Hash。"""
+
+    seed_version: str
+    data_summary: Mapping[str, object]
+    data_hash: str
+    hash_algorithm: str
+
+
 @dataclass(frozen=True, slots=True)
 class RunMetadata:
     run_id: str
@@ -33,6 +46,10 @@ class RunMetadata:
     test_set_hash: str
     context_hash: str
     reference_result_hash: str
+    sales_mart_seed_version: str | None = None
+    sales_mart_data_summary: Mapping[str, object] | None = None
+    sales_mart_data_hash: str | None = None
+    sales_mart_data_hash_algorithm: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -46,6 +63,7 @@ def collect_run_metadata(
     environ: Mapping[str, str],
     test_set_path: Path,
     context_paths: Mapping[str, Path],
+    sales_mart_fingerprint: SalesMartDataFingerprint | None = None,
     now: datetime | None = None,
 ) -> RunMetadata:
     """只收集非敏感配置和内容指纹。"""
@@ -83,6 +101,26 @@ def collect_run_metadata(
         test_set_hash=_hash_file(test_set_path),
         context_hash=_hash_named_files(context_paths),
         reference_result_hash=_hash_reference_results(run.reference_results),
+        sales_mart_seed_version=(
+            sales_mart_fingerprint.seed_version
+            if sales_mart_fingerprint is not None
+            else None
+        ),
+        sales_mart_data_summary=(
+            dict(sales_mart_fingerprint.data_summary)
+            if sales_mart_fingerprint is not None
+            else None
+        ),
+        sales_mart_data_hash=(
+            sales_mart_fingerprint.data_hash
+            if sales_mart_fingerprint is not None
+            else None
+        ),
+        sales_mart_data_hash_algorithm=(
+            sales_mart_fingerprint.hash_algorithm
+            if sales_mart_fingerprint is not None
+            else None
+        ),
     )
 
 
@@ -138,12 +176,60 @@ def compare_baseline(
     if current_metadata is None or baseline_metadata is None:
         return _incomparable("报告缺少 metadata")
 
-    for field, reason in (
-        ("test_set_hash", "标准测试集不同"),
-        ("reference_result_hash", "标准数据库结果不同"),
+    current_test_hash = current_metadata.get("test_set_hash")
+    baseline_test_hash = baseline_metadata.get("test_set_hash")
+    if not _nonempty_string(current_test_hash) or not _nonempty_string(
+        baseline_test_hash
     ):
-        if current_metadata.get(field) != baseline_metadata.get(field):
-            return _incomparable(reason)
+        return _incomparable("报告缺少标准测试集 Hash")
+    if current_test_hash != baseline_test_hash:
+        return _incomparable("标准测试集不同")
+
+    current_data_hash = current_metadata.get("sales_mart_data_hash")
+    baseline_data_hash = baseline_metadata.get("sales_mart_data_hash")
+    if not _is_sha256(current_data_hash):
+        return _incomparable("当前报告缺少 Sales Mart 数据 Hash")
+    if not _is_sha256(baseline_data_hash):
+        return _incomparable("基线报告缺少 Sales Mart 数据 Hash")
+    if current_data_hash != baseline_data_hash:
+        return _incomparable("Sales Mart 数据 Hash 不同")
+
+    current_seed = current_metadata.get("sales_mart_seed_version")
+    baseline_seed = baseline_metadata.get("sales_mart_seed_version")
+    if not _nonempty_string(current_seed):
+        return _incomparable("当前报告缺少 Sales Mart Seed 版本")
+    if not _nonempty_string(baseline_seed):
+        return _incomparable("基线报告缺少 Sales Mart Seed 版本")
+
+    current_hash_algorithm = current_metadata.get("sales_mart_data_hash_algorithm")
+    baseline_hash_algorithm = baseline_metadata.get("sales_mart_data_hash_algorithm")
+    if not _nonempty_string(current_hash_algorithm) or not _nonempty_string(
+        baseline_hash_algorithm
+    ):
+        return _incomparable("报告缺少 Sales Mart 数据 Hash 算法")
+    if (
+        current_hash_algorithm != SALES_MART_DATA_HASH_ALGORITHM
+        or current_hash_algorithm != baseline_hash_algorithm
+    ):
+        return _incomparable("Sales Mart 数据 Hash 算法不同")
+
+    current_summary = current_metadata.get("sales_mart_data_summary")
+    baseline_summary = baseline_metadata.get("sales_mart_data_summary")
+    if not _valid_sales_mart_summary(current_summary) or not _valid_sales_mart_summary(
+        baseline_summary
+    ):
+        return _incomparable("报告缺少 Sales Mart 数据摘要")
+    if current_summary != baseline_summary:
+        return _incomparable("Sales Mart 数据摘要不同")
+
+    current_reference_hash = current_metadata.get("reference_result_hash")
+    baseline_reference_hash = baseline_metadata.get("reference_result_hash")
+    if not _nonempty_string(current_reference_hash) or not _nonempty_string(
+        baseline_reference_hash
+    ):
+        return _incomparable("报告缺少标准数据库结果 Hash")
+    if current_reference_hash != baseline_reference_hash:
+        return _incomparable("标准数据库结果不同")
 
     current_cases = _case_statuses(current.get("cases"))
     baseline_cases = _case_statuses(baseline.get("cases"))
@@ -166,8 +252,10 @@ def compare_baseline(
             unchanged.append(case_id)
 
     return {
+        "status": "COMPARABLE",
         "comparable": True,
         "reason": None,
+        "seed_version_changed": (current_seed != baseline_seed),
         "regressions": regressions,
         "improvements": improvements,
         "unchanged": unchanged,
@@ -292,6 +380,47 @@ def _object_mapping(value: object) -> Mapping[str, object] | None:
     return value if isinstance(value, dict) else None
 
 
+def _nonempty_string(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _is_sha256(value: object) -> bool:
+    if not isinstance(value, str) or len(value) != 64:
+        return False
+    return all(character in "0123456789abcdef" for character in value)
+
+
+def _valid_sales_mart_summary(value: object) -> bool:
+    if not isinstance(value, Mapping):
+        return False
+    counts = value.get("table_counts")
+    total_rows = value.get("total_rows")
+    date_range = value.get("date_range")
+    if not isinstance(counts, Mapping) or not counts:
+        return False
+    if any(
+        not _nonempty_string(table)
+        or isinstance(count, bool)
+        or not isinstance(count, int)
+        or count < 0
+        for table, count in counts.items()
+    ):
+        return False
+    if (
+        isinstance(total_rows, bool)
+        or not isinstance(total_rows, int)
+        or total_rows <= 0
+    ):
+        return False
+    if sum(counts.values()) != total_rows:
+        return False
+    if not isinstance(date_range, Mapping):
+        return False
+    return _nonempty_string(date_range.get("start")) and _nonempty_string(
+        date_range.get("end")
+    )
+
+
 def _case_statuses(value: object) -> dict[str, str] | None:
     if not isinstance(value, list):
         return None
@@ -311,8 +440,10 @@ def _case_statuses(value: object) -> dict[str, str] | None:
 
 def _incomparable(reason: str) -> dict[str, object]:
     return {
+        "status": "NOT_COMPARABLE",
         "comparable": False,
         "reason": reason,
+        "seed_version_changed": None,
         "regressions": [],
         "improvements": [],
         "unchanged": [],

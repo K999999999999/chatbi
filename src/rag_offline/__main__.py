@@ -31,6 +31,7 @@ def main() -> int:
         batch_size=settings.embedding_batch_size,
         use_fp16=settings.embedding_use_fp16,
         devices=settings.embedding_device,
+        model_revision=settings.model_revision,
     )
     store = QdrantAssetStore.connect(
         url=settings.qdrant_url,

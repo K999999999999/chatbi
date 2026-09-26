@@ -198,6 +198,11 @@ jobs:
         run: |
           set -euo pipefail
 
+          ci_admin_password="$(openssl rand -hex 32)"
+          ci_admin_secret_key="$(openssl rand -hex 32)"
+          echo "::add-mask::$ci_admin_password"
+          echo "::add-mask::$ci_admin_secret_key"
+
           cat > .env.ci <<'EOF'
           LLM_API_KEY=ci-test-key
           LLM_BASE_URL=http://127.0.0.1:1/v1
@@ -217,16 +222,19 @@ jobs:
           POSTGRES_CONTROL_APP_PASSWORD=ci-control-password
           POSTGRES_CONTROL_MIGRATOR_USER=chatbi_migrator
           POSTGRES_CONTROL_BOOTSTRAP_DB=postgres
-          CHATBI_ADMIN_SECRET_KEY=ci-smoke-admin-secret-0123456789012345
           RAG_ONLINE_RETRIEVAL_ENABLED=false
           CHATBI_ENV=development
           CHATBI_RUNTIME_ENV=ci
           CHATBI_TRACE_CONTENT_ENABLED=false
           EOF
+          printf 'CHATBI_ADMIN_SECRET_KEY=%s\n' "$ci_admin_secret_key" >> .env.ci
 
-          printf 'admin-password-123\nadmin-password-123\n' |
+          uv run --python 3.11 --locked --no-sync --env-file .env.ci \
+            python -m src.chatbi_control migrate
+
+          printf '%s\n%s\n' "$ci_admin_password" "$ci_admin_password" |
             uv run --python 3.11 --locked --no-sync --env-file .env.ci \
-              python -m src.chatbi_control --username admin-1
+              python -m src.chatbi_control create-admin --username admin-1
 
           uv run --python 3.11 --locked --no-sync --env-file .env.ci \
             uvicorn src.query_api.main:app --host 127.0.0.1 --port 8000 \

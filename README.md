@@ -79,11 +79,11 @@ uv run python -m pytest -q
 
 ## 运行和开发入口
 
-- 本地配置：复制 [`.env.example`](.env.example) 为 `.env`，只在本地填写真实配置。
-- 基础设施：按 [`docs/runbook.md`](docs/runbook.md) 启动 PostgreSQL 和 Qdrant。
-- 应用库初始化：`uv run --env-file .env python -m src.chatbi_control --username admin-1`（一次性迁移并创建首个管理员）。
-- API：`uv run uvicorn src.query_api.main:app --host 127.0.0.1 --port 8000`。
-- 页面：`uv run streamlit run src/streamlit_app.py --server.address 127.0.0.1 --server.port 8501`。
+- 推荐入口：复制 [`.env.example`](.env.example) 为 `.env` 后打开 Dev Container；工作区会执行 `uv sync --locked`，PostgreSQL / Qdrant 连接使用同一 Compose 网络。
+- 支持入口：WSL / Linux 本地开发也使用同一 `uv.lock`、`.env` 和 Compose 流程；按 [`docs/runbook.md`](docs/runbook.md) 把应用端点改为宿主机回环地址。
+- 首次数据库初始化：从空的 `postgres_data` named volume 启动 Compose 时自动建立 Sales Mart Seed 和 Control DB Schema / RBAC；日常启动保留数据。
+- 首位管理员：在初始化后显式运行 `uv run --env-file .env python -m src.chatbi_control create-admin --username admin-1`，密码通过隐藏式交互输入，不提供仓库默认值。
+- API / 页面启动：按 [`docs/runbook.md`](docs/runbook.md) 使用对应入口的监听地址（Dev Container 使用 `0.0.0.0`，WSL / Linux 本地使用 `127.0.0.1`）。
 - 结构事实导出：[`scripts/metadata/export_schema.py`](scripts/metadata/export_schema.py)，只读取数据库系统目录并生成结构资产。
 - Feature 工作流：Spec 和 Ticket 使用 `.scratch/`，规则见 [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md)。
 

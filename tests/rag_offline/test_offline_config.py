@@ -1,12 +1,13 @@
 """RAG Offline Build 配置兼容与安全默认值测试（唯一测试模块名）。"""
 
 import os
+import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import unittest
 from unittest.mock import patch
 
 from src.rag_offline import OfflineBuildConfig
+from src.rag_offline.config import DEFAULT_MODEL_DIR, DEFAULT_MODEL_REVISION
 
 
 class OfflineBuildConfigTest(unittest.TestCase):
@@ -43,6 +44,14 @@ class OfflineBuildConfigTest(unittest.TestCase):
 
         self.assertEqual(config.model_name_or_path, "BAAI/bge-m3")
         self.assertEqual(config.embedding_device, "cpu")
+
+    def test_default_model_cache_and_revision_are_pinned(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            config = OfflineBuildConfig.from_environment()
+
+        self.assertEqual(config.model_name_or_path, str(DEFAULT_MODEL_DIR))
+        self.assertEqual(config.model_revision, DEFAULT_MODEL_REVISION)
+        self.assertEqual(len(config.model_revision), 40)
 
 
 if __name__ == "__main__":

@@ -112,7 +112,7 @@ else {
     Write-Host "正在打开 FastAPI 终端..."
     Start-DevTerminal `
         -Title "ChatBI FastAPI" `
-        -Command "uv run --env-file .env uvicorn src.query_api.main:app --host 127.0.0.1 --port 8000"
+        -Command "`$env:POSTGRES_HOST='127.0.0.1'; `$env:POSTGRES_PORT='5433'; `$env:RAG_QDRANT_URL='http://127.0.0.1:6333'; uv run uvicorn src.query_api.main:app --host 127.0.0.1 --port 8000"
 }
 
 if ($uiPortInUse) {
@@ -122,7 +122,7 @@ else {
     Write-Host "正在打开 Streamlit 终端..."
     Start-DevTerminal `
         -Title "ChatBI Streamlit" `
-        -Command "uv run --env-file .env streamlit run src/streamlit_app.py --server.address 127.0.0.1 --server.port 8501"
+        -Command "uv run streamlit run src/streamlit_app.py --server.address 127.0.0.1 --server.port 8501"
 }
 
 $checks = @(

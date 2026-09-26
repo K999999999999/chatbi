@@ -121,6 +121,25 @@ class _FakeSemanticQueryUnderstanding:
 
 
 class EvaluationEntrypointTest(unittest.TestCase):
+    def setUp(self) -> None:
+        from src.evaluation.reporting import SalesMartDataFingerprint
+
+        self.database_fingerprint_patch = patch(
+            "src.evaluation.__main__.collect_sales_mart_fingerprint",
+            return_value=SalesMartDataFingerprint(
+                seed_version="dev-seed-v1",
+                data_summary={
+                    "total_rows": 100,
+                    "table_counts": {"dim_date": 100},
+                    "date_range": {"start": "2025-01-01", "end": "2025-04-10"},
+                },
+                data_hash="a" * 64,
+                hash_algorithm="sha256-sales-mart-row-snapshot-v1",
+            ),
+        )
+        self.database_fingerprint_patch.start()
+        self.addCleanup(self.database_fingerprint_patch.stop)
+
     def test_business_analysis_mode_writes_layered_report(self) -> None:
         from src.evaluation.__main__ import run_cli
 
@@ -236,6 +255,8 @@ class EvaluationEntrypointTest(unittest.TestCase):
             report = json.loads(reports[0].read_text(encoding="utf-8"))
 
         self.assertEqual(exit_code, 0)
+        self.assertEqual(report["metadata"]["sales_mart_seed_version"], "dev-seed-v1")
+        self.assertEqual(report["metadata"]["sales_mart_data_hash"], "a" * 64)
         self.assertEqual(report["summary"]["end_to_end_accuracy"], 1.0)
         self.assertIn(
             "Business Analysis End-to-End Accuracy: 100.00%", stdout.getvalue()
@@ -309,6 +330,8 @@ class EvaluationEntrypointTest(unittest.TestCase):
         self.assertEqual(len(reports), 1)
         self.assertEqual(len(summaries), 1)
         self.assertEqual(report["summary"]["execution_accuracy"], 1.0)
+        self.assertEqual(report["metadata"]["sales_mart_seed_version"], "dev-seed-v1")
+        self.assertEqual(report["metadata"]["sales_mart_data_hash"], "a" * 64)
         self.assertEqual(report["cases"][0]["status"], "PASS")
         self.assertIn("本次共评测 1 条：成功 1 条", summary_report)
         self.assertIn("本次未执行自动基线比较", summary_report)

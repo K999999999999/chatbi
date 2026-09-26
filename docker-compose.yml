@@ -1,27 +1,36 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: chatbi-engine-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
       POSTGRES_USER: ${POSTGRES_MIGRATOR_USER:?POSTGRES_MIGRATOR_USER is required}
       POSTGRES_PASSWORD: ${POSTGRES_MIGRATOR_PASSWORD:?POSTGRES_MIGRATOR_PASSWORD is required}
-      POSTGRES_APP_USER: ${POSTGRES_APP_USER:?POSTGRES_APP_USER is required}
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-chatbi_app}
       POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?POSTGRES_APP_PASSWORD is required}
+      POSTGRES_CONTROL_DB: ${POSTGRES_CONTROL_DB:-chatbi_control}
+      POSTGRES_CONTROL_APP_USER: ${POSTGRES_CONTROL_APP_USER:-chatbi_control_user}
+      POSTGRES_CONTROL_APP_PASSWORD: ${POSTGRES_CONTROL_APP_PASSWORD:?POSTGRES_CONTROL_APP_PASSWORD is required}
+      POSTGRES_CONTROL_MIGRATOR_USER: ${POSTGRES_CONTROL_MIGRATOR_USER:-chatbi_migrator}
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+      - "127.0.0.1:${POSTGRES_PUBLISHED_PORT:-5433}:5432"
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
-      - ./database:/workspace/database:ro
+      - type: bind
+        source: ${LOCAL_WORKSPACE_FOLDER:-.}/database
+        target: /workspace/database
+        read_only: true
+      - type: bind
+        source: ${LOCAL_WORKSPACE_FOLDER:-.}/database/init/10_chatbi_dev_environment.sh
+        target: /docker-entrypoint-initdb.d/10_chatbi_dev_environment.sh
+        read_only: true
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "sh /workspace/database/init/healthcheck.sh"]
       interval: 5s
       timeout: 5s
       retries: 12
   qdrant:
     image: qdrant/qdrant:v1.18.3
-    container_name: chatbi-engine-qdrant
     restart: unless-stopped
     environment:
       QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?QDRANT_API_KEY is required}
@@ -29,4 +38,19 @@ services:
       - "127.0.0.1:6333:6333"
       - "127.0.0.1:6334:6334"
     volumes:
-      - ./data/qdrant:/qdrant/storage
+      - qdrant_data:/qdrant/storage
+  devcontainer:
+    profiles: ["devcontainer"]
+    image: mcr.microsoft.com/devcontainers/python:3-3.11-bookworm
+    command: ["sleep", "infinity"]
+    init: true
+    working_dir: /workspaces/chatbi-engine
+    volumes:
+      - type: bind
+        source: ${LOCAL_WORKSPACE_FOLDER:-.}
+        target: /workspaces/chatbi-engine
+        consistency: cached
+
+volumes:
+  postgres_data:
+  qdrant_data:

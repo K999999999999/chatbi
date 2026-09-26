@@ -29,6 +29,23 @@ class _FakeModel:
 
 
 class EmbeddingProviderTest(unittest.TestCase):
+    def test_model_metadata_records_the_pinned_revision(self) -> None:
+        provider = BgeM3EmbeddingProvider(
+            model_name_or_path="local-test",
+            model=_FakeModel(),
+        )
+
+        self.assertEqual(
+            provider.config["revision"],
+            "5617a9f61b028005a4858fdac845db406aefb181",
+        )
+
+    def test_model_loading_requires_a_prepared_local_snapshot(self) -> None:
+        provider = BgeM3EmbeddingProvider(model_name_or_path="missing-model")
+
+        with self.assertRaisesRegex(EmbeddingError, "prepare_embedding_model.py"):
+            provider._load_model()
+
     def test_bge_adapter_parses_dense_and_sparse_outputs(self) -> None:
         model = _FakeModel()
         provider = BgeM3EmbeddingProvider(

@@ -145,9 +145,21 @@ failure_stage 和 internal_reason 分布
 - JSON 数据报告：保留机器可读的运行元数据、汇总、单条结果和可选基线比较。
 - Markdown 总结报告：明确展示总体结论、成功/失败/无效数量、总体与分类准确率、失败阶段、内部原因、失败案例及原因、基线比较状态和必要运行信息。
 
+数据库型评测复用日常开发数据库 `chatbi_mvp`。expected SQL 与模型 SQL 使用同一 `chatbi_app` 只读账号、数据库配置和查询执行器；不创建独立评测数据库。Query Understanding 语义评测不访问数据库，因此不记录 Sales Mart 数据指纹。
+
+Query 与 Business Analysis 的数据库型报告必须记录当前开发 Seed 版本、Sales Mart 行数 / 日期范围摘要、数据 Hash 和 Hash 算法。数据 Hash 从评测连接实际读取稳定键排序的 Sales Mart 业务表行值计算，报告不包含业务明细行、Secret 或连接地址。
+
 未指定 Baseline 时，Markdown 必须明确写明“本次未执行自动基线比较”，不得暗示能力没有回退。
 
-第一份报告作为 Baseline。存在上一份有效报告时：
+第一份报告作为 Baseline。存在上一份报告时，仅在以下信息可验证且一致时进行回退 / 改善比较：
+
+- 标准测试集 Hash。
+- 实际 Sales Mart 数据 Hash、Hash 算法和数据摘要。
+- 标准 SQL 结果 Hash。
+
+缺少必要指纹，或实际 Sales Mart 数据 Hash / 算法 / 摘要不同，必须把比较状态标为 `NOT_COMPARABLE`（不可直接比较），说明原因且不报告回退 / 改善。历史报告缺少数据指纹时按不可比较处理。Seed 版本不同但数据 Hash 一致时可以比较，同时在比较结果中标明 Seed 版本已变化。
+
+可比较时：
 
 - 上次 `PASS`、本次 `FAIL`：Regression（能力回退）。
 - 上次 `FAIL`、本次 `PASS`：Improvement（能力改善）。

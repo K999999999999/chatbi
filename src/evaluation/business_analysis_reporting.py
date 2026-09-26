@@ -4,6 +4,7 @@ from collections.abc import Mapping
 
 from .business_analysis_runner import BusinessAnalysisEvaluationRun
 from .reporting import RunMetadata, compare_baseline
+from .reporting_markdown import _render_run_info
 
 
 def create_business_analysis_report(
@@ -61,6 +62,7 @@ def render_business_analysis_markdown(report: Mapping[str, object]) -> str:
     """把 JSON 报告转换为人工可读的稳定摘要。"""
 
     summary = _mapping(report.get("summary"))
+    metadata = _mapping(report.get("metadata"))
     cases = report.get("cases")
     lines = [
         "# 经营分析 Evaluation（评估）",
@@ -102,6 +104,7 @@ def render_business_analysis_markdown(report: Mapping[str, object]) -> str:
                     reason=_cell(item.get("reason_code") or item.get("failure_reason")),
                 )
             )
+    lines.extend(_render_run_info(metadata))
     comparison = report.get("baseline_comparison")
     if isinstance(comparison, Mapping):
         lines.extend(
@@ -119,10 +122,17 @@ def render_business_analysis_markdown(report: Mapping[str, object]) -> str:
 
 def _render_comparison(comparison: Mapping[str, object]) -> str:
     if comparison.get("comparable") is not True:
-        return f"无法比较：{_cell(comparison.get('reason'))}。"
+        return f"状态：NOT_COMPARABLE。无法比较：{_cell(comparison.get('reason'))}。"
     regressions = comparison.get("regressions", [])
     improvements = comparison.get("improvements", [])
+    seed_change = (
+        "Seed 版本与 Baseline 不同；实际数据 Hash 相同，仍可比较。"
+        if comparison.get("seed_version_changed") is True
+        else ""
+    )
     return (
+        "状态：COMPARABLE。"
+        f"{seed_change}"
         f"能力回退：{_list_text(regressions)}；能力改善：{_list_text(improvements)}。"
     )
 

@@ -5,7 +5,7 @@ import os
 from collections.abc import Mapping
 from pathlib import Path
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
 from src.authorization import (
     IdentityProviderAdapter,
@@ -43,6 +43,13 @@ _STATIC_AUTH_KEYS = frozenset(
         "CHATBI_AUTH_POLICY_FILE",
     }
 )
+_DATABASE_MIGRATION_KEYS = frozenset(
+    {
+        "POSTGRES_MIGRATOR_USER",
+        "POSTGRES_MIGRATOR_PASSWORD",
+        "POSTGRES_CONTROL_MIGRATOR_USER",
+    }
+)
 
 
 def load_local_environment(env_file: Path | None = None) -> None:
@@ -54,7 +61,12 @@ def load_local_environment(env_file: Path | None = None) -> None:
     """
 
     path = _PROJECT_ROOT / ".env" if env_file is None else env_file
-    load_dotenv(dotenv_path=path, override=False)
+    for key in _DATABASE_MIGRATION_KEYS:
+        os.environ.pop(key, None)
+
+    for key, value in dotenv_values(path).items():
+        if key not in _DATABASE_MIGRATION_KEYS and value is not None:
+            os.environ.setdefault(key, value)
 
 
 def validate_runtime_configuration(

@@ -1,14 +1,17 @@
 """RAG Offline Build 配置。"""
 
-from dataclasses import dataclass
 import os
-from pathlib import Path
 import re
-
+from dataclasses import dataclass
+from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ASSET_DIR = PROJECT_ROOT / "data" / "rag"
 DEFAULT_MODEL = "BAAI/bge-m3"
+DEFAULT_MODEL_REVISION = "5617a9f61b028005a4858fdac845db406aefb181"
+DEFAULT_MODEL_DIR = (
+    PROJECT_ROOT / ".model-cache" / f"bge-m3-{DEFAULT_MODEL_REVISION[:12]}"
+)
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
@@ -26,7 +29,8 @@ class OfflineBuildConfig:
     qdrant_api_key: str | None = None
     qdrant_timeout_seconds: float = 30.0
     collection_prefix: str = "chatbi"
-    model_name_or_path: str = DEFAULT_MODEL
+    model_name_or_path: str = str(DEFAULT_MODEL_DIR)
+    model_revision: str = DEFAULT_MODEL_REVISION
     embedding_dimension: int = 1024
     embedding_batch_size: int = 8
     embedding_use_fp16: bool = False
@@ -37,9 +41,7 @@ class OfflineBuildConfig:
         output_dir = _path_from_env("RAG_OUTPUT_DIR", DEFAULT_ASSET_DIR)
         qdrant_path = _optional_path_from_env("RAG_QDRANT_PATH")
         qdrant_url = os.getenv("RAG_QDRANT_URL", "http://127.0.0.1:6333").strip()
-        if qdrant_path is not None:
-            qdrant_url = None
-        elif not qdrant_url:
+        if qdrant_path is not None or not qdrant_url:
             qdrant_url = None
 
         prefix = os.getenv("RAG_COLLECTION_PREFIX", "chatbi").strip()
@@ -48,17 +50,15 @@ class OfflineBuildConfig:
                 "RAG_COLLECTION_PREFIX 只能包含字母、数字、下划线和连字符"
             )
 
-        model_dir = _optional_path_from_env("RAG_MODEL_DIR")
-        model = (
-            str(model_dir)
-            if model_dir is not None and model_dir.exists()
-            else (
+        model_dir = _optional_path_from_env("RAG_MODEL_DIR") or DEFAULT_MODEL_DIR
+        model = str(model_dir)
+        if "RAG_MODEL_DIR" not in os.environ:
+            model = (
                 _optional_env("RAG_MODEL_NAME_OR_PATH")
                 or _optional_env("RAG_EMBEDDING_MODEL")
                 or _optional_env("RAG_MODEL_ID")
-                or DEFAULT_MODEL
+                or model
             )
-        )
         if not model:
             raise OfflineBuildConfigError("RAG_MODEL_NAME_OR_PATH 不能为空")
         raw_device = _optional_env("RAG_EMBEDDING_DEVICE")
@@ -79,6 +79,7 @@ class OfflineBuildConfig:
             ),
             collection_prefix=prefix,
             model_name_or_path=model,
+            model_revision=DEFAULT_MODEL_REVISION,
             embedding_dimension=_positive_int(
                 "RAG_EMBEDDING_DIMENSION",
                 os.getenv("RAG_EMBEDDING_DIMENSION", "1024"),

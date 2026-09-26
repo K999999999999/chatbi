@@ -52,10 +52,14 @@ class ControlDatabaseConfig:
         app_user = values.get(
             "POSTGRES_CONTROL_APP_USER", "chatbi_control_user"
         ).strip()
-        migrator_user = values.get(
-            "POSTGRES_CONTROL_MIGRATOR_USER",
-            values.get("POSTGRES_MIGRATOR_USER", "chatbi_migrator"),
-        ).strip()
+        migrator_user = (
+            values.get(
+                "POSTGRES_CONTROL_MIGRATOR_USER",
+                values.get("POSTGRES_MIGRATOR_USER", "chatbi_migrator"),
+            ).strip()
+            if require_migrator
+            else ""
+        )
 
         if not database or database == business_database:
             raise ControlDatabaseConfigurationError(
@@ -80,7 +84,7 @@ class ControlDatabaseConfig:
             migrator_password=(
                 _required(values, "POSTGRES_MIGRATOR_PASSWORD")
                 if require_migrator
-                else values.get("POSTGRES_MIGRATOR_PASSWORD", "").strip()
+                else ""
             ),
             bootstrap_database=values.get(
                 "POSTGRES_CONTROL_BOOTSTRAP_DB", "postgres"
@@ -139,7 +143,7 @@ def verify_control_schema(engine: Engine) -> None:
                     text("SELECT version FROM schema_migrations")
                 ).scalars()
             )
-    except Exception as exc:  # noqa: BLE001 - startup must fail closed
+    except Exception as exc:
         raise ControlDatabaseMigrationError(
             "ChatBI 应用库 Schema 不可用，请先使用 chatbi_migrator 完成迁移"
         ) from exc
