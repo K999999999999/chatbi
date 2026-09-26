@@ -64,3 +64,4 @@ Dev Container Compose profile 和 WSL/Linux 宿主入口均完成 `uv sync` / �
 ## Comments
 
 - 当前 Dev Container 的 `postCreateCommand` 会安装锁定版本 `uv` 并执行 `uv sync --locked`；当前 Compose 服务仍单独启动。此 Ticket 负责把二者组织成 Spec 确认的共同开发入口，不重复实现数据库或 RAG 初始化逻辑。
+- 2026-09-27 follow-up decision：当前开发入口收敛为 WSL / Linux 本地环境；仓库中的 Dev Container 配置文件保留，但不属于当前支持或验收路径。上面的双入口实现和验收结果保留为历史记录；当前契约以 `../spec.md`、`README.md` 和 `docs/runbook.md` 为准。
