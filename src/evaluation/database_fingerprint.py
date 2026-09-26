@@ -99,9 +99,15 @@ def collect_sales_mart_fingerprint(
             seed_version = seed_row[0]
 
             for table_name, primary_key in _SALES_MART_TABLES:
-                order_by = ", ".join(f'"{column}"' for column in primary_key)
+                order_by = psycopg.sql.SQL(", ").join(
+                    psycopg.sql.Identifier(column) for column in primary_key
+                )
                 cursor.execute(
-                    f'SELECT * FROM mart_sales."{table_name}" ORDER BY {order_by}'
+                    psycopg.sql.SQL("SELECT * FROM {}.{} ORDER BY {}").format(
+                        psycopg.sql.Identifier("mart_sales"),
+                        psycopg.sql.Identifier(table_name),
+                        order_by,
+                    )
                 )
                 rows = cursor.fetchall()
                 description = cursor.description

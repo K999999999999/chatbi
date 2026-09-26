@@ -61,8 +61,12 @@ class _FakeCursor(AbstractContextManager):
         self._seed = seed
         self._row = None
         self.description = None
+        self.queries = []
 
     def execute(self, query):
+        self.queries.append(query)
+        if isinstance(query, psycopg.sql.Composable):
+            query = query.as_string()
         if query.startswith("SET TRANSACTION"):
             return
         if query.startswith("SELECT current_user"):
@@ -70,7 +74,7 @@ class _FakeCursor(AbstractContextManager):
         elif "dev_seed_metadata" in query:
             self._row = (self._seed,) if self._seed else None
         else:
-            table_name = query.split('mart_sales."', 1)[1].split('"', 1)[0]
+            table_name = query.split('"mart_sales"."', 1)[1].split('"', 1)[0]
             columns, rows = self._tables[table_name]
             self.description = tuple(SimpleNamespace(name=name) for name in columns)
             self._row = rows
@@ -86,6 +90,29 @@ class _FakeCursor(AbstractContextManager):
 
 
 class SalesMartFingerprintTest(unittest.TestCase):
+    def test_table_queries_compose_schema_table_and_order_identifiers(self) -> None:
+        connection = _FakeConnection(_TABLES)
+
+        collect_sales_mart_fingerprint(_environment(), connect=lambda **_: connection)
+
+        table_queries = [
+            query.as_string()
+            for query in connection._cursor.queries
+            if isinstance(query, psycopg.sql.Composable)
+        ]
+        self.assertEqual(
+            table_queries,
+            [
+                'SELECT * FROM "mart_sales"."dim_date" ORDER BY "date_key"',
+                'SELECT * FROM "mart_sales"."dim_customer" ORDER BY "customer_key"',
+                'SELECT * FROM "mart_sales"."dim_product" ORDER BY "product_key"',
+                'SELECT * FROM "mart_sales"."dim_sales_region" ORDER BY "sales_region_key"',
+                'SELECT * FROM "mart_sales"."dim_currency" ORDER BY "currency_key"',
+                'SELECT * FROM "mart_sales"."fct_exchange_rate_daily" ORDER BY "rate_date_key", "currency_key"',
+                'SELECT * FROM "mart_sales"."fct_sales_order_line" ORDER BY "sales_order_line_key"',
+            ],
+        )
+
     def test_hash_and_summary_repeat_for_the_same_database_snapshot(self) -> None:
         connect = _connector(_TABLES)
         first = collect_sales_mart_fingerprint(_environment(), connect=connect)
