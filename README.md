@@ -6,10 +6,10 @@ ChatBI 是一个面向业务数据查询的 Domain AI Engine（领域 AI 引擎�
 
 ## 新 clone：快速开始
 
-推荐使用 Dev Container；WSL / Linux 本地开发也受支持。两种入口共用同一份 `.env`、`uv.lock`、Docker Compose 和 PostgreSQL 初始化流程。完整步骤、环境变量说明和故障排查见 [`docs/runbook.md`](docs/runbook.md)。
+当前开发入口为 WSL / Linux 本地环境：ChatBI、RAG 构建和开发命令在 WSL / Linux 中运行，Docker Compose 启动 PostgreSQL 和 Qdrant。Dev Container 配置文件保留在仓库中，但不属于当前开发流程。完整步骤、环境变量说明和故障排查见 [`docs/runbook.md`](docs/runbook.md)。
 
 1. 从 [`.env.example`](.env.example) 复制出本地 `.env`，按 Runbook 配置服务地址和本地 Secret。不要提交 `.env`。
-2. 打开 Dev Container（首次创建会运行 `uv sync --locked`）；使用 WSL / Linux 时执行 `uv sync --locked`。
+2. 在 WSL / Linux 终端执行 `uv sync --locked`。
 3. 在仓库根目录启动基础服务：
 
    ```bash
@@ -20,7 +20,7 @@ ChatBI 是一个面向业务数据查询的 Domain AI Engine（领域 AI 引擎�
 4. 首次运行时，按 Runbook 显式创建首个管理员，并从仓库中的 Schema / Semantic 源资产构建 RAG 索引。
 5. 按 Runbook 启动 API 和页面，然后运行确定性测试或需要的 Evaluation（评测）。
 
-日常开发只需启动 PostgreSQL 和 Qdrant；PostgreSQL 数据会保留，RAG 索引不会随服务启动自动重建。Dev Container Rebuild 不会重置这两个 named volume。PostgreSQL 重置和 Qdrant 索引重建是分开的显式操作，详见 Runbook。
+日常开发只需启动 PostgreSQL 和 Qdrant；PostgreSQL 数据会保留，RAG 索引不会随服务启动自动重建。PostgreSQL 重置和 Qdrant 索引重建是分开的显式操作，详见 Runbook。
 
 ## 主链路
 

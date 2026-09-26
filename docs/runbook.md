@@ -2,7 +2,9 @@
 
 ## 1. 用途与边界
 
-本文档说明新 clone 的首次准备、日常开发、数据库和索引重建、测试与评测。命令从仓库根目录执行；流程不依赖固定电脑路径，也不使用旧项目的数据目录。
+本文档说明 WSL / Linux 本地开发环境的新 clone 首次准备、日常开发、数据库和索引重建、测试与评测。命令从仓库根目录执行；流程不依赖固定电脑路径，也不使用旧项目的数据目录。
+
+当前开发流程只使用 WSL / Linux 运行 Python、ChatBI 和 RAG 构建，并使用 Docker Compose 运行 PostgreSQL 与 Qdrant。仓库中的 Dev Container 配置文件保留，但不属于当前支持或验收的开发入口。
 
 当前系统是本地开发 / 内部验证环境，不是 Production Ready（生产可用）部署。自动测试使用隔离 PostgreSQL 和 CI Fixture；黄金评测复用开发库 `chatbi_mvp`；生产数据库不属于本文档范围。
 
@@ -13,7 +15,7 @@
 - **重置开发数据库：** 执行 §4.4，只删除当前 Compose 项目的 PostgreSQL volume；账号也会清空，需重新创建管理员。
 - **重建 Qdrant 索引：** 按 §7 操作，只处理当前 Compose 项目的 Qdrant volume，不清除 PostgreSQL。
 
-Dev Container Rebuild（重建开发容器）只重建工作区服务，不重置 PostgreSQL 或 Qdrant named volume。日常停止服务也不要使用 `docker compose down -v`。
+PostgreSQL 和 Qdrant 使用 Compose named volume。日常停止服务不会删除数据；不要使用 `docker compose down -v`。
 
 ## 2. 系统拓扑
 
@@ -25,29 +27,24 @@ PostgreSQL（Compose 服务 postgres:5432；宿主机回环端口 5433）
 Qdrant（Compose 服务 qdrant:6333；宿主机回环端口 6333）
     └─ TABLE / COLUMN / METRIC 版本化集合
 
-FastAPI（Dev Container 内监听 0.0.0.0:8000；宿主机入口使用 127.0.0.1:8000）
+FastAPI（WSL / Linux 内监听 127.0.0.1:8000）
     └─ Online Query + SQL Guard + PostgreSQL
 
-Streamlit（Dev Container 内监听 0.0.0.0:8501；宿主机入口使用 127.0.0.1:8501）
+Streamlit（WSL / Linux 内监听 127.0.0.1:8501）
     └─ HTTP 调用 FastAPI
 ```
 
 ## 3. 新 clone 与开发入口
 
-推荐用 Dev Container 运行 Python、ChatBI 和 RAG 构建。Dev Container、PostgreSQL、Qdrant 使用同一 Compose 项目网络：容器内 `.env` 默认通过 `postgres:5432` 和 `qdrant:6333` 连接。首次创建 Dev Container 会执行 `uv sync --locked`。
+WSL / Linux 是当前唯一支持的本地开发入口。ChatBI 和 RAG 构建命令在 WSL / Linux 进程中运行，PostgreSQL 和 Qdrant 由 Docker Compose 启动。`.env.example` 的 `POSTGRES_HOST=127.0.0.1`、`POSTGRES_PORT=5433` 和 `RAG_QDRANT_URL=http://127.0.0.1:6333` 是该入口使用的连接默认值；Compose 发布端口由 `POSTGRES_PUBLISHED_PORT` 控制，与应用连接端口分开。
 
-WSL / Linux 本地运行是支持入口，与 Dev Container 共用 `.env.example`、`uv.lock`、Compose 文件、数据库初始化和测试流程。宿主机应用进程使用回环地址连接服务，因此 `.env` 中设置 `POSTGRES_HOST=127.0.0.1`、`POSTGRES_PORT=5433` 和 `RAG_QDRANT_URL=http://127.0.0.1:6333`。Compose 发布端口由 `POSTGRES_PUBLISHED_PORT` 控制，与应用连接端口分开。
-
-首次配置 `.env` 的复制命令见 §4.2。WSL / Linux 还需安装 Python 3.11 和 `uv` 并运行 `uv sync --locked`；Dev Container 会自动同步依赖。然后按 §1 的首次初始化顺序操作。
-
-Dev Container 的 `docker-outside-of-docker` 配置把宿主机 workspace 路径传给 Compose，使 Compose 能在宿主 Docker Engine 上挂载仓库中的只读数据库初始化文件。重建 Dev Container 不会删除 PostgreSQL 或 Qdrant 数据卷。Compose 发布端口只绑定宿主机回环地址，不能从局域网访问。
+首次配置 `.env` 的复制命令见 §4.2。安装 Python 3.11 和 `uv` 后运行 `uv sync --locked`，再按 §1 的首次初始化顺序操作。Compose 发布端口只绑定宿主机回环地址，不能从局域网访问。
 
 ## 4. 首次准备
 
 ### 4.1 环境要求
 
-- 推荐入口：支持 Dev Container 的开发工具和 Docker Desktop / Docker Engine。
-- 支持入口：WSL 或 Linux 本地终端和 Docker Engine / Compose。
+- WSL / Linux 终端和可用的 Docker Engine / Compose。
 - Python 3.11。
 - `uv`。
 - 可用的 LLM 配置，用于 Online Query 和真实 Evaluation。
@@ -56,12 +53,6 @@ Dev Container 的 `docker-outside-of-docker` 配置把宿主机 workspace 路径
 ### 4.2 配置文件
 
 如果尚未按第 3 节创建本地 `.env`，先复制安全模板：
-
-```powershell
-Copy-Item .env.example .env
-```
-
-WSL / Linux 使用：
 
 ```bash
 cp .env.example .env
@@ -77,7 +68,7 @@ cp .env.example .env
 - Qdrant：`QDRANT_API_KEY` 默认是仅供回环绑定本地开发的公开值，不要用于共享或生产环境。
 - RAG：保持 `RAG_MODEL_DIR=.model-cache/bge-m3-5617a9f61b02` 和 `RAG_EMBEDDING_DEVICE=auto`。
   模型为 `BAAI/bge-m3` revision `5617a9f61b028005a4858fdac845db406aefb181`，dense 维度为 1024。
-- WSL / Linux 或 Windows PowerShell 宿主进程入口额外设置：`POSTGRES_HOST=127.0.0.1`、`POSTGRES_PORT=5433`、`RAG_QDRANT_URL=http://127.0.0.1:6333`。Dev Container 使用 Compose 网络中的 `postgres` 和 `qdrant` 服务名。
+- `.env.example` 已包含 WSL / Linux 宿主进程使用的 PostgreSQL 和 Qdrant 回环地址；只有本机端口不同于默认值时才需要调整。
 
 `.env` 不得提交到 Git。不要在终端回显密码、API Key 或完整连接字符串。
 
@@ -167,27 +158,9 @@ PostgreSQL 和 Qdrant 都使用 Compose 项目专属 named volume，不读取源
 
 ## 6. 启动 Online Query
 
-### 6.1 一键启动（Windows PowerShell）
+### 6.1 启动 FastAPI
 
-在项目根目录执行：
-
-```powershell
-.\scripts\start-dev.ps1
-```
-
-脚本会确认 PostgreSQL 和 Qdrant 已启动，并分别打开 FastAPI、Streamlit 两个可见终端。启动成功后浏览器打开 `http://127.0.0.1:8501`；停止服务时，在两个服务终端中分别按 `Ctrl+C`。
-
-脚本不会自动终止占用 8000 或 8501 端口的现有进程，也不会重建或删除数据库、Qdrant 和本地资产。
-
-### 6.2 手动启动 FastAPI
-
-Dev Container 中在一个终端执行：
-
-```bash
-uv run uvicorn src.query_api.main:app --host 0.0.0.0 --port 8000
-```
-
-WSL / Linux 本地运行时绑定到回环地址：
+在 WSL / Linux 终端中运行，并绑定到回环地址：
 
 ```bash
 uv run uvicorn src.query_api.main:app --host 127.0.0.1 --port 8000
@@ -209,15 +182,9 @@ curl --fail http://127.0.0.1:8000/health
 
 `/health` 表示应用已通过启动检查并正在运行；启动检查至少验证 `chatbi_control` Schema 版本。它不代表 LLM、业务 PostgreSQL、Qdrant 或真实查询链路可用。
 
-### 6.3 手动启动 Streamlit
+### 6.2 启动 Streamlit
 
-Dev Container 中在另一个终端执行：
-
-```bash
-uv run streamlit run src/streamlit_app.py --server.address 0.0.0.0 --server.port 8501
-```
-
-WSL / Linux 本地运行时绑定到回环地址：
+在另一个 WSL / Linux 终端中运行，并绑定到回环地址：
 
 ```bash
 uv run streamlit run src/streamlit_app.py --server.address 127.0.0.1 --server.port 8501
@@ -229,7 +196,7 @@ uv run streamlit run src/streamlit_app.py --server.address 127.0.0.1 --server.po
 
 Streamlit 只调用 FastAPI，不直接访问 LLM、SQL Guard 或 PostgreSQL。
 
-### 6.4 Observability / Trace ID（可观测性 / 链路编号）
+### 6.3 Observability / Trace ID（可观测性 / 链路编号）
 
 `POST /api/v1/query` 的成功响应和 HTTP Error 都会在 Response Header（响应头）返回 `X-Trace-ID`。Trace ID 不属于 Query API JSON Body（响应体）字段；只读取这个单独的 Header，不要打印或复制完整请求头、响应头。
 
@@ -324,7 +291,7 @@ uv run --python 3.11 --locked python -m pytest -q
 
 ### 8.2 隔离 PostgreSQL 集成测试
 
-该命令需要 Docker Engine 可用。它会启动一次性的 `postgres:16-alpine` 容器，在宿主环境中使用本机回环地址分配临时端口；Dev Container 中则把临时数据库加入当前 Compose 网络并通过临时容器名连接。两种方式都只读挂载仓库 `database/`，加载 `database/ci/bootstrap.sql`，然后运行数据库适配器和固定 SQL 服务链路的集成测试：
+该命令需要 Docker Engine 可用。它会启动一次性的 `postgres:16-alpine` 容器，在 WSL / Linux 宿主环境中使用本机回环地址分配临时端口。测试只读挂载仓库 `database/`，加载 `database/ci/bootstrap.sql`，然后运行数据库适配器和固定 SQL 服务链路的集成测试：
 
 ```bash
 uv run python scripts/run_database_tests.py
@@ -374,14 +341,6 @@ Query 与 Business Analysis 黄金评测复用日常开发库 `chatbi_mvp`，exp
 
 `.env`、`data/rag/` 和 `.model-cache/bge-m3-5617a9f61b02/` 是本地 ignored（被 Git 忽略）资产，`git worktree` 或干净 clone 只会取得 Git 已跟踪的代码，不会自动复制这些文件。进入新的 worktree 运行真实评测前，先确认当前环境中的资产存在：
 
-```powershell
-Test-Path -LiteralPath '.env'
-Test-Path -LiteralPath 'data/rag/current.json'
-Test-Path -LiteralPath '.model-cache/bge-m3-5617a9f61b02'
-```
-
-WSL / Linux 可使用：
-
 ```bash
 test -f .env
 test -f data/rag/current.json
@@ -426,8 +385,8 @@ reports/evaluation/<run_id>.md
 
 检查 FastAPI：
 
-```powershell
-Invoke-RestMethod http://127.0.0.1:8000/health
+```bash
+curl --fail http://127.0.0.1:8000/health
 ```
 
 Streamlit 的 `CHATBI_API_BASE_URL` 默认是 `http://127.0.0.1:8000`；只有 API 使用其他地址时才需要修改。
