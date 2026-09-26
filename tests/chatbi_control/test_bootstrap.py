@@ -1,8 +1,8 @@
 """ChatBI 应用库和首个管理员初始化测试。"""
 
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 from unittest import TestCase
 
 from sqlalchemy import create_engine, select
@@ -134,6 +134,13 @@ class ControlBootstrapTest(TestCase):
         self.assertEqual(config.app_user, "chatbi_control_user")
         self.assertEqual(config.migrator_user, "chatbi_migrator")
         self.assertEqual(config.app_connection_kwargs()["dbname"], "chatbi_control")
+
+        runtime_config = ControlDatabaseConfig.from_environment(
+            values,
+            require_migrator=False,
+        )
+        self.assertEqual(runtime_config.migrator_user, "")
+        self.assertEqual(runtime_config.migrator_password, "")
 
         with self.assertRaises(ControlDatabaseConfigurationError):
             ControlDatabaseConfig.from_environment(

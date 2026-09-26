@@ -60,6 +60,41 @@ class EvaluationReportingTest(unittest.TestCase):
         self.assertEqual(len(metadata.context_hash), 64)
         self.assertEqual(len(metadata.reference_result_hash), 64)
 
+    def test_records_development_database_seed_summary_and_hash(self) -> None:
+        from src.evaluation.reporting import (
+            SalesMartDataFingerprint,
+            collect_run_metadata,
+        )
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            test_set = root / "cases.json"
+            test_set.write_text("[]", encoding="utf-8")
+            context_file = root / "context.json"
+            context_file.write_text("[]", encoding="utf-8")
+            metadata = collect_run_metadata(
+                self._run((CaseStatus.PASS,)),
+                git_commit="abcdef1",
+                git_dirty=False,
+                environ={"LLM_MODEL": "test-model"},
+                test_set_path=test_set,
+                context_paths={"context": context_file},
+                sales_mart_fingerprint=SalesMartDataFingerprint(
+                    seed_version="dev-seed-v1",
+                    data_summary={"total_rows": 100},
+                    data_hash="a" * 64,
+                    hash_algorithm="sha256-sales-mart-row-snapshot-v1",
+                ),
+            )
+
+        self.assertEqual(metadata.sales_mart_seed_version, "dev-seed-v1")
+        self.assertEqual(metadata.sales_mart_data_summary, {"total_rows": 100})
+        self.assertEqual(metadata.sales_mart_data_hash, "a" * 64)
+        self.assertEqual(
+            metadata.sales_mart_data_hash_algorithm,
+            "sha256-sales-mart-row-snapshot-v1",
+        )
+
     def test_writes_and_loads_json_report(self) -> None:
         from src.evaluation.reporting import (
             collect_run_metadata,
@@ -189,6 +224,7 @@ class EvaluationReportingTest(unittest.TestCase):
         comparison = compare_baseline(current, baseline)
 
         self.assertTrue(comparison["comparable"])
+        self.assertEqual(comparison["status"], "COMPARABLE")
         self.assertEqual(comparison["regressions"], ["A"])
         self.assertEqual(comparison["improvements"], ["B"])
         self.assertEqual(comparison["unchanged"], ["C"])
@@ -210,6 +246,7 @@ class EvaluationReportingTest(unittest.TestCase):
             test_hash="test-a",
             reference_hash="reference-b",
             statuses={"A": "FAIL"},
+            data_hash="c" * 64,
         )
 
         test_comparison = compare_baseline(changed_test, baseline)
@@ -217,8 +254,78 @@ class EvaluationReportingTest(unittest.TestCase):
 
         self.assertFalse(test_comparison["comparable"])
         self.assertFalse(database_comparison["comparable"])
+        self.assertEqual(database_comparison["status"], "NOT_COMPARABLE")
+        self.assertEqual(database_comparison["reason"], "Sales Mart 数据 Hash 不同")
         self.assertEqual(test_comparison["regressions"], [])
         self.assertEqual(database_comparison["regressions"], [])
+
+    def test_missing_data_fingerprint_marks_baseline_not_comparable(self) -> None:
+        from src.evaluation.reporting import compare_baseline
+
+        current = self._report(
+            test_hash="test-a",
+            reference_hash="reference-a",
+            statuses={"A": "FAIL"},
+        )
+        baseline = self._report(
+            test_hash="test-a",
+            reference_hash="reference-a",
+            statuses={"A": "PASS"},
+        )
+        del baseline["metadata"]["sales_mart_data_hash"]
+
+        comparison = compare_baseline(current, baseline)
+
+        self.assertEqual(comparison["status"], "NOT_COMPARABLE")
+        self.assertEqual(comparison["reason"], "基线报告缺少 Sales Mart 数据 Hash")
+        self.assertEqual(comparison["regressions"], [])
+
+    def test_seed_version_change_is_recorded_when_data_hash_is_unchanged(self) -> None:
+        from src.evaluation.reporting import (
+            compare_baseline,
+            render_markdown_report,
+        )
+
+        current = self._report(
+            test_hash="test-a",
+            reference_hash="reference-a",
+            statuses={"A": "PASS"},
+            seed_version="dev-seed-v2",
+        )
+        baseline = self._report(
+            test_hash="test-a",
+            reference_hash="reference-a",
+            statuses={"A": "PASS"},
+            seed_version="dev-seed-v1",
+        )
+
+        comparison = compare_baseline(current, baseline)
+
+        self.assertTrue(comparison["comparable"])
+        self.assertTrue(comparison["seed_version_changed"])
+        current_metadata = replace(
+            self._metadata(),
+            sales_mart_seed_version="dev-seed-v2",
+        )
+        markdown = render_markdown_report(
+            {
+                "metadata": current_metadata.to_dict(),
+                "summary": {
+                    "total_cases": 1,
+                    "valid_cases": 1,
+                    "passed": 1,
+                    "failed": 0,
+                    "invalid_cases": 0,
+                    "execution_accuracy": 1.0,
+                    "category_accuracy": {"simple": 1.0},
+                    "failure_stage_counts": {},
+                    "internal_reason_counts": {},
+                },
+                "cases": [{"case_id": "A", "status": "PASS"}],
+                "baseline_comparison": comparison,
+            }
+        )
+        self.assertIn("Seed 版本与 Baseline 不同", markdown)
 
     def test_rejects_invalid_report_file(self) -> None:
         from src.evaluation.reporting import ReportingError, load_report
@@ -293,6 +400,14 @@ class EvaluationReportingTest(unittest.TestCase):
             test_set_hash="same-test",
             context_hash="context",
             reference_result_hash="same-reference",
+            sales_mart_seed_version="dev-seed-v1",
+            sales_mart_data_summary={
+                "table_counts": {"fct_sales_order_line": 100},
+                "total_rows": 100,
+                "date_range": {"start": "2025-01-01", "end": "2025-12-31"},
+            },
+            sales_mart_data_hash="d" * 64,
+            sales_mart_data_hash_algorithm="sha256-sales-mart-row-snapshot-v1",
         )
 
     @staticmethod
@@ -301,11 +416,21 @@ class EvaluationReportingTest(unittest.TestCase):
         test_hash: str,
         reference_hash: str,
         statuses: dict[str, str],
+        data_hash: str = "d" * 64,
+        seed_version: str = "dev-seed-v1",
     ) -> dict[str, object]:
         return {
             "metadata": {
                 "test_set_hash": test_hash,
                 "reference_result_hash": reference_hash,
+                "sales_mart_seed_version": seed_version,
+                "sales_mart_data_summary": {
+                    "table_counts": {"fct_sales_order_line": 100},
+                    "total_rows": 100,
+                    "date_range": {"start": "2025-01-01", "end": "2025-12-31"},
+                },
+                "sales_mart_data_hash": data_hash,
+                "sales_mart_data_hash_algorithm": "sha256-sales-mart-row-snapshot-v1",
             },
             "cases": [
                 {"case_id": case_id, "status": status}

@@ -1,5 +1,6 @@
 -- ChatBI 应用运行时账号权限。
 -- 该文件在 chatbi_control 内执行；chatbi_app 不应出现在本文件中。
+REVOKE CONNECT ON DATABASE chatbi_control FROM PUBLIC;
 GRANT CONNECT ON DATABASE chatbi_control TO chatbi_control_user;
 GRANT USAGE ON SCHEMA public TO chatbi_control_user;
 

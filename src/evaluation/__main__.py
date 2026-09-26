@@ -51,6 +51,7 @@ from .business_analysis_reporting import (
     render_business_analysis_markdown,
 )
 from .business_analysis_runner import run_business_analysis_evaluation
+from .database_fingerprint import collect_sales_mart_fingerprint
 from .evaluator import EvaluationLoadError, load_evaluation_cases
 from .reporting import (
     ReportingError,
@@ -210,6 +211,7 @@ def run_cli(
         query_entry = _build_evaluation_query_entry(service)
         state_reader = _read_git_state if git_state_reader is None else git_state_reader
         git_commit, git_dirty = state_reader(PROJECT_ROOT)
+        sales_mart_fingerprint = collect_sales_mart_fingerprint(source)
 
         run = run_evaluation(
             cases,
@@ -227,6 +229,7 @@ def run_cli(
             context_paths=(
                 _default_context_paths() if context_paths is None else context_paths
             ),
+            sales_mart_fingerprint=sales_mart_fingerprint,
         )
         report = create_report(run, metadata, baseline)
         report_path = args.output_dir / f"{metadata.run_id}.json"
@@ -397,6 +400,7 @@ def _run_business_analysis_cli_impl(
         if analysis_application_factory is None
         else analysis_application_factory(authorized_service, environ)
     )
+    sales_mart_fingerprint = collect_sales_mart_fingerprint(environ)
     run = run_business_analysis_evaluation(
         cases,
         application,
@@ -416,6 +420,7 @@ def _run_business_analysis_cli_impl(
             if context_paths is None
             else context_paths
         ),
+        sales_mart_fingerprint=sales_mart_fingerprint,
     )
     report = create_business_analysis_report(run, metadata, baseline)
     report_path = args.output_dir / f"{metadata.run_id}-business-analysis.json"

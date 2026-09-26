@@ -144,6 +144,10 @@ model_endpoint_hash
 test_set_hash
 context_hash
 reference_result_hash
+sales_mart_seed_version
+sales_mart_data_summary
+sales_mart_data_hash
+sales_mart_data_hash_algorithm
 ```
 
 - `git_commit`：当前代码提交。
@@ -152,6 +156,10 @@ reference_result_hash
 - `test_set_hash`：标准测试集内容指纹。
 - `context_hash`：五个结构和指标文件的整体内容指纹。
 - `reference_result_hash`：21 条标准 SQL 结果的整体指纹，用于识别相关数据库数据是否变化。
+- `sales_mart_seed_version`：开发 Seed 中登记的版本。
+- `sales_mart_data_summary`：Sales Mart 固定业务表的行数、总行数和日期范围，不包含明细记录。
+- `sales_mart_data_hash`：在 `chatbi_app` 只读连接的同一 `REPEATABLE READ READ ONLY` 事务中，按固定表名、字段名和稳定主键顺序规范化实际行值后计算的 SHA-256。它反映实际数据状态，不依赖 Seed 文件版本或评测结果。
+- `sales_mart_data_hash_algorithm`：数据 Hash 的算法标识；算法升级后，新旧报告不可直接比较。
 - API Key、数据库密码和完整连接地址不得进入报告。
 
 `uv.lock`、Prompt 和代码都由 `git_commit` 定位，不再分别建立版本号。
@@ -179,12 +187,15 @@ JSON 是机器可读评测证据；Markdown 是由同一份 JSON 数据确定性
 
 不自动选择“最新报告”，避免误用错误基线。
 
+数据库型 Query 与 Business Analysis Evaluation 复用日常开发库 `chatbi_mvp` 和 `chatbi_app` 只读账号。expected SQL 与模型 SQL 都通过同一配置创建的 Query Executor 执行，不创建独立评测数据库。Query Understanding 语义评测不连接数据库。
+
 比较前必须确认：
 
 - `test_set_hash` 相同
+- Sales Mart 数据 Hash、Hash 算法和摘要均存在且一致
 - `reference_result_hash` 相同
 
-两者任一不同，本次仍可生成独立报告，但不得声明能力回退或改善。
+任何必要指纹缺失或不同，本次仍可生成独立报告，但 `baseline_comparison.status` 必须为 `NOT_COMPARABLE`，并说明原因，不得声明能力回退或改善。历史报告没有 Sales Mart 数据指纹时也不可比较。Seed 版本改变但实际数据 Hash 相同时可继续比较，并通过 `seed_version_changed` 标明版本差异。
 
 模型、代码或上下文可以变化，因为它们正是被评测的系统组成；报告必须明确列出这些指纹变化。
 

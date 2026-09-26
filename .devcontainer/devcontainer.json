@@ -4,8 +4,16 @@
 	{
 		"name": "Python 3",
 
-		// Python 3.11 开发环境
-		"image": "mcr.microsoft.com/devcontainers/python:3-3.11-bookworm",
+		// PostgreSQL、Qdrant 和 Dev Container 共用 Compose 网络和持久 Named Volume
+		"dockerComposeFile": "../docker-compose.yml",
+		"service": "devcontainer",
+		"runServices": ["devcontainer"],
+		"workspaceFolder": "/workspaces/chatbi-engine",
+		"shutdownAction": "stopContainer",
+		"forwardPorts": [8000, 8501],
+		"remoteEnv": {
+			"LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}"
+		},
 
 		// 开发工具
 		"features": {

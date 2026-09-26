@@ -177,14 +177,17 @@ def _render_baseline_comparison(report: Mapping[str, object]) -> list[str]:
         raise ReportingError("基线对比结构无效")
     if comparison_mapping.get("comparable") is not True:
         reason = _markdown_cell(comparison_mapping.get("reason") or "原因未知")
-        lines.append(f"未形成有效基线对比：{reason}。")
+        lines.append(f"状态：NOT_COMPARABLE。未形成有效基线对比：{reason}。")
         return lines
 
     regressions = _string_list(comparison_mapping, "regressions")
     improvements = _string_list(comparison_mapping, "improvements")
     unchanged = _string_list(comparison_mapping, "unchanged")
+    if comparison_mapping.get("seed_version_changed") is True:
+        lines.append("Seed 版本与 Baseline 不同；实际数据 Hash 相同，本次仍可比较。")
     lines.extend(
         [
+            "状态：COMPARABLE。",
             _comparison_line("能力回退", regressions),
             _comparison_line("能力改善", improvements),
             f"状态未变化 {len(unchanged)} 条。",
@@ -194,7 +197,7 @@ def _render_baseline_comparison(report: Mapping[str, object]) -> list[str]:
 
 
 def _render_run_info(metadata: Mapping[str, object]) -> list[str]:
-    return [
+    lines = [
         "",
         "## 运行信息",
         "",
@@ -203,8 +206,44 @@ def _render_run_info(metadata: Mapping[str, object]) -> list[str]:
         f"- Git Commit：{_markdown_cell(metadata.get('git_commit'))}",
         f"- Git Dirty：{_markdown_cell(metadata.get('git_dirty'))}",
         f"- Model：{_markdown_cell(metadata.get('model'))}",
-        "",
     ]
+    seed_version = metadata.get("sales_mart_seed_version")
+    data_hash = metadata.get("sales_mart_data_hash")
+    hash_algorithm = metadata.get("sales_mart_data_hash_algorithm")
+    summary = _object_mapping(metadata.get("sales_mart_data_summary"))
+    counts = _object_mapping(summary.get("table_counts")) if summary else None
+    date_range = _object_mapping(summary.get("date_range")) if summary else None
+    if summary is None or counts is None or date_range is None:
+        lines.extend(
+            [
+                "- Sales Mart Seed：未记录",
+                "- Sales Mart 数据 Hash：未记录",
+            ]
+        )
+    else:
+        count_summary = ", ".join(
+            f"{_markdown_cell(table)}={_markdown_cell(count)}"
+            for table, count in sorted(counts.items())
+        )
+        date_summary = (
+            f"{_markdown_cell(date_range.get('start'))} 至 "
+            f"{_markdown_cell(date_range.get('end'))}"
+        )
+        lines.extend(
+            [
+                f"- Sales Mart Seed：{_markdown_cell(seed_version)}",
+                (
+                    f"- Sales Mart 数据 Hash：{_markdown_cell(hash_algorithm)} "
+                    f"`{_markdown_cell(data_hash)}`"
+                ),
+                (
+                    f"- Sales Mart 摘要：{_markdown_cell(summary.get('total_rows'))} 行；"
+                    f"日期 {date_summary}；表行数 {count_summary}"
+                ),
+            ]
+        )
+    lines.append("")
+    return lines
 
 
 def _summary_count(summary: Mapping[str, object], field: str) -> int:

@@ -10,10 +10,10 @@ from src.authorization import AuthContext
 from src.query_api.config import (
     AuthorizationPolicyConfigurationError,
     IdentityProviderConfigurationError,
+    RuntimeConfigurationError,
     build_identity_provider,
     build_policy_store,
     load_local_environment,
-    RuntimeConfigurationError,
     validate_runtime_configuration,
 )
 
@@ -150,6 +150,30 @@ class QueryApiConfigTest(unittest.TestCase):
             missing_file = Path(directory) / ".env"
 
             load_local_environment(missing_file)
+
+    def test_migration_credentials_are_not_loaded_into_api_runtime(self) -> None:
+        with TemporaryDirectory() as directory:
+            env_file = Path(directory) / ".env"
+            env_file.write_text(
+                "CHATBI_TEST_RUNTIME_VALUE=from-file\n"
+                "POSTGRES_MIGRATOR_USER=chatbi_migrator\n"
+                "POSTGRES_MIGRATOR_PASSWORD=local-secret\n"
+                "POSTGRES_CONTROL_MIGRATOR_USER=chatbi_migrator\n",
+                encoding="utf-8",
+            )
+
+            with patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("CHATBI_TEST_RUNTIME_VALUE", None)
+                os.environ["POSTGRES_MIGRATOR_USER"] = "inherited-user"
+                os.environ["POSTGRES_MIGRATOR_PASSWORD"] = "inherited-secret"
+                os.environ["POSTGRES_CONTROL_MIGRATOR_USER"] = "inherited-user"
+
+                load_local_environment(env_file)
+
+                self.assertEqual(os.environ["CHATBI_TEST_RUNTIME_VALUE"], "from-file")
+                self.assertNotIn("POSTGRES_MIGRATOR_USER", os.environ)
+                self.assertNotIn("POSTGRES_MIGRATOR_PASSWORD", os.environ)
+                self.assertNotIn("POSTGRES_CONTROL_MIGRATOR_USER", os.environ)
 
 
 if __name__ == "__main__":

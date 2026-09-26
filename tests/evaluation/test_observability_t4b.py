@@ -276,7 +276,8 @@ class EvaluationObservabilityT4BTest(unittest.TestCase):
             loaded = load_report(path)
 
         comparison = compare_baseline(report, loaded)
-        self.assertTrue(comparison["comparable"])
+        self.assertFalse(comparison["comparable"])
+        self.assertEqual(comparison["status"], "NOT_COMPARABLE")
 
     def test_recorder_failure_is_fail_open_and_keeps_business_result(self) -> None:
         class BrokenRecorder:

@@ -1,9 +1,12 @@
 """Embedding Provider（向量化提供者）及 BGE-M3 适配器。"""
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-import math
+from pathlib import Path
 from typing import Any, Protocol
+
+from .config import DEFAULT_MODEL, DEFAULT_MODEL_REVISION
 
 
 class EmbeddingError(RuntimeError):
@@ -79,6 +82,8 @@ class BgeM3EmbeddingProvider:
         batch_size: int = 8,
         use_fp16: bool = False,
         devices: str | list[str] | None = None,
+        model_revision: str = DEFAULT_MODEL_REVISION,
+        model_id: str = DEFAULT_MODEL,
         model: Any | None = None,
     ) -> None:
         if not model_name_or_path.strip():
@@ -89,6 +94,8 @@ class BgeM3EmbeddingProvider:
         self.batch_size = batch_size
         self.use_fp16 = use_fp16
         self.devices = devices
+        self.model_revision = model_revision
+        self.model_id = model_id
         self._model = model
 
     @property
@@ -100,6 +107,8 @@ class BgeM3EmbeddingProvider:
         return {
             "provider": "FlagEmbedding.BGEM3FlagModel",
             "model": self.model_name_or_path,
+            "model_id": self.model_id,
+            "revision": self.model_revision,
             "dimension": self.dimension,
             "dense": True,
             "sparse": True,
@@ -153,6 +162,11 @@ class BgeM3EmbeddingProvider:
     def _load_model(self) -> Any:
         if self._model is not None:
             return self._model
+        if not Path(self.model_name_or_path).is_dir():
+            raise EmbeddingError(
+                "Embedding 模型本地快照不存在；先运行 "
+                "uv run python scripts/prepare_embedding_model.py"
+            )
         try:
             from FlagEmbedding import BGEM3FlagModel
         except ImportError as exc:

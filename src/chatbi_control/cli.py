@@ -16,15 +16,38 @@ from .database import (
     ControlDatabaseMigrationError,
     create_control_engine,
     initialize_control_database,
+    verify_control_schema,
 )
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="初始化 ChatBI 应用库和首个管理员")
-    parser.add_argument("--username", help="首个管理员用户名；不传时交互输入")
+    parser = argparse.ArgumentParser(
+        description="迁移 ChatBI 应用库或显式创建首个管理员"
+    )
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser(
+        "migrate", help="创建应用库并运行可重复的 Schema / RBAC migration"
+    )
+    admin_parser = commands.add_parser("create-admin", help="交互式创建首个管理员")
+    admin_parser.add_argument("--username", help="首个管理员用户名；不传时交互输入")
     args = parser.parse_args(argv)
 
     load_dotenv(override=False)
+
+    if args.command == "migrate":
+        try:
+            config = ControlDatabaseConfig.from_environment()
+            initialize_control_database(config)
+        except (
+            ControlDatabaseConfigurationError,
+            ControlDatabaseMigrationError,
+        ) as exc:
+            print(f"应用库迁移失败：{exc}", file=sys.stderr)
+            return 1
+
+        print("应用库 Schema 和固定 RBAC migration 已完成；没有创建管理员。")
+        return 0
+
     username = (args.username or input("首个管理员用户名: ")).strip()
     password = getpass.getpass("首个管理员密码（至少 12 位）: ")
     confirmation = getpass.getpass("再次输入首个管理员密码: ")
@@ -33,10 +56,10 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
-        config = ControlDatabaseConfig.from_environment()
-        initialize_control_database(config)
+        config = ControlDatabaseConfig.from_environment(require_migrator=False)
         engine = create_control_engine(config)
         try:
+            verify_control_schema(engine)
             with Session(engine) as session, session.begin():
                 create_first_admin(
                     session,
@@ -49,8 +72,9 @@ def main(argv: list[str] | None = None) -> int:
         BootstrapError,
         ControlDatabaseConfigurationError,
         ControlDatabaseMigrationError,
+        ValueError,
     ) as exc:
-        print(f"初始化失败：{exc}", file=sys.stderr)
+        print(f"首个管理员创建失败：{exc}", file=sys.stderr)
         return 1
 
     print(f"首个管理员创建成功：{username.lower()}")
