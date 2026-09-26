@@ -1,0 +1,2 @@
+# PostgreSQL runs these bind-mounted scripts in Linux containers on all hosts.
+database/init/*.sh text eol=lf

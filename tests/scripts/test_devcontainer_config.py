@@ -20,3 +20,11 @@ def test_devcontainer_uses_shared_compose_without_volume_deletion() -> None:
     assert config["remoteEnv"]["LOCAL_WORKSPACE_FOLDER"] == "${localWorkspaceFolder}"
     assert "uv sync --locked" in config["postCreateCommand"]
     assert "down -v" not in config["postCreateCommand"]
+
+
+def test_postgres_init_scripts_are_kept_as_lf_for_linux_containers() -> None:
+    attributes = (PROJECT_ROOT / ".gitattributes").read_text(encoding="utf-8")
+    assert "database/init/*.sh text eol=lf" in attributes
+
+    for path in sorted((PROJECT_ROOT / "database" / "init").glob("*.sh")):
+        assert b"\r\n" not in path.read_bytes(), path.name
