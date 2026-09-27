@@ -22,6 +22,20 @@ from src.online_query.query_understanding_llm import (
 
 
 class QueryUnderstandingLLMTest(unittest.TestCase):
+    def test_adapter_returns_clarification_outcome_without_semantic_candidate(
+        self,
+    ) -> None:
+        model = Mock()
+        model.invoke.return_value = SimpleNamespace(
+            content=json.dumps({"outcome": "clarification_required"})
+        )
+        adapter = LangChainQueryUnderstanding(model)
+
+        result = adapter.understand("帮我查一下利润")
+
+        self.assertEqual(result.outcome, "clarification_required")
+        self.assertEqual(result.reason, "METRIC_NOT_UNIQUE")
+
     def test_adapter_returns_candidate_from_one_json_object(self) -> None:
         model = Mock()
         model.invoke.return_value = SimpleNamespace(
@@ -89,6 +103,25 @@ class QueryUnderstandingLLMTest(unittest.TestCase):
         self.assertIn("按销售区域拆开", prompt)
         self.assertNotIn("SELECT", prompt)
 
+    def test_revision_returns_controlled_clarification_outcome(self) -> None:
+        model = Mock()
+        model.invoke.return_value = SimpleNamespace(
+            content=json.dumps({"outcome": "clarification_required"})
+        )
+        adapter = LangChainQueryUnderstanding(model)
+        previous = validate_candidate(
+            candidate_from_payload(_payload()),
+            original_question="查询销售额",
+        )
+
+        result = adapter.understand_revision(previous, "利润")
+
+        self.assertEqual(result.outcome, "clarification_required")
+        self.assertEqual(result.reason, "METRIC_NOT_UNIQUE")
+        self.assertIn(
+            '"outcome": "clarification_required"', model.invoke.call_args.args[0]
+        )
+
     def test_revision_prompt_contains_delta_rules_without_raw_history(self) -> None:
         previous = validate_candidate(
             candidate_from_payload(_payload()),
@@ -111,6 +144,11 @@ class QueryUnderstandingLLMTest(unittest.TestCase):
         self.assertIn("明细行数", prompt)
         self.assertIn("已完成订单数量", prompt)
         self.assertIn("最小指标表达式", prompt)
+        self.assertIn("利润", prompt)
+        self.assertIn('"outcome": "clarification_required"', prompt)
+        self.assertIn("不得猜测或改写为某个指标", prompt)
+        self.assertIn("毛利、净利润或其他口径", prompt)
+        self.assertIn("由程序返回 CANNOT_ANSWER", prompt)
         self.assertIn("当前数据状态", prompt)
         self.assertIn("不要输出物理表名、物理字段名", prompt)
         self.assertIn(
@@ -191,6 +229,25 @@ class QueryUnderstandingLLMTest(unittest.TestCase):
 
         self.assertNotIn("SUM(amount)", str(raised.exception))
         self.assertEqual(raised.exception.reason, "CANDIDATE_FIELD_EXTRA")
+
+    def test_clarification_outcome_rejects_extra_fields_without_retry(self) -> None:
+        model = Mock()
+        model.invoke.return_value = SimpleNamespace(
+            content=json.dumps(
+                {
+                    "outcome": "clarification_required",
+                    "message": "模型生成的澄清文本",
+                },
+                ensure_ascii=False,
+            )
+        )
+        adapter = LangChainQueryUnderstanding(model)
+
+        with self.assertRaises(LLMError) as raised:
+            adapter.understand("帮我查一下利润")
+
+        self.assertEqual(raised.exception.reason, "CANDIDATE_FIELD_MISSING")
+        model.invoke.assert_called_once()
 
     def test_trace_uses_dedicated_span(self) -> None:
         model = Mock()

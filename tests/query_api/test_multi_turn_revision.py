@@ -20,10 +20,11 @@ from src.online_query.contracts import (
 )
 from src.online_query.query_understanding import (
     QueryType,
+    QueryUnderstandingClarificationRequired,
     SemanticQueryCandidate,
     TimeGranularity,
-    ValidatedTime,
     ValidatedSemanticQuery,
+    ValidatedTime,
 )
 from src.query_api.app import create_app
 from tests.query_api.support import create_test_app
@@ -54,9 +55,11 @@ class _RevisionAdapter:
         self,
         previous: ValidatedSemanticQuery,
         question: str,
-    ) -> SemanticQueryCandidate:
+    ) -> SemanticQueryCandidate | QueryUnderstandingClarificationRequired:
         del previous
         self.questions.append(question)
+        if question == "利润":
+            return QueryUnderstandingClarificationRequired()
         if question == "按销售区域拆开":
             return SemanticQueryCandidate(
                 query_type=QueryType.METRIC_ANALYSIS,
@@ -215,6 +218,39 @@ class MultiTurnRevisionTest(TestCase):
             service.requests[1].semantic_query.dimensions,
             ("销售区域",),
         )
+
+    def test_ambiguous_metric_follow_up_does_not_execute_or_mutate_state(self) -> None:
+        service = _StatefulService()
+        adapter = _RevisionAdapter()
+        client = TestClient(
+            create_test_app(service, query_understanding=adapter),
+        )
+
+        first = client.post(
+            "/api/v1/query",
+            json={"question": "2025 年第一季度的人民币销售额是多少？"},
+        )
+        conversation_id = first.json()["conversation_id"]
+        ambiguous = client.post(
+            "/api/v1/query",
+            json={"question": "利润", "conversation_id": conversation_id},
+        )
+        retry = client.post(
+            "/api/v1/query",
+            json={
+                "question": "按销售区域拆开",
+                "conversation_id": conversation_id,
+            },
+        )
+
+        self.assertEqual(ambiguous.status_code, 422)
+        self.assertEqual(ambiguous.json()["error_code"], "CLARIFICATION_REQUIRED")
+        self.assertNotIn("conversation_id", ambiguous.json())
+        self.assertEqual(retry.status_code, 200)
+        self.assertEqual(len(service.requests), 2)
+        self.assertEqual(service.requests[1].semantic_query.metrics, ("人民币销售额",))
+        self.assertEqual(service.requests[1].semantic_query.dimensions, ("销售区域",))
+        self.assertEqual(adapter.questions, ["利润", "按销售区域拆开"])
 
     def test_unsupported_analysis_does_not_execute_or_mutate_state(self) -> None:
         service = _StatefulService()

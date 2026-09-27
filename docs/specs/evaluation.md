@@ -9,9 +9,20 @@ Evaluation（评测）是离线回归评测工具，不参与用户在线请求�
 ## 运行方式
 
 - 离线、批量、顺序执行。
-- 每个案例独立运行；单条失败不得中断剩余案例。
+- 单轮案例独立运行；多轮按完整 Conversation（对话场景）运行。
+- 单条案例或场景失败不得中断后续案例。
 - 第一轮建立 Baseline，不设置准确率门槛。
 - 后续使用同一测试集和同一比较规则复测，并与上一份有效报告比较。
+
+面向业务能力的评测集分为三类，分别运行并分别出报告：
+
+| 评测集 | 案例文件 | 运行参数 | 计分单位 |
+|---|---|---|---|
+| 单轮自然查询 | `src/evaluation/eval_cases.json` | `--single-turn`（默认模式） | 单条问题 |
+| 多轮自然查询 | `src/evaluation/multi_turn_eval_cases.json` | `--multi-turn --online-retrieval` | 完整 Conversation |
+| 经营分析 | `src/evaluation/business_analysis_cases.json` | `--business-analysis --online-retrieval` | 单条经营分析场景 |
+
+经营分析继续使用独立的分层评估器。Query Understanding（查询理解）语义集是辅助回归，不是第四类业务评测集。
 
 Query Understanding 语义评测单独运行：
 
@@ -33,14 +44,26 @@ schema_name
 category
 question
 description
-expected_sql
+expected_sql（`result_match` 必填）
+expected_outcome（可选，默认 `result_match`）
+expected_error_code（非 `result_match` 必填）
+coverage（可选，场景覆盖标签数组）
 order_sensitive（可选，默认 false）
 ```
 
 - `question` 必须通过绑定显式测试身份的正式 `BoundAuthorizedQueryService`，由其调用下游 `OnlineQueryService.execute()`。
 - `expected_sql` 只用于生成标准结果，不得替代系统生成 SQL。
 - 标准 SQL 仍须经过现有 SQL Guard（SQL 安全校验），并使用同一个只读数据库执行器。
+- `result_match` 案例中，原始 `question` 走正式授权查询链路；`expected_sql` 走 PostgreSQL 只读执行器。评测比较两边的执行结果，不比较 SQL 文本。
+- `clarification_required`、`cannot_answer` 或 `query_failure` 案例不执行标准 SQL；按 `expected_error_code` 与系统返回的业务错误码精确比较。
+- 单轮 `coverage` 用于统计指标、时间、维度、条件过滤、TopN、HAVING、多指标、别名、澄清、拒答和组合场景；`category` 继续表示 `simple / medium / complex` 难度。
 - 当前 Online Retrieval V1 的标准 Join 必须使用关系图认证的直接 `LEFT JOIN`；中间表、多跳 Join 和未认证 Join 不属于标准案例。
+
+多轮案例的顶层记录代表一个完整 Conversation，`turns` 按顺序包含 `question`、期望 outcome / 错误码，以及成功轮次的 `expected_sql`。一个 Conversation 使用全新的服务端会话；首轮成功响应给出的 `conversation_id` 用于该场景后续轮次，同一测试集中的其他场景不复用此 ID。评测通过正式 `POST /api/v1/query` Application 入口执行，并使用显式 Evaluation 测试身份及授权策略。
+
+失败轮次必须声明期望错误码；失败后继续执行有效追问，以结果比较确认会话保留在失败前最后一次成功状态。失败轮次若意外成功、返回错误码不符，或影响后续结果，该 Conversation 记为失败。
+
+当前标准多轮集合包含 7 个 Conversation、15 个轮次，覆盖指标 / 时间替换、维度追加 / 替换、Filter 追加 / 替换和失败状态隔离。Filter 案例使用已登记的销售区域及华东、华南值，不依赖企业客户筛选字段。
 
 Query Understanding（查询理解）使用独立的语义评测集
 `src/evaluation/query_understanding_cases.json`。该评测集只验证结构化语义，不执行 Retrieval、SQL Guard 或数据库；其中 `time: null` 表示用户没有提出时间过滤条件，不属于案例缺陷。
@@ -74,6 +97,8 @@ question
 语义评测与 SQL 执行评测必须同时存在：前者回答“意图是否识别正确”，后者回答“最终查询结果是否正确”。不能只根据 SQL 结果通过推断 Query Understanding 一定正确。
 
 真实 AI Evaluation 必须通过 `--online-retrieval` 装配与生产入口一致的 `OnlineRetriever`；Software Test 可以省略该参数并使用静态 `QueryContext`，以保持确定性和离线性。评测工具不得因此复制一套检索、Prompt 或 SQL Guard 逻辑。
+
+多轮评测必须启用 `--online-retrieval`：首轮需要由正式 Query Understanding / Retrieval 链路生成服务端结构化状态，后续轮次由 Query API Application 管理该状态并继续调用 Online Query。
 
 不得复制或重新实现 Prompt、LLM 调用、SQL Guard、数据库查询和错误转换。
 
@@ -133,12 +158,22 @@ PASS 数量
 FAIL 数量
 INVALID_CASE 数量
 Execution Accuracy
-各 category 的 Execution Accuracy
+Outcome Accuracy
+Case Accuracy
+Conversation Accuracy（多轮）
+coverage 标签准确率
+各 category 的案例准确率
 failure_stage 和 internal_reason 分布
 相对上一份报告的回退案例和改善案例
 ```
 
-`Execution Accuracy = PASS 数量 / 有效案例数`。`INVALID_CASE` 不进入分母，但必须在报告中明确列出。
+单轮评测分开报告以下准确率：
+
+- `Execution Accuracy = result_match 且 PASS 的有效案例数 / 有效 result_match 案例数`。
+- `Outcome Accuracy = 期望失败 outcome 命中的有效案例数 / 有效非 result_match 案例数`。
+- `Case Accuracy = 所有 PASS 案例数 / 所有有效案例数`。
+
+多轮评测另外报告 `Conversation Accuracy = 完整 PASS 的有效 Conversation 数 / 有效 Conversation 数`。多轮 `Execution Accuracy` 和 `Outcome Accuracy` 按有效轮次分开计算。经营分析准确率继续按经营分析专用口径报告。`INVALID_CASE` 不进入分母，但必须在报告中明确列出。
 
 每次运行同时生成两份同名报告；报告只作为本地评测产物，不作为 GitHub Issue / PR 或远程交付内容：
 
@@ -190,10 +225,13 @@ Query 与 Business Analysis 的数据库型报告必须记录当前开发 Seed �
 
 ### AI Evaluation（AI 评测）
 
-- 使用 `uv run --env-file .env python -m src.evaluation --online-retrieval`，21 条标准案例能够顺序运行完成，单条失败不影响其余案例。
+- 使用 `uv run --env-file .env python -m src.evaluation --single-turn --online-retrieval`，单轮案例能够顺序运行完成；成功查询与标准 SQL 结果比对，澄清/拒答按期望错误码判定。
+- 使用 `uv run --env-file .env python -m src.evaluation --multi-turn --online-retrieval`，完整 Conversation 按顺序运行；首轮创建会话，后续轮次复用同一 `conversation_id`，场景之间隔离。
+- 使用 `uv run --env-file .env python -m src.evaluation --business-analysis --online-retrieval`，运行现有经营分析黄金测试集。
 - 使用 `uv run --env-file .env python -m src.evaluation --query-understanding`，独立验证 `query_type`、`metrics`、`dimensions` 和 `time`，其中没有时间条件的案例必须明确期望 `time = null`。
 - 生成包含单条结果的 JSON 数据报告，以及包含总体结论、准确率和失败摘要的 Markdown 总结报告。
 - 后续报告能够识别相对上一份有效报告的回退和改善案例。
+- 单轮报告展示执行准确率、outcome 命中率和场景覆盖；多轮报告展示 Conversation 结论和轮次级诊断；三类报告不生成跨类别总准确率。
 
 ### Business Acceptance（业务验收）
 

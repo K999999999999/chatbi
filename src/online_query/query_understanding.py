@@ -1,13 +1,13 @@
 """Query Understanding（查询理解）的结构 Contract 和确定性校验。"""
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, time as datetime_time
+from datetime import date, datetime, timedelta
+from datetime import time as datetime_time
 from enum import StrEnum
-import re
 from typing import Final
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-
 
 DEFAULT_QUERY_TIMEZONE: Final = "Asia/Shanghai"
 MAX_REQUEST_METRICS: Final = 5
@@ -97,6 +97,19 @@ class SemanticQueryCandidate:
     dimensions: tuple[str, ...]
     time: TimeCandidate | None
     filters: tuple[FilterCandidate, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class QueryUnderstandingClarificationRequired:
+    """查询语义存在歧义，需要用户补充业务口径。"""
+
+    outcome: str = "clarification_required"
+    reason: str = "METRIC_NOT_UNIQUE"
+
+
+QueryUnderstandingResult = (
+    SemanticQueryCandidate | QueryUnderstandingClarificationRequired
+)
 
 
 @dataclass(frozen=True, slots=True)

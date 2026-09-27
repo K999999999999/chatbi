@@ -9,6 +9,7 @@ Status: done
 验证内容包括：
 
 - 结构化候选、校验失败、业务拒答和技术失败的确定性测试；
+- Query Understanding 返回 `clarification_required` 时映射为业务澄清；非法 outcome、结构和 Provider 调用失败仍映射为 `LLM_ERROR`；
 - 日期、过滤、指标数量、指标歧义、字段歧义和 Join 不可达回归案例；
 - Query Understanding 到 Retrieval 到 SQL Guard 的链路测试；
 - 真实 LLM Evaluation（评测）和现有案例回归；
@@ -40,6 +41,7 @@ Ticket 05：Prompt 和 SQL Generation 接入已确认语义
 ## Result
 
 - 已补齐 Query Understanding 结构化候选、校验失败、业务拒答、技术失败和链路停止边界的确定性回归；既有日期、过滤、指标数量、指标歧义、字段歧义和 Join 不可达案例继续纳入回归集合。
+- 2026-09-28 Follow-up：为模糊业务指标增加结构化澄清结果；测试确认澄清不进入 Retrieval、SQL 或 Database，`query_type=unknown` 仍返回 `CANNOT_ANSWER`，非法输出和 Provider 失败仍返回 `LLM_ERROR`。未运行真实 LLM Evaluation 或 Real E2E。
 - `QueryFailure` 和 `CaseEvaluation` 记录内部 `failure_stage` 与 `internal_reason`；Evaluation JSON / Markdown 报告可以区分 `query_understanding`、`retrieval`、`sql_generation`、`sql_guard` 和 `database` 阶段，同时保留对外中文错误提示，不暴露内部细节。
 - 已验证 Query Understanding → Retrieval → Prompt / SQL Generation → SQL Guard 的既有主链路没有确定性回归；结构化理解失败不会进入 Retrieval、SQL 或 Database。
 - 已将当前 Online Query 相关文档中的指标上限统一为最多 5 个；历史验收记录仍保留原始时间点和原始证据，不篡改历史结果。

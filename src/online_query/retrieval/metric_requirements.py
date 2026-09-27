@@ -36,11 +36,15 @@ def _metric_data_source(metric: MetricHit) -> str:
 
 
 def _column_query(query: ValidatedSemanticQuery, metric: MetricHit | None) -> str:
+    filter_terms = tuple(
+        term for item in query.filters for term in (item.field_text, *item.values)
+    )
     base_query = _semantic_query_text(
         (
             *query.dimensions,
-            *(item.field_text for item in query.filters),
+            *filter_terms,
             *query.subjects,
+            query.original_question,
         )
     )
     formula = metric.metadata.get("formula", "") if metric else ""
@@ -67,8 +71,13 @@ def _multi_column_query(
         _semantic_query_text(
             (
                 *query.dimensions,
-                *(item.field_text for item in query.filters),
+                *(
+                    term
+                    for item in query.filters
+                    for term in (item.field_text, *item.values)
+                ),
                 *query.subjects,
+                query.original_question,
             )
         )
     ]

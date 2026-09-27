@@ -305,13 +305,15 @@ class QdrantAssetStore:
         if not filter_payload:
             return None
         models = self._load_models()
-        conditions = [
-            models.FieldCondition(
-                key=str(key),
-                match=models.MatchValue(value=value),
-            )
-            for key, value in filter_payload.items()
-        ]
+        conditions = []
+        for key, value in filter_payload.items():
+            if isinstance(value, (list, tuple)):
+                if not value:
+                    raise QdrantStoreError("多值 payload 过滤条件不能为空")
+                match = models.MatchAny(any=list(value))
+            else:
+                match = models.MatchValue(value=value)
+            conditions.append(models.FieldCondition(key=str(key), match=match))
         return models.Filter(must=conditions)
 
 

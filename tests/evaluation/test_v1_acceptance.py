@@ -47,7 +47,12 @@ class V1AcceptanceTest(unittest.TestCase):
         self,
     ) -> None:
         root = Path(__file__).resolve().parents[2]
-        cases = load_evaluation_cases(root / "src" / "evaluation" / "eval_cases.json")
+        all_cases = load_evaluation_cases(
+            root / "src" / "evaluation" / "eval_cases.json"
+        )
+        cases = tuple(
+            case for case in all_cases if case.expected_outcome == "result_match"
+        )
         context = load_query_context()
         generator = _SequentialSQLGenerator(tuple(case.expected_sql for case in cases))
         executor = _EmptyResultExecutor()
@@ -71,15 +76,15 @@ class V1AcceptanceTest(unittest.TestCase):
 
         run = run_evaluation(cases, query_entry, executor, context)
 
-        self.assertEqual(run.summary.total_cases, 21)
-        self.assertEqual(run.summary.valid_cases, 21)
-        self.assertEqual(run.summary.passed, 21)
+        self.assertEqual(run.summary.total_cases, 25)
+        self.assertEqual(run.summary.valid_cases, 25)
+        self.assertEqual(run.summary.passed, 25)
         self.assertEqual(run.summary.failed, 0)
         self.assertEqual(run.summary.invalid_cases, 0)
         self.assertEqual(run.summary.execution_accuracy, 1.0)
         self.assertTrue(all(case.status == CaseStatus.PASS for case in run.cases))
-        self.assertEqual(generator.calls, 21)
-        self.assertEqual(len(executor.calls), 42)
+        self.assertEqual(generator.calls, 25)
+        self.assertEqual(len(executor.calls), 50)
         self.assertEqual(len(context.join_constraints), 9)
 
 

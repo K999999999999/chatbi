@@ -47,6 +47,9 @@ class CaseEvaluation:
     query_error_code: str | None
     failure_reason: str | None
     duration_ms: int
+    expected_outcome: str = "result_match"
+    expected_error_code: str | None = None
+    coverage: tuple[str, ...] = ()
     request_id: str | None = None
     trace_id: str | None = None
     failure_stage: str | None = None
@@ -62,6 +65,13 @@ class EvaluationSummary:
     invalid_cases: int
     execution_accuracy: float | None
     category_accuracy: Mapping[str, float | None]
+    execution_cases: int = 0
+    execution_passed: int = 0
+    outcome_cases: int = 0
+    outcome_passed: int = 0
+    outcome_accuracy: float | None = None
+    case_accuracy: float | None = None
+    coverage_accuracy: Mapping[str, float | None] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,22 +99,24 @@ def run_evaluation(
             evaluations.append(_invalid(case, case.validation_error or "案例格式错误"))
             continue
 
-        try:
-            expected_sql = validate_sql(case.expected_sql, context)
-        except Exception:
-            evaluations.append(_invalid(case, "标准 SQL 未通过安全校验"))
-            continue
+        expected: QueryData | None = None
+        if case.expected_outcome == "result_match":
+            try:
+                expected_sql = validate_sql(case.expected_sql, context)
+            except Exception:
+                evaluations.append(_invalid(case, "标准 SQL 未通过安全校验"))
+                continue
 
-        try:
-            expected = query_executor.execute(expected_sql)
-        except Exception:
-            evaluations.append(_invalid(case, "标准 SQL 无法执行"))
-            continue
+            try:
+                expected = query_executor.execute(expected_sql)
+            except Exception:
+                evaluations.append(_invalid(case, "标准 SQL 无法执行"))
+                continue
 
-        if expected.truncated:
-            evaluations.append(_invalid(case, "标准结果被截断"))
-            continue
-        reference_results[case.id] = expected
+            if expected.truncated:
+                evaluations.append(_invalid(case, "标准结果被截断"))
+                continue
+            reference_results[case.id] = expected
 
         request_id = f"evaluation-{case.id}"
         started = perf_counter()
@@ -126,6 +138,7 @@ def run_evaluation(
                     _failed(
                         case,
                         "Online Query 调用失败",
+                        outcome_mismatch=(case.expected_outcome != "result_match"),
                         duration_ms=duration_ms,
                         request_id=request_id,
                         trace_id=trace_id,
@@ -135,6 +148,29 @@ def run_evaluation(
             duration_ms = _duration_ms(started)
 
             if isinstance(result, QueryFailure):
+                if (
+                    case.expected_outcome != "result_match"
+                    and result.error_code.value == case.expected_error_code
+                ):
+                    evaluations.append(
+                        CaseEvaluation(
+                            case_id=case.id,
+                            category=case.category,
+                            status=CaseStatus.PASS,
+                            expected_outcome=case.expected_outcome,
+                            expected_error_code=case.expected_error_code,
+                            coverage=case.coverage,
+                            generated_sql=None,
+                            query_error_code=result.error_code.value,
+                            failure_reason=None,
+                            duration_ms=duration_ms,
+                            request_id=request_id,
+                            trace_id=trace_id,
+                            failure_stage=result.failure_stage,
+                            internal_reason=result.internal_reason,
+                        )
+                    )
+                    continue
                 evaluations.append(
                     _failed(
                         case,
@@ -142,6 +178,7 @@ def run_evaluation(
                         query_error_code=result.error_code.value,
                         failure_stage=result.failure_stage,
                         internal_reason=result.internal_reason,
+                        outcome_mismatch=(case.expected_outcome != "result_match"),
                         duration_ms=duration_ms,
                         request_id=request_id,
                         trace_id=trace_id,
@@ -154,9 +191,24 @@ def run_evaluation(
                     _failed(
                         case,
                         "Online Query 返回类型无效",
+                        outcome_mismatch=(case.expected_outcome != "result_match"),
                         duration_ms=duration_ms,
                         request_id=request_id,
                         trace_id=trace_id,
+                    )
+                )
+                continue
+
+            if case.expected_outcome != "result_match":
+                evaluations.append(
+                    _failed(
+                        case,
+                        "实际返回查询结果",
+                        generated_sql=result.sql,
+                        duration_ms=duration_ms,
+                        request_id=request_id,
+                        trace_id=trace_id,
+                        outcome_mismatch=True,
                     )
                 )
                 continue
@@ -174,6 +226,10 @@ def run_evaluation(
                 )
                 continue
 
+            if expected is None:
+                evaluations.append(_invalid(case, "标准结果缺失"))
+                continue
+
             actual = QueryData(
                 columns=result.columns,
                 rows=result.rows,
@@ -189,6 +245,9 @@ def run_evaluation(
                     case_id=case.id,
                     category=case.category,
                     status=CaseStatus.PASS if matched else CaseStatus.FAIL,
+                    expected_outcome=case.expected_outcome,
+                    expected_error_code=case.expected_error_code,
+                    coverage=case.coverage,
                     generated_sql=result.sql,
                     query_error_code=None,
                     failure_reason=None if matched else "结果不一致",
@@ -210,6 +269,10 @@ def _summarize(cases: tuple[CaseEvaluation, ...]) -> EvaluationSummary:
     valid = [case for case in cases if case.status != CaseStatus.INVALID_CASE]
     passed = sum(case.status == CaseStatus.PASS for case in valid)
     failed = sum(case.status == CaseStatus.FAIL for case in valid)
+    execution = [case for case in valid if case.expected_outcome == "result_match"]
+    outcomes = [case for case in valid if case.expected_outcome != "result_match"]
+    execution_passed = sum(case.status == CaseStatus.PASS for case in execution)
+    outcome_passed = sum(case.status == CaseStatus.PASS for case in outcomes)
     categories = sorted({case.category for case in cases})
     category_accuracy: dict[str, float | None] = {}
     for category in categories:
@@ -219,14 +282,30 @@ def _summarize(cases: tuple[CaseEvaluation, ...]) -> EvaluationSummary:
             category_passed / len(category_cases) if category_cases else None
         )
 
+    coverage_tags = sorted({tag for case in cases for tag in case.coverage})
+    coverage_accuracy: dict[str, float | None] = {}
+    for tag in coverage_tags:
+        tagged_cases = [case for case in valid if tag in case.coverage]
+        tagged_passed = sum(case.status == CaseStatus.PASS for case in tagged_cases)
+        coverage_accuracy[tag] = (
+            tagged_passed / len(tagged_cases) if tagged_cases else None
+        )
+
     return EvaluationSummary(
         total_cases=len(cases),
         valid_cases=len(valid),
         passed=passed,
         failed=failed,
         invalid_cases=len(cases) - len(valid),
-        execution_accuracy=passed / len(valid) if valid else None,
+        execution_cases=len(execution),
+        execution_passed=execution_passed,
+        execution_accuracy=(execution_passed / len(execution) if execution else None),
+        outcome_cases=len(outcomes),
+        outcome_passed=outcome_passed,
+        outcome_accuracy=outcome_passed / len(outcomes) if outcomes else None,
+        case_accuracy=passed / len(valid) if valid else None,
         category_accuracy=category_accuracy,
+        coverage_accuracy=coverage_accuracy,
     )
 
 
@@ -243,6 +322,9 @@ def _invalid(
         case_id=case.id,
         category=case.category,
         status=CaseStatus.INVALID_CASE,
+        expected_outcome=case.expected_outcome,
+        expected_error_code=case.expected_error_code,
+        coverage=case.coverage,
         generated_sql=generated_sql,
         query_error_code=None,
         failure_reason=reason,
@@ -256,9 +338,11 @@ def _failed(
     case: EvaluationCase,
     reason: str,
     *,
+    generated_sql: str | None = None,
     query_error_code: str | None = None,
     failure_stage: str | None = None,
     internal_reason: str | None = None,
+    outcome_mismatch: bool = False,
     duration_ms: int = 0,
     request_id: str | None = None,
     trace_id: str | None = None,
@@ -267,15 +351,31 @@ def _failed(
         case_id=case.id,
         category=case.category,
         status=CaseStatus.FAIL,
-        generated_sql=None,
+        expected_outcome=case.expected_outcome,
+        expected_error_code=case.expected_error_code,
+        coverage=case.coverage,
+        generated_sql=generated_sql,
         query_error_code=query_error_code,
-        failure_reason=reason,
+        failure_reason=_failure_reason(case, reason, outcome_mismatch),
         duration_ms=duration_ms,
         request_id=request_id,
         trace_id=trace_id,
         failure_stage=failure_stage,
         internal_reason=internal_reason,
     )
+
+
+def _failure_reason(
+    case: EvaluationCase,
+    reason: str,
+    outcome_mismatch: bool,
+) -> str:
+    if not outcome_mismatch:
+        return reason
+    expected = case.expected_outcome
+    if case.expected_error_code:
+        expected = f"{expected} / {case.expected_error_code}"
+    return f"期望 {expected}；{reason}"
 
 
 def _duration_ms(started: float) -> int:

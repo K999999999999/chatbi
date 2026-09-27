@@ -46,7 +46,7 @@ from .retrieval_results import failure as _failure
 from .retrieval_results import result as _result
 from .retrieval_selection import (
     candidate_table_hits,
-    grouping_table_names,
+    normalize_text,
     requires_date_context,
 )
 from .retrieval_trace import (
@@ -282,7 +282,6 @@ def _retrieve_columns(
     execution: _RetrievalExecution,
     request: RetrievalRequest,
     semantic_query: ValidatedSemanticQuery,
-    grouping_text: str,
     resources: _ResourceStage,
 ) -> tuple[_ColumnStage | None, OnlineRetrievalResult | None]:
     snapshot = resources.snapshot
@@ -308,11 +307,10 @@ def _retrieve_columns(
             resources.table_hits,
             metric_table,
             time_field,
-        )
-        grouping_tables = grouping_table_names(
-            semantic_query.dimensions,
-            resources.table_hits,
-            metric_table,
+            filter_fields=_filter_table_fields(
+                semantic_query,
+                selected_metrics,
+            ),
         )
         if not selected_metrics:
             column_query = _column_query(semantic_query, None)
@@ -322,12 +320,10 @@ def _retrieve_columns(
             column_query = _multi_column_query(semantic_query, selected_metrics)
         column_hits = _column_hits(
             snapshot,
-            candidate_tables,
+            resources.table_hits,
             column_query,
             execution.config,
             required=required,
-            grouping_query=grouping_text,
-            grouping_tables=grouping_tables,
             embed_query=lambda text: execution.embed_query(snapshot, text),
             search=lambda collection_name, query, **kwargs: execution.search(
                 "column.search",
@@ -398,3 +394,28 @@ def _retrieve_columns(
         column_hits=column_hits,
         evidence=evidence,
     ), None
+
+
+def _filter_table_fields(
+    semantic_query: ValidatedSemanticQuery,
+    selected_metrics: tuple[MetricHit, ...],
+) -> tuple[str, ...]:
+    """只用维度类 Filter 扩展表候选，HAVING 指标条件不应引入维表。"""
+
+    metric_terms: set[str] = set()
+    for metric in selected_metrics:
+        metric_terms.add(normalize_text(metric.metric_name))
+        aliases = metric.metadata.get("aliases", ())
+        if isinstance(aliases, str):
+            aliases = (aliases,)
+        if isinstance(aliases, (list, tuple)):
+            metric_terms.update(
+                normalize_text(alias)
+                for alias in aliases
+                if isinstance(alias, str) and alias.strip()
+            )
+    return tuple(
+        item.field_text
+        for item in semantic_query.filters
+        if normalize_text(item.field_text) not in metric_terms
+    )

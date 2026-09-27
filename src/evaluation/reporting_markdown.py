@@ -31,6 +31,7 @@ def render_markdown_report(report: Mapping[str, object]) -> str:
         )
     )
     lines.extend(_render_category_accuracy(summary))
+    lines.extend(_render_coverage_accuracy(summary))
     lines.extend(_render_trace_links(cases))
     lines.extend(_render_non_pass_cases(cases))
     lines.extend(_render_baseline_comparison(report))
@@ -54,7 +55,25 @@ def _render_overview(summary: Mapping[str, object]) -> list[str]:
     passed = _summary_count(summary, "passed")
     failed = _summary_count(summary, "failed")
     invalid = _summary_count(summary, "invalid_cases")
-    accuracy_text = _accuracy_text(summary.get("execution_accuracy"))
+    execution_accuracy = summary.get("execution_accuracy")
+    outcome_accuracy = summary.get("outcome_accuracy")
+    case_accuracy = summary.get("case_accuracy")
+    outcome_cases = summary.get("outcome_cases", 0)
+    if (
+        isinstance(outcome_cases, int)
+        and not isinstance(outcome_cases, bool)
+        and outcome_cases > 0
+    ):
+        accuracy_text = (
+            "查询结果执行准确率 {execution}；失败 outcome 命中率 {outcome}；"
+            "整体案例准确率 {case}"
+        ).format(
+            execution=_accuracy_text(execution_accuracy),
+            outcome=_accuracy_text(outcome_accuracy),
+            case=_accuracy_text(case_accuracy),
+        )
+    else:
+        accuracy_text = f"有效案例执行准确率 {_accuracy_text(execution_accuracy)}"
     result = "PASS" if failed == 0 and invalid == 0 else "FAIL"
     return [
         "# ChatBI Evaluation（评测）报告",
@@ -65,7 +84,7 @@ def _render_overview(summary: Mapping[str, object]) -> list[str]:
         "",
         (
             f"本次共评测 {total} 条：成功 {passed} 条，失败 {failed} 条，"
-            f"无效 {invalid} 条；有效案例执行准确率 {accuracy_text}。"
+            f"无效 {invalid} 条；{accuracy_text}。"
         ),
     ]
 
@@ -98,13 +117,26 @@ def _render_category_accuracy(summary: Mapping[str, object]) -> list[str]:
         raise ReportingError("报告分类汇总结构无效")
     lines = [
         "",
-        "## 分类准确率",
+        "## 难度分类案例准确率",
         "",
-        "| 分类 | 执行准确率 |",
+        "| 难度分类 | 案例准确率 |",
         "|---|---:|",
     ]
     for category, accuracy in sorted(category_accuracy.items()):
         lines.append(f"| {_markdown_cell(category)} | {_accuracy_text(accuracy)} |")
+    return lines
+
+
+def _render_coverage_accuracy(summary: Mapping[str, object]) -> list[str]:
+    coverage = _object_mapping(summary.get("coverage_accuracy", {}))
+    if coverage is None:
+        raise ReportingError("报告场景覆盖汇总结构无效")
+    lines = ["", "## 场景覆盖准确率", "", "| 场景 | 准确率 |", "|---|---:|"]
+    if not coverage:
+        lines.append("未记录场景覆盖标签。")
+        return lines
+    for tag, accuracy in sorted(coverage.items()):
+        lines.append(f"| {_markdown_cell(tag)} | {_accuracy_text(accuracy)} |")
     return lines
 
 
@@ -144,18 +176,21 @@ def _render_non_pass_cases(cases: list[object]) -> list[str]:
 
     lines.extend(
         [
-            "| 案例 | 分类 | 状态 | 阶段 | 内部原因 | 原因 |",
-            "|---|---|---|---|---|---|",
+            "| 案例 | 难度 | 期望 outcome | 状态 | 阶段 | 内部原因 | 原因 |",
+            "|---|---|---|---|---|---|---|",
         ]
     )
     for case in non_pass_cases:
         lines.append(
             (
-                "| {case_id} | {category} | {status} | {stage} | "
+                "| {case_id} | {category} | {expected} | {status} | {stage} | "
                 "{internal_reason} | {reason} |"
             ).format(
                 case_id=_markdown_cell(case.get("case_id")),
                 category=_markdown_cell(case.get("category")),
+                expected=_markdown_cell(
+                    case.get("expected_error_code") or case.get("expected_outcome")
+                ),
                 status=_markdown_cell(case.get("status")),
                 stage=_markdown_cell(case.get("failure_stage") or "未说明"),
                 internal_reason=_markdown_cell(case.get("internal_reason") or "未说明"),

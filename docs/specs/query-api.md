@@ -171,7 +171,7 @@ GET /health
 | 数据库执行或连接失败 | `503` | `DATABASE_ERROR` |
 | 数据库查询超时 | `504` | `QUERY_TIMEOUT` |
 | 未知、过期或不属于当前用户的会话 | `404` | `CONVERSATION_UNAVAILABLE` |
-| 无法唯一解析的多轮追问 | `422` | `CLARIFICATION_REQUIRED` |
+| 指标口径不明确或无法唯一解析的多轮追问 | `422` | `CLARIFICATION_REQUIRED` |
 | 超出 V1 单条查询修订范围 | `422` | `UNSUPPORTED_ANALYSIS` |
 | 同一会话存在并发轮次 | `409` | `CONVERSATION_CONFLICT` |
 

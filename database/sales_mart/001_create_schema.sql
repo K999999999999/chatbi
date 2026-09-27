@@ -231,3 +231,88 @@ CREATE INDEX IF NOT EXISTS idx_fct_sales_order_line_status
 
 CREATE INDEX IF NOT EXISTS idx_fct_sales_order_line_completion_status
     ON mart_sales.fct_sales_order_line (completion_date_key, order_status);
+
+-- Keep database comments as the source for Metadata Export descriptions.
+COMMENT ON TABLE mart_sales.dim_currency IS '交易币种及其名称、币种标识信息。';
+COMMENT ON TABLE mart_sales.dim_customer IS '客户业务主体及其属性历史版本数据。';
+COMMENT ON TABLE mart_sales.dim_date IS '按自然日记录的日期及其年、季度、月、日属性。';
+COMMENT ON TABLE mart_sales.dim_product IS '产品业务对象及其产品线、产品类别、技术路线和属性历史版本数据。';
+COMMENT ON TABLE mart_sales.dim_sales_region IS '销售区域的编码和名称数据。';
+COMMENT ON TABLE mart_sales.fct_exchange_rate_daily IS '按日期和交易币种记录的人民币汇率数据。';
+COMMENT ON TABLE mart_sales.fct_sales_order_line IS '销售订单明细粒度的交易事实数据，包含订单、客户、产品、区域、时间、状态、数量和金额字段。';
+
+COMMENT ON COLUMN mart_sales.dim_currency.currency_key IS '币种记录的代理键。';
+COMMENT ON COLUMN mart_sales.dim_currency.currency_code IS '交易币种的三字母代码。';
+COMMENT ON COLUMN mart_sales.dim_currency.currency_name IS '交易币种名称。';
+COMMENT ON COLUMN mart_sales.dim_currency.is_analysis_currency IS '标识该币种是否被标记为分析币种。';
+
+COMMENT ON COLUMN mart_sales.dim_customer.customer_key IS '客户属性版本记录的代理键。';
+COMMENT ON COLUMN mart_sales.dim_customer.customer_id IS '客户业务主体的稳定标识。';
+COMMENT ON COLUMN mart_sales.dim_customer.customer_name IS '客户业务主体名称。';
+COMMENT ON COLUMN mart_sales.dim_customer.customer_type IS '客户业务主体的类型分类。';
+COMMENT ON COLUMN mart_sales.dim_customer.industry IS '客户业务主体所属行业分类。';
+COMMENT ON COLUMN mart_sales.dim_customer.country IS '客户业务主体所属国家。';
+COMMENT ON COLUMN mart_sales.dim_customer.customer_region IS '客户业务主体所属区域。';
+COMMENT ON COLUMN mart_sales.dim_customer.valid_from IS '客户属性版本的生效时间。';
+COMMENT ON COLUMN mart_sales.dim_customer.valid_to IS '客户属性版本的失效时间，可为空。';
+COMMENT ON COLUMN mart_sales.dim_customer.is_current IS '标识该客户属性版本是否为当前版本。';
+COMMENT ON COLUMN mart_sales.dim_customer.source_system IS '客户记录的来源系统标识。';
+COMMENT ON COLUMN mart_sales.dim_customer.source_updated_at IS '客户记录在来源系统中的更新时间。';
+COMMENT ON COLUMN mart_sales.dim_customer.loaded_at IS '客户记录载入 mart_sales 的时间。';
+
+COMMENT ON COLUMN mart_sales.dim_date.date_key IS '日期数字键，格式 YYYYMMDD。';
+COMMENT ON COLUMN mart_sales.dim_date.full_date IS '自然日日期。';
+COMMENT ON COLUMN mart_sales.dim_date.year IS '日期所属年份。';
+COMMENT ON COLUMN mart_sales.dim_date.quarter IS '日期所属季度。';
+COMMENT ON COLUMN mart_sales.dim_date.month IS '日期所属月份。';
+COMMENT ON COLUMN mart_sales.dim_date.day IS '日期在所属月份中的日序号。';
+
+COMMENT ON COLUMN mart_sales.dim_product.product_key IS '产品属性版本记录的代理键。';
+COMMENT ON COLUMN mart_sales.dim_product.product_id IS '产品业务对象稳定标识。';
+COMMENT ON COLUMN mart_sales.dim_product.product_name IS '产品业务对象名称。';
+COMMENT ON COLUMN mart_sales.dim_product.product_line IS '产品所属产品线。';
+COMMENT ON COLUMN mart_sales.dim_product.product_category IS '产品所属产品类别。';
+COMMENT ON COLUMN mart_sales.dim_product.technology_route IS '产品采用的技术路线。';
+COMMENT ON COLUMN mart_sales.dim_product.valid_from IS '产品属性版本生效时间。';
+COMMENT ON COLUMN mart_sales.dim_product.valid_to IS '产品属性版本失效时间，可为空。';
+COMMENT ON COLUMN mart_sales.dim_product.is_current IS '标识该产品属性版本是否为当前版本。';
+COMMENT ON COLUMN mart_sales.dim_product.source_system IS '产品记录的来源系统标识。';
+COMMENT ON COLUMN mart_sales.dim_product.source_updated_at IS '产品记录在来源系统中的更新时间。';
+COMMENT ON COLUMN mart_sales.dim_product.loaded_at IS '产品记录载入 mart_sales 的时间。';
+
+COMMENT ON COLUMN mart_sales.dim_sales_region.sales_region_key IS '销售区域记录的代理键。';
+COMMENT ON COLUMN mart_sales.dim_sales_region.sales_region_code IS '销售区域编码。';
+COMMENT ON COLUMN mart_sales.dim_sales_region.sales_region_name IS '销售区域名称。';
+
+COMMENT ON COLUMN mart_sales.fct_exchange_rate_daily.rate_date_key IS '汇率记录对应日期键。';
+COMMENT ON COLUMN mart_sales.fct_exchange_rate_daily.currency_key IS '对应币种键。';
+COMMENT ON COLUMN mart_sales.fct_exchange_rate_daily.rate_to_cny IS '交易币种兑人民币汇率数值。';
+COMMENT ON COLUMN mart_sales.fct_exchange_rate_daily.source_system IS '汇率记录的来源系统标识。';
+COMMENT ON COLUMN mart_sales.fct_exchange_rate_daily.source_updated_at IS '汇率记录在来源系统中的更新时间。';
+COMMENT ON COLUMN mart_sales.fct_exchange_rate_daily.loaded_at IS '汇率记录载入 mart_sales 的时间。';
+
+COMMENT ON COLUMN mart_sales.fct_sales_order_line.sales_order_line_key IS '销售订单明细代理键。';
+COMMENT ON COLUMN mart_sales.fct_sales_order_line.order_id IS '订单业务标识。';
+COMMENT ON COLUMN mart_sales.fct_sales_order_line.order_no IS '订单业务编号。';
+COMMENT ON COLUMN mart_sales.fct_sales_order_line.order_line_id IS '明细业务标识。';
+COMMENT ON COLUMN mart_sales.fct_sales_order_line.order_line_no IS '订单内明细序号。';
+COMMENT ON COLUMN mart_sales.fct_sales_order_line.customer_key IS '关联客户属性版本记录键。';
+COMMENT ON COLUMN mart_sales.fct_sales_order_line.product_key IS '关联产品属性版本记录键。';
+COMMENT ON COLUMN mart_sales.fct_sales_order_line.sales_region_key IS '关联销售区域记录键。';
+COMMENT ON COLUMN mart_sales.fct_sales_order_line.transaction_currency_key IS '关联交易币种记录键。';
+COMMENT ON COLUMN mart_sales.fct_sales_order_line.order_date_key IS '下单日期键。';
+COMMENT ON COLUMN mart_sales.fct_sales_order_line.confirmation_date_key IS '确认日期键，可为空。';
+COMMENT ON COLUMN mart_sales.fct_sales_order_line.completion_date_key IS '完成日期键，可为空。';
+COMMENT ON COLUMN mart_sales.fct_sales_order_line.order_status IS '业务状态，包括 pending、confirmed、completed、cancelled。';
+COMMENT ON COLUMN mart_sales.fct_sales_order_line.quantity IS '数量值。';
+COMMENT ON COLUMN mart_sales.fct_sales_order_line.unit_price_transaction IS '交易币种下的单位价格。';
+COMMENT ON COLUMN mart_sales.fct_sales_order_line.discount_amount_transaction IS '交易币种下的折扣金额。';
+COMMENT ON COLUMN mart_sales.fct_sales_order_line.gross_sales_amount_transaction IS '交易币种下的折前销售金额。';
+COMMENT ON COLUMN mart_sales.fct_sales_order_line.net_sales_amount_transaction IS '交易币种下的净销售金额，可为空。';
+COMMENT ON COLUMN mart_sales.fct_sales_order_line.fx_rate_to_cny IS '对应交易币种兑人民币汇率，可为空。';
+COMMENT ON COLUMN mart_sales.fct_sales_order_line.net_sales_amount_cny IS '按人民币记录的明细净销售金额，可为空。';
+COMMENT ON COLUMN mart_sales.fct_sales_order_line.frozen_unit_cost_cny IS '按人民币记录的明细冻结单位成本，可为空。';
+COMMENT ON COLUMN mart_sales.fct_sales_order_line.sales_cost_amount_cny IS '按人民币记录的明细销售成本金额，可为空。';
+COMMENT ON COLUMN mart_sales.fct_sales_order_line.source_system IS '销售订单明细记录的来源系统标识。';
+COMMENT ON COLUMN mart_sales.fct_sales_order_line.source_updated_at IS '销售订单明细记录在来源系统中的更新时间。';
+COMMENT ON COLUMN mart_sales.fct_sales_order_line.loaded_at IS '销售订单明细记录载入 mart_sales 的时间。';

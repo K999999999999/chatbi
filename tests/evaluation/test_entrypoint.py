@@ -119,6 +119,19 @@ class _FakeSemanticQueryUnderstanding:
             }
         )
 
+    def understand_revision(self, previous, question: str):
+        del previous, question
+        return candidate_from_payload(
+            {
+                "query_type": "metric_analysis",
+                "subjects": [],
+                "metrics": ["销售额"],
+                "dimensions": [],
+                "time": None,
+                "filters": [],
+            }
+        )
+
 
 class EvaluationEntrypointTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -339,6 +352,94 @@ class EvaluationEntrypointTest(unittest.TestCase):
         self.assertEqual(len(executor.calls), 2)
         self.assertIn("Execution Accuracy: 100.00%", stdout.getvalue())
         self.assertIn("Summary Report:", stdout.getvalue())
+
+    def test_multi_turn_mode_runs_query_api_conversations_and_writes_separate_report(
+        self,
+    ) -> None:
+        from src.evaluation.__main__ import run_cli
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            cases_path = root / "multi-turn-cases.json"
+            sql = "SELECT t.value FROM mart_sales.test_table AS t;"
+            cases_path.write_text(
+                json.dumps(
+                    [
+                        {
+                            "id": "MT01",
+                            "description": "同一会话保留查询状态",
+                            "coverage": ["metric_replacement"],
+                            "turns": [
+                                {
+                                    "id": "MT01-T1",
+                                    "question": "测试第一轮",
+                                    "expected_sql": sql,
+                                },
+                                {
+                                    "id": "MT01-T2",
+                                    "question": "测试追问",
+                                    "expected_sql": sql,
+                                },
+                            ],
+                        }
+                    ],
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            context_file = root / "context.json"
+            context_file.write_text("[]", encoding="utf-8")
+            context = QueryContext(
+                prompt_context="{}",
+                allowed_tables=frozenset({"mart_sales.test_table"}),
+                allowed_columns={"mart_sales.test_table": frozenset({"value"})},
+            )
+            data = QueryData(columns=("value",), rows=((1,),), truncated=False)
+            output_dir = root / "reports"
+            stdout = StringIO()
+
+            exit_code = run_cli(
+                [
+                    "--multi-turn",
+                    "--cases",
+                    str(cases_path),
+                    "--output-dir",
+                    str(output_dir),
+                    "--online-retrieval",
+                ],
+                environ={
+                    "LLM_MODEL": "test-model",
+                    "RAG_ONLINE_RETRIEVAL_ENABLED": "true",
+                },
+                context_loader=lambda: context,
+                generator_factory=lambda environ: _FakeGenerator(sql),
+                executor_factory=lambda environ: _FakeExecutor(data),
+                retrieval_factory=lambda: _FakeRetrievalProvider(context),
+                query_understanding_factory=lambda environ: (
+                    _FakeSemanticQueryUnderstanding()
+                ),
+                git_state_reader=lambda project_root: ("abcdef123456", False),
+                context_paths={"context": context_file},
+                stdout=stdout,
+                stderr=StringIO(),
+            )
+
+            reports = list(output_dir.glob("*-multi-turn.json"))
+            summaries = list(output_dir.glob("*-multi-turn.md"))
+            report = json.loads(reports[0].read_text(encoding="utf-8"))
+            summary_report = summaries[0].read_text(encoding="utf-8")
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(len(reports), 1)
+        self.assertEqual(len(summaries), 1)
+        self.assertEqual(
+            report["metadata"]["evaluation_suite"], "multi_turn_conversation"
+        )
+        self.assertEqual(report["summary"]["conversation_accuracy"], 1.0)
+        self.assertEqual(report["summary"]["execution_accuracy"], 1.0)
+        self.assertEqual(len(report["cases"][0]["turns"]), 2)
+        self.assertIn("Multi-Turn Conversation Accuracy: 100.00%", stdout.getvalue())
+        self.assertIn("查询执行准确率", summary_report)
 
     def test_online_retrieval_mode_injects_provider(self) -> None:
         from src.evaluation.__main__ import run_cli

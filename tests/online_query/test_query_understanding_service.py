@@ -1,8 +1,10 @@
 """OnlineQueryService（在线查询服务）接入 Query Understanding 的测试。"""
 
-from unittest.mock import Mock
 import unittest
+from unittest.mock import Mock
 
+from src.observability.contracts import TraceOutcome
+from src.observability.tracing import create_in_memory_recorder
 from src.online_query.contracts import (
     OnlineRetrievalResult,
     QueryContext,
@@ -12,18 +14,17 @@ from src.online_query.contracts import (
     QueryRequest,
     QuerySuccess,
     RequestShape,
-    RetrievalStatus,
     RetrievalRequest,
+    RetrievalStatus,
 )
 from src.online_query.llm import LLMError
 from src.online_query.query_understanding import (
     QueryType,
+    QueryUnderstandingClarificationRequired,
     ValidatedSemanticQuery,
     candidate_from_payload,
     validate_candidate,
 )
-from src.observability.contracts import TraceOutcome
-from src.observability.tracing import create_in_memory_recorder
 from src.online_query.service import OnlineQueryService
 
 
@@ -158,6 +159,24 @@ class QueryUnderstandingServiceTest(unittest.TestCase):
         self.assertEqual(result.error_message, "无法确定查询类型")
         self.assertEqual(result.failure_stage, "query_understanding")
         self.assertEqual(result.internal_reason, "QUERY_TYPE_UNKNOWN")
+        provider.retrieve.assert_not_called()
+        self.generator.generate.assert_not_called()
+        self.executor.execute.assert_not_called()
+
+    def test_query_understanding_clarification_stops_before_retrieval_sql_and_database(
+        self,
+    ) -> None:
+        provider = Mock()
+        self.adapter.understand.return_value = QueryUnderstandingClarificationRequired()
+        service = self._service(provider)
+
+        result = service.execute(QueryRequest(question="帮我查一下利润"))
+
+        self._assert_failure(result, QueryErrorCode.CLARIFICATION_REQUIRED)
+        assert isinstance(result, QueryFailure)
+        self.assertEqual(result.failure_stage, "query_understanding")
+        self.assertEqual(result.internal_reason, "METRIC_NOT_UNIQUE")
+        self.assertIn("指标口径", result.error_message)
         provider.retrieve.assert_not_called()
         self.generator.generate.assert_not_called()
         self.executor.execute.assert_not_called()

@@ -26,7 +26,6 @@ from .contracts import (
     RetrievalStatus,
     SQLGenerator,
 )
-from .service_execution import _execute_query
 from .query_trace import (
     enrich_failure_span as _enrich_failure_span,
 )
@@ -40,18 +39,21 @@ from .query_trace import (
     safe_trace_scope as _safe_trace_scope,
 )
 from .query_understanding import (
+    QueryUnderstandingClarificationRequired,
     SemanticQueryCannotAnswer,
     SemanticQueryStructureError,
     ValidatedSemanticQuery,
     validate_candidate,
 )
 from .query_understanding_llm import QueryUnderstandingAdapter
+from .service_execution import _execute_query
 from .sql_guard import _new_validation_session
 
 _ERROR_MESSAGES = {
     QueryErrorCode.INVALID_REQUEST: "查询问题不能为空或格式错误",
     QueryErrorCode.CONTEXT_ERROR: "查询上下文无法加载",
     QueryErrorCode.LLM_ERROR: "LLM 生成 SQL 失败",
+    QueryErrorCode.CLARIFICATION_REQUIRED: "请明确需要查询的业务指标口径",
     QueryErrorCode.CANNOT_ANSWER: "当前结构和指标无法回答该问题",
     QueryErrorCode.SQL_REJECTED: "生成的 SQL 未通过安全校验",
     QueryErrorCode.DATABASE_ERROR: "数据库连接或执行失败",
@@ -74,6 +76,7 @@ _FAILURE_STAGES = {
     QueryErrorCode.INVALID_REQUEST: "request_validation",
     QueryErrorCode.CONTEXT_ERROR: "retrieval",
     QueryErrorCode.LLM_ERROR: "sql_generation",
+    QueryErrorCode.CLARIFICATION_REQUIRED: "query_understanding",
     QueryErrorCode.CANNOT_ANSWER: "retrieval",
     QueryErrorCode.SQL_REJECTED: "sql_guard",
     QueryErrorCode.DATABASE_ERROR: "database",
@@ -377,6 +380,25 @@ class OnlineQueryService:
                     },
                     outcome=TraceOutcome.TECHNICAL_FAILURE,
                     error_type=ErrorType.LLM,
+                    error_code=result.error_code.value,
+                )
+                return None, result
+
+            if isinstance(candidate, QueryUnderstandingClarificationRequired):
+                result = _failure(
+                    request_id,
+                    QueryErrorCode.CLARIFICATION_REQUIRED,
+                    message=_ERROR_MESSAGES[QueryErrorCode.CLARIFICATION_REQUIRED],
+                    stage="query_understanding",
+                    internal_reason=candidate.reason,
+                )
+                _safe_enrich(
+                    self._trace_recorder,
+                    attributes={
+                        "chatbi.query_understanding.reason": candidate.reason,
+                    },
+                    outcome=TraceOutcome.BUSINESS_REJECTION,
+                    error_type=ErrorType.VALIDATION,
                     error_code=result.error_code.value,
                 )
                 return None, result

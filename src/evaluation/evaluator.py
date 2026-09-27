@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from src.online_query.contracts import QueryData
+from src.online_query.contracts import QueryData, QueryErrorCode
 
 _TOLERANCE = Decimal("0.000001")
 _REQUIRED_TEXT_FIELDS = (
@@ -14,8 +14,14 @@ _REQUIRED_TEXT_FIELDS = (
     "category",
     "question",
     "description",
-    "expected_sql",
 )
+_EXPECTED_OUTCOMES = frozenset(
+    {"result_match", "clarification_required", "cannot_answer", "query_failure"}
+)
+_OUTCOME_ERROR_CODES = {
+    "clarification_required": QueryErrorCode.CLARIFICATION_REQUIRED.value,
+    "cannot_answer": QueryErrorCode.CANNOT_ANSWER.value,
+}
 
 
 class EvaluationLoadError(RuntimeError):
@@ -31,7 +37,10 @@ class EvaluationCase:
     category: str
     question: str
     description: str
-    expected_sql: str
+    expected_sql: str = ""
+    expected_outcome: str = "result_match"
+    expected_error_code: str | None = None
+    coverage: tuple[str, ...] = ()
     order_sensitive: bool = False
     validation_error: str | None = None
 
@@ -70,8 +79,9 @@ def results_match(
     expected: QueryData,
     *,
     order_sensitive: bool = False,
+    normalize_json_numeric_strings: bool = False,
 ) -> bool:
-    """按已确认的行列和数值规则比较两个查询结果。"""
+    """按行列和数值规则比较结果；可选地归一化 API JSON 中的数值字符串。"""
 
     if actual.truncated or expected.truncated:
         return False
@@ -84,14 +94,22 @@ def results_match(
 
     if order_sensitive:
         return all(
-            _rows_match(actual_row, expected_row)
+            _rows_match(
+                actual_row,
+                expected_row,
+                normalize_json_numeric_strings=normalize_json_numeric_strings,
+            )
             for actual_row, expected_row in zip(actual.rows, expected.rows, strict=True)
         )
 
     unmatched = list(expected.rows)
     for actual_row in actual.rows:
         for index, expected_row in enumerate(unmatched):
-            if _rows_match(actual_row, expected_row):
+            if _rows_match(
+                actual_row,
+                expected_row,
+                normalize_json_numeric_strings=normalize_json_numeric_strings,
+            ):
                 unmatched.pop(index)
                 break
         else:
@@ -121,6 +139,53 @@ def _parse_case(record: object, index: int) -> EvaluationCase:
             values[field] = ""
             errors.append(f"缺少有效的 {field}")
 
+    expected_sql = record.get("expected_sql", "")
+    if not isinstance(expected_sql, str):
+        expected_sql = ""
+        errors.append("expected_sql 必须是字符串")
+    else:
+        expected_sql = expected_sql.strip()
+
+    expected_outcome = record.get("expected_outcome", "result_match")
+    if (
+        not isinstance(expected_outcome, str)
+        or expected_outcome not in _EXPECTED_OUTCOMES
+    ):
+        expected_outcome = "result_match"
+        errors.append("expected_outcome 无效")
+
+    raw_error_code = record.get("expected_error_code")
+    expected_error_code = (
+        raw_error_code.strip() if isinstance(raw_error_code, str) else None
+    )
+    allowed_error_codes = {code.value for code in QueryErrorCode}
+    if expected_outcome == "result_match":
+        if not expected_sql:
+            errors.append("result_match 案例缺少有效的 expected_sql")
+        if expected_error_code is not None:
+            errors.append("result_match 案例不能设置 expected_error_code")
+    else:
+        if expected_sql:
+            errors.append("失败 outcome 案例不能设置 expected_sql")
+        if not expected_error_code:
+            errors.append("失败 outcome 案例缺少 expected_error_code")
+        elif expected_error_code not in allowed_error_codes:
+            errors.append("expected_error_code 无效")
+        expected_code = _OUTCOME_ERROR_CODES.get(expected_outcome)
+        if expected_code is not None and expected_error_code != expected_code:
+            errors.append(
+                f"{expected_outcome} 的 expected_error_code 必须为 {expected_code}"
+            )
+
+    raw_coverage = record.get("coverage", [])
+    coverage: tuple[str, ...] = ()
+    if not isinstance(raw_coverage, list) or any(
+        not isinstance(value, str) or not value.strip() for value in raw_coverage
+    ):
+        errors.append("coverage 必须是字符串数组")
+    else:
+        coverage = tuple(dict.fromkeys(value.strip() for value in raw_coverage))
+
     order_sensitive = record.get("order_sensitive", False)
     if not isinstance(order_sensitive, bool):
         errors.append("order_sensitive 必须是布尔值")
@@ -132,7 +197,10 @@ def _parse_case(record: object, index: int) -> EvaluationCase:
         category=values["category"] or "unknown",
         question=values["question"],
         description=values["description"],
-        expected_sql=values["expected_sql"],
+        expected_sql=expected_sql,
+        expected_outcome=expected_outcome,
+        expected_error_code=expected_error_code,
+        coverage=coverage,
         order_sensitive=order_sensitive,
         validation_error="；".join(errors) or None,
     )
@@ -143,16 +211,40 @@ def _rows_have_expected_width(data: QueryData) -> bool:
     return all(len(row) == width for row in data.rows)
 
 
-def _rows_match(actual: tuple[object, ...], expected: tuple[object, ...]) -> bool:
+def _rows_match(
+    actual: tuple[object, ...],
+    expected: tuple[object, ...],
+    *,
+    normalize_json_numeric_strings: bool = False,
+) -> bool:
     return len(actual) == len(expected) and all(
-        _values_match(actual_value, expected_value)
+        _values_match(
+            actual_value,
+            expected_value,
+            normalize_json_numeric_strings=normalize_json_numeric_strings,
+        )
         for actual_value, expected_value in zip(actual, expected, strict=True)
     )
 
 
-def _values_match(actual: object, expected: object) -> bool:
+def _values_match(
+    actual: object,
+    expected: object,
+    *,
+    normalize_json_numeric_strings: bool = False,
+) -> bool:
     if actual is None or expected is None:
         return actual is None and expected is None
+
+    if (
+        normalize_json_numeric_strings
+        and isinstance(actual, str)
+        and _is_number(expected)
+    ):
+        try:
+            actual = Decimal(actual)
+        except InvalidOperation:
+            return False
 
     actual_is_number = _is_number(actual)
     expected_is_number = _is_number(expected)

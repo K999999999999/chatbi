@@ -94,13 +94,6 @@ class BusinessAnalysisApplication:
                 reason="ANALYSIS_CONTEXT_UNAVAILABLE",
             )
 
-        if _requires_metric_clarification(question):
-            return _failure(
-                request_id,
-                QueryErrorCode.CLARIFICATION_REQUIRED,
-                reason="METRIC_NOT_UNIQUE",
-            )
-
         try:
             candidate = self._decomposer.decompose(question, context)
         except AnalysisPlanLLMError as exc:
@@ -172,14 +165,6 @@ def _report_error_code(code: str) -> QueryErrorCode:
     if code == QueryErrorCode.LLM_ERROR.value:
         return QueryErrorCode.LLM_ERROR
     return QueryErrorCode.CANNOT_ANSWER
-
-
-def _requires_metric_clarification(question: str) -> bool:
-    """防止模型把未定义的“利润”擅自映射为某个利润口径。"""
-
-    if "利润" not in question:
-        return False
-    return not any(term in question for term in ("毛利", "毛利率", "净利润"))
 
 
 def _failure(

@@ -11,7 +11,9 @@ Online Query（在线查询）使用一个扁平模块完成，不增加 `ports/
 ```text
 QueryRequest
   -> 校验 question 并生成 request_id
-  -> 读取已缓存的结构和指标上下文
+  -> Online Retrieval 模式执行 Query Understanding
+  -> 返回 SemanticQueryCandidate 或 CLARIFICATION_REQUIRED
+  -> 校验候选后执行 Online Retrieval；静态模式读取已缓存上下文
   -> 组装 Prompt
   -> LangChain 调用 LLM 生成 SQL
   -> SQLGlot 解析并校验 SQL
@@ -19,8 +21,10 @@ QueryRequest
   -> QuerySuccess 或 QueryFailure
 ```
 
-- 上下文在 Service（服务）创建时读取一次，保存成功结果或加载失败状态。
-- 上下文失败时，查询直接返回 `CONTEXT_ERROR`，不得调用 LLM。
+- 显式静态模式的上下文在 Service（服务）创建时读取一次；Online Retrieval 模式按请求构造动态上下文。
+- 上下文失败时返回 `CONTEXT_ERROR`，不进入 SQL Generation 和数据库执行；Online Retrieval 模式的 Query Understanding 仍发生在 Retrieval 之前。
+- Query Understanding 对无法唯一确定的业务指标返回受控 `CLARIFICATION_REQUIRED`，在 Retrieval、SQL 生成和数据库之前结束；例如“利润”不得由模型猜成毛利或毛利率。
+- Query Understanding 的 `query_type=unknown` 仍由程序校验映射为 `CANNOT_ANSWER`；结构化输出和 Provider 调用失败仍映射为 `LLM_ERROR`。
 - LLM 返回精确的 `CANNOT_ANSWER` 时，直接返回同名错误。
 - SQL 未通过校验时，直接返回 `SQL_REJECTED`，不得访问数据库。
 - Query Understanding 的 Provider 调用异常或超时最多重试一次；不重试响应解析、Contract 校验、SQL 生成或 SQL 修复，也不生成第二次自然语言总结。
@@ -33,6 +37,7 @@ QueryRequest
 |---|---|
 | `contracts.py` | 请求、成功结果、失败结果、错误码、上下文、已校验 SQL、查询数据，以及两个外部能力接口 |
 | `context.py` | 读取五个 JSON 文件，生成 Prompt 上下文及允许的表字段集合，并缓存结果 |
+| `query_understanding_llm.py` | 生成业务语义候选或严格的 `clarification_required` 结果，并记录专用 Trace |
 | `prompt.py` | 把用户问题、数据库结构、字段值、关系和指标组装成 Prompt |
 | `llm.py` | 使用 LangChain `ChatOpenAI` 调用模型，只返回 SQL 文本或 `CANNOT_ANSWER` |
 | `sql_guard/sql_guard.py` | 使用 SQLGlot 对 PostgreSQL SQL 做确定性安全校验；AST 作用域辅助位于同目录 `sql_guard_scope.py`，`sql_guard/__init__.py` 保留公共入口 |
