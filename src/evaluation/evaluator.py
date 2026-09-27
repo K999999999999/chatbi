@@ -79,8 +79,9 @@ def results_match(
     expected: QueryData,
     *,
     order_sensitive: bool = False,
+    normalize_json_numeric_strings: bool = False,
 ) -> bool:
-    """按已确认的行列和数值规则比较两个查询结果。"""
+    """按行列和数值规则比较结果；可选地归一化 API JSON 中的数值字符串。"""
 
     if actual.truncated or expected.truncated:
         return False
@@ -93,14 +94,22 @@ def results_match(
 
     if order_sensitive:
         return all(
-            _rows_match(actual_row, expected_row)
+            _rows_match(
+                actual_row,
+                expected_row,
+                normalize_json_numeric_strings=normalize_json_numeric_strings,
+            )
             for actual_row, expected_row in zip(actual.rows, expected.rows, strict=True)
         )
 
     unmatched = list(expected.rows)
     for actual_row in actual.rows:
         for index, expected_row in enumerate(unmatched):
-            if _rows_match(actual_row, expected_row):
+            if _rows_match(
+                actual_row,
+                expected_row,
+                normalize_json_numeric_strings=normalize_json_numeric_strings,
+            ):
                 unmatched.pop(index)
                 break
         else:
@@ -202,16 +211,40 @@ def _rows_have_expected_width(data: QueryData) -> bool:
     return all(len(row) == width for row in data.rows)
 
 
-def _rows_match(actual: tuple[object, ...], expected: tuple[object, ...]) -> bool:
+def _rows_match(
+    actual: tuple[object, ...],
+    expected: tuple[object, ...],
+    *,
+    normalize_json_numeric_strings: bool = False,
+) -> bool:
     return len(actual) == len(expected) and all(
-        _values_match(actual_value, expected_value)
+        _values_match(
+            actual_value,
+            expected_value,
+            normalize_json_numeric_strings=normalize_json_numeric_strings,
+        )
         for actual_value, expected_value in zip(actual, expected, strict=True)
     )
 
 
-def _values_match(actual: object, expected: object) -> bool:
+def _values_match(
+    actual: object,
+    expected: object,
+    *,
+    normalize_json_numeric_strings: bool = False,
+) -> bool:
     if actual is None or expected is None:
         return actual is None and expected is None
+
+    if (
+        normalize_json_numeric_strings
+        and isinstance(actual, str)
+        and _is_number(expected)
+    ):
+        try:
+            actual = Decimal(actual)
+        except InvalidOperation:
+            return False
 
     actual_is_number = _is_number(actual)
     expected_is_number = _is_number(expected)

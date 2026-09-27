@@ -490,7 +490,12 @@ def _evaluate_success_turn(
         rows=result.rows,
         truncated=result.truncated,
     )
-    matched = results_match(actual, expected, order_sensitive=order_sensitive)
+    matched = results_match(
+        actual,
+        expected,
+        order_sensitive=order_sensitive,
+        normalize_json_numeric_strings=True,
+    )
     return (
         _turn_result(
             turn,

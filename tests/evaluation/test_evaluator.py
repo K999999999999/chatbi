@@ -252,6 +252,36 @@ class ResultComparisonTest(unittest.TestCase):
         self.assertTrue(results_match(within_tolerance, expected))
         self.assertFalse(results_match(outside_tolerance, expected))
 
+    def test_normalizes_numeric_strings_only_for_json_transport_comparisons(
+        self,
+    ) -> None:
+        from src.evaluation.evaluator import results_match
+
+        expected = self._data(
+            ("amount", "customer_code"),
+            ((Decimal("100.25"), "00123"),),
+        )
+        api_response = self._data(
+            ("amount", "customer_code"),
+            (("100.250000", "00123"),),
+        )
+
+        self.assertFalse(results_match(api_response, expected))
+        self.assertTrue(
+            results_match(
+                api_response,
+                expected,
+                normalize_json_numeric_strings=True,
+            )
+        )
+        self.assertFalse(
+            results_match(
+                self._data(("amount",), (("not-a-number",),)),
+                self._data(("amount",), ((Decimal("100.25"),),)),
+                normalize_json_numeric_strings=True,
+            )
+        )
+
     def test_rejects_truncated_results(self) -> None:
         from src.evaluation.evaluator import results_match
 

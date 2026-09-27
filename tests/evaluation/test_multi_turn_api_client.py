@@ -1,6 +1,7 @@
 """多轮评测客户端通过正式 Query API/Application 会话入口执行。"""
 
 import unittest
+from decimal import Decimal
 
 from src.evaluation.multi_turn_api_client import QueryApiConversationClient
 from src.online_query.contracts import (
@@ -30,7 +31,11 @@ class _Generator:
 class _Executor:
     def execute(self, sql: ValidatedSQL) -> QueryData:
         del sql
-        return QueryData(columns=("value",), rows=((1,),), truncated=False)
+        return QueryData(
+            columns=("value",),
+            rows=((Decimal("1.25"),),),
+            truncated=False,
+        )
 
 
 class _Retrieval:
@@ -115,7 +120,7 @@ class MultiTurnApiClientTest(unittest.TestCase):
         self.assertEqual(first.conversation_id, second.conversation_id)
         self.assertIsNotNone(first.conversation_id)
         self.assertEqual(understanding.revision_calls, 1)
-        self.assertEqual(second.result.rows, ((1,),))
+        self.assertEqual(second.result.rows, (("1.25",),))
 
 
 if __name__ == "__main__":

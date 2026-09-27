@@ -248,6 +248,73 @@ class MultiTurnEvaluationTest(unittest.TestCase):
         self.assertEqual(run.summary.execution_accuracy, 3 / 4)
         self.assertEqual(run.summary.outcome_accuracy, 1.0)
 
+    def test_normalizes_numeric_values_serialized_as_strings_by_query_api(self) -> None:
+        from src.evaluation.multi_turn_evaluation import (
+            ConversationResponse,
+            MultiTurnCase,
+            MultiTurnStatus,
+            MultiTurnTurn,
+            run_multi_turn_evaluation,
+        )
+
+        turns = (
+            MultiTurnTurn(
+                id="MT-DECIMAL-T1",
+                question="查询数值",
+                expected_sql="SELECT t.value FROM mart_sales.test_table AS t;",
+            ),
+            MultiTurnTurn(
+                id="MT-DECIMAL-T2",
+                question="再查一次数值",
+                expected_sql="SELECT t.value FROM mart_sales.test_table AS t;",
+            ),
+        )
+        case = MultiTurnCase(
+            id="MT-DECIMAL",
+            description="Query API 将 Decimal 编码成 JSON 字符串",
+            coverage=("decimal_transport",),
+            turns=turns,
+        )
+        client = _FakeConversationClient(
+            1,
+            {
+                "查询数值": ConversationResponse(
+                    QuerySuccess(
+                        request_id="1",
+                        sql="SELECT 1",
+                        columns=("value",),
+                        rows=(("1",),),
+                        row_count=1,
+                        truncated=False,
+                    ),
+                    "conversation-1",
+                ),
+                "再查一次数值": ConversationResponse(
+                    QuerySuccess(
+                        request_id="2",
+                        sql="SELECT 1",
+                        columns=("value",),
+                        rows=(("1",),),
+                        row_count=1,
+                        truncated=False,
+                    ),
+                    "conversation-1",
+                ),
+            },
+        )
+
+        run = run_multi_turn_evaluation(
+            (case,),
+            lambda: client,
+            _FakeExecutor(),
+            self.context,
+        )
+
+        self.assertEqual(run.cases[0].status, MultiTurnStatus.PASS)
+        self.assertTrue(
+            all(turn.status is MultiTurnStatus.PASS for turn in run.cases[0].turns)
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
