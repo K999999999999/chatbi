@@ -145,9 +145,12 @@ class EvaluationReportingTest(unittest.TestCase):
             "有效案例执行准确率 50.00%。",
             markdown,
         )
-        self.assertIn("| C2 | simple | FAIL | 未说明 | 未说明 | 失败 |", markdown)
         self.assertIn(
-            "| C3 | simple | INVALID_CASE | 未说明 | 未说明 | 失败 |",
+            "| C2 | simple | result_match | FAIL | 未说明 | 未说明 | 失败 |",
+            markdown,
+        )
+        self.assertIn(
+            "| C3 | simple | result_match | INVALID_CASE | 未说明 | 未说明 | 失败 |",
             markdown,
         )
         self.assertIn("本次未执行自动基线比较", markdown)
@@ -183,7 +186,8 @@ class EvaluationReportingTest(unittest.TestCase):
             "QUERY_TYPE_UNKNOWN",
         )
         self.assertIn(
-            "| C1 | simple | FAIL | query_understanding | QUERY_TYPE_UNKNOWN | 失败 |",
+            "| C1 | simple | result_match | FAIL | query_understanding | "
+            "QUERY_TYPE_UNKNOWN | 失败 |",
             markdown,
         )
 
@@ -228,6 +232,27 @@ class EvaluationReportingTest(unittest.TestCase):
         self.assertEqual(comparison["regressions"], ["A"])
         self.assertEqual(comparison["improvements"], ["B"])
         self.assertEqual(comparison["unchanged"], ["C"])
+
+    def test_does_not_compare_reports_from_different_evaluation_suites(self) -> None:
+        from src.evaluation.reporting import compare_baseline
+
+        baseline = self._report(
+            test_hash="same-test",
+            reference_hash="same-reference",
+            statuses={"C1": "PASS"},
+        )
+        current = self._report(
+            test_hash="same-test",
+            reference_hash="same-reference",
+            statuses={"C1": "FAIL"},
+        )
+        baseline["metadata"]["evaluation_suite"] = "business_analysis"
+        current["metadata"]["evaluation_suite"] = "single_turn_query"
+
+        comparison = compare_baseline(current, baseline)
+
+        self.assertFalse(comparison["comparable"])
+        self.assertEqual(comparison["reason"], "评测集类别不同")
 
     def test_refuses_regression_claim_when_inputs_are_incomparable(self) -> None:
         from src.evaluation.reporting import compare_baseline

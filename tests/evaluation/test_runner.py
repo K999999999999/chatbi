@@ -118,6 +118,64 @@ class EvaluationRunnerTest(unittest.TestCase):
         self.assertEqual(run.cases[1].status, CaseStatus.PASS)
         self.assertEqual(len(service.calls), 2)
 
+    def test_scores_expected_outcomes_separately_from_execution_accuracy(self) -> None:
+        from src.evaluation.runner import CaseStatus, run_evaluation
+
+        clarification = EvaluationCase(
+            id="R01",
+            schema_name="mart_sales",
+            category="simple",
+            question="请先澄清的问题",
+            description="测试案例",
+            expected_sql="",
+            expected_outcome="clarification_required",
+            expected_error_code="CLARIFICATION_REQUIRED",
+            coverage=("clarification",),
+        )
+        refusal = EvaluationCase(
+            id="R02",
+            schema_name="mart_sales",
+            category="simple",
+            question="拒答问题",
+            description="测试案例",
+            expected_sql="",
+            expected_outcome="cannot_answer",
+            expected_error_code="CANNOT_ANSWER",
+            coverage=("refusal",),
+        )
+        execution = self._case("S01", "成功问题", "simple")
+        service = _FakeService(
+            {
+                "请先澄清的问题": QueryFailure(
+                    request_id="r1",
+                    error_code=QueryErrorCode.CLARIFICATION_REQUIRED,
+                    error_message="请补充查询条件",
+                ),
+                "拒答问题": QueryFailure(
+                    request_id="r2",
+                    error_code=QueryErrorCode.SQL_REJECTED,
+                    error_message="unexpected business outcome",
+                ),
+                "成功问题": self._success("evaluation-S01"),
+            }
+        )
+
+        executor = _FakeExecutor(self.reference)
+        run = run_evaluation(
+            (clarification, refusal, execution), service, executor, self.context
+        )
+
+        self.assertEqual(
+            [result.status for result in run.cases],
+            [CaseStatus.PASS, CaseStatus.FAIL, CaseStatus.PASS],
+        )
+        self.assertEqual(run.summary.execution_cases, 1)
+        self.assertEqual(run.summary.execution_accuracy, 1.0)
+        self.assertEqual(run.summary.outcome_cases, 2)
+        self.assertEqual(run.summary.outcome_accuracy, 0.5)
+        self.assertEqual(run.summary.case_accuracy, 2 / 3)
+        self.assertEqual(len(executor.calls), 1)
+
     def test_invalid_case_and_invalid_gold_sql_do_not_call_service(self) -> None:
         from src.evaluation.runner import CaseStatus, run_evaluation
 

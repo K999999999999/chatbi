@@ -15,7 +15,10 @@ def create_business_analysis_report(
     """生成不包含查询明细和 Secret 的经营分析评估报告。"""
 
     report: dict[str, object] = {
-        "metadata": metadata.to_dict(),
+        "metadata": {
+            **metadata.to_dict(),
+            "evaluation_suite": "business_analysis",
+        },
         "summary": {
             "total_cases": run.summary.total_cases,
             "valid_cases": run.summary.valid_cases,

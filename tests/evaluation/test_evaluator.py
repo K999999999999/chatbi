@@ -35,16 +35,68 @@ class EvaluationCaseLoadingTest(unittest.TestCase):
         self.assertFalse(cases[0].order_sensitive)
         self.assertTrue(cases[1].order_sensitive)
 
+    def test_loads_expected_outcome_without_reference_sql_and_coverage_tags(
+        self,
+    ) -> None:
+        from src.evaluation.evaluator import load_evaluation_cases
+
+        case = self._case(
+            "R01",
+            expected_outcome="cannot_answer",
+            expected_sql="",
+            expected_error_code="CANNOT_ANSWER",
+            coverage=["refusal"],
+        )
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "cases.json"
+            path.write_text(json.dumps([case]), encoding="utf-8")
+
+            loaded = load_evaluation_cases(path)[0]
+
+        self.assertTrue(loaded.is_valid)
+        self.assertEqual(loaded.expected_outcome, "cannot_answer")
+        self.assertEqual(loaded.expected_error_code, "CANNOT_ANSWER")
+        self.assertEqual(loaded.coverage, ("refusal",))
+
+    def test_requires_reference_sql_for_result_matching_cases(self) -> None:
+        from src.evaluation.evaluator import load_evaluation_cases
+
+        case = self._case("S01", expected_sql="")
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "cases.json"
+            path.write_text(json.dumps([case]), encoding="utf-8")
+
+            loaded = load_evaluation_cases(path)[0]
+
+        self.assertFalse(loaded.is_valid)
+        self.assertIn("expected_sql", loaded.validation_error or "")
+
     def test_loads_current_twenty_one_case_standard_set(self) -> None:
         from src.evaluation.evaluator import load_evaluation_cases
 
         cases = load_evaluation_cases(Path("src/evaluation/eval_cases.json"))
 
-        self.assertEqual(len(cases), 21)
+        self.assertEqual(len(cases), 27)
         self.assertTrue(all(case.is_valid for case in cases))
         self.assertEqual(
             {case.category for case in cases},
             {"simple", "medium", "complex"},
+        )
+        self.assertEqual(
+            {tag for case in cases for tag in case.coverage},
+            {
+                "metric_query",
+                "time_filter",
+                "dimension_grouping",
+                "condition_filter",
+                "sorting_topn",
+                "threshold_having",
+                "multiple_metrics",
+                "metric_alias",
+                "clarification",
+                "refusal",
+                "combination",
+            },
         )
 
     def test_t01_gold_sql_returns_only_the_requested_sales_amount(self) -> None:

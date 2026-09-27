@@ -130,15 +130,25 @@ def create_report(
     baseline: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     report: dict[str, object] = {
-        "metadata": metadata.to_dict(),
+        "metadata": {
+            **metadata.to_dict(),
+            "evaluation_suite": "single_turn_query",
+        },
         "summary": {
             "total_cases": run.summary.total_cases,
             "valid_cases": run.summary.valid_cases,
             "passed": run.summary.passed,
             "failed": run.summary.failed,
             "invalid_cases": run.summary.invalid_cases,
+            "execution_cases": run.summary.execution_cases,
+            "execution_passed": run.summary.execution_passed,
             "execution_accuracy": run.summary.execution_accuracy,
+            "outcome_cases": run.summary.outcome_cases,
+            "outcome_passed": run.summary.outcome_passed,
+            "outcome_accuracy": run.summary.outcome_accuracy,
+            "case_accuracy": run.summary.case_accuracy,
             "category_accuracy": dict(run.summary.category_accuracy),
+            "coverage_accuracy": dict(run.summary.coverage_accuracy or {}),
             "failure_stage_counts": _failure_stage_counts(run),
             "internal_reason_counts": _internal_reason_counts(run),
         },
@@ -146,7 +156,10 @@ def create_report(
             {
                 "case_id": result.case_id,
                 "category": result.category,
+                "coverage": list(result.coverage),
                 "status": result.status.value,
+                "expected_outcome": result.expected_outcome,
+                "expected_error_code": result.expected_error_code,
                 "generated_sql": result.generated_sql,
                 "query_error_code": result.query_error_code,
                 "failure_reason": result.failure_reason,
@@ -184,6 +197,15 @@ def compare_baseline(
         return _incomparable("报告缺少标准测试集 Hash")
     if current_test_hash != baseline_test_hash:
         return _incomparable("标准测试集不同")
+
+    current_suite = current_metadata.get("evaluation_suite")
+    baseline_suite = baseline_metadata.get("evaluation_suite")
+    if (
+        _nonempty_string(current_suite)
+        and _nonempty_string(baseline_suite)
+        and current_suite != baseline_suite
+    ):
+        return _incomparable("评测集类别不同")
 
     current_data_hash = current_metadata.get("sales_mart_data_hash")
     baseline_data_hash = baseline_metadata.get("sales_mart_data_hash")

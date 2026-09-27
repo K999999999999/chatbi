@@ -53,6 +53,16 @@ from .business_analysis_reporting import (
 from .business_analysis_runner import run_business_analysis_evaluation
 from .database_fingerprint import collect_sales_mart_fingerprint
 from .evaluator import EvaluationLoadError, load_evaluation_cases
+from .multi_turn_api_client import QueryApiConversationClient
+from .multi_turn_evaluation import (
+    MultiTurnEvaluationLoadError,
+    load_multi_turn_cases,
+    run_multi_turn_evaluation,
+)
+from .multi_turn_reporting import (
+    create_multi_turn_report,
+    write_multi_turn_markdown_report,
+)
 from .reporting import (
     ReportingError,
     collect_run_metadata,
@@ -77,6 +87,9 @@ DEFAULT_QUERY_UNDERSTANDING_CASES_PATH = (
 )
 DEFAULT_BUSINESS_ANALYSIS_CASES_PATH = (
     PROJECT_ROOT / "src" / "evaluation" / "business_analysis_cases.json"
+)
+DEFAULT_MULTI_TURN_CASES_PATH = (
+    PROJECT_ROOT / "src" / "evaluation" / "multi_turn_eval_cases.json"
 )
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "reports" / "evaluation"
 
@@ -152,6 +165,24 @@ def run_cli(
                 stdout=output,
                 runtime_factory=runtime_factory,
                 analysis_application_factory=analysis_application_factory,
+            )
+
+        if args.multi_turn:
+            return _run_multi_turn_cli(
+                args,
+                source,
+                trace_recorder=trace_recorder,
+                context_loader=context_loader,
+                generator_factory=generator_factory,
+                executor_factory=executor_factory,
+                retrieval_factory=retrieval_factory,
+                query_understanding_factory=query_understanding_factory,
+                git_state_reader=(
+                    _read_git_state if git_state_reader is None else git_state_reader
+                ),
+                context_paths=context_paths,
+                stdout=output,
+                runtime_factory=runtime_factory,
             )
 
         cases = load_evaluation_cases(args.cases)
@@ -243,6 +274,7 @@ def run_cli(
         DatabaseError,
         EvaluationLoadError,
         LLMError,
+        MultiTurnEvaluationLoadError,
         ReportingError,
         SemanticEvaluationLoadError,
     ) as exc:
@@ -277,6 +309,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument(
+        "--single-turn",
+        action="store_true",
+        help="运行单轮自然查询黄金测试集（默认模式）",
+    )
+    mode_group.add_argument(
         "--query-understanding",
         action="store_true",
         help="只运行 Query Understanding 语义评测",
@@ -285,6 +322,11 @@ def _parser() -> argparse.ArgumentParser:
         "--business-analysis",
         action="store_true",
         help="运行经营分析黄金测试集评估",
+    )
+    mode_group.add_argument(
+        "--multi-turn",
+        action="store_true",
+        help="按完整 Conversation 运行多轮查询黄金测试集",
     )
     parser.add_argument(
         "--online-retrieval",
@@ -298,6 +340,135 @@ def _parser() -> argparse.ArgumentParser:
         help="Query Understanding 语义评测集路径",
     )
     return parser
+
+
+def _run_multi_turn_cli(*args, **kwargs) -> int:
+    runtime_holder: list[RagRuntime | None] = [None]
+    kwargs["runtime_holder"] = runtime_holder
+    try:
+        return _run_multi_turn_cli_impl(*args, **kwargs)
+    finally:
+        _shutdown_rag_runtime(runtime_holder[0])
+
+
+def _run_multi_turn_cli_impl(
+    args: argparse.Namespace,
+    environ: Mapping[str, str],
+    *,
+    trace_recorder: TraceRecorder | None,
+    context_loader: Callable[[], QueryContext],
+    generator_factory: Callable[[Mapping[str, str]], SQLGenerator] | None,
+    executor_factory: Callable[[Mapping[str, str]], QueryExecutor],
+    retrieval_factory: Callable[[], RetrievalProvider] | None,
+    query_understanding_factory: Callable[
+        [Mapping[str, str]], QueryUnderstandingAdapter
+    ]
+    | None,
+    git_state_reader: Callable[[Path], tuple[str, bool]],
+    context_paths: Mapping[str, Path] | None,
+    stdout: TextIO,
+    runtime_factory: Callable[[], RagRuntime] | None,
+    runtime_holder: list[RagRuntime | None],
+) -> int:
+    cases_path = (
+        DEFAULT_MULTI_TURN_CASES_PATH
+        if args.cases == DEFAULT_CASES_PATH
+        else args.cases
+    )
+    cases = load_multi_turn_cases(cases_path)
+    baseline = load_report(args.baseline) if args.baseline else None
+    if not args.online_retrieval:
+        raise ReportingError(
+            "多轮评测需要 --online-retrieval，以便首轮生成服务端结构化会话状态"
+        )
+    context = context_loader()
+    retrieval_provider = None
+    query_understanding = None
+    if args.online_retrieval:
+        if not _rag_online_retrieval_enabled(environ):
+            raise ReportingError(
+                "RAG_ONLINE_RETRIEVAL_ENABLED 已关闭，不能运行在线多轮评测"
+            )
+        if retrieval_factory is None:
+            runtime_builder = (
+                RagRuntime.from_environment
+                if runtime_factory is None
+                else runtime_factory
+            )
+            try:
+                runtime = runtime_builder()
+                runtime_holder[0] = runtime
+                _preflight_online_retrieval(runtime)
+            except ReportingError:
+                raise
+            except Exception as exc:
+                raise ReportingError(f"在线 RAG 评测前置检查失败：{exc}") from exc
+            retrieval_provider = _build_online_retrieval_provider(
+                runtime_holder[0],
+                trace_recorder,
+            )
+        else:
+            retrieval_provider = retrieval_factory()
+
+    if query_understanding_factory is not None:
+        query_understanding = query_understanding_factory(environ)
+    else:
+        query_understanding = LangChainQueryUnderstanding.from_env(
+            environ,
+            trace_recorder=trace_recorder,
+        )
+
+    executor = executor_factory(environ)
+    generator = (
+        LangChainSQLGenerator.from_env(
+            environ,
+            trace_recorder=trace_recorder,
+        )
+        if generator_factory is None
+        else generator_factory(environ)
+    )
+    service = OnlineQueryService(
+        generator,
+        executor,
+        context_loader=lambda: context,
+        retrieval_provider=retrieval_provider,
+        query_understanding=query_understanding,
+        trace_recorder=trace_recorder,
+    )
+    run = run_multi_turn_evaluation(
+        cases,
+        lambda: QueryApiConversationClient(
+            service,
+            query_understanding=query_understanding,
+        ),
+        executor,
+        context,
+    )
+    git_commit, git_dirty = git_state_reader(PROJECT_ROOT)
+    sales_mart_fingerprint = collect_sales_mart_fingerprint(environ)
+    metadata = collect_run_metadata(
+        run,
+        git_commit=git_commit,
+        git_dirty=git_dirty,
+        environ=environ,
+        test_set_path=cases_path,
+        context_paths=(
+            _default_context_paths() if context_paths is None else context_paths
+        ),
+        sales_mart_fingerprint=sales_mart_fingerprint,
+    )
+    report = create_multi_turn_report(run, metadata, baseline)
+    report_path = args.output_dir / f"{metadata.run_id}-multi-turn.json"
+    summary_path = args.output_dir / f"{metadata.run_id}-multi-turn.md"
+    write_report(report, report_path)
+    write_multi_turn_markdown_report(report, summary_path)
+    _print_multi_turn_summary(report, report_path, summary_path, stdout)
+    return (
+        0
+        if run.summary.failed_conversations == 0
+        and run.summary.invalid_conversations == 0
+        else 1
+    )
 
 
 def _run_business_analysis_cli(*args, **kwargs):
@@ -620,6 +791,23 @@ def _print_summary(
     accuracy = summary.get("execution_accuracy")
     accuracy_text = "N/A" if accuracy is None else f"{float(accuracy):.2%}"
     print(f"Execution Accuracy: {accuracy_text}", file=output)
+    outcome_cases = summary.get("outcome_cases", 0)
+    if isinstance(outcome_cases, int) and outcome_cases > 0:
+        outcome_accuracy = summary.get("outcome_accuracy")
+        case_accuracy = summary.get("case_accuracy")
+        print(
+            "Expected Outcome Accuracy: {outcome}; Case Accuracy: {case}".format(
+                outcome=(
+                    "N/A"
+                    if outcome_accuracy is None
+                    else f"{float(outcome_accuracy):.2%}"
+                ),
+                case=(
+                    "N/A" if case_accuracy is None else f"{float(case_accuracy):.2%}"
+                ),
+            ),
+            file=output,
+        )
     print(
         "PASS: {passed}, FAIL: {failed}, INVALID_CASE: {invalid}".format(
             passed=summary.get("passed", 0),
@@ -644,6 +832,53 @@ def _print_business_analysis_summary(
     accuracy = summary.get("end_to_end_accuracy")
     accuracy_text = "N/A" if accuracy is None else f"{float(accuracy):.2%}"
     print(f"Business Analysis End-to-End Accuracy: {accuracy_text}", file=output)
+    print(
+        "PASS: {passed}, FAIL: {failed}, INVALID_CASE: {invalid}".format(
+            passed=summary.get("passed", 0),
+            failed=summary.get("failed", 0),
+            invalid=summary.get("invalid_cases", 0),
+        ),
+        file=output,
+    )
+    print(f"Report: {report_path}", file=output)
+    print(f"Summary Report: {summary_path}", file=output)
+
+
+def _print_multi_turn_summary(
+    report: Mapping[str, object],
+    report_path: Path,
+    summary_path: Path,
+    output: TextIO,
+) -> None:
+    summary = report.get("summary")
+    if not isinstance(summary, Mapping):
+        raise ReportingError("多轮评测报告汇总结构无效")
+    conversation_accuracy = summary.get("conversation_accuracy")
+    execution_accuracy = summary.get("execution_accuracy")
+    outcome_accuracy = summary.get("outcome_accuracy")
+    print(
+        "Multi-Turn Conversation Accuracy: {value}".format(
+            value=(
+                "N/A"
+                if conversation_accuracy is None
+                else f"{float(conversation_accuracy):.2%}"
+            )
+        ),
+        file=output,
+    )
+    print(
+        "Query Execution Accuracy: {execution}; Expected Outcome Accuracy: {outcome}".format(
+            execution=(
+                "N/A"
+                if execution_accuracy is None
+                else f"{float(execution_accuracy):.2%}"
+            ),
+            outcome=(
+                "N/A" if outcome_accuracy is None else f"{float(outcome_accuracy):.2%}"
+            ),
+        ),
+        file=output,
+    )
     print(
         "PASS: {passed}, FAIL: {failed}, INVALID_CASE: {invalid}".format(
             passed=summary.get("passed", 0),
