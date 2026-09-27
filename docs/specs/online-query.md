@@ -93,6 +93,7 @@ QueryRequest
 
 - 应用可以在没有装配 Retrieval Provider（检索提供者）的显式静态模式下加载 `tables.json`、`columns.json`、`relationships.json` 和 `metrics.json`，用于确定性软件评测；字段典型值位于 `columns.json.value_examples`。在线 RAG 模式不把静态全量 Schema 作为技术故障 fallback。
 - 每次查询默认从同一已发布 `asset_version` 的 TABLE、COLUMN、METRIC 集合和 Relationship Graph（关系图）中按问题检索并组装最小动态上下文，不再默认使用完整结构和完整指标。
+- 动态上下文必须包含用户明确请求的分组维度和行级筛选所需的字段、表及可达 Join；聚合指标阈值按指标条件处理，不得据此引入维度表。
 - 单轮问题出现已知但口径不唯一的业务表达时，必须在 Query Understanding Provider 和 Retrieval 之前返回 `CLARIFICATION_REQUIRED`；例如未限定的“利润”必须澄清，不能由模型自行映射成毛利或毛利率。明确指定“毛利”或“毛利率”后继续正常查询。
 - 在线 RAG 的 Qdrant、Embedding、资产版本或关系图技术故障统一返回 `CONTEXT_ERROR`，不调用 LLM；业务资源缺失、关系不可达或关系歧义返回 `CANNOT_ANSWER`。实体类、单指标和多指标均遵循同一条 `metrics=0/1/N` 检索流程。
 - 静态事实文件修改后通过重启应用重新加载，当前不支持静态文件热更新；已发布 RAG 资产按 `current.json` 的新版本在后续请求中加载，不要求重启。

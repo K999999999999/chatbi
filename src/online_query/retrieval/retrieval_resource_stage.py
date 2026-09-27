@@ -308,6 +308,8 @@ def _retrieve_columns(
             resources.table_hits,
             metric_table,
             time_field,
+            filter_fields=tuple(item.field_text for item in semantic_query.filters),
+            metrics=selected_metrics,
         )
         grouping_tables = grouping_table_names(
             semantic_query.dimensions,
