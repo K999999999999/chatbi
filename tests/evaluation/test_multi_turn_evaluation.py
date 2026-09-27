@@ -1,9 +1,9 @@
 """Multi-Turn Conversation Evaluation（多轮对话评测）测试。"""
 
 import json
+import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import unittest
 
 from src.online_query.contracts import (
     QueryContext,
@@ -61,7 +61,8 @@ class MultiTurnEvaluationTest(unittest.TestCase):
         cases = load_multi_turn_cases(Path("src/evaluation/multi_turn_eval_cases.json"))
         context = load_query_context()
 
-        self.assertEqual(len(cases), 5)
+        self.assertEqual(len(cases), 7)
+        self.assertEqual(sum(len(case.turns) for case in cases), 15)
         self.assertTrue(all(case.is_valid for case in cases))
         self.assertEqual(
             {case.coverage[0] for case in cases},
@@ -70,9 +71,25 @@ class MultiTurnEvaluationTest(unittest.TestCase):
                 "time_replacement",
                 "dimension_append",
                 "dimension_replacement",
+                "filter_append",
+                "filter_replacement",
                 "failure_state_isolation",
             },
         )
+        filter_cases = {
+            case.id: case
+            for case in cases
+            if case.id in {"MT-FILTER-APPEND", "MT-FILTER-REPLACE"}
+        }
+        self.assertEqual(set(filter_cases), {"MT-FILTER-APPEND", "MT-FILTER-REPLACE"})
+        self.assertEqual(len(filter_cases["MT-FILTER-APPEND"].turns), 2)
+        self.assertEqual(len(filter_cases["MT-FILTER-REPLACE"].turns), 2)
+        filter_questions = " ".join(
+            turn.question for case in filter_cases.values() for turn in case.turns
+        )
+        self.assertIn("华东", filter_questions)
+        self.assertIn("华南", filter_questions)
+        self.assertNotIn("企业客户", filter_questions)
         for case in cases:
             for turn in case.turns:
                 if turn.expected_outcome == "result_match":

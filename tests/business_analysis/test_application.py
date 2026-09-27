@@ -46,10 +46,12 @@ class BusinessAnalysisApplicationTest(unittest.TestCase):
         self.assertEqual(decomposer.questions, ["分析销售额"])
         self.assertEqual(summarizer.inputs[0][0], "分析销售额")
 
-    def test_ambiguous_profit_is_clarified_before_task_execution(self) -> None:
+    def test_ambiguous_profit_is_clarified_by_plan_validation(self) -> None:
+        decomposer = _ProfitDecomposer()
+        authorized = _AuthorizedService(_BoundService())
         application = BusinessAnalysisApplication(
-            _AuthorizedService(_BoundService()),
-            decomposer=_ProfitDecomposer(),
+            authorized,
+            decomposer=decomposer,
             summarizer=_Summarizer(),
             context_provider=lambda: _context(),
         )
@@ -63,6 +65,8 @@ class BusinessAnalysisApplicationTest(unittest.TestCase):
         self.assertIsInstance(result, QueryFailure)
         self.assertEqual(result.error_code, QueryErrorCode.CLARIFICATION_REQUIRED)
         self.assertEqual(result.internal_reason, "METRIC_NOT_UNIQUE")
+        self.assertEqual(decomposer.questions, ["最近利润为什么下降？"])
+        self.assertEqual(authorized.bound_contexts, [])
 
 
 class _Decomposer:
@@ -107,15 +111,19 @@ class _Summarizer:
 
 
 class _ProfitDecomposer:
+    def __init__(self) -> None:
+        self.questions = []
+
     def decompose(self, question, context):
-        del question, context
+        del context
+        self.questions.append(question)
         return AnalysisPlanCandidate(
             tasks=(
                 AnalysisTaskCandidate(
                     task_id="profit",
                     task_type=AnalysisTaskType.TREND,
                     description="分析利润趋势",
-                    metrics=("人民币毛利", "毛利率"),
+                    metrics=("利润",),
                     dimensions=(),
                     time_range=None,
                     filters=(),

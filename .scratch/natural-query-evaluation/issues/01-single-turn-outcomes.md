@@ -31,6 +31,6 @@ None (can start immediately)
 - 失败案例：`F01` 在 Retrieval 阶段返回 `CANNOT_ANSWER`；`R01` 期望 `CLARIFICATION_REQUIRED`，实际返回 `CANNOT_ANSWER`。
 - 报告：`reports/evaluation/20260927T131023Z-71586df.json` 与 `.md`。
 
-## Follow-up repair
+## Follow-up case update
 
-2026-09-27：`F01` 已替换为“华东区域”筛选案例，`R01` 收窄为未限定“利润”口径；Online Query 已在 Retrieval 前确定性澄清该表达。上述报告早于本次修复，仍是历史结果，不代表当前案例集准确率。
+2026-09-27：`F01` 调整为已登记的华东销售区域筛选案例；`R01` 收窄为未限定“利润”口径，并继续期望 `CLARIFICATION_REQUIRED`。上述报告早于案例调整，仍是历史结果，不代表当前案例集准确率。

@@ -34,4 +34,6 @@ None (can start immediately)
 
 ## Follow-up scope update
 
-2026-09-27：按用户确认暂时移除 Filter 追加 / 替换场景。当前集合为 5 个 Conversation、11 轮；上述 7 个 Conversation 的报告是历史结果，不能作为当前集合准确率。
+2026-09-27：按用户确认暂时移除 Filter 追加 / 替换场景，集合曾调整为 5 个 Conversation、11 轮。
+
+2026-09-28：按后续确认补回两个独立 Filter Conversation，使用已登记的销售区域值华东 / 华南，不使用企业客户字段。当前集合恢复为 7 个 Conversation、15 轮；此前报告仍是历史证据，不能代表当前集合准确率。

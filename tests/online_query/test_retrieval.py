@@ -5,12 +5,10 @@ import unittest
 
 from src.online_query.contracts import (
     FallbackPolicy,
-    MetricHit,
     RequestShape,
     RetrievalConfig,
     RetrievalRequest,
     RetrievalStatus,
-    TableHit,
 )
 from src.online_query.query_understanding import (
     QueryType,
@@ -23,10 +21,7 @@ from src.online_query.retrieval.rag_runtime import (
     AssetSnapshot,
     RetrievalUnavailableError,
 )
-from src.online_query.retrieval.retrieval_selection import (
-    filter_table_names,
-    table_content_matches,
-)
+from src.online_query.retrieval.retrieval_selection import table_content_matches
 from src.rag_offline.embedding import EmbeddedText, SparseEmbedding
 from src.rag_offline.qdrant_store import SearchHit
 
@@ -56,36 +51,6 @@ class RetrievalSelectionContractTest(unittest.TestCase):
             )
         )
         self.assertFalse(table_content_matches("年份", "订单年度收入及客户信息。"))
-
-    def test_metric_threshold_filter_is_not_a_dimension_table_request(self) -> None:
-        exchange = TableHit(
-            document_id="table:exchange",
-            schema_name="mart_sales",
-            table_name="fct_exchange_rate_daily",
-            table_role="BASE TABLE",
-            score=0.90,
-            rank=1,
-            metadata={},
-            page_content="按日期和交易币种记录的人民币汇率数据。",
-        )
-        metric = MetricHit(
-            document_id="metric:net-sales",
-            metric_name="人民币净销售额",
-            score=0.95,
-            rank=1,
-            metadata={"aliases": ("销售额", "人民币销售额")},
-            page_content="人民币净销售额指标",
-        )
-
-        self.assertEqual(
-            filter_table_names(
-                ("人民币销售额",),
-                (exchange,),
-                "mart_sales.fct_sales_order_line",
-                metrics=(metric,),
-            ),
-            frozenset(),
-        )
 
 
 class _FakeStore:
@@ -557,70 +522,6 @@ class RetrievalTest(unittest.TestCase):
             ),
         )
         self.assertEqual(result.join_path.unreachable_tables, ())
-
-    def test_filter_dimension_is_included_in_dynamic_context_and_join(self) -> None:
-        fact = _table("table:fct", "fct_sales_order_line", 0.95)
-        region = _table(
-            "table:region",
-            "dim_sales_region",
-            0.94,
-            page_content="销售区域维度",
-        )
-        columns = {
-            "fct_sales_order_line": (
-                _column("fct_sales_order_line", "net_sales_amount_cny", 0.95),
-                _column("fct_sales_order_line", "order_status", 0.94),
-                _column("fct_sales_order_line", "sales_region_key", 0.93),
-            ),
-            "dim_sales_region": (
-                _column("dim_sales_region", "sales_region_key", 0.92),
-                _column("dim_sales_region", "sales_region_name", 0.91),
-            ),
-        }
-        store = _FakeStore(
-            (fact, region),
-            columns,
-            (
-                _metric(
-                    "人民币销售额",
-                    0.97,
-                    formula="SUM(f.net_sales_amount_cny)",
-                ),
-            ),
-        )
-
-        result = OnlineRetriever(
-            _FakeRuntime(
-                _snapshot(
-                    store,
-                    _FakeEmbedding(),
-                    _sales_graph(include_region=True, include_date=False),
-                )
-            )
-        ).retrieve(
-            _request(
-                "筛选销售区域后统计人民币销售额",
-                subjects=("销售",),
-                metrics=("人民币销售额",),
-                filters=("销售区域",),
-            )
-        )
-
-        self.assertEqual(result.status, RetrievalStatus.SUCCESS)
-        assert result.query_context is not None
-        self.assertEqual(
-            result.query_context.allowed_tables,
-            frozenset(
-                {
-                    "mart_sales.fct_sales_order_line",
-                    "mart_sales.dim_sales_region",
-                }
-            ),
-        )
-        self.assertIn(
-            "sales_region_name",
-            {field.column_name for field in result.evidence.column_hits},
-        )
 
     def test_metric_query_returns_dynamic_context_and_indicator_metadata(self) -> None:
         tables = (

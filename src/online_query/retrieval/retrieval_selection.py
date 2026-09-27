@@ -57,9 +57,6 @@ def candidate_table_hits(
     table_hits: tuple[TableHit, ...],
     metric_table: str | None,
     time_field: _TimeField | None,
-    *,
-    filter_fields: tuple[str, ...] = (),
-    metrics: tuple[MetricHit, ...] = (),
 ) -> tuple[TableHit, ...]:
     """确定 COLUMN 和 Join 的最小候选表范围。"""
 
@@ -81,14 +78,6 @@ def candidate_table_hits(
             "用户请求的分组维度没有被 TABLE 候选命中"
         )
     names.update(grouping_names)
-    names.update(
-        filter_table_names(
-            filter_fields,
-            table_hits,
-            metric_table,
-            metrics=metrics,
-        )
-    )
 
     by_name = {hit.qualified_name: hit for hit in table_hits}
     candidates: list[TableHit] = []
@@ -102,41 +91,6 @@ def candidate_table_hits(
             raise RequiredCandidateUnavailableError(f"V1 不支持中间表或桥接表：{name}")
         candidates.append(existing)
     return tuple(candidates)
-
-
-def filter_table_names(
-    filter_fields: tuple[str, ...],
-    table_hits: tuple[TableHit, ...],
-    metric_table: str | None,
-    *,
-    metrics: tuple[MetricHit, ...] = (),
-) -> frozenset[str]:
-    """把维度筛选命中的表纳入 Join 范围，排除聚合指标阈值。"""
-
-    if not filter_fields:
-        return frozenset()
-    metric_terms = {
-        normalize_text(name)
-        for metric in metrics
-        for name in (metric.metric_name, *_metric_aliases(metric))
-    }
-    return frozenset(
-        hit.qualified_name
-        for hit in table_hits
-        if hit.qualified_name != metric_table
-        and any(
-            normalize_text(filter_field) not in metric_terms
-            and table_content_matches(filter_field, hit.page_content)
-            for filter_field in filter_fields
-        )
-    )
-
-
-def _metric_aliases(metric: MetricHit) -> tuple[str, ...]:
-    aliases = metric.metadata.get("aliases", ())
-    if not isinstance(aliases, (list, tuple)):
-        return ()
-    return tuple(alias for alias in aliases if isinstance(alias, str) and alias.strip())
 
 
 def is_intermediate_table(table: TableHit) -> bool:

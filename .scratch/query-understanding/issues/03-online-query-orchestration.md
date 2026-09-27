@@ -11,8 +11,8 @@ Status: done
 ```text
 QueryRequest
 → QueryUnderstandingAdapter
-→ SemanticQueryCandidate
-→ Program Validation
+→ SemanticQueryCandidate 或 CLARIFICATION_REQUIRED
+→ （只有候选结果）Program Validation
 → ValidatedSemanticQuery
 → Online Retrieval
 → QueryContext
@@ -41,6 +41,7 @@ Ticket 02：QueryUnderstandingAdapter
 ## Acceptance criteria
 
 - Query Understanding 失败时不触发 Retrieval、SQLGenerator 或 Database；
+- Query Understanding 对模糊指标返回 `CLARIFICATION_REQUIRED`，并在 Retrieval 前停止；
 - 业务语义拒答时不触发 SQLGenerator 或 Database；
 - 通过校验的请求才进入 Online Retrieval；
 - 用户收到针对原因的中文提示，而不是直接看到 `CANNOT_ANSWER` 等机器错误码；
@@ -52,6 +53,7 @@ Ticket 02：QueryUnderstandingAdapter
 
 - `OnlineQueryService` 在线模式已在 Retrieval 前调用 `QueryUnderstandingAdapter`，并通过 `validate_candidate` 生成 `ValidatedSemanticQuery`。
 - Query Understanding 结构或调用失败返回 `LLM_ERROR`；业务语义拒答返回 `CANNOT_ANSWER`；两类失败均不会触发 Retrieval、SQLGenerator 或 Database。
+- 多义指标以受控澄清结果结束，错误阶段为 `query_understanding`；正常候选继续原有确定性校验和 Retrieval 链路。
 - `RetrievalRequest` 已携带 `semantic_query`，请求形态由结构化指标数量确定，不再由服务层调用旧正则构造器。
 - Query API 和 Evaluation 在线组合根已注入 Query Understanding Adapter；静态模式保持原行为，未纳入本 Ticket。
 - Trace 增加 `query.understanding` 阶段及受安全白名单保护的查询理解属性和内部 `reason`。

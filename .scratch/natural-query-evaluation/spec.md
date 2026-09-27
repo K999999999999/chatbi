@@ -41,11 +41,13 @@ Evaluation 将自然语言查询能力组织为三个逻辑独立的评测集：
 
 - 指标替换；
 - 时间替换；
+- Filter 追加；
+- Filter 替换；
 - 维度追加；
 - 维度替换；
 - 失败轮次不污染上下文。
 
-Filter 追加和 Filter 替换暂不纳入当前评测集：原案例依赖尚未确认可稳定检索的客户类型筛选字段。当前不对这两项能力报告覆盖率。
+Filter 追加和 Filter 替换案例使用已登记的销售区域筛选字段，分别覆盖追加“华东”和将“华东”替换为“华南”；不使用企业客户筛选字段。
 
 同一 Conversation 按顺序执行，轮次共享服务端会话状态。成功轮次分别与对应的标准结果比较。需要检查失败轮次状态隔离的场景，应在失败后继续发起成功追问，并验证该追问仍基于失败前最后一次成功状态。一个 Conversation 的全部期望轮次及状态检查通过后，该 Conversation 才计为 PASS。
 
@@ -73,7 +75,7 @@ Filter 追加和 Filter 替换暂不纳入当前评测集：原案例依赖尚�
 - `Execution Accuracy` 只统计有效 `result_match` 案例；澄清 / 拒答案例单独统计 `Outcome Accuracy`；需要整体观察时报告 `Case Accuracy`，不把 expected refusal 混入 SQL 执行准确率。
 - 任一预期 outcome 出现非预期技术错误时记为 FAIL；标准案例或标准 SQL 本身无效时沿用 `INVALID_CASE`，不计入能力准确率分母。
 - 三类分别选择/运行并分别生成报告，不生成跨类别总准确率；各报告只与同一评测集的兼容基线比较。
-- 本 Feature 组织三类离线 Evaluation。后续确认的单轮利润口径歧义属于窄范围行为修复：未限定的“利润”返回 `CLARIFICATION_REQUIRED`；其他 Online Query、多轮会话和 Business Analysis Contract 保持不变。
+- 本 Feature 组织三类离线 Evaluation。为满足 R01 的澄清 outcome，本次跟进还在 Query Understanding Contract 中增加结构化 `clarification_required` 结果；这不修改 Retrieval 的表 / 列候选逻辑。
 
 ## Testing Decisions
 
@@ -81,7 +83,6 @@ Filter 追加和 Filter 替换暂不纳入当前评测集：原案例依赖尚�
 
 - 单轮 Runner 证明每条案例只调用一次公开授权查询入口，不继承其他案例的上下文。
 - Outcome 案例验证预期澄清/拒答通过、错误 outcome 失败、技术错误不会被算作预期拒答。
-- 单轮未限定的“利润”必须在 Query Understanding / Retrieval 前返回 `CLARIFICATION_REQUIRED`；不支持的问题（如员工人数）继续返回 `CANNOT_ANSWER`。
 - 多轮 Runner 验证同一 Conversation 的请求使用同一会话状态，多个 Conversation 之间状态隔离。
 - 多轮每轮结果按既有结果比较规则计分；失败轮次之后的有效追问证明状态未污染。
 - 若任一轮或最终状态检查不符合预期，则该 Conversation 为 FAIL，并在报告保留轮次级诊断。
@@ -103,7 +104,7 @@ Filter 追加和 Filter 替换暂不纳入当前评测集：原案例依赖尚�
 
 ## Out of Scope
 
-- 除单轮已确认的利润口径澄清外，不修改 Online Query、Query Understanding、SQL 生成、Retrieval、授权或会话业务行为。
+- 除 R01 所需的 Query Understanding 澄清结果及其下游短路外，不修改 Online Query、SQL 生成、Retrieval、授权或会话业务行为。
 - 增加 UI、API、调度服务或在线 Evaluation 能力。
 - 把 Query Understanding 语义评测合并为第四类业务测试集。
 - 重新定义 Business Analysis 计划、Task 或报告的准确率口径。
@@ -114,10 +115,11 @@ Filter 追加和 Filter 替换暂不纳入当前评测集：原案例依赖尚�
 
 - 实施前普通查询集有 21 条 `simple / medium / complex` 案例；本次补充后为 27 条，其中 25 条结果比对、2 条澄清 / 拒答 outcome 案例。
 - 当前经营分析集为 `src/evaluation/business_analysis_cases.json` 中的 5 条案例，已具备专用 Runner 和分层报告。
-- 初始多轮评测集新增 7 个 Conversation 场景，覆盖指标/时间替换、Filter 追加/替换、维度追加/替换和失败状态隔离。
+- 当前多轮评测集包含 7 个 Conversation、15 个轮次，覆盖指标/时间替换、销售区域 Filter 追加/替换、维度追加/替换和失败状态隔离。
 - 当前多轮规格和验收已固定失败不提交状态等 Contract；新的工作补充的是 Evaluation Dataset / Runner / Report 证据，不重开多轮业务决策。
 - 当前 Query Understanding 辅助集有 6 条案例，不纳入三个顶层能力集。
-- 2026-09-27 首次确认的评测集调整：F01 移除企业客户筛选；多轮 Filter 追加 / 替换案例暂时移除；失败状态隔离场景保留并移除企业客户条件。当前多轮集合为 5 个 Conversation、11 轮，暂不声称覆盖 Filter 追加 / 替换。
-- 2026-09-27 后续修复确认：F01 改为已登记的华东销售区域筛选，避免与 T01 重复；R01 只测试未限定“利润”的指标歧义，并继续期望 `CLARIFICATION_REQUIRED`。在线查询在语义入口确定性识别该歧义；其他不支持问题仍返回 `CANNOT_ANSWER`。旧评测报告对应调整前的案例，不能作为当前集合的准确率。
+- 2026-09-27 首次确认的评测集调整：F01 移除企业客户筛选；多轮 Filter 追加 / 替换案例暂时移除；失败状态隔离场景保留并移除企业客户条件。
+- 2026-09-27 后续评测案例调整：F01 改为已登记的华东销售区域筛选，避免与 T01 重复；R01 只测试未限定“利润”的指标歧义，并继续期望 `CLARIFICATION_REQUIRED`。旧评测报告对应调整前的案例，不能作为当前集合的准确率。
+- 2026-09-28 按确认范围补回两个独立 Filter Conversation：追加华东销售区域筛选、将华东替换为华南；当前集合恢复为 7 个 Conversation、15 轮。R01 的澄清由 Query Understanding 显式 outcome 返回。
 - 新建多轮标准案例的数量、文件布局、CLI 参数、独立报告文件形状和 expected outcome 的字段编码留给 Implementation Design；不得改变本 Spec 的行为边界。
 - 事实来源：`docs/specs/evaluation.md`、`docs/specs/query-api.md`、`.scratch/multi-turn-conversation-v1/spec.md`、`.scratch/business-analysis-v1/spec.md` 及对应验收记录。

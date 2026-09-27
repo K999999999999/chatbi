@@ -96,7 +96,7 @@ uv run --env-file .env python -c "import os, runpy; os.environ['LLM_TEMPERATURE'
 - 补充“月份/年份”到结构事实“月/年”的时间维度别名匹配，避免合法时间维度被 Retrieval 错误判为不可达；
 - 修复没有显式时间过滤但按日历维度分组时未启用指标 `time_field` 的问题，避免 `dim_date` 的多个日期关系产生 Join 歧义；
 - 修复年份单字 alias 把无关表扩大为日期维度候选的问题，并补充离散年份比较的 canonical query 规则；
-- 对未定义口径的“利润”增加程序级澄清门禁，对 Task 失败保留内部失败原因，便于 Evaluation 定位链路层级；
+- 让 Task Decomposer 保留未定义口径的“利润”原始指标表达，再由 Semantic Catalog 计划校验返回澄清；同时对 Task 失败保留内部失败原因，便于 Evaluation 定位链路层级；
 - 明确 Summary LLM 的列表字段类型，并规定 `incomplete_tasks` 只输出 task_id，不拼接 reason 或输出对象。
 
 以上修复均有确定性回归测试；旧的 RAG 资产未删除，新的本地资产使用独立 build id 发布。

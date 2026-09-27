@@ -84,6 +84,48 @@
     ]
   },
   {
+    "id": "MT-FILTER-APPEND",
+    "description": "追加华东销售区域筛选并保留时间和指标。",
+    "coverage": [
+      "filter_append"
+    ],
+    "turns": [
+      {
+        "id": "MT-FILTER-APPEND-T1",
+        "question": "2025 年第一季度已完成订单的人民币销售额是多少？",
+        "expected_outcome": "result_match",
+        "expected_sql": "SELECT SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01';"
+      },
+      {
+        "id": "MT-FILTER-APPEND-T2",
+        "question": "筛选销售区域为华东。",
+        "expected_outcome": "result_match",
+        "expected_sql": "SELECT SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_sales_region AS r\n  ON r.sales_region_key = f.sales_region_key\nLEFT JOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\n  AND r.sales_region_name = '华东';"
+      }
+    ]
+  },
+  {
+    "id": "MT-FILTER-REPLACE",
+    "description": "把华东销售区域筛选替换为华南并保留时间和指标。",
+    "coverage": [
+      "filter_replacement"
+    ],
+    "turns": [
+      {
+        "id": "MT-FILTER-REPLACE-T1",
+        "question": "2025 年第一季度筛选销售区域为华东的已完成订单人民币销售额是多少？",
+        "expected_outcome": "result_match",
+        "expected_sql": "SELECT SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_sales_region AS r\n  ON r.sales_region_key = f.sales_region_key\nLEFT JOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\n  AND r.sales_region_name = '华东';"
+      },
+      {
+        "id": "MT-FILTER-REPLACE-T2",
+        "question": "筛选销售区域改为华南。",
+        "expected_outcome": "result_match",
+        "expected_sql": "SELECT SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_sales_region AS r\n  ON r.sales_region_key = f.sales_region_key\nLEFT JOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\n  AND r.sales_region_name = '华南';"
+      }
+    ]
+  },
+  {
     "id": "MT-FAILURE-ISOLATION",
     "description": "预期范围拒绝后继续查询，使用结果区分失败前后的最后成功状态。",
     "coverage": [

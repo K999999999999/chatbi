@@ -58,7 +58,7 @@ QueryFailure
 | `INVALID_REQUEST` | 问题为空或格式错误 |
 | `CONTEXT_ERROR` | 结构或指标上下文无法加载 |
 | `LLM_ERROR` | LLM 配置、调用、空响应或超时失败 |
-| `CLARIFICATION_REQUIRED` | 指标等业务口径存在多种解释，或多轮追问无法唯一解析，需要用户澄清 |
+| `CLARIFICATION_REQUIRED` | Query Understanding 或多轮追问发现业务口径存在多种解释，需要用户澄清 |
 | `CANNOT_ANSWER` | 当前结构和指标无法支持该问题 |
 | `SQL_REJECTED` | SQL 未通过安全校验 |
 | `DATABASE_ERROR` | 数据库连接或执行失败 |
@@ -79,6 +79,8 @@ QueryFailure
 ```text
 QueryRequest
   -> 输入检查并确定 request_id
+  -> Query Understanding 返回结构化候选或受控澄清结果
+  -> 澄清时返回 CLARIFICATION_REQUIRED，并停止后续处理
   -> 读取已发布 RAG 资产快照并执行 Online Retrieval，获取动态结构和指标上下文
   -> 组装 Prompt
   -> LLM 生成 SQL 或表示无法回答
@@ -93,17 +95,17 @@ QueryRequest
 
 - 应用可以在没有装配 Retrieval Provider（检索提供者）的显式静态模式下加载 `tables.json`、`columns.json`、`relationships.json` 和 `metrics.json`，用于确定性软件评测；字段典型值位于 `columns.json.value_examples`。在线 RAG 模式不把静态全量 Schema 作为技术故障 fallback。
 - 每次查询默认从同一已发布 `asset_version` 的 TABLE、COLUMN、METRIC 集合和 Relationship Graph（关系图）中按问题检索并组装最小动态上下文，不再默认使用完整结构和完整指标。
-- 动态上下文必须包含用户明确请求的分组维度和行级筛选所需的字段、表及可达 Join；聚合指标阈值按指标条件处理，不得据此引入维度表。
-- 单轮问题出现已知但口径不唯一的业务表达时，必须在 Query Understanding Provider 和 Retrieval 之前返回 `CLARIFICATION_REQUIRED`；例如未限定的“利润”必须澄清，不能由模型自行映射成毛利或毛利率。明确指定“毛利”或“毛利率”后继续正常查询。
-- 在线 RAG 的 Qdrant、Embedding、资产版本或关系图技术故障统一返回 `CONTEXT_ERROR`，不调用 LLM；业务资源缺失、关系不可达或关系歧义返回 `CANNOT_ANSWER`。实体类、单指标和多指标均遵循同一条 `metrics=0/1/N` 检索流程。
+- Online Retrieval 模式先由 Query Understanding 提取业务语义。正常结果沿用严格的六字段候选 Contract；无法唯一确定的业务指标口语必须返回结构化 `{"outcome": "clarification_required"}`，不猜测或替换成某个已登记指标。例如未明确口径的“利润”应在 Retrieval 前澄清，不得自动改成毛利或毛利率。
+- `CLARIFICATION_REQUIRED` 是受控业务结果，`failure_stage=query_understanding`；返回后不调用 Retrieval、SQL Generator 或数据库。多轮追问出现同类澄清时也不执行查询、不提交新的会话语义状态。
+- 在线 RAG 的 Qdrant、Embedding、资产版本或关系图技术故障统一返回 `CONTEXT_ERROR`，不进入 SQL Generation；业务资源缺失、关系不可达或关系歧义返回 `CANNOT_ANSWER`。实体类、单指标和多指标均遵循同一条 `metrics=0/1/N` 检索流程。
 - 静态事实文件修改后通过重启应用重新加载，当前不支持静态文件热更新；已发布 RAG 资产按 `current.json` 的新版本在后续请求中加载，不要求重启。
 - 发布资产或静态文件不存在、JSON 无法解析或内容完全为空时，不允许继续调用 LLM；无法建立合法上下文时返回 `CONTEXT_ERROR`。
 - 多指标最多支持用户明确请求的 5 个指标；全部请求指标必须覆盖并兼容，否则返回 `CANNOT_ANSWER`。指标依赖不在线展开，公式字段不由程序静默补入。
 
 ## LLM 行为
 
-- 能回答时只返回一条 PostgreSQL SQL，不返回解释、Markdown、分析过程或多个候选。
-- 当前结构和指标无法支持问题时返回 `CANNOT_ANSWER`，不得编造表、字段或指标；业务口径存在多种解释时返回 `CLARIFICATION_REQUIRED`，二者不得互相替代。
+- Query Understanding 对无法唯一确定的业务指标返回 `CLARIFICATION_REQUIRED`；当前结构和指标无法支持问题时返回 `CANNOT_ANSWER`，不得编造表、字段或指标，二者不得互相替代。非法 JSON、非法 Contract 和 Provider 调用失败仍返回 `LLM_ERROR`。
+- SQL Generator 能回答时只返回一条 PostgreSQL SQL；无法基于检索上下文安全回答时返回 `CANNOT_ANSWER`，不返回解释、Markdown、分析过程或多个候选。
 - 不使用 Few-shot、对话历史、自动修复、第二轮反思或多模型投票。
 - Query Understanding 的 Provider 调用异常或超时最多重试一次；非法 JSON、结构化 Contract 错误、`CLARIFICATION_REQUIRED` 和 `CANNOT_ANSWER` 不重试。SQLGenerator 保持不自动重试。
 

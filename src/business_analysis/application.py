@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 from src.online_query.contracts import QueryErrorCode, QueryFailure
-from src.semantic.metric_ambiguity import requires_metric_clarification
 
 if TYPE_CHECKING:
     from src.authorization.contracts import AuthContext
@@ -93,13 +92,6 @@ class BusinessAnalysisApplication:
                 request_id,
                 QueryErrorCode.CONTEXT_ERROR,
                 reason="ANALYSIS_CONTEXT_UNAVAILABLE",
-            )
-
-        if requires_metric_clarification(question):
-            return _failure(
-                request_id,
-                QueryErrorCode.CLARIFICATION_REQUIRED,
-                reason="METRIC_NOT_UNIQUE",
             )
 
         try:

@@ -6,6 +6,7 @@ from src.online_query.contracts import QueryErrorCode
 from src.online_query.query_understanding import (
     FilterCandidate,
     QueryType,
+    QueryUnderstandingClarificationRequired,
     SemanticQueryCandidate,
     SemanticQueryCannotAnswer,
     SemanticQueryStructureError,
@@ -94,6 +95,13 @@ def revise_semantic_query(
             error_code=QueryErrorCode.LLM_ERROR,
             reason=_exception_reason(exc, "REVISION_UNDERSTANDING_FAILED"),
         ) from exc
+
+    if isinstance(candidate, QueryUnderstandingClarificationRequired):
+        raise SemanticRevisionError(
+            "请明确需要查询的业务指标口径",
+            error_code=QueryErrorCode.CLARIFICATION_REQUIRED,
+            reason=candidate.reason,
+        )
 
     if not isinstance(candidate, SemanticQueryCandidate):
         raise SemanticRevisionError(

@@ -70,7 +70,7 @@
 - 真实 5-case 批量 AI Evaluation 已执行并通过：`5/5 PASS`、`INVALID_CASE=0`；Plan Accuracy、Task Execution Accuracy、Report Grounded Accuracy、End-to-End Accuracy 均为 `100%`。该结果只证明当前 Golden Set 通过，不扩大解释为全量准确率或 Production Ready。
 - hosted CI 21-case、人工业务复核和 Summary 自然语言质量的独立 LLM Judge 仍未执行。
 - Real E2E 期间发现并补充了最近月份时间标准化、时间维度别名和 Summary 列表字段 Prompt 的确定性保护及回归测试。
-- 另外补充了日历维度的指标 `time_field` Join 选择、离散年份比较 canonical query、利润口径程序级澄清和 Task 内部失败原因记录。
+- 另外补充了日历维度的指标 `time_field` Join 选择、离散年份比较 canonical query、由 Semantic Catalog 计划校验处理利润口径歧义和 Task 内部失败原因记录。
 
 验证：`uv run --with pytest python -m pytest -q` → 445 passed、6 skipped、123 subtests；真实 5-case Golden Set → 5/5 PASS；`uv run python -m compileall -q src tests` → 通过；`git diff --check` → 通过。
 

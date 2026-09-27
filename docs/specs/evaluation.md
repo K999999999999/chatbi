@@ -63,6 +63,8 @@ order_sensitive（可选，默认 false）
 
 失败轮次必须声明期望错误码；失败后继续执行有效追问，以结果比较确认会话保留在失败前最后一次成功状态。失败轮次若意外成功、返回错误码不符，或影响后续结果，该 Conversation 记为失败。
 
+当前标准多轮集合包含 7 个 Conversation、15 个轮次，覆盖指标 / 时间替换、维度追加 / 替换、Filter 追加 / 替换和失败状态隔离。Filter 案例使用已登记的销售区域及华东、华南值，不依赖企业客户筛选字段。
+
 Query Understanding（查询理解）使用独立的语义评测集
 `src/evaluation/query_understanding_cases.json`。该评测集只验证结构化语义，不执行 Retrieval、SQL Guard 或数据库；其中 `time: null` 表示用户没有提出时间过滤条件，不属于案例缺陷。
 

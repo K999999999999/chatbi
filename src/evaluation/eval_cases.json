@@ -263,8 +263,8 @@
     "id": "F01",
     "schema_name": "mart_sales",
     "category": "medium",
-    "question": "统计销售区域为华东的已完成订单人民币销售额。",
-    "description": "明确按销售区域值筛选已完成订单的人民币销售额。",
+    "question": "统计华东区域已完成订单的人民币销售额。",
+    "description": "按销售区域值筛选已完成订单的人民币销售额。",
     "expected_sql": "SELECT SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_sales_region AS r\n  ON r.sales_region_key = f.sales_region_key\nWHERE f.order_status = 'completed'\n  AND r.sales_region_name = '华东';",
     "coverage": [
       "metric_query",
