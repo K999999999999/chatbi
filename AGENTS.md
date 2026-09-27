@@ -39,6 +39,11 @@ Spec、Ticket 和路径规划使用本地 Markdown，详见 `docs/agents/issue-t
 
 `Ticket Readiness Review` 是当前上下文中的只读门禁，不启动独立 Agent；它检查 Ticket 的 Scope、依赖、验收行为、验证证据、owned files 和 Done When 是否足以安全实施。它不替代 Spec `design-review`、实现后的 `code-review` 或 PR Review。
 
+### Model routing
+
+- 当任务进入实际编码实施阶段，需要修改 Source Code 或 Test Code 时，使用 `gpt-6-luna`，Reasoning Effort 设为 `max`。
+- 只读调查、问题解释、设计讨论、Code Review 和仅修改文档时，不强制使用该模型配置。
+
 ### Domain docs
 
 领域文档的读取位置和边界详见 `docs/agents/domain.md`。
