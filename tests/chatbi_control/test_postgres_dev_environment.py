@@ -44,7 +44,7 @@ class PostgresDevelopmentEnvironmentTest(unittest.TestCase):
             cursor.execute(
                 "SELECT seed_version FROM mart_sales.dev_seed_metadata WHERE singleton"
             )
-            self.assertEqual(cursor.fetchone(), ("chatbi-sales-mart-dev-v1",))
+            self.assertEqual(cursor.fetchone(), ("chatbi-sales-mart-dev-v2",))
 
             cursor.execute(
                 """
@@ -82,7 +82,7 @@ class PostgresDevelopmentEnvironmentTest(unittest.TestCase):
             self.assertGreater(confirmed, 0)
             self.assertGreater(pending, 0)
             self.assertGreater(cancelled, 0)
-            self.assertEqual(currencies, 3)
+            self.assertEqual(currencies, 4)
 
             cursor.execute(
                 """
@@ -113,7 +113,7 @@ class PostgresDevelopmentEnvironmentTest(unittest.TestCase):
                 region_pairs,
             ) = cursor.fetchone()
             self.assertGreater(multi_line_orders, 0)
-            self.assertGreaterEqual(customer_types, 4)
+            self.assertEqual(customer_types, 3)
             self.assertGreaterEqual(product_lines, 4)
             self.assertEqual(sales_regions, 6)
             self.assertGreater(region_pairs, sales_regions)
@@ -194,6 +194,30 @@ class PostgresDevelopmentEnvironmentTest(unittest.TestCase):
                     """
             )
             self.assertGreater(cursor.fetchone()[0], 20)
+
+    def test_sales_mart_descriptions_are_installed_in_postgres_catalog(self) -> None:
+        with (
+            self._connect(
+                "chatbi_mvp",
+                user_variable="POSTGRES_APP_USER",
+                password_variable="POSTGRES_APP_PASSWORD",
+            ) as connection,
+            connection.cursor() as cursor,
+        ):
+            cursor.execute(
+                """
+                    SELECT
+                        count(*) FILTER (WHERE description.objsubid = 0),
+                        count(*) FILTER (WHERE description.objsubid > 0)
+                    FROM pg_catalog.pg_description AS description
+                    JOIN pg_catalog.pg_class AS catalog_relation
+                      ON catalog_relation.oid = description.objoid
+                    JOIN pg_catalog.pg_namespace AS catalog_namespace
+                      ON catalog_namespace.oid = catalog_relation.relnamespace
+                    WHERE catalog_namespace.nspname = 'mart_sales'
+                    """
+            )
+            self.assertEqual(cursor.fetchone(), (7, 69))
 
     def test_sales_mart_account_is_read_only(self) -> None:
         with (

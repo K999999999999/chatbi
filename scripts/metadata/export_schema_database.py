@@ -19,6 +19,8 @@ from .export_schema_models import (
     UniqueIndexMetadata,
 )
 
+INTERNAL_TABLES = frozenset({"dev_seed_metadata"})
+
 
 TABLES_QUERY = """
 SELECT
@@ -176,12 +178,11 @@ def _fetch_tables(cur: Any, schema_name: str) -> tuple[TableMetadata, ...]:
             table_name=str(row["table_name"]),
             table_type=str(row["table_type"]),
             description=(
-                str(row["description"])
-                if row["description"] is not None
-                else None
+                str(row["description"]) if row["description"] is not None else None
             ),
         )
         for row in cur.fetchall()
+        if str(row["table_name"]) not in INTERNAL_TABLES
     )
     actual_tables = {table.table_name for table in tables}
     if actual_tables != EXPECTED_TABLES:
@@ -198,6 +199,8 @@ def _fetch_columns(cur: Any, schema_name: str) -> tuple[ColumnMetadata, ...]:
     cur.execute(COLUMNS_QUERY, (schema_name,))
     columns: list[ColumnMetadata] = []
     for row in cur.fetchall():
+        if str(row["table_name"]) in INTERNAL_TABLES:
+            continue
         identity_kind = str(row["identity_kind"] or "")
         columns.append(
             ColumnMetadata(
@@ -213,9 +216,7 @@ def _fetch_columns(cur: Any, schema_name: str) -> tuple[ColumnMetadata, ...]:
                     else None
                 ),
                 description=(
-                    str(row["description"])
-                    if row["description"] is not None
-                    else None
+                    str(row["description"]) if row["description"] is not None else None
                 ),
                 is_identity=bool(identity_kind),
                 identity_generation={
@@ -240,6 +241,11 @@ def _fetch_constraints(
     unique_constraints: list[ConstraintMetadata] = []
     foreign_keys: list[ForeignKeyMetadata] = []
     for row in cur.fetchall():
+        if (
+            str(row["table_name"]) in INTERNAL_TABLES
+            or str(row["referenced_table"] or "") in INTERNAL_TABLES
+        ):
+            continue
         contype = str(row["contype"])
         if contype in {"p", "u"}:
             constraint = ConstraintMetadata(
@@ -262,9 +268,7 @@ def _fetch_constraints(
             or referenced_table is None
             or referenced_column_names is None
         ):
-            raise MetadataExportError(
-                f"外键约束缺少引用目标：{row['constraint_name']}"
-            )
+            raise MetadataExportError(f"外键约束缺少引用目标：{row['constraint_name']}")
         foreign_keys.append(
             ForeignKeyMetadata(
                 schema_name=str(row["schema_name"]),
@@ -295,11 +299,10 @@ def _fetch_unique_indexes(
             table_name=str(row["table_name"]),
             index_name=str(row["index_name"]),
             column_names=_as_tuple(row["column_names"]),
-            predicate=(
-                str(row["predicate"]) if row["predicate"] is not None else None
-            ),
+            predicate=(str(row["predicate"]) if row["predicate"] is not None else None),
         )
         for row in cur.fetchall()
+        if str(row["table_name"]) not in INTERNAL_TABLES
     ]
     return tuple(sorted(indexes, key=_unique_index_sort_key))
 

@@ -1,5 +1,5 @@
 -- Synthetic development data for chatbi_mvp only.
--- Seed version: chatbi-sales-mart-dev-v1
+-- Seed version: chatbi-sales-mart-dev-v2
 -- Reapplying this version is idempotent. A new version requires a PostgreSQL reset.
 
 CREATE TABLE IF NOT EXISTS mart_sales.dev_seed_metadata (
@@ -18,7 +18,7 @@ BEGIN
     WHERE singleton;
 
     IF current_version IS NOT NULL
-       AND current_version <> 'chatbi-sales-mart-dev-v1' THEN
+       AND current_version <> 'chatbi-sales-mart-dev-v2' THEN
         RAISE EXCEPTION
             'Development seed version differs; reset the local PostgreSQL volume before rebuilding';
     END IF;
@@ -68,14 +68,14 @@ INSERT INTO mart_sales.dim_customer (
     loaded_at
 )
 VALUES
-    (1001, 1001, 'Northstar Components', 'enterprise', 'manufacturing', 'China', 'East', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v1', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
-    (1002, 1002, 'Harbor Retail Group', 'enterprise', 'retail', 'China', 'South', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v1', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
-    (1003, 1003, 'Pinecone Workshop', 'smb', 'manufacturing', 'China', 'North', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v1', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
-    (1004, 1004, 'Riverbend Labs', 'enterprise', 'technology', 'China', 'West', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v1', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
-    (1005, 1005, 'Cedar Public Works', 'public', 'public services', 'China', 'East', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v1', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
-    (1006, 1006, 'Summit Data Systems', 'smb', 'technology', 'China', 'Central', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v1', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
-    (1007, 1007, 'Meadow Supply Co', 'channel', 'distribution', 'China', 'South', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v1', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
-    (1008, 1008, 'Lighthouse Energy', 'enterprise', 'energy', 'China', 'Northwest', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v1', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00')
+    (1001, 1001, 'Northstar Components', 'Enterprise', 'manufacturing', 'China', '东北', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v2', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
+    (1002, 1002, 'Harbor Retail Group', 'Enterprise', 'retail', 'China', '华东', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v2', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
+    (1003, 1003, 'Pinecone Workshop', 'SMB', 'manufacturing', 'China', '华中', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v2', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
+    (1004, 1004, 'Riverbend Labs', 'Enterprise', 'technology', 'China', '华北', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v2', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
+    (1005, 1005, 'Cedar Public Works', 'Distributor', 'public services', 'China', '华南', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v2', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
+    (1006, 1006, 'Summit Data Systems', 'SMB', 'technology', 'China', '西北', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v2', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
+    (1007, 1007, 'Meadow Supply Co', 'Distributor', 'distribution', 'China', '西南', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v2', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
+    (1008, 1008, 'Lighthouse Energy', 'Enterprise', 'energy', 'China', '华东', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v2', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00')
 ON CONFLICT ON CONSTRAINT uq_dim_customer_business_version DO UPDATE
 SET customer_key = EXCLUDED.customer_key,
     customer_name = EXCLUDED.customer_name,
@@ -104,14 +104,14 @@ INSERT INTO mart_sales.dim_product (
     loaded_at
 )
 VALUES
-    (2001, 2001, 'Aster Controller', 'automation', 'controller', 'edge-control', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v1', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
-    (2002, 2002, 'Birch Sensor', 'automation', 'sensor', 'precision-sensing', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v1', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
-    (2003, 2003, 'Cobalt Gateway', 'connectivity', 'gateway', 'industrial-network', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v1', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
-    (2004, 2004, 'Dawn Analytics Kit', 'software', 'analytics', 'stream-processing', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v1', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
-    (2005, 2005, 'Elm Drive Unit', 'automation', 'drive', 'motion-control', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v1', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
-    (2006, 2006, 'Fern Cloud Node', 'software', 'cloud', 'distributed-compute', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v1', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
-    (2007, 2007, 'Grove Power Module', 'energy', 'power', 'power-conversion', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v1', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
-    (2008, 2008, 'Harbor Vision Unit', 'connectivity', 'vision', 'computer-vision', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v1', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00')
+    (2001, 2001, 'Aster Controller', '储能系统', '储能型', '磷酸铁锂', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v2', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
+    (2002, 2002, 'Birch Sensor', '动力电池', '高能量密度', '三元锂', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v2', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
+    (2003, 2003, 'Cobalt Gateway', '工业电源', '工业型', '固态电池', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v2', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
+    (2004, 2004, 'Dawn Analytics Kit', '智能制造', '智能设备', '高端芯片', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v2', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
+    (2005, 2005, 'Elm Drive Unit', '储能系统', '快充型', '钠离子', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v2', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
+    (2006, 2006, 'Fern Cloud Node', '动力电池', '储能型', '固态电池', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v2', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
+    (2007, 2007, 'Grove Power Module', '工业电源', '工业型', '磷酸铁锂', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v2', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00'),
+    (2008, 2008, 'Harbor Vision Unit', '智能制造', '高能量密度', '三元锂', '2023-01-01 00:00:00+00', NULL, TRUE, 'chatbi_dev_seed_v2', '2025-12-31 00:00:00+00', '2025-12-31 00:00:00+00')
 ON CONFLICT ON CONSTRAINT uq_dim_product_business_version DO UPDATE
 SET product_key = EXCLUDED.product_key,
     product_name = EXCLUDED.product_name,
@@ -130,12 +130,12 @@ INSERT INTO mart_sales.dim_sales_region (
     sales_region_name
 )
 VALUES
-    (3001, 'DEV-EAST', 'East'),
-    (3002, 'DEV-SOUTH', 'South'),
-    (3003, 'DEV-NORTH', 'North'),
-    (3004, 'DEV-WEST', 'West'),
-    (3005, 'DEV-CENTRAL', 'Central'),
-    (3006, 'DEV-NORTHWEST', 'Northwest')
+    (3001, 'CENTRAL', '华中'),
+    (3002, 'EAST', '华东'),
+    (3003, 'NORTH', '华北'),
+    (3004, 'NORTHWEST', '西北'),
+    (3005, 'SOUTH', '华南'),
+    (3006, 'SOUTHWEST', '西南')
 ON CONFLICT ON CONSTRAINT uq_dim_sales_region_code DO UPDATE
 SET sales_region_key = EXCLUDED.sales_region_key,
     sales_region_name = EXCLUDED.sales_region_name;
@@ -147,9 +147,10 @@ INSERT INTO mart_sales.dim_currency (
     is_analysis_currency
 )
 VALUES
-    (4001, 'CNY', 'Chinese Yuan', TRUE),
-    (4002, 'USD', 'US Dollar', FALSE),
-    (4003, 'EUR', 'Euro', FALSE)
+    (4001, 'CNY', '人民币', TRUE),
+    (4002, 'USD', '美元', FALSE),
+    (4003, 'EUR', '欧元', FALSE),
+    (4004, 'JPY', '日元', FALSE)
 ON CONFLICT ON CONSTRAINT uq_dim_currency_code DO UPDATE
 SET currency_key = EXCLUDED.currency_key,
     currency_name = EXCLUDED.currency_name,
@@ -170,13 +171,14 @@ SELECT
         WHEN 'CNY' THEN 1.0::NUMERIC(20, 8)
         WHEN 'USD' THEN (7.00 + (date_row.date_key % 20) / 100.0)::NUMERIC(20, 8)
         WHEN 'EUR' THEN (7.30 + (date_row.date_key % 20) / 100.0)::NUMERIC(20, 8)
+        WHEN 'JPY' THEN (0.05 + (date_row.date_key % 20) / 1000.0)::NUMERIC(20, 8)
     END,
-    'chatbi_dev_seed_v1',
+    'chatbi_dev_seed_v2',
     TIMESTAMPTZ '2025-12-31 00:00:00+00',
     TIMESTAMPTZ '2025-12-31 00:00:00+00'
 FROM mart_sales.dim_date AS date_row
 CROSS JOIN mart_sales.dim_currency AS currency
-WHERE currency.currency_code IN ('CNY', 'USD', 'EUR')
+WHERE currency.currency_code IN ('CNY', 'USD', 'EUR', 'JPY')
 ON CONFLICT ON CONSTRAINT pk_fct_exchange_rate_daily DO UPDATE
 SET rate_to_cny = EXCLUDED.rate_to_cny,
     source_system = EXCLUDED.source_system,
@@ -214,7 +216,7 @@ order_lines AS (
         1001 + ((orders.order_number * 7) % 8) AS customer_key,
         2001 + ((orders.order_number * 3 + line_number * 5) % 8) AS product_key,
         3001 + ((orders.order_number * 5) % 6) AS sales_region_key,
-        4001 + ((orders.order_number * 2 + line_number) % 3) AS currency_key,
+        4001 + ((orders.order_number * 2 + line_number) % 4) AS currency_key,
         (1 + ((orders.order_number + line_number * 3) % 5))::NUMERIC(20, 6)
             AS quantity,
         (50 + ((orders.order_number * 37 + line_number * 113) % 951))::NUMERIC(20, 6)
@@ -321,7 +323,7 @@ SELECT
             THEN net_sales_amount_transaction * rate_to_cny * cost_rate
         ELSE NULL
     END,
-    'chatbi_dev_seed_v1',
+    'chatbi_dev_seed_v2',
     TIMESTAMPTZ '2025-12-31 00:00:00+00',
     TIMESTAMPTZ '2025-12-31 00:00:00+00'
 FROM converted
@@ -378,7 +380,7 @@ SELECT setval(
 );
 
 INSERT INTO mart_sales.dev_seed_metadata (singleton, seed_version, seeded_at)
-VALUES (TRUE, 'chatbi-sales-mart-dev-v1', TIMESTAMPTZ '2025-12-31 00:00:00+00')
+VALUES (TRUE, 'chatbi-sales-mart-dev-v2', TIMESTAMPTZ '2025-12-31 00:00:00+00')
 ON CONFLICT (singleton) DO UPDATE
 SET seed_version = EXCLUDED.seed_version,
     seeded_at = EXCLUDED.seeded_at;
