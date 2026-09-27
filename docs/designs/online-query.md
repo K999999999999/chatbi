@@ -11,7 +11,8 @@ Online Query（在线查询）使用一个扁平模块完成，不增加 `ports/
 ```text
 QueryRequest
   -> 校验 question 并生成 request_id
-  -> 读取已缓存的结构和指标上下文
+  -> 确定性识别已知且口径不唯一的业务表达，返回澄清结果
+  -> Online 模式执行 Query Understanding 和 Retrieval，静态测试模式使用已缓存上下文
   -> 组装 Prompt
   -> LangChain 调用 LLM 生成 SQL
   -> SQLGlot 解析并校验 SQL
@@ -21,6 +22,7 @@ QueryRequest
 
 - 上下文在 Service（服务）创建时读取一次，保存成功结果或加载失败状态。
 - 上下文失败时，查询直接返回 `CONTEXT_ERROR`，不得调用 LLM。
+- 未限定的“利润”等已知歧义在 Query Understanding Provider 和 Retrieval 前返回 `CLARIFICATION_REQUIRED`；该规则与未找到可用 Metric 资产时的 `CANNOT_ANSWER` 区分。
 - LLM 返回精确的 `CANNOT_ANSWER` 时，直接返回同名错误。
 - SQL 未通过校验时，直接返回 `SQL_REJECTED`，不得访问数据库。
 - Query Understanding 的 Provider 调用异常或超时最多重试一次；不重试响应解析、Contract 校验、SQL 生成或 SQL 修复，也不生成第二次自然语言总结。
@@ -37,7 +39,7 @@ QueryRequest
 | `llm.py` | 使用 LangChain `ChatOpenAI` 调用模型，只返回 SQL 文本或 `CANNOT_ANSWER` |
 | `sql_guard/sql_guard.py` | 使用 SQLGlot 对 PostgreSQL SQL 做确定性安全校验；AST 作用域辅助位于同目录 `sql_guard_scope.py`，`sql_guard/__init__.py` 保留公共入口 |
 | `database.py` | 使用 psycopg 进行只读查询、超时控制和结果截断 |
-| `service.py` | 保留 Query Understanding、请求校验、Retrieval、Prompt、LLM、SQL Guard、Database 主链路并统一转换错误 |
+| `service.py` | 保留请求校验、已知歧义预检、Query Understanding、Retrieval、Prompt、LLM、SQL Guard、Database 主链路并统一转换错误 |
 | `retrieval/` | Online Retrieval 的运行时、资源检索、关系解析、上下文组装和请求规划 |
 | `sql_guard/` | SQL Guard 核心、Join 校验、多指标校验和异常类型 |
 | `__init__.py` | 只导出公共请求和结果 Contract；OnlineQueryService 由组合根按内部下游使用 |

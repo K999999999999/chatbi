@@ -480,7 +480,7 @@ class StreamlitQueryClientTest(TestCase):
             (
                 422,
                 "CLARIFICATION_REQUIRED",
-                "请明确需要新增或修改的查询条件",
+                "请明确指标口径或查询条件",
             ),
             (
                 422,

@@ -26,7 +26,7 @@ _AUTHORIZATION_ERROR_CODES_BY_STATUS = {
 _AUTHENTICATION_FAILED_MESSAGE = "用户名或密码错误"
 _CONVERSATION_ERROR_MESSAGES = {
     "CONVERSATION_UNAVAILABLE": "当前会话已失效，请点击“新建会话”后重新开始",
-    "CLARIFICATION_REQUIRED": "请明确需要新增或修改的查询条件",
+    "CLARIFICATION_REQUIRED": "请明确指标口径或查询条件",
     "UNSUPPORTED_ANALYSIS": "当前问题超出单条查询修订范围",
     "CONVERSATION_CONFLICT": "当前会话已有进行中的查询，请稍后重试",
 }

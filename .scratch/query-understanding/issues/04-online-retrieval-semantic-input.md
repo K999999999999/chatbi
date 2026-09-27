@@ -27,7 +27,7 @@ Ticket 03：OnlineQueryService 主链路接入 Query Understanding
 - COLUMN 检索消费维度和过滤字段语义，并限制在候选表范围内；
 - 主表和 Join 继续由程序结合 Relationship Graph 确定；
 - 不再使用正则重新判断指标意图、指标数量或分组文本；
-- 找不到或歧义的 Metric、Column、主表或 Join 返回 `CANNOT_ANSWER`；
+- 检索资源缺失或 Metric、Column、主表、Join 的资产映射歧义返回 `CANNOT_ANSWER`；已知用户业务表达本身口径不唯一时，由 Query Understanding 上游请求澄清，不进入 Retrieval；
 - Retrieval 技术故障仍返回 `CONTEXT_ERROR`；
 - Online Retrieval V1 的资产版本、Top-K、阈值和 fail-closed 边界不被削弱；
 - 不扩大静态 Schema fallback，也不引入新的候选选择 LLM。

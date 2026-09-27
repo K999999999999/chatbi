@@ -11,6 +11,7 @@ from ..observability.contracts import (
     TraceRecorder,
 )
 from ..observability.tracing import create_trace_recorder
+from ..semantic.metric_ambiguity import requires_metric_clarification
 from .context import load_query_context
 from .contracts import (
     FallbackPolicy,
@@ -26,7 +27,6 @@ from .contracts import (
     RetrievalStatus,
     SQLGenerator,
 )
-from .service_execution import _execute_query
 from .query_trace import (
     enrich_failure_span as _enrich_failure_span,
 )
@@ -46,6 +46,7 @@ from .query_understanding import (
     validate_candidate,
 )
 from .query_understanding_llm import QueryUnderstandingAdapter
+from .service_execution import _execute_query
 from .sql_guard import _new_validation_session
 
 _ERROR_MESSAGES = {
@@ -53,6 +54,7 @@ _ERROR_MESSAGES = {
     QueryErrorCode.CONTEXT_ERROR: "查询上下文无法加载",
     QueryErrorCode.LLM_ERROR: "LLM 生成 SQL 失败",
     QueryErrorCode.CANNOT_ANSWER: "当前结构和指标无法回答该问题",
+    QueryErrorCode.CLARIFICATION_REQUIRED: "请明确利润口径，例如毛利或毛利率",
     QueryErrorCode.SQL_REJECTED: "生成的 SQL 未通过安全校验",
     QueryErrorCode.DATABASE_ERROR: "数据库连接或执行失败",
     QueryErrorCode.QUERY_TIMEOUT: "数据库查询超时",
@@ -75,6 +77,7 @@ _FAILURE_STAGES = {
     QueryErrorCode.CONTEXT_ERROR: "retrieval",
     QueryErrorCode.LLM_ERROR: "sql_generation",
     QueryErrorCode.CANNOT_ANSWER: "retrieval",
+    QueryErrorCode.CLARIFICATION_REQUIRED: "query_understanding",
     QueryErrorCode.SQL_REJECTED: "sql_guard",
     QueryErrorCode.DATABASE_ERROR: "database",
     QueryErrorCode.QUERY_TIMEOUT: "database",
@@ -329,12 +332,32 @@ class OnlineQueryService:
         question: str,
         request_id: str,
     ) -> tuple[ValidatedSemanticQuery | None, QueryFailure | None]:
-        """在线模式下先完成 Query Understanding，再允许进入 Retrieval。"""
+        """先识别已知语义歧义，再在在线模式进入 Query Understanding。"""
 
-        if self._retrieval_provider is None:
+        clarification_required = requires_metric_clarification(question)
+        if self._retrieval_provider is None and not clarification_required:
             return None, None
 
         with _safe_trace_scope(self._trace_recorder, name="query.understanding"):
+            if clarification_required:
+                result = _failure(
+                    request_id,
+                    QueryErrorCode.CLARIFICATION_REQUIRED,
+                    message="利润口径不明确，请明确需要查询毛利、毛利率或其他口径。",
+                    stage="query_understanding",
+                    internal_reason="METRIC_NOT_UNIQUE",
+                )
+                _safe_enrich(
+                    self._trace_recorder,
+                    attributes={
+                        "chatbi.query_understanding.reason": "METRIC_NOT_UNIQUE",
+                    },
+                    outcome=TraceOutcome.BUSINESS_REJECTION,
+                    error_type=ErrorType.VALIDATION,
+                    error_code=result.error_code.value,
+                )
+                return None, result
+
             if self._query_understanding is None:
                 result = _failure(
                     request_id,

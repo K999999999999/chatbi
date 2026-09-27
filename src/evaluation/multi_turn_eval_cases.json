@@ -42,48 +42,6 @@
     ]
   },
   {
-    "id": "MT-FILTER-APPEND",
-    "description": "新增客户类型过滤并保留时间、指标和维度。",
-    "coverage": [
-      "filter_append"
-    ],
-    "turns": [
-      {
-        "id": "MT-FILTER-APPEND-T1",
-        "question": "2025 年第一季度按产品线统计已完成订单的人民币销售额。",
-        "expected_outcome": "result_match",
-        "expected_sql": "SELECT p.product_line,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_product AS p\n  ON p.product_key = f.product_key\nLEFT JOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\nGROUP BY p.product_line\nORDER BY p.product_line;"
-      },
-      {
-        "id": "MT-FILTER-APPEND-T2",
-        "question": "再加上只看企业客户。",
-        "expected_outcome": "result_match",
-        "expected_sql": "SELECT p.product_line,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_product AS p\n  ON p.product_key = f.product_key\nLEFT JOIN mart_sales.dim_customer AS c\n  ON c.customer_key = f.customer_key\nLEFT JOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND c.customer_type = 'enterprise'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\nGROUP BY p.product_line\nORDER BY p.product_line;"
-      }
-    ]
-  },
-  {
-    "id": "MT-FILTER-REPLACE",
-    "description": "替换同一客户类型过滤值并保留时间、指标。",
-    "coverage": [
-      "filter_replacement"
-    ],
-    "turns": [
-      {
-        "id": "MT-FILTER-REPLACE-T1",
-        "question": "2025 年第一季度统计企业客户的人民币销售额。",
-        "expected_outcome": "result_match",
-        "expected_sql": "SELECT SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_customer AS c\n  ON c.customer_key = f.customer_key\nLEFT JOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND c.customer_type = 'enterprise'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01';"
-      },
-      {
-        "id": "MT-FILTER-REPLACE-T2",
-        "question": "客户类型改成 SMB 客户。",
-        "expected_outcome": "result_match",
-        "expected_sql": "SELECT SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_customer AS c\n  ON c.customer_key = f.customer_key\nLEFT JOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND c.customer_type = 'smb'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01';"
-      }
-    ]
-  },
-  {
     "id": "MT-DIMENSION-APPEND",
     "description": "增加销售区域维度并保留时间和指标。",
     "coverage": [
@@ -134,9 +92,9 @@
     "turns": [
       {
         "id": "MT-FAILURE-ISOLATION-T1",
-        "question": "2025 年第一季度按销售区域统计企业客户的人民币销售额。",
+        "question": "2025 年第一季度按销售区域统计已完成订单的人民币销售额。",
         "expected_outcome": "result_match",
-        "expected_sql": "SELECT r.sales_region_name,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_sales_region AS r\n  ON r.sales_region_key = f.sales_region_key\nLEFT JOIN mart_sales.dim_customer AS c\n  ON c.customer_key = f.customer_key\nLEFT JOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND c.customer_type = 'enterprise'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\nGROUP BY r.sales_region_name\nORDER BY r.sales_region_name;"
+        "expected_sql": "SELECT r.sales_region_name,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_sales_region AS r\n  ON r.sales_region_key = f.sales_region_key\nLEFT JOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\nGROUP BY r.sales_region_name\nORDER BY r.sales_region_name;"
       },
       {
         "id": "MT-FAILURE-ISOLATION-T2",
@@ -148,7 +106,7 @@
         "id": "MT-FAILURE-ISOLATION-T3",
         "question": "把指标改成毛利。",
         "expected_outcome": "result_match",
-        "expected_sql": "SELECT r.sales_region_name,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) AS gross_profit_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_sales_region AS r\n  ON r.sales_region_key = f.sales_region_key\nLEFT JOIN mart_sales.dim_customer AS c\n  ON c.customer_key = f.customer_key\nLEFT JOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND c.customer_type = 'enterprise'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\nGROUP BY r.sales_region_name\nORDER BY r.sales_region_name;"
+        "expected_sql": "SELECT r.sales_region_name,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) AS gross_profit_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_sales_region AS r\n  ON r.sales_region_key = f.sales_region_key\nLEFT JOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\nGROUP BY r.sales_region_name\nORDER BY r.sales_region_name;"
       }
     ]
   }

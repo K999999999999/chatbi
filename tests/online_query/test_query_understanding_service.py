@@ -1,8 +1,10 @@
 """OnlineQueryService（在线查询服务）接入 Query Understanding 的测试。"""
 
-from unittest.mock import Mock
 import unittest
+from unittest.mock import Mock
 
+from src.observability.contracts import TraceOutcome
+from src.observability.tracing import create_in_memory_recorder
 from src.online_query.contracts import (
     OnlineRetrievalResult,
     QueryContext,
@@ -12,8 +14,8 @@ from src.online_query.contracts import (
     QueryRequest,
     QuerySuccess,
     RequestShape,
-    RetrievalStatus,
     RetrievalRequest,
+    RetrievalStatus,
 )
 from src.online_query.llm import LLMError
 from src.online_query.query_understanding import (
@@ -22,8 +24,6 @@ from src.online_query.query_understanding import (
     candidate_from_payload,
     validate_candidate,
 )
-from src.observability.contracts import TraceOutcome
-from src.observability.tracing import create_in_memory_recorder
 from src.online_query.service import OnlineQueryService
 
 
@@ -159,6 +159,49 @@ class QueryUnderstandingServiceTest(unittest.TestCase):
         self.assertEqual(result.failure_stage, "query_understanding")
         self.assertEqual(result.internal_reason, "QUERY_TYPE_UNKNOWN")
         provider.retrieve.assert_not_called()
+        self.generator.generate.assert_not_called()
+        self.executor.execute.assert_not_called()
+
+    def test_ambiguous_profit_is_clarified_before_query_execution(self) -> None:
+        provider = Mock()
+        provider.retrieve.return_value = OnlineRetrievalResult(
+            status=RetrievalStatus.SUCCESS,
+            query_context=self.context,
+        )
+        service = self._service(provider)
+
+        result = service.execute(QueryRequest(question="帮我查一下利润。"))
+
+        self._assert_failure(result, QueryErrorCode.CLARIFICATION_REQUIRED)
+        assert isinstance(result, QueryFailure)
+        self.assertEqual(result.failure_stage, "query_understanding")
+        self.assertEqual(result.internal_reason, "METRIC_NOT_UNIQUE")
+        self.assertIn("利润口径不明确", result.error_message)
+        self.adapter.understand.assert_not_called()
+        provider.retrieve.assert_not_called()
+        self.generator.generate.assert_not_called()
+        self.executor.execute.assert_not_called()
+
+    def test_unsupported_non_profit_metric_remains_cannot_answer(self) -> None:
+        provider = Mock()
+        provider.retrieve.return_value = OnlineRetrievalResult(
+            status=RetrievalStatus.NO_METRIC_HIT,
+            internal_reason="NO_METRIC_HIT",
+        )
+        self.adapter.understand.return_value = _candidate(
+            query_type="metric_analysis",
+            subjects=("公司",),
+            metrics=("员工人数",),
+        )
+        service = self._service(provider)
+
+        result = service.execute(QueryRequest(question="公司现在有多少名员工？"))
+
+        self._assert_failure(result, QueryErrorCode.CANNOT_ANSWER)
+        assert isinstance(result, QueryFailure)
+        self.assertEqual(result.internal_reason, "NO_METRIC_HIT")
+        self.adapter.understand.assert_called_once()
+        provider.retrieve.assert_called_once()
         self.generator.generate.assert_not_called()
         self.executor.execute.assert_not_called()
 

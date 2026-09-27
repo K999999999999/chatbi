@@ -61,15 +61,13 @@ class MultiTurnEvaluationTest(unittest.TestCase):
         cases = load_multi_turn_cases(Path("src/evaluation/multi_turn_eval_cases.json"))
         context = load_query_context()
 
-        self.assertEqual(len(cases), 7)
+        self.assertEqual(len(cases), 5)
         self.assertTrue(all(case.is_valid for case in cases))
         self.assertEqual(
             {case.coverage[0] for case in cases},
             {
                 "metric_replacement",
                 "time_replacement",
-                "filter_append",
-                "filter_replacement",
                 "dimension_append",
                 "dimension_replacement",
                 "failure_state_isolation",

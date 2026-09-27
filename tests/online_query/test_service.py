@@ -82,6 +82,15 @@ class ServiceTest(unittest.TestCase):
         self.generator.generate.assert_not_called()
         self.executor.execute.assert_not_called()
 
+    def test_ambiguous_profit_is_clarified_in_static_context_mode(self) -> None:
+        result = self._service().execute(
+            QueryRequest(question="帮我查一下利润。", request_id="req-profit")
+        )
+
+        self._assert_failure(result, QueryErrorCode.CLARIFICATION_REQUIRED)
+        self.generator.generate.assert_not_called()
+        self.executor.execute.assert_not_called()
+
     def test_context_failure_stops_before_llm(self) -> None:
         loader = Mock(side_effect=ContextLoadError("file detail"))
         service = OnlineQueryService(
