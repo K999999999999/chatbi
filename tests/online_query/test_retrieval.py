@@ -75,11 +75,7 @@ class _FakeStore:
         if isinstance(table_name, (list, tuple)):
             return tuple(
                 sorted(
-                    (
-                        hit
-                        for name in table_name
-                        for hit in self.columns.get(name, ())
-                    ),
+                    (hit for name in table_name for hit in self.columns.get(name, ())),
                     key=lambda hit: (-hit.score, hit.document_id),
                 )[:limit]
             )
@@ -159,9 +155,7 @@ class _RequiredColumnRecoveryStore(_FakeStore):
             table_name = filter_payload["table_name"]
             if isinstance(table_name, (list, tuple)):
                 hits = tuple(
-                    hit
-                    for name in table_name
-                    for hit in self.columns.get(name, ())
+                    hit for name in table_name for hit in self.columns.get(name, ())
                 )
             else:
                 hits = tuple(self.columns.get(table_name, ()))
@@ -469,7 +463,9 @@ def _multi_graph(*, reverse_customer=False, include_unique_keys=True):
 
 
 class RetrievalTest(unittest.TestCase):
-    def test_metric_having_filter_does_not_add_a_dimension_table_candidate(self) -> None:
+    def test_metric_having_filter_does_not_add_a_dimension_table_candidate(
+        self,
+    ) -> None:
         semantic_query = _request(
             "只保留人民币销售额超过 50000 元的产品线",
             subjects=("订单",),
@@ -487,7 +483,9 @@ class RetrievalTest(unittest.TestCase):
 
         self.assertNotIn("人民币销售额", fields)
 
-    def test_column_search_uses_one_global_filter_for_all_table_candidates(self) -> None:
+    def test_column_search_uses_one_global_filter_for_all_table_candidates(
+        self,
+    ) -> None:
         fact = _table("table:fct", "fct_sales_order_line", 0.95)
         region = _table(
             "table:region",

@@ -37,9 +37,7 @@ def _metric_data_source(metric: MetricHit) -> str:
 
 def _column_query(query: ValidatedSemanticQuery, metric: MetricHit | None) -> str:
     filter_terms = tuple(
-        term
-        for item in query.filters
-        for term in (item.field_text, *item.values)
+        term for item in query.filters for term in (item.field_text, *item.values)
     )
     base_query = _semantic_query_text(
         (
