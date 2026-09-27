@@ -17,6 +17,8 @@ from src.online_query.query_understanding import (
     validate_candidate,
 )
 from src.online_query.retrieval import OnlineRetriever
+from src.online_query.retrieval.retrieval_resource_stage import _filter_table_fields
+from src.online_query.retrieval.resource_retrieval import _to_metric_hit
 from src.online_query.retrieval.rag_runtime import (
     AssetSnapshot,
     RetrievalUnavailableError,
@@ -58,10 +60,10 @@ class _FakeStore:
         self.tables = tables
         self.columns = columns
         self.metrics = metrics
-        self.column_filters: list[dict[str, str]] = []
+        self.column_filters: list[dict[str, object]] = []
 
     def search(self, collection_name, query, *, limit=5, filter_payload=None):
-        del query, limit
+        del query
         if filter_payload is None:
             if collection_name == "table":
                 return tuple(self.tables)
@@ -70,6 +72,17 @@ class _FakeStore:
             return ()
         self.column_filters.append(dict(filter_payload))
         table_name = filter_payload["table_name"]
+        if isinstance(table_name, (list, tuple)):
+            return tuple(
+                sorted(
+                    (
+                        hit
+                        for name in table_name
+                        for hit in self.columns.get(name, ())
+                    ),
+                    key=lambda hit: (-hit.score, hit.document_id),
+                )[:limit]
+            )
         return tuple(self.columns.get(table_name, ()))
 
 
@@ -144,7 +157,15 @@ class _RequiredColumnRecoveryStore(_FakeStore):
             )
         if filter_payload is not None and collection_name == "column":
             table_name = filter_payload["table_name"]
-            return tuple(self.columns.get(table_name, ()))[:1]
+            if isinstance(table_name, (list, tuple)):
+                hits = tuple(
+                    hit
+                    for name in table_name
+                    for hit in self.columns.get(name, ())
+                )
+            else:
+                hits = tuple(self.columns.get(table_name, ()))
+            return hits[:limit]
         return super().search(
             collection_name,
             query,
@@ -448,6 +469,75 @@ def _multi_graph(*, reverse_customer=False, include_unique_keys=True):
 
 
 class RetrievalTest(unittest.TestCase):
+    def test_metric_having_filter_does_not_add_a_dimension_table_candidate(self) -> None:
+        semantic_query = _request(
+            "只保留人民币销售额超过 50000 元的产品线",
+            subjects=("订单",),
+            metrics=("人民币销售额",),
+            dimensions=("产品线",),
+            filters=("人民币销售额",),
+        ).semantic_query
+        assert semantic_query is not None
+        metric = _to_metric_hit(
+            _metric("人民币净销售额", 0.95, aliases=("人民币销售额",)),
+            1,
+        )
+
+        fields = _filter_table_fields(semantic_query, (metric,))
+
+        self.assertNotIn("人民币销售额", fields)
+
+    def test_column_search_uses_one_global_filter_for_all_table_candidates(self) -> None:
+        fact = _table("table:fct", "fct_sales_order_line", 0.95)
+        region = _table(
+            "table:region",
+            "dim_sales_region",
+            0.90,
+            page_content="销售区域编码和名称数据",
+        )
+        store = _FakeStore(
+            (fact, region),
+            {
+                "fct_sales_order_line": (
+                    _column("fct_sales_order_line", "sales_region_key", 0.90),
+                ),
+                "dim_sales_region": (
+                    _column("dim_sales_region", "sales_region_name", 0.89),
+                    _column("dim_sales_region", "sales_region_key", 0.88),
+                ),
+            },
+            (),
+        )
+
+        result = OnlineRetriever(
+            _FakeRuntime(_snapshot(store, _FakeEmbedding(), _sales_graph()))
+        ).retrieve(
+            _request(
+                "统计华东区域的销售额",
+                subjects=("销售",),
+                dimensions=("销售区域",),
+            )
+        )
+
+        self.assertEqual(result.status, RetrievalStatus.SUCCESS)
+        self.assertEqual(len(store.column_filters), 1)
+        self.assertEqual(
+            store.column_filters[0],
+            {
+                "schema_name": "mart_sales",
+                "table_name": ("fct_sales_order_line", "dim_sales_region"),
+            },
+        )
+        assert result.query_context is not None
+        self.assertIn(
+            "sales_region_name",
+            result.query_context.allowed_columns["mart_sales.dim_sales_region"],
+        )
+        self.assertEqual(
+            [edge.edge_id for edge in result.join_path.joins],
+            ["fk_region"],
+        )
+
     def test_time_and_grouping_query_keep_required_date_table_in_top_k(self) -> None:
         fact = _table("table:fct", "fct_sales_order_line", 0.95)
         region = _table(
@@ -850,7 +940,7 @@ class RetrievalTest(unittest.TestCase):
         self.assertEqual(result.status, RetrievalStatus.NO_METRIC_HIT)
         self.assertIsNone(result.query_context)
 
-    def test_column_candidates_recover_explicit_grouping_field(self) -> None:
+    def test_global_column_candidates_include_explicit_grouping_field(self) -> None:
         tables = (
             _table("table:fct", "fct_sales_order_line", 0.95),
             _table(
@@ -902,7 +992,7 @@ class RetrievalTest(unittest.TestCase):
                     },
                 )
             ),
-            config=RetrievalConfig(column_top_k=2),
+            config=RetrievalConfig(column_top_k=8),
         ).retrieve(
             _request(
                 "按销售区域查询",
@@ -912,6 +1002,7 @@ class RetrievalTest(unittest.TestCase):
         )
 
         self.assertEqual(result.status, RetrievalStatus.SUCCESS)
+        self.assertEqual(len(store.column_filters), 1)
         assert result.query_context is not None
         self.assertIn(
             "sales_region_name",

@@ -1,8 +1,10 @@
 """Qdrant Asset Store（Qdrant 资产适配器）只读行为测试。"""
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 import unittest
 
+from src.rag_offline.embedding import EmbeddedText, SparseEmbedding
 from src.rag_offline.qdrant_store import QdrantAssetStore, QdrantStoreError
 
 
@@ -22,6 +24,49 @@ class _Client:
 
 
 class QdrantAssetStoreTest(unittest.TestCase):
+    def test_search_supports_any_of_values_in_payload_filter(self) -> None:
+        class _Condition:
+            def __init__(self, **kwargs):
+                self.__dict__.update(kwargs)
+
+        class _QueryClient:
+            def __init__(self) -> None:
+                self.kwargs = None
+
+            def query_points(self, **kwargs):
+                self.kwargs = kwargs
+                return SimpleNamespace(points=())
+
+        client = _QueryClient()
+        store = QdrantAssetStore(client)
+        store._load_models = lambda: SimpleNamespace(
+            FieldCondition=_Condition,
+            MatchValue=_Condition,
+            MatchAny=_Condition,
+            Filter=_Condition,
+        )
+
+        store.search(
+            "column-build",
+            EmbeddedText(
+                dense=(1.0, 0.0),
+                sparse=SparseEmbedding(indices=(1,), values=(1.0,)),
+            ),
+            limit=20,
+            filter_payload={
+                "schema_name": "mart_sales",
+                "table_name": ("fct_sales_order_line", "dim_sales_region"),
+            },
+        )
+
+        assert client.kwargs is not None
+        conditions = client.kwargs["query_filter"].must
+        self.assertEqual(conditions[0].match.value, "mart_sales")
+        self.assertEqual(
+            conditions[1].match.any,
+            ["fct_sales_order_line", "dim_sales_region"],
+        )
+
     def test_scroll_payloads_reads_all_pages_without_vectors_and_sorts(self) -> None:
         client = _Client(
             [

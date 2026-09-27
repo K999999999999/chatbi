@@ -57,6 +57,8 @@ def candidate_table_hits(
     table_hits: tuple[TableHit, ...],
     metric_table: str | None,
     time_field: _TimeField | None,
+    *,
+    filter_fields: tuple[str, ...] = (),
 ) -> tuple[TableHit, ...]:
     """确定 COLUMN 和 Join 的最小候选表范围。"""
 
@@ -69,11 +71,16 @@ def candidate_table_hits(
         names.add(time_field.target_table)
 
     grouping_names = grouping_table_names(
+        (*dimensions, *filter_fields),
+        table_hits,
+        metric_table,
+    )
+    dimension_tables = grouping_table_names(
         dimensions,
         table_hits,
         metric_table,
     )
-    if dimensions and not grouping_names:
+    if dimensions and not dimension_tables:
         raise RequiredCandidateUnavailableError(
             "用户请求的分组维度没有被 TABLE 候选命中"
         )
@@ -120,10 +127,6 @@ def grouping_table_names(
             for dimension in dimensions
         )
     )
-
-
-def grouping_text_from_dimensions(dimensions: tuple[str, ...]) -> str:
-    return "、".join(dimension.strip() for dimension in dimensions if dimension.strip())
 
 
 def requires_date_context(query: ValidatedSemanticQuery) -> bool:

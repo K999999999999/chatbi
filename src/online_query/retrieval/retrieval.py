@@ -27,7 +27,6 @@ from .retrieval_resource_stage import (
     _retrieve_resources,
 )
 from .retrieval_results import result as _result
-from .retrieval_selection import grouping_text_from_dimensions
 
 
 class OnlineRetriever:
@@ -73,7 +72,6 @@ class OnlineRetriever:
         if not isinstance(request.question, str) or not request.question.strip():
             raise ValueError("检索问题不能为空")
         semantic_query: ValidatedSemanticQuery = request.semantic_query
-        grouping_text = grouping_text_from_dimensions(semantic_query.dimensions)
 
         snapshot, failure = _resolve_snapshot(self._execution, request)
         if failure is not None:
@@ -98,7 +96,6 @@ class OnlineRetriever:
             self._execution,
             request,
             semantic_query,
-            grouping_text,
             resources,
         )
         if failure is not None:

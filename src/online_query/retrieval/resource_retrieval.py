@@ -135,21 +135,15 @@ def _column_hits(
     config: RetrievalConfig,
     *,
     required: Mapping[str, frozenset[str]] = MappingProxyType({}),
-    grouping_query: str = "",
-    grouping_tables: frozenset[str] = frozenset(),
     embed_query: Callable[[str], Any] | None = None,
     search: Callable[..., Iterable[SearchHit]] | None = None,
 ) -> tuple[ColumnHit, ...]:
-    # 只在候选表范围内恢复明确依赖字段和用户明确请求的分组字段。
-    # 恢复结果与普通语义结果共用全局 column_top_k 预算，避免扩大 Schema 暴露范围。
+    # 所有 TABLE Top-K 候选共同构成一次 COLUMN 语义检索范围。
+    # 已认证的必需字段通过精确 payload 恢复，其余字段共用全局语义 Top-K。
     embed = embed_query or snapshot.embedding_provider.embed_query
     search_hits = search or snapshot.qdrant_store.search
     embedded_query = embed(column_query)
-    grouping_embedding = (
-        embed(grouping_query) if grouping_query and grouping_tables else None
-    )
     required_hits: dict[tuple[str, str], ColumnHit] = {}
-    grouping_hits: dict[tuple[str, str], ColumnHit] = {}
     semantic_hits: dict[tuple[str, str], ColumnHit] = {}
 
     def collect(
@@ -170,27 +164,25 @@ def _column_hits(
             if previous is None or column.score > previous.score:
                 target[identity] = column
 
+    if table_hits:
+        schemas = tuple(dict.fromkeys(table.schema_name for table in table_hits))
+        tables = tuple(dict.fromkeys(table.table_name for table in table_hits))
+        hits = search_hits(
+            snapshot.collection_names[COLUMN_COLLECTION],
+            embedded_query,
+            limit=config.column_top_k,
+            filter_payload={
+                "schema_name": schemas[0] if len(schemas) == 1 else schemas,
+                "table_name": tables,
+            },
+        )
+        collect(semantic_hits, hits)
+
     for table in table_hits:
         table_filter = {
             "schema_name": table.schema_name,
             "table_name": table.table_name,
         }
-        hits = search_hits(
-            snapshot.collection_names[COLUMN_COLLECTION],
-            embedded_query,
-            limit=config.column_top_k,
-            filter_payload=table_filter,
-        )
-        collect(semantic_hits, hits)
-
-        if grouping_embedding is not None and table.qualified_name in grouping_tables:
-            grouped_hits = search_hits(
-                snapshot.collection_names[COLUMN_COLLECTION],
-                grouping_embedding,
-                limit=min(2, config.column_top_k),
-                filter_payload=table_filter,
-            )
-            collect(grouping_hits, grouped_hits)
 
         for required_column in sorted(required.get(table.qualified_name, frozenset())):
             exact_hits = search_hits(
@@ -208,7 +200,7 @@ def _column_hits(
 
     ordered: list[ColumnHit] = []
     seen: set[tuple[str, str]] = set()
-    for bucket in (required_hits, grouping_hits, semantic_hits):
+    for bucket in (required_hits, semantic_hits):
         for hit in sorted(
             bucket.values(),
             key=lambda item: (-item.score, item.document_id),
