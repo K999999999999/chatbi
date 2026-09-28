@@ -53,6 +53,7 @@ class LangChainBusinessAnalysisJudge:
 - 报告不能沿用用户问题中与真实数据相反的变化方向。
 - 主要产品只能来自 program_attribution，且不得改变其排序。
 - 产品因素名称和正负方向必须与 program_attribution 一致。
+- 按 program_attribution 中的 effect_on_metric 判定因素对目标指标的方向；单位成本上升导致成本因素负向影响毛利，不得把成本自身上升说成毛利正贡献。
 - 不得把数据关联误说成数据库未证明的经营因果；区域、客户、策略、采购等未查询因素不能作为结论。
 - 报告的分析指标和时期必须与查询一致。
 - 可以用简洁口语改写事实，但不能编造查询值或结论。

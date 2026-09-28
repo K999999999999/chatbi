@@ -49,6 +49,7 @@ class ReportingTest(unittest.TestCase):
         self.assertEqual(report.to_payload()["attribution"], attribution.to_payload())
         self.assertIn('"program_attribution"', model.prompt)
         self.assertIn("不得修改其指标口径、数值、变化方向", model.prompt)
+        self.assertIn("必须按此字段描述方向", model.prompt)
 
     def test_summary_returns_human_readable_report_with_completed_evidence(
         self,

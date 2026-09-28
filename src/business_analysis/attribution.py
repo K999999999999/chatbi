@@ -111,11 +111,13 @@ class BusinessAnalysisAttribution:
                 {
                     "product_name": product.product_name,
                     "change": _decimal_text(product.change),
+                    "effect_on_metric": _metric_effect(product.change),
                     "classification": product.classification,
                     "factors": [
                         {
                             "name": factor.name,
                             "amount": _decimal_text(factor.amount),
+                            "effect_on_metric": _metric_effect(factor.amount),
                         }
                         for factor in product.factors
                     ],
@@ -464,6 +466,14 @@ def _decimal(value: object, task_id: str) -> Decimal:
 
 def _decimal_text(value: Decimal) -> str:
     return format(value, "f")
+
+
+def _metric_effect(value: Decimal) -> str:
+    if value > 0:
+        return "increases_target_metric"
+    if value < 0:
+        return "decreases_target_metric"
+    return "no_change_to_target_metric"
 
 
 def format_money(value: Decimal) -> str:

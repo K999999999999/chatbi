@@ -69,6 +69,12 @@ class ProductAttributionTest(unittest.TestCase):
             item for item in result.top_products[0].factors if item.name == "单位成本"
         )
         self.assertEqual(cost.amount, Decimal(-10))
+        cost_payload = next(
+            item
+            for item in result.to_payload()["products"][0]["factors"]
+            if item["name"] == "单位成本"
+        )
+        self.assertEqual(cost_payload["effect_on_metric"], "decreases_target_metric")
 
     def test_new_product_gets_full_entry_contribution(self) -> None:
         result = calculate_product_attribution(
