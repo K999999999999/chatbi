@@ -18,13 +18,24 @@ class SourceLoadingTest(unittest.TestCase):
         self.assertEqual(len(facts.tables), 7)
         self.assertEqual(len(facts.columns), 69)
         self.assertEqual(len(facts.relationships), 25)
-        self.assertEqual(len(facts.metrics), 6)
+        self.assertEqual(len(facts.metrics), 7)
 
         line_count = next(
             metric for metric in facts.metrics if metric["name"] == "已完成订单明细行数"
         )
         self.assertEqual(line_count["formula"], "COUNT(*)")
         self.assertEqual(line_count["aliases"], ("订单明细行数",))
+
+        quantity = next(
+            metric for metric in facts.metrics if metric["name"] == "已完成销售数量"
+        )
+        self.assertEqual(quantity["formula"], "SUM(f.quantity)")
+        self.assertEqual(quantity["aliases"], ("销售数量", "销量"))
+        self.assertEqual(quantity["filters"], ("f.order_status = 'completed'",))
+        self.assertEqual(
+            quantity["time_field"],
+            "fct_sales_order_line.completion_date_key -> dim_date.full_date",
+        )
 
     def test_loads_valid_temporary_facts(self) -> None:
         with TemporaryDirectory() as directory:

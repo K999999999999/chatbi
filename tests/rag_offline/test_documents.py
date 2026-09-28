@@ -13,11 +13,26 @@ from src.rag_offline import (
     build_documents,
     load_facts,
 )
-
 from tests.rag_offline.test_sources import _write_facts
 
 
 class DocumentBuildTest(unittest.TestCase):
+    def test_default_completed_sales_quantity_metric_is_retrievable(self) -> None:
+        facts = load_facts()
+        document = next(
+            document
+            for document in build_documents(facts)
+            if document.document_id == "metric:已完成销售数量"
+        )
+
+        self.assertIn("别名：销售数量、销量", document.page_content)
+        self.assertEqual(document.metadata["formula"], "SUM(f.quantity)")
+        self.assertEqual(document.metadata["filters"], ("f.order_status = 'completed'",))
+        self.assertEqual(
+            document.metadata["time_field"],
+            "fct_sales_order_line.completion_date_key -> dim_date.full_date",
+        )
+
     def test_builds_three_document_types_without_duplicates(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)

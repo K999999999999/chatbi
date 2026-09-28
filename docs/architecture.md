@@ -367,6 +367,6 @@ Online Retrieval V1 已接入 Online Query：实体类、单指标和多指标�
 - Streamlit 页面已实现，提供问题输入、当前会话、新建会话、结果展示和受控错误提示；真实 AI Evaluation、Business Acceptance 和 Real E2E 证据见 `docs/acceptance/multi-turn-query-v1-20260919.md`。
 - Evaluation 已实现并复用正式 Online Query 链路；当前分支最近一次真实在线 RAG 评测为 20/21，Execution Accuracy=95.24%，唯一失败为一次 S04 Query Understanding LLM_ERROR，单例重跑已成功；JSON 数据报告和 Markdown 总结报告按本地策略忽略。
 - 旧版扁平 POC 链路及其重复测试已删除。
-- RAG Offline Build 已实现并发布 BGE-M3 / Qdrant 离线资产；TABLE=7、COLUMN=69、METRIC=6、关系边=9，固定检索评测 5/5 通过。
+- RAG Offline Build 已实现并发布 BGE-M3 / Qdrant 离线资产；TABLE=7、COLUMN=69、METRIC=7、关系边=9，固定检索评测 6/6 通过。
 - Online Retrieval、Schema Linking 和关系图在线路径查找已完成 V1 实现；统一 `metrics=0/1/N`、直接 FK→PK、最多 5 个指标和 Fail Closed 边界已通过确定性验收。最近一次真实 Qdrant、LLM 和 PostgreSQL 评测已在本次字段与查询理解修复后重新建立；跨事实表、经营分析等复杂多指标组合仍属于后续边界。
 - 正式前端 UI 不是当前下一步必做项，继续使用 Streamlit，待生产化需求明确后再决定。

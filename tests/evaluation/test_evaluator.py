@@ -76,7 +76,7 @@ class EvaluationCaseLoadingTest(unittest.TestCase):
 
         cases = load_evaluation_cases(Path("src/evaluation/eval_cases.json"))
 
-        self.assertEqual(len(cases), 27)
+        self.assertEqual(len(cases), 29)
         self.assertTrue(all(case.is_valid for case in cases))
         self.assertEqual(
             {case.category for case in cases},
