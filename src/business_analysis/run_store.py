@@ -128,13 +128,13 @@ class PostgresAnalysisRunStore:
                 )
             )
             for run_id in run_ids:
-                for table in (
-                    "checkpoint_writes",
-                    "checkpoint_blobs",
-                    "checkpoints",
+                for statement in (
+                    "DELETE FROM checkpoint_writes WHERE thread_id = :run_id",
+                    "DELETE FROM checkpoint_blobs WHERE thread_id = :run_id",
+                    "DELETE FROM checkpoints WHERE thread_id = :run_id",
                 ):
                     connection.execute(
-                        text(f"DELETE FROM {table} WHERE thread_id = :run_id"),
+                        text(statement),
                         {"run_id": str(run_id)},
                     )
         return len(run_ids)
