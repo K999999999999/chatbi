@@ -1,6 +1,6 @@
 # 02 用 LangGraph 编排经营分析固定查询 Task
 
-Status: in-progress
+Status: done
 
 ## Owner
 
@@ -64,7 +64,7 @@ ChatBI Engine 实施 Agent
 
 ## Result
 
-待实施。
+已实现 LangGraph 指标 / 时期提取、确定性校验和程序固定的 4 个产品对比 Task；Task 串行走现有授权 Natural Query。最终真实 BA Evaluation 的 BA01–BA03 均完成全部 4 个查询 Task，BA04 / BA05 在澄清时零查询。详见 `docs/acceptance/business-analysis-root-cause-v1-20260928.md`。
 
 ## Comments
 

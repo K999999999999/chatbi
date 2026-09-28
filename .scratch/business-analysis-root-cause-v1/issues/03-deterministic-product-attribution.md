@@ -1,6 +1,6 @@
 # 03 实现产品因素确定性归因并交给总结模型
 
-Status: in-progress
+Status: done
 
 ## Owner
 
@@ -61,7 +61,7 @@ ChatBI Engine 实施 Agent
 
 ## Result
 
-待实施。
+已实现毛利的实际成交单价、销量、单位成本归因，以及净销售额的实际成交单价、销量归因；程序执行期间 / 产品 / 因素对账并确定 Top 3。Summary 收到确定性归因和因素对目标指标的影响方向。最终真实评测 3 个成功案例均通过独立参考 SQL 对账和 Summary Judge。详见 `docs/acceptance/business-analysis-root-cause-v1-20260928.md`。
 
 ## Comments
 

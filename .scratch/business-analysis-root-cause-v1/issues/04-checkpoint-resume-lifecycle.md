@@ -1,6 +1,6 @@
 # 04 实现 checkpoint、运行恢复和失败处理生命周期
 
-Status: open
+Status: done
 
 ## Owner
 
@@ -68,7 +68,7 @@ API 请求可安全创建、恢复和重放同一运行；恢复身份、时限�
 
 ## Result
 
-待实施。
+已完成 `chatbi_control` v2 迁移、PostgreSQL LangGraph Checkpointer、用户 / 问题 / 运行 ID 绑定、失败重试与恢复、24 小时过期清理，以及 `request_id` / `trace_id` 与 `analysis_run_id` 的分离关联。隔离 PostgreSQL 迁移和运行生命周期集成测试 `18 passed`；最终真实分析请求使用持久 Checkpointer 成功运行。详见 `docs/acceptance/business-analysis-root-cause-v1-20260928.md`。
 
 ## Comments
 

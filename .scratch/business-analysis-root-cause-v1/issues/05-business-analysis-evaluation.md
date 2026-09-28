@@ -1,6 +1,6 @@
 # 05 更新经营分析 Golden Set、确定性评测和 LLM Judge
 
-Status: open
+Status: done
 
 ## Owner
 
@@ -67,7 +67,7 @@ ChatBI Engine 实施 Agent
 
 ## Result
 
-待实施。
+已完成 BA01–BA05、独立 PostgreSQL 参考 SQL、确定性计划 / Task / 归因对账和 Summary LLM Judge。最终干净 candidate 上真实 LLM + 在线 RAG 评测 `5/5 PASS`、`INVALID_CASE=0`，所有适用准确率均为 100%。证据见 `docs/acceptance/business-analysis-root-cause-v1-20260928.md` 和 `reports/evaluation/20260928T051000Z-2591c9c-business-analysis.json`。
 
 ## Comments
 
