@@ -155,7 +155,7 @@ class EvaluationEntrypointTest(unittest.TestCase):
         self.database_fingerprint_patch.start()
         self.addCleanup(self.database_fingerprint_patch.stop)
 
-    def test_business_analysis_mode_writes_layered_report(self) -> None:
+    def test_business_analysis_mode_fails_closed_without_llm_judge(self) -> None:
         from src.evaluation.__main__ import run_cli
 
         with TemporaryDirectory() as directory:
@@ -164,33 +164,40 @@ class EvaluationEntrypointTest(unittest.TestCase):
             sql = "SELECT t.value FROM mart_sales.test_table AS t;"
             cases_path.write_text(
                 json.dumps(
-                    [
-                        {
-                            "id": "BA01",
-                            "question": "按销售区域分析销售额。",
-                            "expected": {
-                                "outcome": "plan",
-                                "min_tasks": 1,
-                                "required_task_types": ["breakdown"],
-                                "required_metrics": ["人民币净销售额"],
-                                "required_dimensions": ["销售区域"],
-                                "tasks": [
-                                    {
-                                        "key": "breakdown",
-                                        "task_type": "breakdown",
-                                        "metrics": ["人民币净销售额"],
-                                        "dimensions": ["销售区域"],
-                                        "depends_on": [],
-                                        "expected_sql": sql,
-                                    }
-                                ],
-                                "report": {
-                                    "required_evidence_tasks": ["breakdown"],
-                                    "expected_incomplete_tasks": [],
+                    {
+                        "evaluation_rules": {
+                            "success": {
+                                "plan": {"judge": "按预期检查拆解", "pass": "任务完整"},
+                                "summary": {
+                                    "judge": "按结果检查总结",
+                                    "pass": "事实正确",
                                 },
                             },
-                        }
-                    ],
+                            "clarification_required": {
+                                "plan": {"judge": "检查澄清", "pass": "返回澄清错误码"}
+                            },
+                            "cannot_answer": {
+                                "plan": {"judge": "检查拒绝", "pass": "返回拒答错误码"}
+                            },
+                        },
+                        "cases": [
+                            {
+                                "id": "BA01",
+                                "question": "按销售区域分析销售额。",
+                                "expected_outcome": "success",
+                                "expected_task_count": 1,
+                                "expected_tasks": [
+                                    {
+                                        "key": "breakdown",
+                                        "purpose": "按销售区域分析销售额",
+                                        "period": "2025年第一季度",
+                                        "metrics": ["人民币净销售额"],
+                                        "dimension": "销售区域",
+                                    }
+                                ],
+                            }
+                        ],
+                    },
                     ensure_ascii=False,
                 ),
                 encoding="utf-8",
@@ -233,9 +240,9 @@ class EvaluationEntrypointTest(unittest.TestCase):
                     metric_name="人民币净销售额",
                     current_period="2025年",
                     comparison_period="2024年",
-                    comparison_value=Decimal("0"),
-                    current_value=Decimal("0"),
-                    total_change=Decimal("0"),
+                    comparison_value=Decimal(0),
+                    current_value=Decimal(0),
+                    total_change=Decimal(0),
                     products=(),
                     top_products=(),
                 ),
@@ -279,13 +286,13 @@ class EvaluationEntrypointTest(unittest.TestCase):
             reports = list(output_dir.glob("*-business-analysis.json"))
             report = json.loads(reports[0].read_text(encoding="utf-8"))
 
-        self.assertEqual(exit_code, 0)
+        self.assertEqual(exit_code, 1)
         self.assertEqual(report["metadata"]["sales_mart_seed_version"], "dev-seed-v1")
         self.assertEqual(report["metadata"]["sales_mart_data_hash"], "a" * 64)
-        self.assertEqual(report["summary"]["end_to_end_accuracy"], 1.0)
-        self.assertIn(
-            "Business Analysis End-to-End Accuracy: 100.00%", stdout.getvalue()
-        )
+        self.assertEqual(report["summary"]["outcome_accuracy"], 1.0)
+        self.assertEqual(report["summary"]["plan_accuracy"], 0.0)
+        self.assertEqual(report["summary"]["summary_accuracy"], 0.0)
+        self.assertIn("Business Analysis End-to-End Accuracy: 0.00%", stdout.getvalue())
 
     def test_runs_same_online_service_and_writes_report(self) -> None:
         from src.evaluation.__main__ import run_cli

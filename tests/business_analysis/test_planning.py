@@ -102,6 +102,22 @@ class AnalysisPlanningTest(unittest.TestCase):
             ],
         )
 
+    def test_explicit_unsupported_region_breakdown_is_rejected(self) -> None:
+        candidate = AnalysisRequestCandidate(
+            metric_text="毛利",
+            current_period=AnalysisTimeRange("2025年3月", TimeGranularity.MONTH),
+            comparison_period=AnalysisTimeRange("2025年2月", TimeGranularity.MONTH),
+        )
+
+        with self.assertRaises(AnalysisPlanCannotAnswer) as raised:
+            build_comparison_plan(
+                candidate,
+                self.catalog,
+                question="2025年3月毛利为什么比2月下降？请按销售区域拆解原因。",
+            )
+
+        self.assertEqual(raised.exception.reason, "DIMENSION_UNSUPPORTED")
+
     def test_unresolved_metric_or_missing_period_requires_clarification(self) -> None:
         missing_metric = AnalysisRequestCandidate(
             metric_text="利润",

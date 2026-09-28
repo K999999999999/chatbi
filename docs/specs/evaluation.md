@@ -22,7 +22,7 @@ Evaluation（评测）是离线回归评测工具，不参与用户在线请求�
 | 多轮自然查询 | `src/evaluation/multi_turn_eval_cases.json` | `--multi-turn --online-retrieval` | 完整 Conversation |
 | 经营分析 | `src/evaluation/business_analysis_cases.json` | `--business-analysis --online-retrieval` | 单条经营分析场景 |
 
-经营分析继续使用独立的分层评估器。Query Understanding（查询理解）语义集是辅助回归，不是第四类业务评测集。
+经营分析案例使用通用语义任务描述，不在案例中绑定 SQL 或固定数值。成功案例由两个独立的 LLM Judge 分别评估任务拆解覆盖度和总结质量；任一维度失败都不跳过另一维度。澄清与拒绝案例按预期结果类型和错误码确定性评估。结果报告分别给出结果类型、任务拆解、总结质量和端到端准确率。Query Understanding（查询理解）语义集是辅助回归，不是第四类业务评测集。
 
 Query Understanding 语义评测单独运行：
 
