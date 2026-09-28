@@ -6,14 +6,19 @@ from src.business_analysis.contracts import (
     AnalysisPlanCannotAnswer,
     AnalysisPlanClarificationRequired,
     AnalysisPlanStructureError,
+    AnalysisRequestCandidate,
     AnalysisSemanticCatalog,
+    AnalysisTimeRange,
 )
 from src.business_analysis.planning import (
     MAX_ANALYSIS_DEPTH,
     MAX_ANALYSIS_TASKS,
+    build_comparison_plan,
     plan_from_payload,
+    request_from_payload,
     validate_analysis_plan,
 )
+from src.online_query.query_understanding import TimeGranularity
 
 
 class AnalysisPlanningTest(unittest.TestCase):
@@ -28,9 +33,158 @@ class AnalysisPlanningTest(unittest.TestCase):
                     "name": "人民币毛利",
                     "aliases": ["毛利"],
                 },
+                {
+                    "name": "人民币销售成本",
+                    "aliases": ["销售成本", "成本"],
+                },
+                {
+                    "name": "已完成销售数量",
+                    "aliases": ["销售数量", "销量"],
+                },
             ),
-            ("销售区域", "产品线"),
+            ("销售区域", "产品线", "产品"),
         )
+
+    def test_gross_profit_request_generates_only_four_fixed_query_tasks(self) -> None:
+        candidate = request_from_payload(
+            {
+                "metric_text": "毛利",
+                "current_period": {"text": "2025年3月", "granularity": "month"},
+                "comparison_period": {"text": "2025年2月", "granularity": "month"},
+            }
+        )
+
+        request, plan = build_comparison_plan(
+            candidate,
+            self.catalog,
+            question="2025年3月毛利为什么比2月下降？",
+        )
+
+        self.assertEqual(request.metric_name, "人民币毛利")
+        self.assertEqual(len(plan.tasks), 4)
+        self.assertEqual(
+            [task.metrics for task in plan.tasks],
+            [
+                ("人民币毛利",),
+                ("人民币毛利",),
+                ("人民币净销售额", "已完成销售数量", "人民币销售成本"),
+                ("人民币净销售额", "已完成销售数量", "人民币销售成本"),
+            ],
+        )
+        self.assertEqual(
+            [task.dimensions for task in plan.tasks], [(), (), ("产品",), ("产品",)]
+        )
+        self.assertEqual(
+            [task.time_range.text for task in plan.tasks],
+            ["2025年2月", "2025年3月", "2025年2月", "2025年3月"],
+        )
+
+    def test_sales_request_uses_only_revenue_and_quantity_factors(self) -> None:
+        candidate = AnalysisRequestCandidate(
+            metric_text="销售额",
+            current_period=AnalysisTimeRange("2025年3月", TimeGranularity.MONTH),
+            comparison_period=AnalysisTimeRange("2025年2月", TimeGranularity.MONTH),
+        )
+
+        _, plan = build_comparison_plan(
+            candidate,
+            self.catalog,
+            question="2025年3月销售额比2月增加多少？",
+        )
+
+        self.assertEqual(
+            [task.metrics for task in plan.tasks],
+            [
+                ("人民币净销售额",),
+                ("人民币净销售额",),
+                ("人民币净销售额", "已完成销售数量"),
+                ("人民币净销售额", "已完成销售数量"),
+            ],
+        )
+
+    def test_unresolved_metric_or_missing_period_requires_clarification(self) -> None:
+        missing_metric = AnalysisRequestCandidate(
+            metric_text="利润",
+            current_period=AnalysisTimeRange("2025年", TimeGranularity.YEAR),
+            comparison_period=AnalysisTimeRange("2024年", TimeGranularity.YEAR),
+        )
+        with self.assertRaisesRegex(AnalysisPlanClarificationRequired, "指标"):
+            build_comparison_plan(
+                missing_metric,
+                self.catalog,
+                question="2025年利润比2024年下降多少？",
+            )
+
+        missing_period = AnalysisRequestCandidate(
+            metric_text="毛利",
+            current_period=AnalysisTimeRange("本月", TimeGranularity.MONTH),
+            comparison_period=None,
+        )
+        with self.assertRaisesRegex(AnalysisPlanClarificationRequired, "时期"):
+            build_comparison_plan(
+                missing_period,
+                self.catalog,
+                question="本月毛利为什么变化？",
+            )
+
+    def test_request_rejects_model_added_task_fields_and_same_periods(self) -> None:
+        payload = {
+            "metric_text": "毛利",
+            "current_period": {"text": "2025年3月", "granularity": "month"},
+            "comparison_period": {"text": "2025年2月", "granularity": "month"},
+            "dimensions": ["销售区域"],
+        }
+        with self.assertRaises(AnalysisPlanStructureError):
+            request_from_payload(payload)
+
+        same_period = AnalysisRequestCandidate(
+            metric_text="毛利",
+            current_period=AnalysisTimeRange("2025年3月", TimeGranularity.MONTH),
+            comparison_period=AnalysisTimeRange("2025年3月", TimeGranularity.MONTH),
+        )
+        with self.assertRaisesRegex(AnalysisPlanClarificationRequired, "不能相同"):
+            build_comparison_plan(
+                same_period,
+                self.catalog,
+                question="2025年3月毛利变化",
+            )
+
+    def test_request_rejects_hallucinated_period_or_missing_product_semantics(
+        self,
+    ) -> None:
+        candidate = AnalysisRequestCandidate(
+            metric_text="毛利",
+            current_period=AnalysisTimeRange("2025年3月", TimeGranularity.MONTH),
+            comparison_period=AnalysisTimeRange("2024年2月", TimeGranularity.MONTH),
+        )
+        with self.assertRaisesRegex(
+            AnalysisPlanClarificationRequired,
+            "无法从用户问题中确认",
+        ):
+            build_comparison_plan(
+                candidate,
+                self.catalog,
+                question="2025年3月毛利为什么比2月下降？",
+            )
+
+        incomplete_catalog = AnalysisSemanticCatalog.from_records(
+            (
+                {"name": "人民币毛利", "aliases": ["毛利"]},
+                {"name": "人民币净销售额", "aliases": ["销售额"]},
+            ),
+            (),
+        )
+        valid_periods = AnalysisRequestCandidate(
+            metric_text="毛利",
+            current_period=AnalysisTimeRange("2025年3月", TimeGranularity.MONTH),
+            comparison_period=AnalysisTimeRange("2025年2月", TimeGranularity.MONTH),
+        )
+        with self.assertRaisesRegex(AnalysisPlanCannotAnswer, "缺少必要指标"):
+            build_comparison_plan(
+                valid_periods,
+                incomplete_catalog,
+                question="2025年3月毛利为什么比2月下降？",
+            )
 
     def test_valid_plan_canonicalizes_metrics_and_keeps_dependencies(self) -> None:
         candidate = plan_from_payload(

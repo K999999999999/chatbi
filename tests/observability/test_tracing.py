@@ -1,27 +1,26 @@
 """Trace Core、生命周期和安全降级的独立确定性测试。"""
 
-from contextlib import redirect_stderr, redirect_stdout
 import io
 import re
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import patch
 
 from opentelemetry import trace
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExportResult
 
+from src.observability import tracing
 from src.observability.config import ObservabilityConfig
 from src.observability.contracts import (
     ErrorType,
     QuerySource,
     TraceOutcome,
 )
-from src.observability import tracing
 from src.observability.tracing import (
     SafeTraceRecorder,
     create_in_memory_recorder,
     create_trace_recorder,
 )
-
 
 TRACE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 
@@ -236,6 +235,7 @@ class ObservabilityTracingTest(unittest.TestCase):
                 {
                     "chatbi.unknown": "raw-secret-value",
                     "chatbi.request.id": "request-1",
+                    "chatbi.analysis_run_id": "run-1",
                     "chatbi.sql.sha256": "a" * 64,
                     "chatbi.result.row_count": 3,
                     "chatbi.result.status": "SUCCESS",
@@ -245,6 +245,7 @@ class ObservabilityTracingTest(unittest.TestCase):
         root = exporter.get_finished_spans()[0]
         self.assertNotIn("chatbi.unknown", root.attributes)
         self.assertEqual(root.attributes["chatbi.request.id"], "request-1")
+        self.assertEqual(root.attributes["chatbi.analysis_run_id"], "run-1")
         self.assertEqual(root.attributes["chatbi.sql.sha256"], "a" * 64)
         self.assertEqual(root.attributes["chatbi.result.row_count"], 3)
         self.assertEqual(root.attributes["chatbi.result.status"], "SUCCESS")

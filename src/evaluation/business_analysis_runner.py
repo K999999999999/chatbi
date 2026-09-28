@@ -4,14 +4,18 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from time import perf_counter
+from typing import Protocol
+from uuid import uuid4
 
 from src.authorization.contracts import AuthContext
 from src.business_analysis.application import (
     BusinessAnalysisApplication,
     BusinessAnalysisSuccess,
 )
+from src.business_analysis.attribution import BusinessAnalysisAttribution
 from src.business_analysis.contracts import AnalysisPlan
 from src.online_query.contracts import (
     QueryContext,
@@ -32,6 +36,15 @@ class BusinessAnalysisCaseStatus(StrEnum):
     PASS = "PASS"
     FAIL = "FAIL"
     INVALID_CASE = "INVALID_CASE"
+
+
+class BusinessAnalysisJudge(Protocol):
+    def evaluate(
+        self,
+        question: str,
+        result: BusinessAnalysisSuccess,
+    ) -> object:
+        """检查总结文本是否忠实于程序归因和查询证据。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +68,11 @@ class BusinessAnalysisCaseEvaluation:
     internal_reason: str | None = None
     duration_ms: int = 0
     task_evaluations: tuple[BusinessAnalysisTaskEvaluation, ...] = ()
+    attribution_passed: bool | None = None
+    direction: str | None = None
+    change: str | None = None
+    judge_passed: bool | None = None
+    judge_reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +85,8 @@ class BusinessAnalysisEvaluationSummary:
     plan_accuracy: float | None
     task_execution_accuracy: float | None
     report_grounded_accuracy: float | None
+    attribution_accuracy: float | None
+    summary_judge_accuracy: float | None
     end_to_end_accuracy: float | None
 
 
@@ -83,6 +103,7 @@ def run_business_analysis_evaluation(
     query_executor: QueryExecutor,
     context: QueryContext,
     auth_context: AuthContext,
+    judge: BusinessAnalysisJudge | None = None,
 ) -> BusinessAnalysisEvaluationRun:
     """运行经营分析黄金案例；每条案例独立计分。"""
 
@@ -113,6 +134,7 @@ def run_business_analysis_evaluation(
                 case.question,
                 request_id=f"analysis-evaluation-{case.case_id}",
                 auth_context=auth_context,
+                analysis_run_id=str(uuid4()),
             )
         except Exception:
             evaluations.append(
@@ -141,6 +163,7 @@ def run_business_analysis_evaluation(
                 result,
                 references,
                 duration_ms=_duration_ms(started),
+                judge=judge,
             )
         )
 
@@ -222,6 +245,7 @@ def _evaluate_plan_case(
     references: Mapping[str, QueryData],
     *,
     duration_ms: int,
+    judge: BusinessAnalysisJudge | None,
 ) -> BusinessAnalysisCaseEvaluation:
     if not isinstance(result, BusinessAnalysisSuccess):
         return BusinessAnalysisCaseEvaluation(
@@ -296,12 +320,72 @@ def _evaluate_plan_case(
             duration_ms=duration_ms,
             task_evaluations=task_evaluations,
         )
+    attribution = result.attribution
+    attribution_failure = _compare_attribution(case, result, references)
+    if attribution_failure is not None:
+        return BusinessAnalysisCaseEvaluation(
+            case_id=case.case_id,
+            status=BusinessAnalysisCaseStatus.FAIL,
+            plan_passed=True,
+            task_passed=True,
+            report_passed=True,
+            attribution_passed=False,
+            failure_reason=attribution_failure[1],
+            reason_code=attribution_failure[0],
+            duration_ms=duration_ms,
+            task_evaluations=task_evaluations,
+        )
+
+    judge_passed: bool | None = None
+    judge_reason: str | None = None
+    if judge is not None:
+        try:
+            judgement = judge.evaluate(case.question, result)
+            judge_passed = getattr(judgement, "passed", None)
+            judge_reason = getattr(judgement, "reason", None)
+            if not isinstance(judge_passed, bool) or not isinstance(judge_reason, str):
+                raise ValueError("Judge 结果结构无效")
+        except Exception:
+            return BusinessAnalysisCaseEvaluation(
+                case_id=case.case_id,
+                status=BusinessAnalysisCaseStatus.FAIL,
+                plan_passed=True,
+                task_passed=True,
+                report_passed=True,
+                attribution_passed=True,
+                failure_reason="LLM Judge 未能形成有效判定",
+                reason_code="JUDGE_RESULT_INVALID",
+                duration_ms=duration_ms,
+                task_evaluations=task_evaluations,
+            )
+        if not judge_passed:
+            return BusinessAnalysisCaseEvaluation(
+                case_id=case.case_id,
+                status=BusinessAnalysisCaseStatus.FAIL,
+                plan_passed=True,
+                task_passed=True,
+                report_passed=True,
+                attribution_passed=True,
+                direction=attribution.direction,
+                change=str(attribution.total_change),
+                judge_passed=False,
+                judge_reason=judge_reason,
+                failure_reason=judge_reason,
+                reason_code="SUMMARY_JUDGE_REJECTED",
+                duration_ms=duration_ms,
+                task_evaluations=task_evaluations,
+            )
     return BusinessAnalysisCaseEvaluation(
         case_id=case.case_id,
         status=BusinessAnalysisCaseStatus.PASS,
         plan_passed=True,
         task_passed=True,
         report_passed=True,
+        attribution_passed=True if attribution is not None else None,
+        direction=attribution.direction if attribution is not None else None,
+        change=str(attribution.total_change) if attribution is not None else None,
+        judge_passed=judge_passed,
+        judge_reason=judge_reason,
         duration_ms=duration_ms,
         task_evaluations=task_evaluations,
     )
@@ -324,10 +408,74 @@ def _compare_plan(
             return "PLAN_METRICS_MISMATCH", f"Task {expected.key} 指标不一致"
         if set(actual.dimensions) != set(expected.dimensions):
             return "PLAN_DIMENSIONS_MISMATCH", f"Task {expected.key} 维度不一致"
+        if actual.filters:
+            return "PLAN_FILTER_MISMATCH", f"Task {expected.key} 不应添加筛选条件"
+        if expected.period and (
+            actual.time_range is None or actual.time_range.text != expected.period
+        ):
+            return "PLAN_PERIOD_MISMATCH", f"Task {expected.key} 时期不一致"
         expected_dependencies = {actual_ids[key] for key in expected.depends_on}
         if set(actual.depends_on) != expected_dependencies:
             return "PLAN_DEPENDENCY_MISMATCH", f"Task {expected.key} 依赖不一致"
     return None
+
+
+def _compare_attribution(
+    case: BusinessAnalysisCase,
+    result: BusinessAnalysisSuccess,
+    references: Mapping[str, QueryData],
+) -> tuple[str, str] | None:
+    attribution = result.attribution
+    if not isinstance(attribution, BusinessAnalysisAttribution):
+        return "ATTRIBUTION_MISSING", "成功结果缺少确定性归因"
+    if case.metric_name and attribution.metric_name != case.metric_name:
+        return "ATTRIBUTION_METRIC_MISMATCH", "归因目标指标与案例不一致"
+    if case.comparison_period and attribution.comparison_period != case.comparison_period:
+        return "ATTRIBUTION_COMPARISON_PERIOD_MISMATCH", "归因比较时期与案例不一致"
+    if case.current_period and attribution.current_period != case.current_period:
+        return "ATTRIBUTION_CURRENT_PERIOD_MISMATCH", "归因当前时期与案例不一致"
+    if case.metric_name and result.report.attribution != attribution:
+        return "REPORT_ATTRIBUTION_MISMATCH", "报告没有保留程序计算的归因事实"
+    if case.expected_direction and attribution.direction != case.expected_direction:
+        return "ATTRIBUTION_DIRECTION_MISMATCH", "归因变化方向与案例事实不一致"
+    if case.expected_change:
+        expected_change = _decimal(case.expected_change)
+        if expected_change is None or abs(attribution.total_change - expected_change) > Decimal("0.02"):
+            return "ATTRIBUTION_CHANGE_MISMATCH", "归因变化金额与案例事实不一致"
+    old_value = _reference_scalar(references, case.case_id, "comparison-overall")
+    new_value = _reference_scalar(references, case.case_id, "current-overall")
+    if case.metric_name and (old_value is None or new_value is None):
+        return "ATTRIBUTION_REFERENCE_MISSING", "独立 SQL 缺少整体指标参考值"
+    if old_value is not None and attribution.comparison_value != old_value:
+        return "ATTRIBUTION_BASELINE_MISMATCH", "归因比较期总值与独立 SQL 不一致"
+    if new_value is not None and attribution.current_value != new_value:
+        return "ATTRIBUTION_CURRENT_MISMATCH", "归因当前期总值与独立 SQL 不一致"
+    if (
+        old_value is not None
+        and new_value is not None
+        and attribution.total_change != new_value - old_value
+    ):
+        return "ATTRIBUTION_REFERENCE_CHANGE_MISMATCH", "归因变化与独立 SQL 差值不一致"
+    return None
+
+
+def _reference_scalar(
+    references: Mapping[str, QueryData],
+    case_id: str,
+    task_key: str,
+) -> Decimal | None:
+    result = references.get(_reference_key(case_id, task_key))
+    if result is None or len(result.rows) != 1 or len(result.rows[0]) != 1:
+        return None
+    return _decimal(result.rows[0][0])
+
+
+def _decimal(value: object) -> Decimal | None:
+    try:
+        result = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+    return result if result.is_finite() else None
 
 
 def _compare_task_results(
@@ -443,6 +591,12 @@ def _summarize(
             [item.status is BusinessAnalysisCaseStatus.PASS for item in task_results]
         ),
         report_grounded_accuracy=_accuracy(report_values),
+        attribution_accuracy=_accuracy(
+            [item.attribution_passed for item in valid if item.attribution_passed is not None]
+        ),
+        summary_judge_accuracy=_accuracy(
+            [item.judge_passed for item in valid if item.judge_passed is not None]
+        ),
         end_to_end_accuracy=passed / len(valid) if valid else None,
     )
 

@@ -1,6 +1,6 @@
 # 02 用 LangGraph 编排经营分析固定查询 Task
 
-Status: open
+Status: in-progress
 
 ## Owner
 

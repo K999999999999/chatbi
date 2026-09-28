@@ -2,12 +2,14 @@
 
 import json
 import unittest
+from decimal import Decimal
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from src.business_analysis.application import BusinessAnalysisSuccess
+from src.business_analysis.attribution import BusinessAnalysisAttribution
 from src.business_analysis.contracts import AnalysisPlan, AnalysisTask, AnalysisTaskType
 from src.business_analysis.execution import TaskResult, TaskStatus
 from src.business_analysis.reporting import BusinessAnalysisReport
@@ -46,8 +48,8 @@ class _FakeAnalysisApplication:
     def __init__(self, result: BusinessAnalysisSuccess) -> None:
         self._result = result
 
-    def analyze(self, question, *, request_id, auth_context):
-        del question, request_id, auth_context
+    def analyze(self, question, *, request_id, auth_context, analysis_run_id=None):
+        del question, request_id, auth_context, analysis_run_id
         return self._result
 
 
@@ -226,6 +228,16 @@ class EvaluationEntrypointTest(unittest.TestCase):
                         rows=((1,),),
                         row_count=1,
                     ),
+                ),
+                attribution=BusinessAnalysisAttribution(
+                    metric_name="人民币净销售额",
+                    current_period="2025年",
+                    comparison_period="2024年",
+                    comparison_value=Decimal("0"),
+                    current_value=Decimal("0"),
+                    total_change=Decimal("0"),
+                    products=(),
+                    top_products=(),
                 ),
                 plan=AnalysisPlan(
                     tasks=(

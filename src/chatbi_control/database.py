@@ -23,7 +23,7 @@ class ControlDatabaseMigrationError(RuntimeError):
     """应用库迁移失败。"""
 
 
-CONTROL_SCHEMA_VERSION = "chatbi-control-v1"
+CONTROL_SCHEMA_VERSION = "chatbi-control-v2"
 
 
 @dataclass(frozen=True)
@@ -174,9 +174,47 @@ def initialize_control_database(
                     statement = migration_file.read_text(encoding="utf-8")
                     cursor.execute(statement)
             connection.commit()
+        _install_analysis_checkpoints(config, connect=connect)
     except Exception as exc:
         raise ControlDatabaseMigrationError(
             "ChatBI 应用库迁移失败，认证和管理入口不得以部分 Schema 启动"
+        ) from exc
+
+
+def _install_analysis_checkpoints(
+    config: ControlDatabaseConfig,
+    *,
+    connect: Any,
+) -> None:
+    """由迁移账号安装 LangGraph 版本化 checkpoint schema 和最小运行权限。"""
+
+    from langgraph.checkpoint.postgres import PostgresSaver
+    from psycopg.rows import dict_row
+
+    try:
+        with connect(
+            **config.migrator_connection_kwargs(),
+            autocommit=True,
+            row_factory=dict_row,
+        ) as connection:
+            PostgresSaver(connection).setup()
+            with connection.cursor() as cursor:
+                for table in (
+                    "checkpoints",
+                    "checkpoint_blobs",
+                    "checkpoint_writes",
+                ):
+                    cursor.execute(
+                        sql.SQL(
+                            "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE {} TO {}"
+                        ).format(
+                            sql.Identifier(table),
+                            sql.Identifier(config.app_user),
+                        )
+                    )
+    except Exception as exc:
+        raise ControlDatabaseMigrationError(
+            "经营分析 checkpoint Schema 或运行权限安装失败"
         ) from exc
 
 

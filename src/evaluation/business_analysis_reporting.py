@@ -28,6 +28,8 @@ def create_business_analysis_report(
             "plan_accuracy": run.summary.plan_accuracy,
             "task_execution_accuracy": run.summary.task_execution_accuracy,
             "report_grounded_accuracy": run.summary.report_grounded_accuracy,
+            "attribution_accuracy": run.summary.attribution_accuracy,
+            "summary_judge_accuracy": run.summary.summary_judge_accuracy,
             "end_to_end_accuracy": run.summary.end_to_end_accuracy,
         },
         "cases": [
@@ -37,6 +39,11 @@ def create_business_analysis_report(
                 "plan_passed": case.plan_passed,
                 "task_passed": case.task_passed,
                 "report_passed": case.report_passed,
+                "attribution_passed": case.attribution_passed,
+                "direction": case.direction,
+                "change": case.change,
+                "judge_passed": case.judge_passed,
+                "judge_reason": case.judge_reason,
                 "failure_reason": case.failure_reason,
                 "reason_code": case.reason_code,
                 "query_error_code": case.query_error_code,
@@ -87,23 +94,27 @@ def render_business_analysis_markdown(report: Mapping[str, object]) -> str:
         f"| 计划准确率 | {_accuracy(summary.get('plan_accuracy'))} |",
         f"| Task 执行准确率 | {_accuracy(summary.get('task_execution_accuracy'))} |",
         f"| 报告事实依据率 | {_accuracy(summary.get('report_grounded_accuracy'))} |",
+        f"| 归因准确率 | {_accuracy(summary.get('attribution_accuracy'))} |",
+        f"| Summary Judge 准确率 | {_accuracy(summary.get('summary_judge_accuracy'))} |",
         f"| 端到端案例准确率 | {_accuracy(summary.get('end_to_end_accuracy'))} |",
         "",
         "## 案例结果",
         "",
-        "| 案例 | 状态 | 计划 | Task | 报告证据 | 原因 |",
-        "|---|---|---|---|---|---|",
+        "| 案例 | 状态 | 计划 | Task | 报告证据 | 归因 | Judge | 原因 |",
+        "|---|---|---|---|---|---|---|---|",
     ]
     if isinstance(cases, list):
         for case in cases:
             item = _mapping(case)
             lines.append(
-                "| {case} | {status} | {plan} | {task} | {report} | {reason} |".format(
+                "| {case} | {status} | {plan} | {task} | {report} | {attribution} | {judge} | {reason} |".format(
                     case=_cell(item.get("case_id")),
                     status=_cell(item.get("status")),
                     plan=_bool_text(item.get("plan_passed")),
                     task=_bool_text(item.get("task_passed")),
                     report=_bool_text(item.get("report_passed")),
+                    attribution=_bool_text(item.get("attribution_passed")),
+                    judge=_bool_text(item.get("judge_passed")),
                     reason=_cell(item.get("reason_code") or item.get("failure_reason")),
                 )
             )

@@ -50,6 +50,7 @@ class RunMetadata:
     sales_mart_data_summary: Mapping[str, object] | None = None
     sales_mart_data_hash: str | None = None
     sales_mart_data_hash_algorithm: str | None = None
+    rag_asset_version: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -64,6 +65,7 @@ def collect_run_metadata(
     test_set_path: Path,
     context_paths: Mapping[str, Path],
     sales_mart_fingerprint: SalesMartDataFingerprint | None = None,
+    rag_asset_version: str | None = None,
     now: datetime | None = None,
 ) -> RunMetadata:
     """只收集非敏感配置和内容指纹。"""
@@ -121,6 +123,7 @@ def collect_run_metadata(
             if sales_mart_fingerprint is not None
             else None
         ),
+        rag_asset_version=rag_asset_version,
     )
 
 

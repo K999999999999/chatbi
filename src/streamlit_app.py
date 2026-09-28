@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import json
 import os
+from collections.abc import Callable
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
-
+from uuid import uuid4
 
 _DEFAULT_API_BASE_URL = "http://127.0.0.1:8000"
 _DEFAULT_API_TIMEOUT = 90.0
@@ -34,6 +34,8 @@ _CONVERSATION_ID_KEY = "conversation_id"
 _CONVERSATION_RESET_REQUIRED_KEY = "conversation_reset_required"
 _CONVERSATION_TIMELINE_KEY = "conversation_timeline"
 _ANALYSIS_TIMELINE_KEY = "analysis_timeline"
+_ANALYSIS_RUN_ID_KEY = "analysis_run_id"
+_ANALYSIS_RUN_QUESTION_KEY = "analysis_run_question"
 _AUTH_TOKEN_KEY = "auth_token"
 _AUTH_USERNAME_KEY = "auth_username"
 _AUTH_MUST_CHANGE_KEY = "auth_must_change_password"
@@ -78,6 +80,7 @@ def query_api(
     *,
     conversation_id: str | None = None,
     mode: str = "query",
+    analysis_run_id: str | None = None,
     timeout: float = _DEFAULT_API_TIMEOUT,
     access_token: str | None = None,
     opener: Callable[..., Any] | None = None,
@@ -86,6 +89,8 @@ def query_api(
     request_payload: dict[str, str] = {"question": question}
     if mode != "query":
         request_payload["mode"] = mode
+    if mode == "analysis":
+        request_payload["analysis_run_id"] = analysis_run_id or str(uuid4())
     if (
         mode != "analysis"
         and isinstance(conversation_id, str)
@@ -512,11 +517,18 @@ def _submit_analysis(st: Any, question: str) -> None:
         return
 
     with st.spinner("正在生成经营分析报告..."):
+        if (
+            st.session_state.get(_ANALYSIS_RUN_QUESTION_KEY) != question
+            or not st.session_state.get(_ANALYSIS_RUN_ID_KEY)
+        ):
+            st.session_state[_ANALYSIS_RUN_ID_KEY] = str(uuid4())
+            st.session_state[_ANALYSIS_RUN_QUESTION_KEY] = question
         try:
             response = query_api(
                 _api_base_url(),
                 question,
                 mode="analysis",
+                analysis_run_id=st.session_state[_ANALYSIS_RUN_ID_KEY],
                 access_token=_access_token(st),
             )
         except QueryAPIError as error:
@@ -529,6 +541,8 @@ def _submit_analysis(st: Any, question: str) -> None:
         else:
             st.session_state.last_analysis_response = response
             st.session_state.last_analysis_error = None
+            st.session_state[_ANALYSIS_RUN_ID_KEY] = None
+            st.session_state[_ANALYSIS_RUN_QUESTION_KEY] = None
             _append_analysis_timeline_success(st, question, response)
 
 

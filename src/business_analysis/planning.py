@@ -1,5 +1,6 @@
 """Business Analysis 计划解析和确定性校验。"""
 
+import re
 from collections.abc import Mapping
 from typing import Final
 
@@ -12,6 +13,8 @@ from .contracts import (
     AnalysisPlanCannotAnswer,
     AnalysisPlanClarificationRequired,
     AnalysisPlanStructureError,
+    AnalysisRequest,
+    AnalysisRequestCandidate,
     AnalysisSemanticCatalog,
     AnalysisTask,
     AnalysisTaskCandidate,
@@ -19,11 +22,13 @@ from .contracts import (
     AnalysisTimeRange,
 )
 
-
 MAX_ANALYSIS_DEPTH = 2
 MAX_ANALYSIS_TASKS = 12
 
 _PLAN_FIELDS: Final = frozenset({"tasks"})
+_REQUEST_FIELDS: Final = frozenset(
+    {"metric_text", "current_period", "comparison_period"}
+)
 _TASK_FIELDS: Final = frozenset(
     {
         "task_id",
@@ -53,6 +58,181 @@ def plan_from_payload(payload: Mapping[str, object]) -> AnalysisPlanCandidate:
     return AnalysisPlanCandidate(
         tasks=tuple(_task_from_payload(item) for item in tasks_payload)
     )
+
+
+def request_from_payload(payload: object) -> AnalysisRequestCandidate:
+    """解析 LLM 提取的指标和两个时期，不接受模型生成的 Task 或维度。"""
+
+    if not isinstance(payload, Mapping):
+        raise _structure("分析请求必须是 JSON 对象", "REQUEST_NOT_OBJECT")
+    _require_exact_fields(payload, _REQUEST_FIELDS, "分析请求")
+    return AnalysisRequestCandidate(
+        metric_text=_required_text(payload["metric_text"], "metric_text"),
+        current_period=_time_range(payload["current_period"]),
+        comparison_period=_time_range(payload["comparison_period"]),
+    )
+
+
+def build_comparison_plan(
+    candidate: AnalysisRequestCandidate,
+    catalog: AnalysisSemanticCatalog,
+    *,
+    question: str,
+) -> tuple[AnalysisRequest, AnalysisPlan]:
+    """校验请求并由程序生成固定的 4 个查询 Task。"""
+
+    if not isinstance(candidate, AnalysisRequestCandidate):
+        raise _cannot_answer("分析请求类型无效", "REQUEST_TYPE_INVALID")
+    if not isinstance(catalog, AnalysisSemanticCatalog):
+        raise _cannot_answer("Semantic Catalog 无效", "CATALOG_INVALID")
+
+    metric_matches = catalog.metric_matches.get(
+        _lookup_key(candidate.metric_text), frozenset()
+    )
+    supported_metrics = {"人民币毛利", "人民币净销售额"}
+    if len(metric_matches) != 1:
+        raise _clarification(
+            "目标指标无法唯一确定",
+            "METRIC_NOT_UNIQUE",
+        )
+    metric_name = next(iter(metric_matches))
+    if metric_name not in supported_metrics:
+        raise _cannot_answer(
+            "当前经营分析只支持毛利和人民币净销售额",
+            "METRIC_UNSUPPORTED",
+        )
+    if _lookup_key(candidate.metric_text) not in _lookup_key(question):
+        raise _clarification(
+            "目标指标与用户问题不一致",
+            "METRIC_NOT_IN_QUESTION",
+        )
+
+    current = candidate.current_period
+    comparison = candidate.comparison_period
+    if current is None or comparison is None:
+        raise _clarification(
+            "必须明确当前时期和比较时期",
+            "COMPARISON_PERIOD_REQUIRED",
+        )
+    if current.granularity is not comparison.granularity:
+        raise _clarification(
+            "两个比较时期的时间粒度必须一致",
+            "COMPARISON_GRANULARITY_MISMATCH",
+        )
+    if _lookup_key(current.text) == _lookup_key(comparison.text):
+        raise _clarification(
+            "当前时期和比较时期不能相同",
+            "COMPARISON_PERIOD_DUPLICATE",
+        )
+    if not _period_is_grounded(current, question) or not _period_is_grounded(
+        comparison,
+        question,
+    ):
+        raise _clarification(
+            "比较时期无法从用户问题中确认",
+            "COMPARISON_PERIOD_NOT_IN_QUESTION",
+        )
+
+    request = AnalysisRequest(
+        metric_name=metric_name,
+        current_period=current,
+        comparison_period=comparison,
+    )
+    product_metrics = (
+        ("人民币净销售额", "已完成销售数量", "人民币销售成本")
+        if metric_name == "人民币毛利"
+        else ("人民币净销售额", "已完成销售数量")
+    )
+    missing_metrics = tuple(
+        name
+        for name in product_metrics
+        if catalog.metric_matches.get(_lookup_key(name)) != frozenset({name})
+    )
+    if missing_metrics:
+        raise _cannot_answer(
+            "经营分析缺少必要指标：" + "、".join(missing_metrics),
+            "REQUIRED_METRIC_NOT_FOUND",
+        )
+    if catalog.dimension_matches.get(_lookup_key("产品")) != frozenset({"产品"}):
+        raise _cannot_answer(
+            "经营分析语义目录缺少产品维度",
+            "PRODUCT_DIMENSION_NOT_FOUND",
+        )
+    comparison_label = comparison.text
+    current_label = current.text
+    plan = AnalysisPlan(
+        tasks=(
+            _comparison_task(
+                "comparison-overall",
+                f"查询比较时期 {comparison_label} 的{metric_name}",
+                (metric_name,),
+                (),
+                comparison,
+                "整体指标基准值",
+            ),
+            _comparison_task(
+                "current-overall",
+                f"查询当前时期 {current_label} 的{metric_name}",
+                (metric_name,),
+                (),
+                current,
+                "整体指标当前值",
+            ),
+            _comparison_task(
+                "comparison-products",
+                f"按产品查询比较时期 {comparison_label} 的归因指标",
+                product_metrics,
+                ("产品",),
+                comparison,
+                "各产品的指标归因输入",
+            ),
+            _comparison_task(
+                "current-products",
+                f"按产品查询当前时期 {current_label} 的归因指标",
+                product_metrics,
+                ("产品",),
+                current,
+                "各产品的指标归因输入",
+            ),
+        )
+    )
+    return request, plan
+
+
+def _comparison_task(
+    task_id: str,
+    description: str,
+    metrics: tuple[str, ...],
+    dimensions: tuple[str, ...],
+    period: AnalysisTimeRange,
+    expected_output: str,
+) -> AnalysisTask:
+    return AnalysisTask(
+        task_id=task_id,
+        task_type=AnalysisTaskType.COMPARISON,
+        description=description,
+        metrics=metrics,
+        dimensions=dimensions,
+        time_range=period,
+        filters=(),
+        depends_on=(),
+        expected_output=expected_output,
+    )
+
+
+def _period_is_grounded(period: AnalysisTimeRange, question: str) -> bool:
+    normalized_question = "".join(_lookup_key(question).split())
+    normalized_period = "".join(_lookup_key(period.text).split())
+    if normalized_period in normalized_question:
+        return True
+    if period.granularity is TimeGranularity.MONTH:
+        year_match = re.fullmatch(r"(\d{4})年\d{1,2}月", normalized_period)
+        if year_match is not None:
+            (year,) = year_match.groups()
+            month = re.search(r"\d{1,2}月", normalized_period)
+            if month is not None and f"{year}年" in normalized_question:
+                return month.group() in normalized_question
+    return False
 
 
 def validate_analysis_plan(
@@ -329,3 +509,10 @@ def _structure(message: str, reason: str) -> AnalysisPlanStructureError:
 
 def _cannot_answer(message: str, reason: str) -> AnalysisPlanCannotAnswer:
     return AnalysisPlanCannotAnswer(message, reason=reason)
+
+
+def _clarification(
+    message: str,
+    reason: str,
+) -> AnalysisPlanClarificationRequired:
+    return AnalysisPlanClarificationRequired(message, reason=reason)

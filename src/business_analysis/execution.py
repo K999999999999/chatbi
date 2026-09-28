@@ -153,7 +153,7 @@ class TaskExecutor:
                         ),
                     )
                 else:
-                    result = self._execute_task(
+                    result = self.execute_one(
                         task,
                         request_id=request_id,
                         now=now,
@@ -165,6 +165,17 @@ class TaskExecutor:
             pending = next_pending
 
         return tuple(results[task.task_id] for task in plan.tasks)
+
+    def execute_one(
+        self,
+        task: AnalysisTask,
+        *,
+        request_id: str | None = None,
+        now: datetime | None = None,
+    ) -> TaskResult:
+        """执行一个已由程序生成的查询 Task，供可 checkpoint 的图节点调用。"""
+
+        return self._execute_task(task, request_id=request_id, now=now)
 
     def _execute_task(
         self,

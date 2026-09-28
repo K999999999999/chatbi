@@ -46,6 +46,7 @@ Observability 只记录和关联已有业务行为，不决定业务事实、RAG
 - 保留现有语义，用于 API 响应、用户反馈和业务请求关联。
 - 可以由调用方提供，也可以由系统生成。
 - 相同 `request_id` 不代表相同 Trace，不得用它代替 `trace_id`。
+- 经营分析使用独立 `analysis_run_id` 标识可恢复运行；每次恢复仍生成新的 `request_id` / `trace_id`。Trace 仅记录 `chatbi.analysis_run_id` 关联属性，不能用 `trace_id` 充当 LangGraph `thread_id`。
 
 ### 5.2 trace_id
 

@@ -19,6 +19,7 @@ from src.authorization import (
 )
 from src.business_analysis.runtime import (
     DEFAULT_DIMENSIONS_PATH,
+    _build_chat_model,
     build_analysis_application,
 )
 from src.observability.contracts import TraceRecorder
@@ -46,6 +47,7 @@ from src.online_query.retrieval.rag_runtime import RagRuntime
 from src.online_query.service import OnlineQueryService
 
 from .business_analysis_evaluation import load_business_analysis_cases
+from .business_analysis_judge import LangChainBusinessAnalysisJudge
 from .business_analysis_reporting import (
     create_business_analysis_report,
     render_business_analysis_markdown,
@@ -511,9 +513,12 @@ def _run_business_analysis_cli_impl(
     cases = load_business_analysis_cases(cases_path)
     baseline = load_report(args.baseline) if args.baseline else None
     context = context_loader()
+    if analysis_application_factory is None and not args.online_retrieval:
+        raise ReportingError("经营分析 Golden Set 必须使用 --online-retrieval")
     retrieval_provider = None
     query_understanding = None
     rag_runtime: RagRuntime | None = None
+    rag_asset_version: str | None = None
     if args.online_retrieval:
         if not _rag_online_retrieval_enabled(environ):
             raise ReportingError(
@@ -537,6 +542,7 @@ def _run_business_analysis_cli_impl(
                 rag_runtime,
                 trace_recorder,
             )
+            rag_asset_version = rag_runtime.get_snapshot().asset_version
         else:
             retrieval_provider = retrieval_factory()
         query_understanding = (
@@ -572,13 +578,27 @@ def _run_business_analysis_cli_impl(
         else analysis_application_factory(authorized_service, environ)
     )
     sales_mart_fingerprint = collect_sales_mart_fingerprint(environ)
-    run = run_business_analysis_evaluation(
-        cases,
-        application,
-        executor,
-        context,
-        auth_context,
-    )
+    try:
+        run = run_business_analysis_evaluation(
+            cases,
+            application,
+            executor,
+            context,
+            auth_context,
+            judge=(
+                None
+                if analysis_application_factory is not None
+                else LangChainBusinessAnalysisJudge(
+                    _build_chat_model({**environ, "LLM_TEMPERATURE": "0"})
+                )
+            ),
+        )
+    finally:
+        close = getattr(application, "close", None)
+        if callable(close):
+            close()
+    if rag_runtime is not None and rag_asset_version != rag_runtime.get_snapshot().asset_version:
+        raise ReportingError("评测期间发布的 RAG 资产版本发生变化")
     git_commit, git_dirty = git_state_reader(PROJECT_ROOT)
     metadata = collect_run_metadata(
         run,
@@ -592,6 +612,7 @@ def _run_business_analysis_cli_impl(
             else context_paths
         ),
         sales_mart_fingerprint=sales_mart_fingerprint,
+        rag_asset_version=rag_asset_version,
     )
     report = create_business_analysis_report(run, metadata, baseline)
     report_path = args.output_dir / f"{metadata.run_id}-business-analysis.json"

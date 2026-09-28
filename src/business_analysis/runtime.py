@@ -10,12 +10,42 @@ from math import isfinite
 from pathlib import Path
 
 from langchain_openai import ChatOpenAI
+from langgraph.checkpoint.postgres import PostgresSaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+from psycopg.conninfo import make_conninfo
+from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
 
-from .application import BusinessAnalysisApplication, AuthorizedQueryEntry
-from .contracts import AnalysisDecompositionContext
-from .decomposer import LangChainAnalysisPlanDecomposer
-from .reporting import LangChainAnalysisSummarizer
+from src.chatbi_control.database import ControlDatabaseConfig, create_control_engine
+from src.online_query.contracts import QueryErrorCode, QueryFailure
+from src.online_query.query_understanding import FilterOperator, TimeGranularity
 
+from .application import AuthorizedQueryEntry, BusinessAnalysisApplication
+from .attribution import (
+    BusinessAnalysisAttribution,
+    FactorContribution,
+    ProductContribution,
+)
+from .contracts import (
+    AnalysisDecompositionContext,
+    AnalysisFilter,
+    AnalysisPlan,
+    AnalysisRequest,
+    AnalysisRequestCandidate,
+    AnalysisSemanticCatalog,
+    AnalysisTask,
+    AnalysisTaskCandidate,
+    AnalysisTaskType,
+    AnalysisTimeRange,
+)
+from .decomposer import LangChainAnalysisRequestExtractor
+from .execution import TaskError, TaskResult, TaskStatus
+from .reporting import (
+    AnalysisReportError,
+    BusinessAnalysisReport,
+    LangChainAnalysisSummarizer,
+)
+from .run_store import PostgresAnalysisRunStore
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_METRICS_PATH = PROJECT_ROOT / "src" / "semantic" / "metrics.json"
@@ -32,15 +62,66 @@ def build_analysis_application(
     """装配真实 LLM 边缘和当前语义事实。"""
 
     model = _build_chat_model(environ)
-    return BusinessAnalysisApplication(
+    control_config = ControlDatabaseConfig.from_environment(
+        None if environ is None else dict(environ),
+        require_migrator=False,
+    )
+    control_engine = create_control_engine(control_config)
+    checkpoint_pool = ConnectionPool(
+        make_conninfo(**control_config.app_connection_kwargs()),
+        kwargs={"autocommit": True, "row_factory": dict_row},
+        min_size=1,
+        max_size=10,
+        open=True,
+    )
+    checkpointer = PostgresSaver(
+        checkpoint_pool,
+        serde=JsonPlusSerializer(
+            allowed_msgpack_modules=_checkpoint_allowed_types()
+        ),
+    )
+    application = BusinessAnalysisApplication(
         authorized_query_service,
-        decomposer=LangChainAnalysisPlanDecomposer(model),
+        decomposer=LangChainAnalysisRequestExtractor(model),
         summarizer=LangChainAnalysisSummarizer(model),
         context_provider=lambda: load_analysis_context(
             metrics_path=metrics_path,
             dimensions_path=dimensions_path,
         ),
+        checkpointer=checkpointer,
+        run_store=PostgresAnalysisRunStore(control_engine),
     )
+    return application
+
+
+def _checkpoint_allowed_types() -> list[tuple[str, str]]:
+    """仅允许反序列化经营分析图实际写入的 Python 类型。"""
+
+    allowed = (
+        BusinessAnalysisAttribution,
+        FactorContribution,
+        ProductContribution,
+        AnalysisDecompositionContext,
+        AnalysisFilter,
+        AnalysisPlan,
+        AnalysisRequest,
+        AnalysisRequestCandidate,
+        AnalysisSemanticCatalog,
+        AnalysisTask,
+        AnalysisTaskCandidate,
+        AnalysisTaskType,
+        AnalysisTimeRange,
+        TaskError,
+        TaskResult,
+        TaskStatus,
+        QueryErrorCode,
+        QueryFailure,
+        BusinessAnalysisReport,
+        AnalysisReportError,
+        FilterOperator,
+        TimeGranularity,
+    )
+    return [(item.__module__, item.__name__) for item in allowed]
 
 
 def load_analysis_context(

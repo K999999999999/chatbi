@@ -7,6 +7,7 @@ from tempfile import TemporaryDirectory
 
 from src.authorization import AuthContext
 from src.business_analysis.application import BusinessAnalysisSuccess
+from src.business_analysis.attribution import BusinessAnalysisAttribution
 from src.business_analysis.contracts import (
     AnalysisPlan,
     AnalysisTask,
@@ -88,6 +89,7 @@ class BusinessAnalysisRunnerTest(unittest.TestCase):
                         row_count=1,
                     ),
                 ),
+                attribution=_attribution(),
                 plan=plan,
             )
         )
@@ -150,6 +152,7 @@ class BusinessAnalysisRunnerTest(unittest.TestCase):
                     row_count=1,
                 ),
             ),
+            attribution=_attribution(),
             plan=plan,
         )
 
@@ -177,8 +180,8 @@ class _FakeApplication:
     def __init__(self, result: BusinessAnalysisSuccess) -> None:
         self.result = result
 
-    def analyze(self, question, *, request_id, auth_context):
-        del question, request_id, auth_context
+    def analyze(self, question, *, request_id, auth_context, analysis_run_id=None):
+        del question, request_id, auth_context, analysis_run_id
         return self.result
 
 
@@ -219,6 +222,21 @@ def _report(*, evidence: tuple[str, ...]) -> BusinessAnalysisReport:
         action_suggestions=(),
         evidence_task_ids=evidence,
         incomplete_tasks=(),
+    )
+
+
+def _attribution() -> BusinessAnalysisAttribution:
+    from decimal import Decimal
+
+    return BusinessAnalysisAttribution(
+        metric_name="人民币净销售额",
+        current_period="2025年3月",
+        comparison_period="2025年2月",
+        comparison_value=Decimal("100"),
+        current_value=Decimal("100"),
+        total_change=Decimal("0"),
+        products=(),
+        top_products=(),
     )
 
 

@@ -1,6 +1,6 @@
 # 03 实现产品因素确定性归因并交给总结模型
 
-Status: open
+Status: in-progress
 
 ## Owner
 

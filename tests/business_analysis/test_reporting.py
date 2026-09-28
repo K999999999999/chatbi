@@ -2,15 +2,54 @@
 
 import unittest
 
+from src.business_analysis.attribution import calculate_product_attribution
+from src.business_analysis.contracts import AnalysisRequest, AnalysisTimeRange
 from src.business_analysis.execution import TaskError, TaskResult, TaskStatus
 from src.business_analysis.reporting import (
     AnalysisReportError,
     BusinessAnalysisReport,
     LangChainAnalysisSummarizer,
 )
+from src.online_query.query_understanding import TimeGranularity
 
 
 class ReportingTest(unittest.TestCase):
+    def test_summary_receives_and_returns_program_attribution(self) -> None:
+        attribution = calculate_product_attribution(
+            AnalysisRequest(
+                metric_name="人民币净销售额",
+                current_period=AnalysisTimeRange(
+                    "2025年3月", TimeGranularity.MONTH
+                ),
+                comparison_period=AnalysisTimeRange(
+                    "2025年2月", TimeGranularity.MONTH
+                ),
+            ),
+            (
+                _overall("comparison-overall", 10),
+                _overall("current-overall", 20),
+                _product("comparison-products", 10),
+                _product("current-products", 20),
+            ),
+        )
+        model = _FakeModel(_payload(evidence_task_ids=["current-overall"]))
+
+        report = LangChainAnalysisSummarizer(model).summarize(
+            "销售额变化原因",
+            (
+                _result("comparison-overall", rows=((10,),)),
+                _result("current-overall", rows=((20,),)),
+                _result("comparison-products", rows=(("产品", 10, 1),)),
+                _result("current-products", rows=(("产品", 20, 1),)),
+            ),
+            attribution,
+        )
+
+        self.assertEqual(report.attribution, attribution)
+        self.assertEqual(report.to_payload()["attribution"], attribution.to_payload())
+        self.assertIn('"program_attribution"', model.prompt)
+        self.assertIn("不得修改其指标口径、数值、变化方向", model.prompt)
+
     def test_summary_returns_human_readable_report_with_completed_evidence(
         self,
     ) -> None:
@@ -185,6 +224,26 @@ def _result(
         row_count=len(rows),
         truncated=truncated,
         error=error,
+    )
+
+
+def _overall(task_id: str, value: int) -> TaskResult:
+    return TaskResult(
+        task_id=task_id,
+        status=TaskStatus.COMPLETED,
+        columns=("人民币净销售额",),
+        rows=((value,),),
+        row_count=1,
+    )
+
+
+def _product(task_id: str, sales: int) -> TaskResult:
+    return TaskResult(
+        task_id=task_id,
+        status=TaskStatus.COMPLETED,
+        columns=("产品", "人民币净销售额", "已完成销售数量"),
+        rows=(("产品", sales, 1),),
+        row_count=1,
     )
 
 
