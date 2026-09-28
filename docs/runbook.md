@@ -102,7 +102,7 @@ uv run --env-file .env python -m src.chatbi_control create-admin --username admi
 
 ### 4.4 重置 PostgreSQL 开发环境
 
-此命令会先显示并确认当前 Compose 项目拥有的 PostgreSQL named volume，然后只删除 `postgres_data`，重新启动并等待 PostgreSQL、Sales Mart、Control DB 和 Seed 健康：
+升级本地开发 Seed（例如 v2 到 v3）时不执行数据迁移；使用此命令全量重建本地 PostgreSQL 开发环境。命令会先显示并确认当前 Compose 项目拥有的 PostgreSQL named volume，然后只删除 `postgres_data`，重新启动并等待 PostgreSQL、Sales Mart、Control DB 和 Seed 健康：
 
 ```bash
 uv run python -m scripts.reset_dev_postgres
@@ -110,7 +110,7 @@ uv run python -m scripts.reset_dev_postgres
 
 该重置会清除 `chatbi_mvp`、`chatbi_control` 中所有开发数据、账号、Session 和审计记录。它不会删除 Qdrant volume 或其他 Compose 项目的数据。正常启动和关闭使用 Compose 服务命令，不使用 `docker compose down -v`。
 
-重置后需按 §4.3 再次显式创建首个管理员；Qdrant volume 和已发布 RAG 索引仍保留。
+重置后需按 §4.3 再次显式创建首个管理员。Qdrant volume 和旧的已发布 RAG 索引仍保留；若 Seed 或 `columns.json` metadata 已更新，必须按 §7.2 构建、验证并发布匹配新数据的新索引，不能把旧索引当作已更新资产。
 
 ### 4.5 登录、首次改密和管理后台
 

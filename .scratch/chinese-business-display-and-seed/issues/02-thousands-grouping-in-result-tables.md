@@ -1,6 +1,6 @@
 # 02 查询结果统一使用千分位分组
 
-- Status: open
+- Status: done
 - Owner: ChatBI Agent
 - Blocked by: None (can start immediately)
 - Change Profile: Streamlit 展示层局部行为；纯软件测试；本地交付
@@ -48,7 +48,7 @@
 
 ## Result
 
-待实施。
+普通查询与 Business Analysis Task 表格均使用三位千分位分组，人民币金额列标注“元”，数值型 ID / 日期键 / 状态码保留原值。针对性测试通过，全仓确定性测试为 536 passed、14 skipped、124 subtests；Streamlit API 响应仍保持原始数值。
 
 ## Comments
 

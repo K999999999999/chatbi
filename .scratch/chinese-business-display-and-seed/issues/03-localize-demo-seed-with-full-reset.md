@@ -1,6 +1,6 @@
 # 03 中文化本地演示 Seed 并采用开发库全量重置
 
-- Status: open
+- Status: in-progress
 - Owner: ChatBI Agent
 - Blocked by: None (can start immediately)
 - Change Profile: PostgreSQL 开发 Seed、metadata、初始化检查、RAG 资产和 Runbook；高风险；数据库集成测试、RAG 检索 Evaluation 与本地运行流程验收
@@ -66,7 +66,7 @@ Seed 版本从 `chatbi-sales-mart-dev-v2` 升级到新版本。已有本地开�
 
 ## Result
 
-待实施。
+Seed / metadata 已更新到 v3，初始化健康检查、数据库测试 harness 与 Runbook 已同步。临时隔离的完整开发 PostgreSQL 初始化和相关集成测试 18 项通过；全仓确定性测试为 536 passed、14 skipped、124 subtests。未清理本机开发数据库。新 RAG 资产构建 / Evaluation 仍待最终 candidate 验收。
 
 ## Comments
 

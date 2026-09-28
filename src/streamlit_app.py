@@ -282,11 +282,19 @@ def format_display_rows(
     """只格式化页面展示值，不修改 API 返回的原始结果。"""
     return [
         {
-            column: format_display_value(column, value)
+            format_display_column_name(column): format_display_value(column, value)
             for column, value in zip(columns, row)
         }
         for row in rows
     ]
+
+
+def format_display_column_name(column: str) -> str:
+    """在已知人民币金额列标题中标明展示单位。"""
+    normalized_column = column.casefold()
+    if _is_cny_amount_column(normalized_column):
+        return f"{column}（元）"
+    return column
 
 
 def format_display_value(column: str, value: Any) -> Any:
@@ -295,7 +303,9 @@ def format_display_value(column: str, value: Any) -> Any:
         return None
 
     normalized_column = column.casefold()
-    if normalized_column.endswith("_cny"):
+    if _is_identifier_column(normalized_column):
+        return value
+    if _is_cny_amount_column(normalized_column):
         return _format_decimal(value, decimals=2)
     if normalized_column.endswith("_count") or normalized_column in {"count", "数量"}:
         return _format_decimal(value, decimals=0)
@@ -307,7 +317,23 @@ def format_display_value(column: str, value: Any) -> Any:
         except (InvalidOperation, ValueError):
             return value
         return f"{_format_decimal(percentage, decimals=2)}%"
+    if isinstance(value, (int, float, Decimal)) and not isinstance(value, bool):
+        return _format_number_with_grouping(value)
     return value
+
+
+def _is_identifier_column(normalized_column: str) -> bool:
+    parts = normalized_column.split("_")
+    return any(
+        part in {"id", "key", "code", "status", "date"}
+        for part in parts
+    ) or normalized_column.endswith(("_number", "_no"))
+
+
+def _is_cny_amount_column(normalized_column: str) -> bool:
+    if normalized_column.endswith("_to_cny") or "率" in normalized_column:
+        return False
+    return normalized_column.endswith("_cny") or "人民币" in normalized_column
 
 
 def main() -> None:
@@ -629,7 +655,7 @@ def _render_analysis_report(st: Any, response: dict[str, Any]) -> None:
             columns = item.get("columns", [])
             if isinstance(rows, list) and rows:
                 st.dataframe(
-                    rows_as_records(columns, rows),
+                    format_display_rows(columns, rows),
                     use_container_width=True,
                     hide_index=True,
                 )
@@ -809,7 +835,17 @@ def _format_decimal(value: Any, *, decimals: int) -> Any:
 
     quantum = Decimal(1).scaleb(-decimals)
     rounded = number.quantize(quantum, rounding=ROUND_HALF_UP)
-    return format(rounded, ",.{}f".format(decimals))
+    return format(rounded, f",.{decimals}f")
+
+
+def _format_number_with_grouping(value: float | Decimal) -> Any:
+    try:
+        number = _as_decimal(value)
+    except (InvalidOperation, ValueError):
+        return value
+    if not number.is_finite():
+        return value
+    return format(number, ",f")
 
 
 def _as_decimal(value: Any) -> Decimal:

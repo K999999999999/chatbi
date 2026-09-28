@@ -76,6 +76,8 @@ class ReportingTest(unittest.TestCase):
         self.assertIn('"rows"', model.prompt)
         self.assertIn("key_findings、root_causes、action_suggestions", model.prompt)
         self.assertIn("incomplete_tasks 只填 task_id，不要拼接 reason", model.prompt)
+        self.assertIn("所有面向用户的报告自然语言内容必须使用简体中文", model.prompt)
+        self.assertIn("Task ID、状态码和作为证据的数据原值保持原样", model.prompt)
 
     def test_evidence_must_reference_completed_task(self) -> None:
         model = _FakeModel(_payload(evidence_task_ids=["failed"]))

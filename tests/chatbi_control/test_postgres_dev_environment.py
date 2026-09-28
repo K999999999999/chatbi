@@ -64,7 +64,7 @@ class PostgresDevelopmentEnvironmentTest(unittest.TestCase):
             cursor.execute(
                 "SELECT seed_version FROM mart_sales.dev_seed_metadata WHERE singleton"
             )
-            self.assertEqual(cursor.fetchone(), ("chatbi-sales-mart-dev-v2",))
+            self.assertEqual(cursor.fetchone(), ("chatbi-sales-mart-dev-v3",))
 
             cursor.execute(
                 """

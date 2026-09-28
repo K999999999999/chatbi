@@ -1,6 +1,6 @@
 # 01 经营分析总结使用简体中文
 
-- Status: open
+- Status: in-progress
 - Owner: ChatBI Agent
 - Blocked by: None (can start immediately)
 - Change Profile: 小范围；Prompt / AI 行为；确定性测试加真实 Business Analysis Evaluation；本地交付
@@ -47,7 +47,7 @@ Prompt 和回归测试体现中文 Contract，针对性测试及要求的真实 
 
 ## Result
 
-待实施。
+Prompt 已要求用户可见自然语言字段使用简体中文，并保留 Task ID、状态码和证据原值。Reporting 定向测试和全仓确定性测试通过（全仓 536 passed、14 skipped、124 subtests）；真实 Business Analysis Evaluation 仍须在最终 candidate 验收阶段运行。
 
 ## Comments
 
