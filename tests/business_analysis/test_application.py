@@ -99,6 +99,29 @@ class BusinessAnalysisApplicationTest(unittest.TestCase):
         self.assertEqual(bound.requests, [])
         self.assertEqual(summarizer.inputs, [])
 
+    def test_unsupported_region_breakdown_is_refused_before_query_or_summary(
+        self,
+    ) -> None:
+        bound = _BoundService()
+        summarizer = _Summarizer()
+        application = _application(
+            _AuthorizedService(bound),
+            _Decomposer(_candidate()),
+            summarizer,
+        )
+
+        result = application.analyze(
+            "2025年3月毛利为什么比2月下降？请按销售区域拆解原因。",
+            request_id="analysis-region",
+            auth_context="auth-context",
+        )
+
+        self.assertIsInstance(result, QueryFailure)
+        self.assertEqual(result.error_code, QueryErrorCode.CANNOT_ANSWER)
+        self.assertEqual(result.internal_reason, "DIMENSION_UNSUPPORTED")
+        self.assertEqual(bound.requests, [])
+        self.assertEqual(summarizer.inputs, [])
+
     def test_missing_comparison_period_is_clarified_before_query(self) -> None:
         candidate = _candidate(comparison_period=None)
         bound = _BoundService()

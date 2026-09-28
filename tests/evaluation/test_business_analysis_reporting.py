@@ -21,18 +21,15 @@ class BusinessAnalysisReportingTest(unittest.TestCase):
         report = create_business_analysis_report(_run(), _metadata())
 
         self.assertEqual(report["summary"]["plan_accuracy"], 1.0)
-        self.assertEqual(report["summary"]["task_execution_accuracy"], 1.0)
-        self.assertEqual(report["summary"]["report_grounded_accuracy"], 1.0)
-        self.assertIsNone(report["summary"]["summary_judge_accuracy"])
-        self.assertEqual(report["summary"]["attribution_accuracy"], 1.0)
+        self.assertEqual(report["summary"]["summary_accuracy"], 1.0)
         self.assertEqual(report["summary"]["end_to_end_accuracy"], 1.0)
         self.assertEqual(report["cases"][0]["status"], "PASS")
         markdown = render_business_analysis_markdown(report)
         self.assertIn("Sales Mart Seed：dev-seed-v1", markdown)
         self.assertIn("d" * 64, markdown)
         self.assertIn("10 行", markdown)
-        self.assertIn("经营分析 Evaluation（评估）", markdown)
-        self.assertIn("端到端案例准确率", markdown)
+        self.assertIn("经营分析 Evaluation（评测）", markdown)
+        self.assertIn("端到端", markdown)
         self.assertIn("CASE-1", markdown)
 
     def test_report_records_baseline_regression(self) -> None:
@@ -77,9 +74,9 @@ def _run(
     case = BusinessAnalysisCaseEvaluation(
         case_id="CASE-1",
         status=status,
+        outcome_passed=passed,
         plan_passed=passed,
-        task_passed=passed,
-        report_passed=passed,
+        summary_passed=passed,
         failure_reason=None if passed else "失败",
         reason_code=None if passed else "TEST_FAILURE",
     )
@@ -89,11 +86,9 @@ def _run(
         passed=1 if passed else 0,
         failed=0 if passed else 1,
         invalid_cases=0,
+        outcome_accuracy=1.0 if passed else 0.0,
         plan_accuracy=1.0 if passed else 0.0,
-        task_execution_accuracy=1.0 if passed else 0.0,
-        report_grounded_accuracy=1.0 if passed else 0.0,
-        attribution_accuracy=1.0 if passed else 0.0,
-        summary_judge_accuracy=None,
+        summary_accuracy=1.0 if passed else 0.0,
         end_to_end_accuracy=1.0 if passed else 0.0,
     )
     return BusinessAnalysisEvaluationRun(

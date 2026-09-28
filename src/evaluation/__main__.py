@@ -582,8 +582,6 @@ def _run_business_analysis_cli_impl(
         run = run_business_analysis_evaluation(
             cases,
             application,
-            executor,
-            context,
             auth_context,
             judge=(
                 None

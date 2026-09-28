@@ -1,183 +1,74 @@
-"""经营分析 Golden Set Runner（黄金测试集运行器）测试。"""
+"""经营分析评测 Runner 测试。"""
 
-import json
 import unittest
 from pathlib import Path
-from tempfile import TemporaryDirectory
 
 from src.authorization import AuthContext
 from src.business_analysis.application import BusinessAnalysisSuccess
-from src.business_analysis.attribution import BusinessAnalysisAttribution
-from src.business_analysis.contracts import (
-    AnalysisPlan,
-    AnalysisTask,
-    AnalysisTaskType,
-)
-from src.business_analysis.execution import TaskResult, TaskStatus
 from src.business_analysis.reporting import BusinessAnalysisReport
 from src.evaluation.business_analysis_evaluation import load_business_analysis_cases
 from src.evaluation.business_analysis_runner import (
     BusinessAnalysisCaseStatus,
+    JudgeResult,
     run_business_analysis_evaluation,
 )
-from src.online_query.context import load_query_context
-from src.online_query.contracts import QueryData
+from src.online_query.contracts import QueryErrorCode, QueryFailure
 
 
 class BusinessAnalysisRunnerTest(unittest.TestCase):
-    def test_runs_golden_case_and_scores_plan_tasks_and_report_evidence(self) -> None:
-        cases = self._load_case(
-            {
-                "id": "region-breakdown",
-                "question": "2025年第一季度按销售区域分析销售额。",
-                "expected": {
-                    "outcome": "plan",
-                    "min_tasks": 1,
-                    "required_task_types": ["breakdown"],
-                    "required_metrics": ["人民币净销售额"],
-                    "required_dimensions": ["销售区域"],
-                    "tasks": [
-                        {
-                            "key": "breakdown",
-                            "task_type": "breakdown",
-                            "metrics": ["人民币净销售额"],
-                            "dimensions": ["销售区域"],
-                            "depends_on": [],
-                            "expected_sql": (
-                                "SELECT SUM(f.net_sales_amount_cny) "
-                                "FROM mart_sales.fct_sales_order_line AS f;"
-                            ),
-                        }
-                    ],
-                    "report": {
-                        "required_evidence_tasks": ["breakdown"],
-                        "expected_incomplete_tasks": [],
-                    },
-                },
-            }
-        )
-        actual = QueryData(
-            columns=("sales_region_name", "net_sales_cny"),
-            rows=(("华东", 100),),
-            truncated=False,
-        )
-        plan = AnalysisPlan(
-            tasks=(
-                AnalysisTask(
-                    task_id="task_1",
-                    task_type=AnalysisTaskType.BREAKDOWN,
-                    description="按销售区域分析销售额",
-                    metrics=("人民币净销售额",),
-                    dimensions=("销售区域",),
-                    time_range=None,
-                    filters=(),
-                    depends_on=(),
-                    expected_output="结构化结果",
-                ),
-            )
-        )
-        application = _FakeApplication(
-            BusinessAnalysisSuccess(
-                request_id="analysis-evaluation-region-breakdown",
-                report=_report(evidence=("task_1",)),
-                task_results=(
-                    TaskResult(
-                        task_id="task_1",
-                        status=TaskStatus.COMPLETED,
-                        columns=actual.columns,
-                        rows=actual.rows,
-                        row_count=1,
-                    ),
-                ),
-                attribution=_attribution(),
-                plan=plan,
-            )
-        )
-
+    def test_plan_and_summary_are_judged_independently(self) -> None:
+        case = self._cases()[0]
+        judge = _FakeJudge(plan=False, summary=True)
         run = run_business_analysis_evaluation(
-            cases,
-            application,
-            _FakeExecutor(actual),
-            load_query_context(),
-            AuthContext(subject_id="evaluation-test", identity_provider="test"),
+            [case],
+            _FakeApplication(_success()),
+            AuthContext(subject_id="eval", identity_provider="test"),
+            judge=judge,
         )
+        evaluation = run.cases[0]
+        self.assertEqual(evaluation.status, BusinessAnalysisCaseStatus.FAIL)
+        self.assertFalse(evaluation.plan_passed)
+        self.assertTrue(evaluation.summary_passed)
+        self.assertEqual(judge.calls, ["plan", "summary"])
+        self.assertEqual(run.summary.plan_accuracy, 0.0)
+        self.assertEqual(run.summary.summary_accuracy, 1.0)
 
-        self.assertEqual(run.cases[0].status, BusinessAnalysisCaseStatus.PASS)
-        self.assertEqual(run.summary.plan_accuracy, 1.0)
-        self.assertEqual(run.summary.task_execution_accuracy, 1.0)
-        self.assertEqual(run.summary.report_grounded_accuracy, 1.0)
-        self.assertEqual(run.summary.end_to_end_accuracy, 1.0)
-
-    def test_marks_report_evidence_mismatch_as_failure(self) -> None:
-        cases = self._load_case(
-            {
-                "id": "region-breakdown",
-                "question": "按销售区域分析销售额。",
-                "expected": {
-                    "outcome": "plan",
-                    "min_tasks": 1,
-                    "required_task_types": ["breakdown"],
-                    "required_metrics": ["人民币净销售额"],
-                    "required_dimensions": ["销售区域"],
-                    "tasks": [
-                        {
-                            "key": "breakdown",
-                            "task_type": "breakdown",
-                            "metrics": ["人民币净销售额"],
-                            "dimensions": ["销售区域"],
-                            "depends_on": [],
-                            "expected_sql": (
-                                "SELECT SUM(f.net_sales_amount_cny) "
-                                "FROM mart_sales.fct_sales_order_line AS f;"
-                            ),
-                        }
-                    ],
-                    "report": {
-                        "required_evidence_tasks": ["breakdown"],
-                        "expected_incomplete_tasks": [],
-                    },
-                },
-            }
+    def test_clarification_and_refusal_are_checked_by_error_code(self) -> None:
+        cases = self._cases()
+        examples = (
+            ("clarification_required", QueryErrorCode.CLARIFICATION_REQUIRED),
+            ("cannot_answer", QueryErrorCode.CANNOT_ANSWER),
         )
-        plan = _plan()
-        result = BusinessAnalysisSuccess(
-            request_id="analysis-evaluation-region-breakdown",
-            report=_report(evidence=()),
-            task_results=(
-                TaskResult(
-                    task_id="task_1",
-                    status=TaskStatus.COMPLETED,
-                    columns=("value",),
-                    rows=((1,),),
-                    row_count=1,
-                ),
-            ),
-            attribution=_attribution(),
-            plan=plan,
-        )
-
-        run = run_business_analysis_evaluation(
-            cases,
-            _FakeApplication(result),
-            _FakeExecutor(QueryData(columns=("value",), rows=((1,),), truncated=False)),
-            load_query_context(),
-            AuthContext(subject_id="evaluation-test", identity_provider="test"),
-        )
-
-        self.assertEqual(run.cases[0].status, BusinessAnalysisCaseStatus.FAIL)
-        self.assertFalse(run.cases[0].report_passed)
-        self.assertEqual(run.cases[0].reason_code, "REPORT_EVIDENCE_MISSING")
+        for expected_outcome, error_code in examples:
+            with self.subTest(expected_outcome=expected_outcome):
+                case = next(
+                    item for item in cases if item.expected_outcome == expected_outcome
+                )
+                result = QueryFailure(
+                    request_id="test",
+                    error_code=error_code,
+                    error_message="符合案例预期",
+                )
+                run = run_business_analysis_evaluation(
+                    [case],
+                    _FakeApplication(result),
+                    AuthContext(subject_id="eval", identity_provider="test"),
+                    judge=None,
+                )
+                self.assertEqual(run.cases[0].status, BusinessAnalysisCaseStatus.PASS)
+                self.assertIsNone(run.cases[0].summary_passed)
+                self.assertIsNone(run.cases[0].plan_passed)
 
     @staticmethod
-    def _load_case(record: dict[str, object]):
-        with TemporaryDirectory() as directory:
-            path = Path(directory) / "cases.json"
-            path.write_text(json.dumps([record], ensure_ascii=False), encoding="utf-8")
-            return load_business_analysis_cases(path)
+    def _cases():
+        root = Path(__file__).resolve().parents[2]
+        return load_business_analysis_cases(
+            root / "src/evaluation/business_analysis_cases.json"
+        )
 
 
 class _FakeApplication:
-    def __init__(self, result: BusinessAnalysisSuccess) -> None:
+    def __init__(self, result):
         self.result = result
 
     def analyze(self, question, *, request_id, auth_context, analysis_run_id=None):
@@ -185,58 +76,36 @@ class _FakeApplication:
         return self.result
 
 
-class _FakeExecutor:
-    def __init__(self, result: QueryData) -> None:
-        self.result = result
+class _FakeJudge:
+    def __init__(self, *, plan: bool, summary: bool) -> None:
+        self.results = {"plan": plan, "summary": summary}
+        self.calls: list[str] = []
 
-    def execute(self, validated_sql):
-        del validated_sql
-        return self.result
+    def evaluate_plan(self, case, result):
+        del case, result
+        self.calls.append("plan")
+        return JudgeResult(self.results["plan"], "拆解依据")
 
-
-def _plan() -> AnalysisPlan:
-    return AnalysisPlan(
-        tasks=(
-            AnalysisTask(
-                task_id="task_1",
-                task_type=AnalysisTaskType.BREAKDOWN,
-                description="按销售区域分析销售额",
-                metrics=("人民币净销售额",),
-                dimensions=("销售区域",),
-                time_range=None,
-                filters=(),
-                depends_on=(),
-                expected_output="结构化结果",
-            ),
-        )
-    )
+    def evaluate_summary(self, case, result):
+        del case, result
+        self.calls.append("summary")
+        return JudgeResult(self.results["summary"], "总结依据")
 
 
-def _report(*, evidence: tuple[str, ...]) -> BusinessAnalysisReport:
-    return BusinessAnalysisReport(
-        title="销售区域分析",
-        executive_summary="基于查询结果生成。",
-        key_findings=("华东销售额最高。",),
-        trend_judgment="需要结合趋势任务判断。",
-        root_causes=(),
-        action_suggestions=(),
-        evidence_task_ids=evidence,
-        incomplete_tasks=(),
-    )
-
-
-def _attribution() -> BusinessAnalysisAttribution:
-    from decimal import Decimal
-
-    return BusinessAnalysisAttribution(
-        metric_name="人民币净销售额",
-        current_period="2025年3月",
-        comparison_period="2025年2月",
-        comparison_value=Decimal("100"),
-        current_value=Decimal("100"),
-        total_change=Decimal("0"),
-        products=(),
-        top_products=(),
+def _success() -> BusinessAnalysisSuccess:
+    return BusinessAnalysisSuccess(
+        request_id="eval-test",
+        report=BusinessAnalysisReport(
+            title="经营分析",
+            executive_summary="摘要",
+            key_findings=(),
+            trend_judgment="变化",
+            root_causes=(),
+            action_suggestions=(),
+            evidence_task_ids=(),
+            incomplete_tasks=(),
+        ),
+        task_results=(),
     )
 
 

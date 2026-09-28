@@ -106,6 +106,14 @@ def build_comparison_plan(
             "目标指标与用户问题不一致",
             "METRIC_NOT_IN_QUESTION",
         )
+    unsupported_dimensions = _requested_unsupported_dimensions(catalog, question)
+    if unsupported_dimensions:
+        raise _cannot_answer(
+            "当前经营分析仅支持按产品归因，不支持按"
+            + "、".join(unsupported_dimensions)
+            + "拆解",
+            "DIMENSION_UNSUPPORTED",
+        )
 
     current = candidate.current_period
     comparison = candidate.comparison_period
@@ -233,6 +241,20 @@ def _period_is_grounded(period: AnalysisTimeRange, question: str) -> bool:
             if month is not None and f"{year}年" in normalized_question:
                 return month.group() in normalized_question
     return False
+
+
+def _requested_unsupported_dimensions(
+    catalog: AnalysisSemanticCatalog, question: str
+) -> tuple[str, ...]:
+    normalized_question = "".join(_lookup_key(question).split())
+    dimensions = {
+        dimension
+        for matches in catalog.dimension_matches.values()
+        for dimension in matches
+        if dimension != "产品"
+        and "".join(_lookup_key(dimension).split()) in normalized_question
+    }
+    return tuple(sorted(dimensions))
 
 
 def validate_analysis_plan(

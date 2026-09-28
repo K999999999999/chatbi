@@ -1,4 +1,4 @@
-"""经营分析评估结果的 JSON / Markdown 报告。"""
+"""经营分析评测结果的 JSON / Markdown 报告。"""
 
 from collections.abc import Mapping
 
@@ -12,52 +12,32 @@ def create_business_analysis_report(
     metadata: RunMetadata,
     baseline: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    """生成不包含查询明细和 Secret 的经营分析评估报告。"""
-
     report: dict[str, object] = {
-        "metadata": {
-            **metadata.to_dict(),
-            "evaluation_suite": "business_analysis",
-        },
+        "metadata": {**metadata.to_dict(), "evaluation_suite": "business_analysis"},
         "summary": {
             "total_cases": run.summary.total_cases,
             "valid_cases": run.summary.valid_cases,
             "passed": run.summary.passed,
             "failed": run.summary.failed,
             "invalid_cases": run.summary.invalid_cases,
+            "outcome_accuracy": run.summary.outcome_accuracy,
             "plan_accuracy": run.summary.plan_accuracy,
-            "task_execution_accuracy": run.summary.task_execution_accuracy,
-            "report_grounded_accuracy": run.summary.report_grounded_accuracy,
-            "attribution_accuracy": run.summary.attribution_accuracy,
-            "summary_judge_accuracy": run.summary.summary_judge_accuracy,
+            "summary_accuracy": run.summary.summary_accuracy,
             "end_to_end_accuracy": run.summary.end_to_end_accuracy,
         },
         "cases": [
             {
                 "case_id": case.case_id,
                 "status": case.status.value,
+                "outcome_passed": case.outcome_passed,
                 "plan_passed": case.plan_passed,
-                "task_passed": case.task_passed,
-                "report_passed": case.report_passed,
-                "attribution_passed": case.attribution_passed,
-                "direction": case.direction,
-                "change": case.change,
-                "judge_passed": case.judge_passed,
-                "judge_reason": case.judge_reason,
+                "summary_passed": case.summary_passed,
+                "plan_reason": case.plan_reason,
+                "summary_reason": case.summary_reason,
                 "failure_reason": case.failure_reason,
                 "reason_code": case.reason_code,
                 "query_error_code": case.query_error_code,
-                "internal_reason": case.internal_reason,
                 "duration_ms": case.duration_ms,
-                "task_evaluations": [
-                    {
-                        "task_key": task.task_key,
-                        "status": task.status.value,
-                        "actual_task_id": task.actual_task_id,
-                        "failure_reason": task.failure_reason,
-                    }
-                    for task in case.task_evaluations
-                ],
             }
             for case in run.cases
         ],
@@ -69,65 +49,56 @@ def create_business_analysis_report(
 
 
 def render_business_analysis_markdown(report: Mapping[str, object]) -> str:
-    """把 JSON 报告转换为人工可读的稳定摘要。"""
-
     summary = _mapping(report.get("summary"))
     metadata = _mapping(report.get("metadata"))
     cases = report.get("cases")
     lines = [
-        "# 经营分析 Evaluation（评估）",
+        "# 经营分析 Evaluation（评测）",
         "",
         "## 总体结论",
         "",
-        (
-            "本次共评测 {total} 条：成功 {passed} 条，失败 {failed} 条，"
-            "无效 {invalid} 条。"
-        ).format(
+        "本次共评测 {total} 条：通过 {passed} 条，失败 {failed} 条，无效 {invalid} 条。".format(
             total=summary.get("total_cases", "未说明"),
             passed=summary.get("passed", "未说明"),
             failed=summary.get("failed", "未说明"),
             invalid=summary.get("invalid_cases", "未说明"),
         ),
         "",
-        "| 指标 | 结果 |",
+        "| 评测维度 | 准确率 |",
         "|---|---:|",
-        f"| 计划准确率 | {_accuracy(summary.get('plan_accuracy'))} |",
-        f"| Task 执行准确率 | {_accuracy(summary.get('task_execution_accuracy'))} |",
-        f"| 报告事实依据率 | {_accuracy(summary.get('report_grounded_accuracy'))} |",
-        f"| 归因准确率 | {_accuracy(summary.get('attribution_accuracy'))} |",
-        f"| Summary Judge 准确率 | {_accuracy(summary.get('summary_judge_accuracy'))} |",
-        f"| 端到端案例准确率 | {_accuracy(summary.get('end_to_end_accuracy'))} |",
+        f"| 结果类型 | {_accuracy(summary.get('outcome_accuracy'))} |",
+        f"| 任务拆解 | {_accuracy(summary.get('plan_accuracy'))} |",
+        f"| 总结质量 | {_accuracy(summary.get('summary_accuracy'))} |",
+        f"| 端到端 | {_accuracy(summary.get('end_to_end_accuracy'))} |",
         "",
         "## 案例结果",
         "",
-        "| 案例 | 状态 | 计划 | Task | 报告证据 | 归因 | Judge | 原因 |",
-        "|---|---|---|---|---|---|---|---|",
+        "| 案例 | 状态 | 结果类型 | 任务拆解 | 总结 | 原因 |",
+        "|---|---|---|---|---|---|",
     ]
     if isinstance(cases, list):
         for case in cases:
             item = _mapping(case)
+            reason = (
+                item.get("failure_reason")
+                or item.get("plan_reason")
+                or item.get("summary_reason")
+            )
             lines.append(
-                "| {case} | {status} | {plan} | {task} | {report} | {attribution} | {judge} | {reason} |".format(
+                "| {case} | {status} | {outcome} | {plan} | {summary} | {reason} |".format(
                     case=_cell(item.get("case_id")),
                     status=_cell(item.get("status")),
+                    outcome=_bool_text(item.get("outcome_passed")),
                     plan=_bool_text(item.get("plan_passed")),
-                    task=_bool_text(item.get("task_passed")),
-                    report=_bool_text(item.get("report_passed")),
-                    attribution=_bool_text(item.get("attribution_passed")),
-                    judge=_bool_text(item.get("judge_passed")),
-                    reason=_cell(item.get("reason_code") or item.get("failure_reason")),
+                    summary=_bool_text(item.get("summary_passed")),
+                    reason=_cell(reason),
                 )
             )
     lines.extend(_render_run_info(metadata))
     comparison = report.get("baseline_comparison")
     if isinstance(comparison, Mapping):
         lines.extend(
-            [
-                "",
-                "## Baseline（基线）比较",
-                "",
-                _render_comparison(comparison),
-            ]
+            ["", "## Baseline（基线）比较", "", _render_comparison(comparison)]
         )
     else:
         lines.extend(["", "本次未执行自动 Baseline（基线）比较。"])
@@ -140,15 +111,11 @@ def _render_comparison(comparison: Mapping[str, object]) -> str:
     regressions = comparison.get("regressions", [])
     improvements = comparison.get("improvements", [])
     seed_change = (
-        "Seed 版本与 Baseline 不同；实际数据 Hash 相同，仍可比较。"
+        "Seed 版本与 Baseline 不同；Sales Mart 数据 Hash 相同，仍可比较。"
         if comparison.get("seed_version_changed") is True
         else ""
     )
-    return (
-        "状态：COMPARABLE。"
-        f"{seed_change}"
-        f"能力回退：{_list_text(regressions)}；能力改善：{_list_text(improvements)}。"
-    )
+    return f"状态：COMPARABLE。{seed_change}能力回退：{_list_text(regressions)}；能力改善：{_list_text(improvements)}。"
 
 
 def _accuracy(value: object) -> str:
