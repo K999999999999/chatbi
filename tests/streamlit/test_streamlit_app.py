@@ -725,7 +725,9 @@ class StreamlitQueryClientTest(TestCase):
         )
         self.assertEqual(rows[0][0], 12345.678)
 
-    def test_display_groups_negative_values_and_preserves_unknown_precision(self) -> None:
+    def test_display_groups_negative_values_and_preserves_unknown_precision(
+        self,
+    ) -> None:
         self.assertEqual(
             format_display_rows(
                 [

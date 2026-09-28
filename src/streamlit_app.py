@@ -325,8 +325,7 @@ def format_display_value(column: str, value: Any) -> Any:
 def _is_identifier_column(normalized_column: str) -> bool:
     parts = normalized_column.split("_")
     return any(
-        part in {"id", "key", "code", "status", "date"}
-        for part in parts
+        part in {"id", "key", "code", "status", "date"} for part in parts
     ) or normalized_column.endswith(("_number", "_no"))
 
 
