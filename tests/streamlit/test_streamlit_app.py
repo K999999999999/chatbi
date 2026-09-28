@@ -1,24 +1,24 @@
 """Streamlit POC（概念验证）页面与 HTTP 客户端测试。"""
 
-from io import BytesIO
 import json
+from io import BytesIO
 from unittest import TestCase
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError, URLError
 from urllib.request import Request
 
+import src.streamlit_app as streamlit_app
 from src.streamlit_app import (
     QueryAPIError,
     QueryAPIResponse,
     _render_error,
     _render_success,
-    format_display_rows,
     change_password_api,
+    format_display_rows,
     login_api,
     query_api,
     rows_as_records,
 )
-import src.streamlit_app as streamlit_app
 
 
 class _Response:
@@ -224,13 +224,18 @@ class StreamlitQueryClientTest(TestCase):
             "http://127.0.0.1:8000",
             "分析销售额",
             mode="analysis",
+            analysis_run_id="f5607b24-84cf-4f09-b7c5-9ea5a332e225",
             conversation_id="must-not-be-sent",
             opener=opener,
         )
 
         self.assertEqual(
             json.loads(calls[0].data.decode("utf-8")),
-            {"question": "分析销售额", "mode": "analysis"},
+            {
+                "question": "分析销售额",
+                "mode": "analysis",
+                "analysis_run_id": "f5607b24-84cf-4f09-b7c5-9ea5a332e225",
+            },
         )
 
     def test_submit_analysis_keeps_normal_query_conversation_isolated(self) -> None:
@@ -253,6 +258,7 @@ class StreamlitQueryClientTest(TestCase):
 
         self.assertEqual(displayed.session_state.conversation_id, "normal-conversation")
         self.assertEqual(api.call_args.kwargs["mode"], "analysis")
+        self.assertRegex(api.call_args.kwargs["analysis_run_id"], r"^[0-9a-f-]{36}$")
         self.assertNotIn("conversation_id", api.call_args.kwargs)
         self.assertEqual(
             displayed.session_state.analysis_timeline[0]["status"],

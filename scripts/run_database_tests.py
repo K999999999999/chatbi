@@ -268,18 +268,27 @@ def _run_tests(
     migrator_password: str | None = None,
 ) -> int:
     tests = list(DATABASE_TESTS)
+    test_environment = _test_environment(
+        host_port,
+        profile=profile,
+        host=host,
+        migrator_password=migrator_password,
+    )
     if profile == "development":
+        migrated = subprocess.run(
+            [sys.executable, "-m", "src.chatbi_control", "migrate"],
+            cwd=project_root,
+            env=test_environment,
+            check=False,
+        )
+        if migrated.returncode != 0:
+            return migrated.returncode
         tests.append("tests/chatbi_control/test_postgres_dev_environment.py")
         tests.append("tests/evaluation/test_database_fingerprint.py")
     completed = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", *tests],
         cwd=project_root,
-        env=_test_environment(
-            host_port,
-            profile=profile,
-            host=host,
-            migrator_password=migrator_password,
-        ),
+        env=test_environment,
         check=False,
     )
     return completed.returncode
@@ -392,8 +401,8 @@ def _wait_until_development_ready(
         ),
         (
             "chatbi_control",
-            "SELECT version FROM schema_migrations WHERE version = 'chatbi-control-v1'",
-            "chatbi-control-v1",
+            "SELECT version FROM schema_migrations WHERE version = 'chatbi-control-v2'",
+            "chatbi-control-v2",
         ),
     )
     deadline = time.monotonic() + timeout_seconds

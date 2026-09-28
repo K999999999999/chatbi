@@ -109,12 +109,18 @@ class ControlBootstrapTest(TestCase):
         grants = (root / "database" / "control" / "003_grants.sql").read_text(
             encoding="utf-8"
         )
+        analysis = (
+            root / "database" / "control" / "004_business_analysis_runs.sql"
+        ).read_text(encoding="utf-8")
 
         self.assertIn("CREATE TABLE IF NOT EXISTS users", schema)
         self.assertIn("CREATE TABLE IF NOT EXISTS audit_events", schema)
         self.assertIn("REVOKE UPDATE, DELETE ON TABLE audit_events", grants)
         self.assertNotIn("DROP DATABASE", schema.upper())
         self.assertNotIn("chatbi_mvp", schema)
+        self.assertIn("business_analysis_runs", analysis)
+        self.assertIn("chatbi-control-v2", analysis)
+        self.assertNotIn("AuthContext", analysis)
 
     def test_control_database_configuration_is_separate_from_business_account(
         self,
@@ -164,7 +170,7 @@ class ControlBootstrapTest(TestCase):
                 "CREATE TABLE schema_migrations (version TEXT PRIMARY KEY)"
             )
             connection.exec_driver_sql(
-                "INSERT INTO schema_migrations(version) VALUES ('chatbi-control-v1')"
+                "INSERT INTO schema_migrations(version) VALUES ('chatbi-control-v2')"
             )
 
         verify_control_schema(self.engine)

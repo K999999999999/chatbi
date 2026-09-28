@@ -4,10 +4,10 @@ from unittest import TestCase
 
 from fastapi.testclient import TestClient
 
-from src.online_query.contracts import QueryErrorCode, QueryFailure
+from src.business_analysis.application import BusinessAnalysisSuccess
 from src.business_analysis.execution import TaskResult, TaskStatus
 from src.business_analysis.reporting import BusinessAnalysisReport
-from src.business_analysis.application import BusinessAnalysisSuccess
+from src.online_query.contracts import QueryErrorCode, QueryFailure
 from tests.query_api.support import create_test_app
 
 
@@ -33,7 +33,11 @@ class AnalysisModeApiTest(TestCase):
 
         response = client.post(
             "/api/v1/query",
-            json={"question": "分析销售额", "mode": "analysis"},
+            json={
+                "question": "分析销售额",
+                "mode": "analysis",
+                "analysis_run_id": "f5607b24-84cf-4f09-b7c5-9ea5a332e225",
+            },
         )
 
         self.assertEqual(response.status_code, 200)
@@ -41,6 +45,10 @@ class AnalysisModeApiTest(TestCase):
         self.assertEqual(payload["mode"], "analysis")
         self.assertEqual(payload["report"]["title"], "分析报告")
         self.assertEqual(payload["task_results"][0]["task_id"], "root")
+        self.assertEqual(
+            payload["analysis_run_id"],
+            "f5607b24-84cf-4f09-b7c5-9ea5a332e225",
+        )
         self.assertNotIn("conversation_id", payload)
         self.assertEqual(analysis.calls[0]["auth_context"].subject_id, "analyst-1")
 
@@ -54,6 +62,7 @@ class AnalysisModeApiTest(TestCase):
                 "question": "分析销售额",
                 "mode": "analysis",
                 "conversation_id": "must-not-be-read",
+                "analysis_run_id": "f5607b24-84cf-4f09-b7c5-9ea5a332e225",
             },
         )
 
@@ -67,12 +76,33 @@ class AnalysisModeApiTest(TestCase):
 
         response = client.post(
             "/api/v1/query",
-            json={"question": "分析销售额", "mode": "analysis"},
+            json={
+                "question": "分析销售额",
+                "mode": "analysis",
+                "analysis_run_id": "f5607b24-84cf-4f09-b7c5-9ea5a332e225",
+            },
         )
 
         self.assertEqual(response.status_code, 422)
         self.assertEqual(response.json()["error_code"], "CANNOT_ANSWER")
         self.assertNotIn("detail", response.json())
+        self.assertEqual(
+            response.json()["analysis_run_id"],
+            "f5607b24-84cf-4f09-b7c5-9ea5a332e225",
+        )
+
+    def test_analysis_requires_run_id(self) -> None:
+        analysis = _AnalysisService(_report_failure())
+        client = TestClient(create_test_app(_QueryService(), analysis_service=analysis))
+
+        response = client.post(
+            "/api/v1/query",
+            json={"question": "分析销售额", "mode": "analysis"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error_code"], "INVALID_REQUEST")
+        self.assertEqual(analysis.calls, [])
 
     def test_unknown_mode_is_invalid_request_without_calling_services(self) -> None:
         analysis = _AnalysisService(_report_failure())
@@ -95,12 +125,13 @@ class _AnalysisService:
         self.result = result
         self.calls = []
 
-    def analyze(self, question, *, request_id, auth_context):
+    def analyze(self, question, *, request_id, auth_context, analysis_run_id):
         self.calls.append(
             {
                 "question": question,
                 "request_id": request_id,
                 "auth_context": auth_context,
+                "analysis_run_id": analysis_run_id,
             }
         )
         return self.result

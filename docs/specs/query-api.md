@@ -91,19 +91,23 @@ X-Request-ID: 可选
 
 ```json
 {
-  "question": "最近三个月销售额为什么下降",
-  "mode": "analysis"
+  "question": "2025年3月毛利为什么比2月下降？",
+  "mode": "analysis",
+  "analysis_run_id": "f5607b24-84cf-4f09-b7c5-9ea5a332e225"
 }
 ```
 
 - `mode=analysis` 不读取、不创建、不修改普通查询 `conversation_id`；如果请求携带该字段，必须在会话 Store、授权查询、Task Decomposer、Retrieval、LLM、SQL Guard 或数据库之前返回 `400 / INVALID_REQUEST`。
-- `mode=analysis` 不提交普通查询 `QueryState`，也不创建长期 `AnalysisState`；每次请求都是独立的单轮经营分析。
+- `analysis_run_id` 是调用方为一次经营分析生成的 UUID；使用同一 ID 和相同认证用户 / 问题恢复或读取已完成结果。不同用户或问题不得复用该 ID，24 小时过期后拒绝重启。
+- `analysis_run_id` 是 LangGraph `thread_id`，不等于每次 HTTP 请求的 `request_id` 或 `X-Trace-ID`。恢复调用会生成新的请求和 Trace ID，并通过 Trace 属性关联运行 ID。
+- `mode=analysis` 不提交普通查询 `QueryState`，不与普通查询 Multi-Turn 共用状态；分析工作流的可恢复状态只保存在独立 `chatbi_control` 数据库。
 - 经营分析 Application 内部负责 Task Decomposer、计划校验、绑定当前用户身份的 Task 执行、TaskResult 汇总和 Summary LLM；API 不直接调用这些组件。
 - 成功响应不返回 SQL 或普通查询 `conversation_id`，只返回自然语言报告和有界的结构化 TaskResult：
 
 ```json
 {
   "request_id": "analysis-123",
+  "analysis_run_id": "f5607b24-84cf-4f09-b7c5-9ea5a332e225",
   "mode": "analysis",
   "report": {
     "title": "销售额趋势分析",
@@ -113,7 +117,12 @@ X-Request-ID: 可选
     "root_causes": ["华东区域贡献下降"],
     "action_suggestions": ["进一步检查华东区域产品结构"],
     "evidence_task_ids": ["trend"],
-    "incomplete_tasks": []
+    "incomplete_tasks": [],
+    "attribution": {
+      "metric_name": "人民币毛利",
+      "direction": "increase",
+      "reconciliation_passed": true
+    }
   },
   "task_results": [
     {
@@ -128,6 +137,9 @@ X-Request-ID: 可选
   ]
 }
 ```
+
+- 成功、失败响应均回显 `analysis_run_id`。过期、身份 / 问题不匹配及 checkpoint 不可用使用现有 QueryFailure 结构和错误码，不暴露运行内容或 Secret。
+- Checkpoint 保留 24 小时；清理后保留最小过期登记，防止同一 UUID 被当成新分析重新执行。
 
 - `task_results` 只保留结构化数据、状态和安全公开错误，不包含 SQL、连接信息、异常堆栈或 Secret；返回行数仍受 Online Query 当前边界约束。
 - 经营分析失败沿用 `QueryFailure` 形状和本 Spec 的 HTTP 错误映射；分析报告不写入普通查询时间线。

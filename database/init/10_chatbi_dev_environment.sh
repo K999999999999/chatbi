@@ -62,7 +62,8 @@ createdb \
 for migration in \
     /workspace/database/control/001_schema.sql \
     /workspace/database/control/002_seed_rbac.sql \
-    /workspace/database/control/003_grants.sql
+    /workspace/database/control/003_grants.sql \
+    /workspace/database/control/004_business_analysis_runs.sql
 do
     psql \
         --username "$POSTGRES_USER" \

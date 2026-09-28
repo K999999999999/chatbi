@@ -23,6 +23,8 @@ class BusinessAnalysisReportingTest(unittest.TestCase):
         self.assertEqual(report["summary"]["plan_accuracy"], 1.0)
         self.assertEqual(report["summary"]["task_execution_accuracy"], 1.0)
         self.assertEqual(report["summary"]["report_grounded_accuracy"], 1.0)
+        self.assertIsNone(report["summary"]["summary_judge_accuracy"])
+        self.assertEqual(report["summary"]["attribution_accuracy"], 1.0)
         self.assertEqual(report["summary"]["end_to_end_accuracy"], 1.0)
         self.assertEqual(report["cases"][0]["status"], "PASS")
         markdown = render_business_analysis_markdown(report)
@@ -90,6 +92,8 @@ def _run(
         plan_accuracy=1.0 if passed else 0.0,
         task_execution_accuracy=1.0 if passed else 0.0,
         report_grounded_accuracy=1.0 if passed else 0.0,
+        attribution_accuracy=1.0 if passed else 0.0,
+        summary_judge_accuracy=None,
         end_to_end_accuracy=1.0 if passed else 0.0,
     )
     return BusinessAnalysisEvaluationRun(

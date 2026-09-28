@@ -1,121 +1,286 @@
 [
   {
-    "id": "trend-sales-q1-2025",
-    "question": "2025年第一季度的人民币净销售额趋势如何？",
+    "id": "BA01",
+    "question": "2025年3月毛利为什么比2月下降？",
     "expected": {
       "outcome": "plan",
-      "min_tasks": 1,
-      "required_task_types": ["trend"],
-      "required_metrics": ["人民币净销售额"],
-      "required_dimensions": ["月份"],
-      "tasks": [
-        {
-          "key": "trend",
-          "task_type": "trend",
-          "metrics": ["人民币净销售额"],
-          "dimensions": ["月份"],
-          "depends_on": [],
-          "expected_sql": "SELECT d.month,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\nGROUP BY d.month\nORDER BY d.month;"
-        }
+      "min_tasks": 4,
+      "required_task_types": [
+        "comparison"
       ],
-      "report": {
-        "required_evidence_tasks": ["trend"],
-        "expected_incomplete_tasks": []
-      }
-    }
-  },
-  {
-    "id": "compare-2024-and-2025",
-    "question": "比较2024年和2025年的人民币净销售额，哪个年份更好？",
-    "expected": {
-      "outcome": "plan",
-      "min_tasks": 1,
-      "required_task_types": ["comparison"],
-      "required_metrics": ["人民币净销售额"],
-      "required_dimensions": ["年份"],
+      "required_metrics": [
+        "人民币净销售额",
+        "人民币毛利",
+        "人民币销售成本",
+        "已完成销售数量"
+      ],
+      "required_dimensions": [
+        "产品"
+      ],
+      "metric_name": "人民币毛利",
+      "comparison_period": "2025年2月",
+      "current_period": "2025年3月",
+      "expected_direction": "increase",
+      "expected_change": "18195.32",
       "tasks": [
         {
-          "key": "comparison",
+          "key": "comparison-overall",
           "task_type": "comparison",
-          "metrics": ["人民币净销售额"],
-          "dimensions": ["年份"],
+          "metrics": [
+            "人民币毛利"
+          ],
+          "dimensions": [],
           "depends_on": [],
-          "expected_sql": "SELECT d.year,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\nGROUP BY d.year\nORDER BY d.year;"
-        }
-      ],
-      "report": {
-        "required_evidence_tasks": ["comparison"],
-        "expected_incomplete_tasks": []
-      }
-    }
-  },
-  {
-    "id": "breakdown-sales-region-q1-2025",
-    "question": "2025年第一季度销售额按销售区域拆解。",
-    "expected": {
-      "outcome": "plan",
-      "min_tasks": 1,
-      "required_task_types": ["breakdown"],
-      "required_metrics": ["人民币净销售额"],
-      "required_dimensions": ["销售区域"],
-      "tasks": [
-        {
-          "key": "breakdown",
-          "task_type": "breakdown",
-          "metrics": ["人民币净销售额"],
-          "dimensions": ["销售区域"],
-          "depends_on": [],
-          "expected_sql": "SELECT r.sales_region_name,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_sales_region AS r\n  ON r.sales_region_key = f.sales_region_key\nLEFT JOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\nGROUP BY r.sales_region_name\nORDER BY r.sales_region_name;"
-        }
-      ],
-      "report": {
-        "required_evidence_tasks": ["breakdown"],
-        "expected_incomplete_tasks": []
-      }
-    }
-  },
-  {
-    "id": "root-cause-by-product-line-q1-2025",
-    "question": "2025年第一季度销售额为什么变化？请先看趋势，再定位到产品线。",
-    "expected": {
-      "outcome": "plan",
-      "min_tasks": 2,
-      "required_task_types": ["trend", "breakdown"],
-      "required_metrics": ["人民币净销售额"],
-      "required_dimensions": ["月份", "产品线"],
-      "tasks": [
-        {
-          "key": "trend",
-          "task_type": "trend",
-          "metrics": ["人民币净销售额"],
-          "dimensions": ["月份"],
-          "depends_on": [],
-          "expected_sql": "SELECT d.month,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\nGROUP BY d.month\nORDER BY d.month;"
+          "period": "2025年2月",
+          "expected_sql": "SELECT SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) AS metric_value FROM mart_sales.fct_sales_order_line AS f LEFT JOIN mart_sales.dim_date AS d ON d.date_key = f.completion_date_key WHERE f.order_status = 'completed' AND d.full_date >= DATE '2025-02-01' AND d.full_date < DATE '2025-03-01';"
         },
         {
-          "key": "product_line_breakdown",
-          "task_type": "breakdown",
-          "metrics": ["人民币净销售额"],
-          "dimensions": ["产品线"],
-          "depends_on": ["trend"],
-          "expected_sql": "SELECT p.product_line,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_product AS p\n  ON p.product_key = f.product_key\nLEFT JOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-01-01'\n  AND d.full_date < DATE '2025-04-01'\nGROUP BY p.product_line\nORDER BY p.product_line;"
+          "key": "current-overall",
+          "task_type": "comparison",
+          "metrics": [
+            "人民币毛利"
+          ],
+          "dimensions": [],
+          "depends_on": [],
+          "period": "2025年3月",
+          "expected_sql": "SELECT SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) AS metric_value FROM mart_sales.fct_sales_order_line AS f LEFT JOIN mart_sales.dim_date AS d ON d.date_key = f.completion_date_key WHERE f.order_status = 'completed' AND d.full_date >= DATE '2025-03-01' AND d.full_date < DATE '2025-04-01';"
+        },
+        {
+          "key": "comparison-products",
+          "task_type": "comparison",
+          "metrics": [
+            "人民币净销售额",
+            "已完成销售数量",
+            "人民币销售成本"
+          ],
+          "dimensions": [
+            "产品"
+          ],
+          "depends_on": [],
+          "period": "2025年2月",
+          "expected_sql": "SELECT p.product_name AS product_name, SUM(f.net_sales_amount_cny) AS net_sales_cny, SUM(f.quantity) AS completed_sales_quantity, SUM(f.sales_cost_amount_cny) AS sales_cost_cny FROM mart_sales.fct_sales_order_line AS f LEFT JOIN mart_sales.dim_product AS p ON p.product_key = f.product_key LEFT JOIN mart_sales.dim_date AS d ON d.date_key = f.completion_date_key WHERE f.order_status = 'completed' AND d.full_date >= DATE '2025-02-01' AND d.full_date < DATE '2025-03-01' GROUP BY p.product_name ORDER BY p.product_name;"
+        },
+        {
+          "key": "current-products",
+          "task_type": "comparison",
+          "metrics": [
+            "人民币净销售额",
+            "已完成销售数量",
+            "人民币销售成本"
+          ],
+          "dimensions": [
+            "产品"
+          ],
+          "depends_on": [],
+          "period": "2025年3月",
+          "expected_sql": "SELECT p.product_name AS product_name, SUM(f.net_sales_amount_cny) AS net_sales_cny, SUM(f.quantity) AS completed_sales_quantity, SUM(f.sales_cost_amount_cny) AS sales_cost_cny FROM mart_sales.fct_sales_order_line AS f LEFT JOIN mart_sales.dim_product AS p ON p.product_key = f.product_key LEFT JOIN mart_sales.dim_date AS d ON d.date_key = f.completion_date_key WHERE f.order_status = 'completed' AND d.full_date >= DATE '2025-03-01' AND d.full_date < DATE '2025-04-01' GROUP BY p.product_name ORDER BY p.product_name;"
         }
       ],
       "report": {
-        "required_evidence_tasks": ["trend", "product_line_breakdown"],
+        "required_evidence_tasks": [
+          "comparison-overall",
+          "current-overall",
+          "comparison-products",
+          "current-products"
+        ],
         "expected_incomplete_tasks": []
       }
     }
   },
   {
-    "id": "ambiguous-profit",
-    "question": "最近利润为什么下降？",
+    "id": "BA02",
+    "question": "2025年毛利为什么比2024年下降？",
+    "expected": {
+      "outcome": "plan",
+      "min_tasks": 4,
+      "required_task_types": [
+        "comparison"
+      ],
+      "required_metrics": [
+        "人民币净销售额",
+        "人民币毛利",
+        "人民币销售成本",
+        "已完成销售数量"
+      ],
+      "required_dimensions": [
+        "产品"
+      ],
+      "metric_name": "人民币毛利",
+      "comparison_period": "2024年",
+      "current_period": "2025年",
+      "expected_direction": "decrease",
+      "expected_change": "-25889.56",
+      "tasks": [
+        {
+          "key": "comparison-overall",
+          "task_type": "comparison",
+          "metrics": [
+            "人民币毛利"
+          ],
+          "dimensions": [],
+          "depends_on": [],
+          "period": "2024年",
+          "expected_sql": "SELECT SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) AS metric_value FROM mart_sales.fct_sales_order_line AS f LEFT JOIN mart_sales.dim_date AS d ON d.date_key = f.completion_date_key WHERE f.order_status = 'completed' AND d.full_date >= DATE '2024-01-01' AND d.full_date < DATE '2025-01-01';"
+        },
+        {
+          "key": "current-overall",
+          "task_type": "comparison",
+          "metrics": [
+            "人民币毛利"
+          ],
+          "dimensions": [],
+          "depends_on": [],
+          "period": "2025年",
+          "expected_sql": "SELECT SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) AS metric_value FROM mart_sales.fct_sales_order_line AS f LEFT JOIN mart_sales.dim_date AS d ON d.date_key = f.completion_date_key WHERE f.order_status = 'completed' AND d.full_date >= DATE '2025-01-01' AND d.full_date < DATE '2026-01-01';"
+        },
+        {
+          "key": "comparison-products",
+          "task_type": "comparison",
+          "metrics": [
+            "人民币净销售额",
+            "已完成销售数量",
+            "人民币销售成本"
+          ],
+          "dimensions": [
+            "产品"
+          ],
+          "depends_on": [],
+          "period": "2024年",
+          "expected_sql": "SELECT p.product_name AS product_name, SUM(f.net_sales_amount_cny) AS net_sales_cny, SUM(f.quantity) AS completed_sales_quantity, SUM(f.sales_cost_amount_cny) AS sales_cost_cny FROM mart_sales.fct_sales_order_line AS f LEFT JOIN mart_sales.dim_product AS p ON p.product_key = f.product_key LEFT JOIN mart_sales.dim_date AS d ON d.date_key = f.completion_date_key WHERE f.order_status = 'completed' AND d.full_date >= DATE '2024-01-01' AND d.full_date < DATE '2025-01-01' GROUP BY p.product_name ORDER BY p.product_name;"
+        },
+        {
+          "key": "current-products",
+          "task_type": "comparison",
+          "metrics": [
+            "人民币净销售额",
+            "已完成销售数量",
+            "人民币销售成本"
+          ],
+          "dimensions": [
+            "产品"
+          ],
+          "depends_on": [],
+          "period": "2025年",
+          "expected_sql": "SELECT p.product_name AS product_name, SUM(f.net_sales_amount_cny) AS net_sales_cny, SUM(f.quantity) AS completed_sales_quantity, SUM(f.sales_cost_amount_cny) AS sales_cost_cny FROM mart_sales.fct_sales_order_line AS f LEFT JOIN mart_sales.dim_product AS p ON p.product_key = f.product_key LEFT JOIN mart_sales.dim_date AS d ON d.date_key = f.completion_date_key WHERE f.order_status = 'completed' AND d.full_date >= DATE '2025-01-01' AND d.full_date < DATE '2026-01-01' GROUP BY p.product_name ORDER BY p.product_name;"
+        }
+      ],
+      "report": {
+        "required_evidence_tasks": [
+          "comparison-overall",
+          "current-overall",
+          "comparison-products",
+          "current-products"
+        ],
+        "expected_incomplete_tasks": []
+      }
+    }
+  },
+  {
+    "id": "BA03",
+    "question": "2025年3月销售额为什么比2月增加？",
+    "expected": {
+      "outcome": "plan",
+      "min_tasks": 4,
+      "required_task_types": [
+        "comparison"
+      ],
+      "required_metrics": [
+        "人民币净销售额",
+        "已完成销售数量"
+      ],
+      "required_dimensions": [
+        "产品"
+      ],
+      "metric_name": "人民币净销售额",
+      "comparison_period": "2025年2月",
+      "current_period": "2025年3月",
+      "expected_direction": "increase",
+      "expected_change": "38673.15",
+      "tasks": [
+        {
+          "key": "comparison-overall",
+          "task_type": "comparison",
+          "metrics": [
+            "人民币净销售额"
+          ],
+          "dimensions": [],
+          "depends_on": [],
+          "period": "2025年2月",
+          "expected_sql": "SELECT SUM(f.net_sales_amount_cny) AS metric_value FROM mart_sales.fct_sales_order_line AS f LEFT JOIN mart_sales.dim_date AS d ON d.date_key = f.completion_date_key WHERE f.order_status = 'completed' AND d.full_date >= DATE '2025-02-01' AND d.full_date < DATE '2025-03-01';"
+        },
+        {
+          "key": "current-overall",
+          "task_type": "comparison",
+          "metrics": [
+            "人民币净销售额"
+          ],
+          "dimensions": [],
+          "depends_on": [],
+          "period": "2025年3月",
+          "expected_sql": "SELECT SUM(f.net_sales_amount_cny) AS metric_value FROM mart_sales.fct_sales_order_line AS f LEFT JOIN mart_sales.dim_date AS d ON d.date_key = f.completion_date_key WHERE f.order_status = 'completed' AND d.full_date >= DATE '2025-03-01' AND d.full_date < DATE '2025-04-01';"
+        },
+        {
+          "key": "comparison-products",
+          "task_type": "comparison",
+          "metrics": [
+            "人民币净销售额",
+            "已完成销售数量"
+          ],
+          "dimensions": [
+            "产品"
+          ],
+          "depends_on": [],
+          "period": "2025年2月",
+          "expected_sql": "SELECT p.product_name AS product_name, SUM(f.net_sales_amount_cny) AS net_sales_cny, SUM(f.quantity) AS completed_sales_quantity FROM mart_sales.fct_sales_order_line AS f LEFT JOIN mart_sales.dim_product AS p ON p.product_key = f.product_key LEFT JOIN mart_sales.dim_date AS d ON d.date_key = f.completion_date_key WHERE f.order_status = 'completed' AND d.full_date >= DATE '2025-02-01' AND d.full_date < DATE '2025-03-01' GROUP BY p.product_name ORDER BY p.product_name;"
+        },
+        {
+          "key": "current-products",
+          "task_type": "comparison",
+          "metrics": [
+            "人民币净销售额",
+            "已完成销售数量"
+          ],
+          "dimensions": [
+            "产品"
+          ],
+          "depends_on": [],
+          "period": "2025年3月",
+          "expected_sql": "SELECT p.product_name AS product_name, SUM(f.net_sales_amount_cny) AS net_sales_cny, SUM(f.quantity) AS completed_sales_quantity FROM mart_sales.fct_sales_order_line AS f LEFT JOIN mart_sales.dim_product AS p ON p.product_key = f.product_key LEFT JOIN mart_sales.dim_date AS d ON d.date_key = f.completion_date_key WHERE f.order_status = 'completed' AND d.full_date >= DATE '2025-03-01' AND d.full_date < DATE '2025-04-01' GROUP BY p.product_name ORDER BY p.product_name;"
+        }
+      ],
+      "report": {
+        "required_evidence_tasks": [
+          "comparison-overall",
+          "current-overall",
+          "comparison-products",
+          "current-products"
+        ],
+        "expected_incomplete_tasks": []
+      }
+    }
+  },
+  {
+    "id": "BA04",
+    "question": "最近毛利为什么下降？",
     "expected": {
       "outcome": "clarification_required",
       "min_tasks": 0,
       "required_task_types": [],
       "required_metrics": [],
-      "required_dimensions": []
+      "required_dimensions": [],
+      "tasks": []
+    }
+  },
+  {
+    "id": "BA05",
+    "question": "2025年利润为什么比2024年下降？",
+    "expected": {
+      "outcome": "clarification_required",
+      "min_tasks": 0,
+      "required_task_types": [],
+      "required_metrics": [],
+      "required_dimensions": [],
+      "tasks": []
     }
   }
 ]

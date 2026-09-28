@@ -61,6 +61,14 @@ class RetrievalEvaluationTest(unittest.TestCase):
             )
         )
         self.assertTrue(any(case.filter_payload for case in cases))
+        quantity = next(
+            case for case in cases if case.case_id == "metric-sales-quantity"
+        )
+        self.assertEqual(quantity.query, "销售数量和销量")
+        self.assertEqual(
+            quantity.expected_document_ids,
+            ("metric:已完成销售数量",),
+        )
 
     def test_evaluation_routes_each_case_to_its_declared_collection(self) -> None:
         embedding = _FakeEmbedding()

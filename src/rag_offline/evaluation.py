@@ -148,6 +148,7 @@ def default_retrieval_cases(facts: Facts) -> tuple[RetrievalCase, ...]:
     status_column = _find_column(facts, "fct_sales_order_line", "order_status")
     product_line = _find_column(facts, "dim_product", "product_line")
     gross_margin = _find_metric(facts, "毛利率")
+    sales_quantity = _find_metric(facts, "已完成销售数量")
 
     return (
         RetrievalCase(
@@ -191,6 +192,12 @@ def default_retrieval_cases(facts: Facts) -> tuple[RetrievalCase, ...]:
                 "metric:人民币毛利",
                 "metric:人民币净销售额",
             ),
+        ),
+        RetrievalCase(
+            case_id="metric-sales-quantity",
+            collection=METRIC_COLLECTION,
+            query="销售数量和销量",
+            expected_document_ids=(f"metric:{sales_quantity}",),
         ),
     )
 

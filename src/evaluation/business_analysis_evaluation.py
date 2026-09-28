@@ -1,18 +1,12 @@
 """Business Analysis V1 的确定性 AI Evaluation（AI 评测）辅助。"""
 
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from src.business_analysis.contracts import (
-    AnalysisDecompositionContext,
-    AnalysisPlanClarificationRequired,
-    AnalysisSemanticCatalog,
-    AnalysisTaskType,
-)
-from src.business_analysis.decomposer import AnalysisPlanDecomposer
-from src.business_analysis.planning import validate_analysis_plan
+from src.business_analysis.contracts import AnalysisTaskType
 
 
 class BusinessAnalysisEvaluationLoadError(RuntimeError):
@@ -30,6 +24,7 @@ class BusinessAnalysisExpectedTask:
     depends_on: tuple[str, ...]
     expected_sql: str
     order_sensitive: bool = False
+    period: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,14 +39,11 @@ class BusinessAnalysisCase:
     expected_tasks: tuple[BusinessAnalysisExpectedTask, ...] = ()
     required_evidence_tasks: tuple[str, ...] = ()
     expected_incomplete_tasks: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
-class BusinessAnalysisEvaluation:
-    case_id: str
-    passed: bool
-    failure_reason: str | None = None
-    reason_code: str | None = None
+    metric_name: str = ""
+    comparison_period: str = ""
+    current_period: str = ""
+    expected_direction: str = ""
+    expected_change: str = ""
 
 
 def load_business_analysis_cases(path: Path) -> tuple[BusinessAnalysisCase, ...]:
@@ -114,63 +106,14 @@ def load_business_analysis_cases(path: Path) -> tuple[BusinessAnalysisCase, ...]
                 expected_tasks=expected_tasks,
                 required_evidence_tasks=required_evidence_tasks,
                 expected_incomplete_tasks=expected_incomplete_tasks,
+                metric_name=_optional_text(expected.get("metric_name")),
+                comparison_period=_optional_text(expected.get("comparison_period")),
+                current_period=_optional_text(expected.get("current_period")),
+                expected_direction=_optional_text(expected.get("expected_direction")),
+                expected_change=_optional_numeric_text(expected.get("expected_change")),
             )
         )
     return tuple(result)
-
-
-def evaluate_business_analysis_plans(
-    cases: Sequence[BusinessAnalysisCase],
-    decomposer: AnalysisPlanDecomposer,
-    context: AnalysisDecompositionContext,
-    catalog: AnalysisSemanticCatalog,
-) -> tuple[BusinessAnalysisEvaluation, ...]:
-    """比较模型拆解结果与业务期望，不暴露模型原始输出。"""
-
-    results: list[BusinessAnalysisEvaluation] = []
-    for case in cases:
-        try:
-            candidate = decomposer.decompose(case.question, context)
-            if case.expected_outcome == "clarification_required":
-                validate_analysis_plan(candidate, catalog)
-                results.append(
-                    _failed(case, "歧义指标未触发澄清", "EXPECTED_CLARIFICATION")
-                )
-                continue
-            plan = validate_analysis_plan(candidate, catalog)
-        except AnalysisPlanClarificationRequired:
-            if case.expected_outcome == "clarification_required":
-                results.append(
-                    BusinessAnalysisEvaluation(case_id=case.case_id, passed=True)
-                )
-            else:
-                results.append(
-                    _failed(case, "可回答案例意外要求澄清", "UNEXPECTED_CLARIFICATION")
-                )
-            continue
-        except Exception as exc:
-            results.append(_failed(case, "计划未通过确定性校验", _safe_reason(exc)))
-            continue
-
-        task_types = {task.task_type for task in plan.tasks}
-        metrics = {metric for task in plan.tasks for metric in task.metrics}
-        dimensions = {dimension for task in plan.tasks for dimension in task.dimensions}
-        missing_types = set(case.required_task_types) - task_types
-        missing_metrics = set(case.required_metrics) - metrics
-        missing_dimensions = set(case.required_dimensions) - dimensions
-        if len(plan.tasks) < case.min_tasks:
-            results.append(_failed(case, "Task 数量不足", "TASK_COUNT_TOO_LOW"))
-        elif missing_types:
-            results.append(_failed(case, "缺少期望的 Task 类型", "TASK_TYPE_MISSING"))
-        elif missing_metrics:
-            results.append(_failed(case, "缺少期望的指标", "METRIC_MISSING"))
-        elif missing_dimensions:
-            results.append(_failed(case, "缺少期望的维度", "DIMENSION_MISSING"))
-        else:
-            results.append(
-                BusinessAnalysisEvaluation(case_id=case.case_id, passed=True)
-            )
-    return tuple(results)
 
 
 def _task_types(value: object) -> tuple[AnalysisTaskType, ...]:
@@ -224,6 +167,7 @@ def _expected_tasks(value: object) -> tuple[BusinessAnalysisExpectedTask, ...]:
                 ),
                 expected_sql=expected_sql,
                 order_sensitive=order_sensitive,
+                period=_optional_text(item.get("period")),
             )
         )
     key_set = {item.key for item in result}
@@ -272,19 +216,19 @@ def _required_text(value: object, field: str) -> str:
     return value.strip()
 
 
-def _failed(
-    case: BusinessAnalysisCase,
-    message: str,
-    reason: str,
-) -> BusinessAnalysisEvaluation:
-    return BusinessAnalysisEvaluation(
-        case_id=case.case_id,
-        passed=False,
-        failure_reason=message,
-        reason_code=reason,
-    )
+def _optional_text(value: object) -> str:
+    return value.strip() if isinstance(value, str) else ""
 
 
-def _safe_reason(error: Exception) -> str:
-    reason = getattr(error, "reason", None)
-    return reason if isinstance(reason, str) and reason else type(error).__name__
+def _optional_numeric_text(value: object) -> str:
+    if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+        return ""
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        raise BusinessAnalysisEvaluationLoadError(
+            "expected_change 必须是有效数字"
+        ) from None
+    if not number.is_finite():
+        raise BusinessAnalysisEvaluationLoadError("expected_change 必须是有限数字")
+    return str(number)

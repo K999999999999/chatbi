@@ -241,6 +241,7 @@ def _render_run_info(metadata: Mapping[str, object]) -> list[str]:
         f"- Git Commit：{_markdown_cell(metadata.get('git_commit'))}",
         f"- Git Dirty：{_markdown_cell(metadata.get('git_dirty'))}",
         f"- Model：{_markdown_cell(metadata.get('model'))}",
+        f"- RAG 资产：{_markdown_cell(metadata.get('rag_asset_version'))}",
     ]
     seed_version = metadata.get("sales_mart_seed_version")
     data_hash = metadata.get("sales_mart_data_hash")

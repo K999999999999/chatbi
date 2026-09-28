@@ -55,6 +55,18 @@
     ]
   },
   {
+    "id": "S06",
+    "schema_name": "mart_sales",
+    "category": "medium",
+    "question": "2025年3月已完成订单的销售数量是多少？",
+    "description": "已完成销售数量按完成日期过滤。",
+    "expected_sql": "SELECT SUM(f.quantity) AS completed_sales_quantity\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-03-01'\n  AND d.full_date < DATE '2025-04-01';",
+    "coverage": [
+      "metric_query",
+      "time_filter"
+    ]
+  },
+  {
     "id": "M01",
     "schema_name": "mart_sales",
     "category": "medium",
@@ -254,6 +266,21 @@
     "expected_sql": "SELECT c.customer_type,\n       COUNT(DISTINCT f.order_id) AS completed_order_count,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny,\n       SUM(f.sales_cost_amount_cny) AS sales_cost_cny,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny) AS gross_profit_cny,\n       SUM(f.net_sales_amount_cny - f.sales_cost_amount_cny)\n         / NULLIF(SUM(f.net_sales_amount_cny), 0) AS gross_margin\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_customer AS c\n  ON c.customer_key = f.customer_key\nWHERE f.order_status = 'completed'\nGROUP BY c.customer_type\nORDER BY c.customer_type;",
     "coverage": [
       "metric_query",
+      "dimension_grouping",
+      "multiple_metrics",
+      "combination"
+    ]
+  },
+  {
+    "id": "C07",
+    "schema_name": "mart_sales",
+    "category": "complex",
+    "question": "2025年3月按产品查询已完成订单的人民币销售额、销售数量和销售成本。",
+    "description": "按完成日期过滤，按产品分组，同时查询人民币净销售额、已完成销售数量和人民币销售成本。",
+    "expected_sql": "SELECT p.product_name,\n       SUM(f.net_sales_amount_cny) AS net_sales_cny,\n       SUM(f.quantity) AS completed_sales_quantity,\n       SUM(f.sales_cost_amount_cny) AS sales_cost_cny\nFROM mart_sales.fct_sales_order_line AS f\nLEFT JOIN mart_sales.dim_product AS p\n  ON p.product_key = f.product_key\nLEFT JOIN mart_sales.dim_date AS d\n  ON d.date_key = f.completion_date_key\nWHERE f.order_status = 'completed'\n  AND d.full_date >= DATE '2025-03-01'\n  AND d.full_date < DATE '2025-04-01'\nGROUP BY p.product_name\nORDER BY p.product_name;",
+    "coverage": [
+      "metric_query",
+      "time_filter",
       "dimension_grouping",
       "multiple_metrics",
       "combination"

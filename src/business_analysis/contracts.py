@@ -36,8 +36,8 @@ class AnalysisPlanClarificationRequired(AnalysisPlanError):
     """分析计划缺少唯一明确的业务语义。"""
 
 
-class AnalysisPlanLLMError(RuntimeError):
-    """Task Decomposer 的 Provider 或结构化输出失败。"""
+class AnalysisRequestExtractionError(RuntimeError):
+    """经营分析语义提取的 Provider 或结构化输出失败。"""
 
     def __init__(self, message: str, *, reason: str) -> None:
         super().__init__(message)
@@ -73,6 +73,24 @@ class AnalysisTaskCandidate:
 @dataclass(frozen=True, slots=True)
 class AnalysisPlanCandidate:
     tasks: tuple[AnalysisTaskCandidate, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class AnalysisRequestCandidate:
+    """LLM 从自然语言提取的目标指标和两个时期候选。"""
+
+    metric_text: str
+    current_period: AnalysisTimeRange | None
+    comparison_period: AnalysisTimeRange | None
+
+
+@dataclass(frozen=True, slots=True)
+class AnalysisRequest:
+    """通过程序校验的双时期分析请求。"""
+
+    metric_name: str
+    current_period: AnalysisTimeRange
+    comparison_period: AnalysisTimeRange
 
 
 @dataclass(frozen=True, slots=True)

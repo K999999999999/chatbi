@@ -3,11 +3,31 @@
 import os
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
+from datetime import UTC, datetime, timedelta
 from io import StringIO
 from pathlib import Path
+from typing import TypedDict
 from unittest.mock import patch
+from uuid import uuid4
 
 import psycopg
+from langgraph.checkpoint.postgres import PostgresSaver
+from langgraph.graph import END, START, StateGraph
+from psycopg.conninfo import make_conninfo
+from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
+from sqlalchemy import text
+
+from src.business_analysis.run_store import (
+    AnalysisRunConflict,
+    AnalysisRunStatus,
+    PostgresAnalysisRunStore,
+)
+from src.chatbi_control.database import ControlDatabaseConfig, create_control_engine
+
+
+class _CheckpointState(TypedDict):
+    value: int
 
 
 @unittest.skipUnless(
@@ -261,8 +281,10 @@ class PostgresDevelopmentEnvironmentTest(unittest.TestCase):
             connection.cursor() as cursor,
         ):
             cursor.execute("SELECT version FROM schema_migrations")
-            self.assertEqual(cursor.fetchall(), [("chatbi-control-v1",)])
-
+            self.assertEqual(
+                set(cursor.fetchall()),
+                {("chatbi-control-v1",), ("chatbi-control-v2",)},
+            )
             cursor.execute(
                 """
                     SELECT role.name, count(role_permission.permission_id)
@@ -307,6 +329,105 @@ class PostgresDevelopmentEnvironmentTest(unittest.TestCase):
                     False,
                 ),
             )
+
+    def test_analysis_runs_are_owner_bound_checkpointed_and_expired(self) -> None:
+        config = ControlDatabaseConfig.from_environment(require_migrator=False)
+        engine = create_control_engine(config)
+        pool = ConnectionPool(
+            make_conninfo(**config.app_connection_kwargs()),
+            kwargs={"autocommit": True, "row_factory": dict_row},
+            min_size=1,
+            max_size=2,
+            open=True,
+        )
+        run_store = PostgresAnalysisRunStore(engine)
+        run_id = uuid4()
+        expired_id = uuid4()
+        question = "2025年3月毛利为什么比2月下降？"
+        try:
+            saver = PostgresSaver(pool)
+            builder = StateGraph(_CheckpointState)
+            builder.add_node("save", lambda state: {"value": state["value"] + 1})
+            builder.add_edge(START, "save")
+            builder.add_edge("save", END)
+            graph = builder.compile(checkpointer=saver)
+            graph.invoke(
+                {"value": 1},
+                config={"configurable": {"thread_id": str(expired_id)}},
+            )
+
+            first = run_store.claim(
+                run_id,
+                owner_subject="test:user-1",
+                question=question,
+            )
+            self.assertEqual(first.status, AnalysisRunStatus.NEW)
+            resumed = run_store.claim(
+                run_id,
+                owner_subject="test:user-1",
+                question=question,
+            )
+            self.assertEqual(resumed.status, AnalysisRunStatus.ACTIVE)
+            with self.assertRaises(AnalysisRunConflict) as owner_error:
+                run_store.claim(
+                    run_id,
+                    owner_subject="test:user-2",
+                    question=question,
+                )
+            self.assertEqual(
+                owner_error.exception.reason,
+                "ANALYSIS_RUN_OWNER_MISMATCH",
+            )
+            with self.assertRaises(AnalysisRunConflict) as question_error:
+                run_store.claim(
+                    run_id,
+                    owner_subject="test:user-1",
+                    question="另一问题",
+                )
+            self.assertEqual(
+                question_error.exception.reason,
+                "ANALYSIS_RUN_QUESTION_MISMATCH",
+            )
+            run_store.mark_completed(run_id)
+            completed = run_store.claim(
+                run_id,
+                owner_subject="test:user-1",
+                question=question,
+            )
+            self.assertEqual(completed.status, AnalysisRunStatus.COMPLETED)
+
+            run_store.claim(
+                expired_id,
+                owner_subject="test:user-1",
+                question=question,
+            )
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "UPDATE business_analysis_runs SET expires_at = :expired "
+                        "WHERE analysis_run_id = :run_id"
+                    ),
+                    {
+                        "expired": datetime.now(UTC) - timedelta(seconds=1),
+                        "run_id": str(expired_id),
+                    },
+                )
+            self.assertEqual(run_store.cleanup_expired(), 1)
+            with self.assertRaises(AnalysisRunConflict) as expired_error:
+                run_store.claim(
+                    expired_id,
+                    owner_subject="test:user-1",
+                    question=question,
+                )
+            self.assertEqual(
+                expired_error.exception.reason,
+                "ANALYSIS_RUN_EXPIRED",
+            )
+            snapshot = graph.get_state({"configurable": {"thread_id": str(expired_id)}})
+            self.assertEqual(snapshot.values, {})
+        finally:
+            pool.close()
+            engine.dispose()
 
     def test_reapplying_seed_preserves_the_same_data_summary(self) -> None:
         with self._connect(

@@ -3,7 +3,7 @@
 import logging
 import re
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from enum import StrEnum
 from typing import Any, NoReturn, Protocol
 from uuid import uuid4
@@ -14,9 +14,6 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, StrictStr
 from sqlalchemy.engine import Engine
 
-from src.business_analysis.application import BusinessAnalysisSuccess
-from src.business_analysis.execution import TaskResult
-from src.chatbi_control.admin import mount_admin
 from src.authorization.auth_service import (
     AuthenticationFailed,
     AuthService,
@@ -34,6 +31,9 @@ from src.authorization.contracts import (
 from src.authorization.query_entry import (
     AuthorizedQueryService,
 )
+from src.business_analysis.application import BusinessAnalysisSuccess
+from src.business_analysis.execution import TaskResult
+from src.chatbi_control.admin import mount_admin
 from src.observability.contracts import QuerySource, TraceRecorder
 from src.observability.tracing import create_trace_recorder
 from src.online_query.contracts import (
@@ -89,6 +89,7 @@ class AnalysisService(Protocol):
         *,
         request_id: str,
         auth_context: AuthContext,
+        analysis_run_id: str,
     ) -> BusinessAnalysisSuccess | QueryFailure:
         """执行不读取普通会话的单轮经营分析。"""
 
@@ -111,6 +112,7 @@ class QueryBody(BaseModel):
     question: StrictStr
     conversation_id: StrictStr | None = None
     mode: QueryMode = QueryMode.QUERY
+    analysis_run_id: StrictStr | None = None
 
 
 class LoginBody(BaseModel):
@@ -156,6 +158,7 @@ class AnalysisSuccessResponse(BaseModel):
     """HTTP 经营分析成功响应。"""
 
     request_id: str
+    analysis_run_id: str
     mode: str = "analysis"
     report: dict[str, Any]
     task_results: list[dict[str, Any]]
@@ -167,6 +170,7 @@ class QueryFailureResponse(BaseModel):
     request_id: str
     error_code: QueryErrorCode
     error_message: str
+    analysis_run_id: str | None = None
 
 
 class _MissingIdentityProvider:
@@ -234,14 +238,22 @@ def create_app(
         except Exception:
             recorder = None
 
-    app = FastAPI(
-        title="ChatBI Query API",
-        version="0.1.0",
-    )
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        del app
+        try:
+            yield
+        finally:
+            close = getattr(active_analysis_service, "close", None)
+            if callable(close):
+                close()
+
+    app = FastAPI(title="ChatBI Query API", version="0.1.0", lifespan=lifespan)
     app.state.query_service = authorized_service
     app.state.identity_provider = provider
     app.state.authorization_policy_store = authorization_store
     app.state.auth_service = auth_service
+
     if admin_engine is not None:
         if auth_service is None or not admin_secret_key:
             raise ValueError("SQLAdmin 需要统一 AuthService 和显式 secret key")
@@ -388,20 +400,41 @@ def create_app(
         body: QueryBody,
     ) -> JSONResponse:
         if body.mode is QueryMode.ANALYSIS:
-            if body.conversation_id is not None:
+            if body.conversation_id is not None or body.analysis_run_id is None:
                 return _result_response(
-                    _analysis_invalid_request(_request_id_from_state(request)),
+                    _analysis_invalid_request(
+                        _request_id_from_state(request),
+                    ),
                     trace_recorder=recorder,
+                    analysis_run_id=body.analysis_run_id,
+                )
+            request.state.analysis_run_id = body.analysis_run_id
+            if recorder is not None:
+                recorder.enrich_current(
+                    {"chatbi.analysis_run_id": body.analysis_run_id}
                 )
             analysis_result = _authorized_analysis(
                 request,
                 question=body.question,
+                analysis_run_id=body.analysis_run_id,
                 identity_provider=provider,
                 query_service=authorized_service,
                 analysis_service=active_analysis_service,
             )
             return _analysis_result_response(
                 analysis_result,
+                trace_recorder=recorder,
+                analysis_run_id=body.analysis_run_id,
+            )
+        if body.analysis_run_id is not None:
+            return _result_response(
+                QueryFailure(
+                    request_id=_request_id_from_state(request),
+                    error_code=QueryErrorCode.INVALID_REQUEST,
+                    error_message="普通查询不能携带 analysis_run_id",
+                    failure_stage="request_validation",
+                    internal_reason="ANALYSIS_RUN_ID_WITH_QUERY",
+                ),
                 trace_recorder=recorder,
             )
         result = _authorized_query(
@@ -619,6 +652,7 @@ def _authorized_analysis(
     request: Request,
     *,
     question: str,
+    analysis_run_id: str,
     identity_provider: IdentityProviderAdapter,
     query_service: AuthorizedQueryService,
     analysis_service: AnalysisService | None,
@@ -672,6 +706,7 @@ def _authorized_analysis(
             question,
             request_id=request_id,
             auth_context=auth_context,
+            analysis_run_id=analysis_run_id,
         )
     except Exception as exc:  # noqa: BLE001 - adapter must not leak internals
         _LOGGER.warning(
@@ -700,7 +735,9 @@ def _analysis_invalid_request(request_id: str) -> QueryFailure:
     return QueryFailure(
         request_id=request_id,
         error_code=QueryErrorCode.INVALID_REQUEST,
-        error_message="经营分析请求不能携带普通查询 conversation_id",
+        error_message=(
+            "经营分析请求必须提供 analysis_run_id 且不能携带普通查询 conversation_id"
+        ),
         failure_stage="request_validation",
         internal_reason="ANALYSIS_CONVERSATION_CONFLICT",
     )
@@ -747,14 +784,20 @@ def _analysis_result_response(
     result: BusinessAnalysisSuccess | QueryFailure,
     *,
     trace_recorder: TraceRecorder | None = None,
+    analysis_run_id: str,
 ) -> JSONResponse:
     if isinstance(result, QueryFailure):
-        return _result_response(result, trace_recorder=trace_recorder)
+        return _result_response(
+            result,
+            trace_recorder=trace_recorder,
+            analysis_run_id=analysis_run_id,
+        )
     with _safe_span(trace_recorder, "response.serialize"):
         return JSONResponse(
             status_code=200,
             content=AnalysisSuccessResponse(
                 request_id=result.request_id,
+                analysis_run_id=analysis_run_id,
                 mode="analysis",
                 report=result.report.to_payload(),
                 task_results=[
@@ -797,6 +840,7 @@ def _result_response(
     *,
     conversation_id: str | None = None,
     trace_recorder: TraceRecorder | None = None,
+    analysis_run_id: str | None = None,
 ) -> JSONResponse:
     with _safe_span(trace_recorder, "response.serialize"):
         if isinstance(result, QuerySuccess):
@@ -821,7 +865,8 @@ def _result_response(
                     request_id=result.request_id,
                     error_code=result.error_code,
                     error_message=result.error_message,
-                ).model_dump(mode="json"),
+                    analysis_run_id=analysis_run_id,
+                ).model_dump(mode="json", exclude_none=True),
             )
         raise RuntimeError("查询服务返回未知结果")
 

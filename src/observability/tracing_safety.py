@@ -1,17 +1,16 @@
 """Observability 的安全属性、Trace ID 和 Fail-open 辅助函数。"""
 
-from collections.abc import Mapping
 import logging
 import math
 import re
 import secrets
+from collections.abc import Mapping
 from typing import Any
 
 from opentelemetry.trace import Span as OTelSpan
 from opentelemetry.trace import Status, StatusCode
 
 from .contracts import ErrorType, QuerySource, TraceOutcome
-
 
 _LOGGER = logging.getLogger(__name__)
 _TRACE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
@@ -54,6 +53,7 @@ _SAFE_ATTRIBUTE_RULES: dict[str, str] = {
     "evaluation.case_id": "identifier",
     "chatbi.request.source": "source",
     "chatbi.request.id": "identifier",
+    "chatbi.analysis_run_id": "identifier",
     "chatbi.content_capture.enabled": "boolean",
     "chatbi.outcome": "outcome",
     "chatbi.error.type": "error_type",

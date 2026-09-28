@@ -74,6 +74,24 @@
     "time_field": "fct_sales_order_line.completion_date_key -> dim_date.full_date"
   },
   {
+    "name": "已完成销售数量",
+    "level": "原子指标",
+    "aliases": [
+      "销售数量",
+      "销量"
+    ],
+    "definition": "已完成订单明细中的销售数量之和。",
+    "formula": "SUM(f.quantity)",
+    "sql_template": "SELECT SUM(f.quantity) AS completed_sales_quantity FROM mart_sales.fct_sales_order_line AS f WHERE f.order_status = 'completed';",
+    "data_source": "mart_sales.fct_sales_order_line",
+    "depends_on": [],
+    "filters": [
+      "f.order_status = 'completed'"
+    ],
+    "notes": "按已完成订单明细的 quantity 求和，不对数量做去重。时间范围按完成日期统计，使用 completion_date_key 关联 dim_date.full_date。",
+    "time_field": "fct_sales_order_line.completion_date_key -> dim_date.full_date"
+  },
+  {
     "name": "人民币毛利",
     "level": "派生指标",
     "aliases": [
