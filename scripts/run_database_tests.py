@@ -397,7 +397,7 @@ def _wait_until_development_ready(
         (
             "chatbi_mvp",
             "SELECT seed_version FROM mart_sales.dev_seed_metadata WHERE singleton",
-            "chatbi-sales-mart-dev-v2",
+            "chatbi-sales-mart-dev-v3",
         ),
         (
             "chatbi_control",

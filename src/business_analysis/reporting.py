@@ -188,6 +188,7 @@ def build_summary_prompt(
 8. action_suggestions 只能表达建议，不表示系统已经执行任何经营动作。
 9. 如果数据为空、被截断、失败或跳过，必须在摘要或关键发现中明确说明，不能包装成完整结论。
 10. key_findings、root_causes、action_suggestions、evidence_task_ids、incomplete_tasks 等列表字段必须是字符串数组；title、executive_summary、trend_judgment 必须是字符串。incomplete_tasks 只填 task_id，不要拼接 reason，不要输出对象；例如程序给出 task_id=task_1、reason=empty_result 时，只输出 ["task_1"]。
+11. 所有面向用户的报告自然语言内容必须使用简体中文，包括 title、executive_summary、key_findings、trend_judgment、root_causes 和 action_suggestions。Task ID、状态码和作为证据的数据原值保持原样；专有名称可以沿用其权威写法。
 
 <analysis_input>
 {serialized}

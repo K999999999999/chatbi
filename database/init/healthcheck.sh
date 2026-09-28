@@ -14,7 +14,7 @@ business_ready=$(
             SELECT 1
             FROM mart_sales.dev_seed_metadata
             WHERE singleton
-              AND seed_version = 'chatbi-sales-mart-dev-v2'
+              AND seed_version = 'chatbi-sales-mart-dev-v3'
               AND EXISTS (SELECT 1 FROM mart_sales.fct_sales_order_line)
               AND has_schema_privilege('chatbi_app', 'mart_sales', 'USAGE')
               AND has_table_privilege(

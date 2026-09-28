@@ -19,6 +19,56 @@ MANAGED_DIMENSION_TABLES = frozenset(
 
 
 class DevelopmentSeedDimensionExamplesTest(unittest.TestCase):
+    def test_seed_version_and_user_facing_dimension_values_are_chinese(self) -> None:
+        seed_path = ROOT / "database" / "dev" / "seed_sales_mart.sql"
+        seed_sql = seed_path.read_text(encoding="utf-8")
+        seed_values = _seed_values_by_column(seed_sql)
+
+        self.assertIn("chatbi-sales-mart-dev-v3", seed_sql)
+        self.assertEqual(
+            seed_values[("dim_customer", "customer_name")],
+            {
+                "北辰元器件有限公司",
+                "海港零售集团",
+                "松果工坊",
+                "河湾实验室",
+                "雪松公共工程",
+                "峰峦数据系统",
+                "草甸供应商",
+                "灯塔能源",
+            },
+        )
+        self.assertEqual(
+            seed_values[("dim_customer", "customer_type")],
+            {"大型企业", "中小企业", "经销商"},
+        )
+        self.assertEqual(
+            seed_values[("dim_customer", "industry")],
+            {"制造业", "零售业", "科技", "公共服务", "分销", "能源"},
+        )
+        self.assertEqual(seed_values[("dim_customer", "country")], {"中国"})
+        self.assertEqual(
+            seed_values[("dim_product", "product_name")],
+            {
+                "星芒控制器",
+                "桦木传感器",
+                "钴蓝网关",
+                "黎明分析套件",
+                "榆木驱动单元",
+                "蕨云节点",
+                "溪谷电源模块",
+                "港湾视觉单元",
+            },
+        )
+        self.assertEqual(
+            seed_values[("dim_customer", "source_system")],
+            {"chatbi_dev_seed_v3"},
+        )
+        self.assertIn("'pending'", seed_sql)
+        self.assertIn("'confirmed'", seed_sql)
+        self.assertIn("'completed'", seed_sql)
+        self.assertIn("'cancelled'", seed_sql)
+
     def test_seed_dimension_members_match_columns_value_examples(self) -> None:
         seed_path = ROOT / "database" / "dev" / "seed_sales_mart.sql"
         columns_path = ROOT / "src" / "structure" / "generated" / "columns.json"

@@ -123,9 +123,9 @@
     "is_identity": false,
     "identity_generation": null,
     "value_examples": [
-      "Distributor",
-      "Enterprise",
-      "SMB"
+      "大型企业",
+      "中小企业",
+      "经销商"
     ]
   },
   {
@@ -140,7 +140,15 @@
     "is_primary_key": false,
     "is_foreign_key": false,
     "is_identity": false,
-    "identity_generation": null
+    "identity_generation": null,
+    "value_examples": [
+      "公共服务",
+      "分销",
+      "制造业",
+      "能源",
+      "科技",
+      "零售业"
+    ]
   },
   {
     "schema_name": "mart_sales",
@@ -154,7 +162,10 @@
     "is_primary_key": false,
     "is_foreign_key": false,
     "is_identity": false,
-    "identity_generation": null
+    "identity_generation": null,
+    "value_examples": [
+      "中国"
+    ]
   },
   {
     "schema_name": "mart_sales",

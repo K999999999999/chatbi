@@ -11,6 +11,7 @@ import src.streamlit_app as streamlit_app
 from src.streamlit_app import (
     QueryAPIError,
     QueryAPIResponse,
+    _render_analysis_report,
     _render_error,
     _render_success,
     change_password_api,
@@ -679,7 +680,7 @@ class StreamlitQueryClientTest(TestCase):
             ),
             [
                 {
-                    "monthly_sales_cny": "49,766,769.74",
+                    "monthly_sales_cny（元）": "49,766,769.74",
                     "completed_order_count": "1,234,567",
                     "gross_margin": "35.67%",
                     "product_name": "产品A",
@@ -695,10 +696,85 @@ class StreamlitQueryClientTest(TestCase):
             ),
             [
                 {
-                    "monthly_sales_cny": None,
+                    "monthly_sales_cny（元）": None,
                     "unknown_value": "00123",
                     "gross_margin": "unknown",
                 }
+            ],
+        )
+
+    def test_display_groups_measure_values_but_preserves_identifiers(self) -> None:
+        rows = [[12345.678, 1001, 20250101, 2, 1000000]]
+
+        displayed = format_display_rows(
+            ["sales_amount", "customer_id", "date_key", "status_code", "quantity"],
+            rows,
+        )
+
+        self.assertEqual(
+            displayed,
+            [
+                {
+                    "sales_amount": "12,345.678",
+                    "customer_id": 1001,
+                    "date_key": 20250101,
+                    "status_code": 2,
+                    "quantity": "1,000,000",
+                }
+            ],
+        )
+        self.assertEqual(rows[0][0], 12345.678)
+
+    def test_display_groups_negative_values_and_preserves_unknown_precision(
+        self,
+    ) -> None:
+        self.assertEqual(
+            format_display_rows(
+                [
+                    "net_sales_cny",
+                    "completed_sales_quantity",
+                    "gross_margin",
+                    "other_measure",
+                ],
+                [["-1234567.895", -12345.25, "-0.12345", -1234567.0001]],
+            ),
+            [
+                {
+                    "net_sales_cny（元）": "-1,234,567.90",
+                    "completed_sales_quantity": "-12,345.25",
+                    "gross_margin": "-12.35%",
+                    "other_measure": "-1,234,567.0001",
+                }
+            ],
+        )
+
+    def test_analysis_result_table_formats_values_and_labels_cny_unit(self) -> None:
+        displayed = _FakeStreamlit()
+
+        _render_analysis_report(
+            displayed,
+            {
+                "report": {"title": "经营分析"},
+                "task_results": [
+                    {
+                        "task_id": "sales",
+                        "status": "completed",
+                        "columns": ["net_sales_cny", "completed_order_count"],
+                        "rows": [[1234567.8, 12345]],
+                    }
+                ],
+            },
+        )
+
+        self.assertEqual(
+            displayed.dataframes,
+            [
+                [
+                    {
+                        "net_sales_cny（元）": "1,234,567.80",
+                        "completed_order_count": "12,345",
+                    }
+                ]
             ],
         )
 
@@ -791,6 +867,7 @@ class _FakeStreamlit:
         self.errors: list[str] = []
         self.expander_calls: list[tuple[str, bool]] = []
         self.subheaders: list[str] = []
+        self.dataframes: list[object] = []
         self.session_state = _FakeSessionState()
 
     def error(self, message: str) -> None:
@@ -821,12 +898,13 @@ class _FakeStreamlit:
 
     def dataframe(
         self,
-        _data: object,
+        data: object,
         *,
         use_container_width: bool,
         hide_index: bool,
     ) -> None:
         del use_container_width, hide_index
+        self.dataframes.append(data)
 
     def columns(self, count: int) -> list[_FakeMetricColumn]:
         return [_FakeMetricColumn() for _ in range(count)]
