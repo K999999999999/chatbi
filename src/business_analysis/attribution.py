@@ -50,9 +50,7 @@ _MONEY_COLUMNS: Final = {
         }
     ),
 }
-_PRODUCT_COLUMNS: Final = frozenset(
-    {"产品", "产品名称", "product", "product_name"}
-)
+_PRODUCT_COLUMNS: Final = frozenset({"产品", "产品名称", "product", "product_name"})
 
 
 class AttributionError(ValueError):
@@ -157,7 +155,9 @@ def calculate_product_attribution(
         "comparison-products",
         "current-products",
     )
-    if len(results) != len(task_results) or any(key not in results for key in expected_ids):
+    if len(results) != len(task_results) or any(
+        key not in results for key in expected_ids
+    ):
         raise AttributionError("归因 Task 结果不完整", reason="TASK_RESULTS_INCOMPLETE")
     for task_id in expected_ids:
         result = results[task_id]
@@ -389,10 +389,7 @@ def _product_contribution(
             FactorContribution(
                 "销量",
                 (current.quantity - comparison.quantity)
-                * (
-                    (old_price - old_unit_cost)
-                    + (new_price - new_unit_cost)
-                )
+                * ((old_price - old_unit_cost) + (new_price - new_unit_cost))
                 / Decimal(2),
             ),
             FactorContribution(

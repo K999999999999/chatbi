@@ -77,6 +77,10 @@ class LangChainBusinessAnalysisJudge:
             raise ValueError("Judge 模型字段不符合 Contract")
         passed = payload["passed"]
         reason = payload["reason"]
-        if not isinstance(passed, bool) or not isinstance(reason, str) or not reason.strip():
+        if (
+            not isinstance(passed, bool)
+            or not isinstance(reason, str)
+            or not reason.strip()
+        ):
             raise ValueError("Judge 模型结果类型无效")
         return BusinessAnalysisJudgeResult(passed, reason.strip())

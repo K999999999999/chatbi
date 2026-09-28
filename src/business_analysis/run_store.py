@@ -67,15 +67,19 @@ class PostgresAnalysisRunStore:
                     "expires_at": moment + RUN_TTL,
                 },
             )
-            row = connection.execute(
-                text(
-                    """SELECT owner_subject, question_sha256, status, expires_at
+            row = (
+                connection.execute(
+                    text(
+                        """SELECT owner_subject, question_sha256, status, expires_at
                        FROM business_analysis_runs
                        WHERE analysis_run_id = :run_id
                        FOR UPDATE"""
-                ),
-                {"run_id": str(analysis_run_id)},
-            ).mappings().one()
+                    ),
+                    {"run_id": str(analysis_run_id)},
+                )
+                .mappings()
+                .one()
+            )
 
             if row["owner_subject"] != owner_subject:
                 raise AnalysisRunConflict("ANALYSIS_RUN_OWNER_MISMATCH")
@@ -84,11 +88,7 @@ class PostgresAnalysisRunStore:
             if row["status"] == "expired" or row["expires_at"] <= moment:
                 raise AnalysisRunConflict("ANALYSIS_RUN_EXPIRED")
 
-            status = (
-                AnalysisRunStatus.NEW
-                if inserted.rowcount == 1
-                else row["status"]
-            )
+            status = AnalysisRunStatus.NEW if inserted.rowcount == 1 else row["status"]
             return AnalysisRun(analysis_run_id, status)
 
     def mark_completed(

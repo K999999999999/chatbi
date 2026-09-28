@@ -316,9 +316,8 @@ class BusinessAnalysisApplication:
         state: AnalysisRunState,
         runtime: Runtime[AnalysisRunContext],
     ) -> dict[str, object]:
-        if (
-            isinstance(state.get("analysis_request"), AnalysisRequest)
-            and isinstance(state.get("plan"), AnalysisPlan)
+        if isinstance(state.get("analysis_request"), AnalysisRequest) and isinstance(
+            state.get("plan"), AnalysisPlan
         ):
             return {"failure": None}
         question = state.get("question", "")

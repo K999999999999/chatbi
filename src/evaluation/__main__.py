@@ -597,7 +597,10 @@ def _run_business_analysis_cli_impl(
         close = getattr(application, "close", None)
         if callable(close):
             close()
-    if rag_runtime is not None and rag_asset_version != rag_runtime.get_snapshot().asset_version:
+    if (
+        rag_runtime is not None
+        and rag_asset_version != rag_runtime.get_snapshot().asset_version
+    ):
         raise ReportingError("评测期间发布的 RAG 资产版本发生变化")
     git_commit, git_dirty = git_state_reader(PROJECT_ROOT)
     metadata = collect_run_metadata(

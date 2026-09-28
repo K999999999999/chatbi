@@ -76,9 +76,7 @@ def build_analysis_application(
     )
     checkpointer = PostgresSaver(
         checkpoint_pool,
-        serde=JsonPlusSerializer(
-            allowed_msgpack_modules=_checkpoint_allowed_types()
-        ),
+        serde=JsonPlusSerializer(allowed_msgpack_modules=_checkpoint_allowed_types()),
     )
     application = BusinessAnalysisApplication(
         authorized_query_service,

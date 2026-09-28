@@ -27,11 +27,17 @@ class BusinessAnalysisEvaluationTest(unittest.TestCase):
             {case.expected_outcome for case in self.cases},
             {"plan", "clarification_required"},
         )
-        clarify = [case for case in self.cases if case.expected_outcome == "clarification_required"]
+        clarify = [
+            case
+            for case in self.cases
+            if case.expected_outcome == "clarification_required"
+        ]
         self.assertEqual({case.case_id for case in clarify}, {"BA04", "BA05"})
         self.assertTrue(all(not case.expected_tasks for case in clarify))
 
-    def test_success_cases_have_four_product_and_overall_reference_queries(self) -> None:
+    def test_success_cases_have_four_product_and_overall_reference_queries(
+        self,
+    ) -> None:
         planned = [case for case in self.cases if case.expected_outcome == "plan"]
         self.assertEqual(len(planned), 3)
         for case in planned:
@@ -48,7 +54,9 @@ class BusinessAnalysisEvaluationTest(unittest.TestCase):
                 {task.task_type for task in case.expected_tasks},
                 {case.required_task_types[0]},
             )
-            self.assertTrue(all(task.period and task.expected_sql for task in case.expected_tasks))
+            self.assertTrue(
+                all(task.period and task.expected_sql for task in case.expected_tasks)
+            )
             self.assertEqual(
                 set(case.required_evidence_tasks),
                 {task.key for task in case.expected_tasks},

@@ -162,7 +162,9 @@ class BusinessAnalysisApplicationTest(unittest.TestCase):
         )
         self.assertEqual(summarizer.inputs, [])
 
-    def test_retry_resumes_from_checkpoint_without_repeating_completed_tasks(self) -> None:
+    def test_retry_resumes_from_checkpoint_without_repeating_completed_tasks(
+        self,
+    ) -> None:
         bound = _BoundService(fail_count=2)
         authorized = _AuthorizedService(bound)
         decomposer = _Decomposer(_candidate())

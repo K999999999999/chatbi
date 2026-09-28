@@ -18,12 +18,8 @@ class ReportingTest(unittest.TestCase):
         attribution = calculate_product_attribution(
             AnalysisRequest(
                 metric_name="人民币净销售额",
-                current_period=AnalysisTimeRange(
-                    "2025年3月", TimeGranularity.MONTH
-                ),
-                comparison_period=AnalysisTimeRange(
-                    "2025年2月", TimeGranularity.MONTH
-                ),
+                current_period=AnalysisTimeRange("2025年3月", TimeGranularity.MONTH),
+                comparison_period=AnalysisTimeRange("2025年2月", TimeGranularity.MONTH),
             ),
             (
                 _overall("comparison-overall", 10),

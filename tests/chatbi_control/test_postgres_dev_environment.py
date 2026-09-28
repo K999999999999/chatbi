@@ -423,9 +423,7 @@ class PostgresDevelopmentEnvironmentTest(unittest.TestCase):
                 expired_error.exception.reason,
                 "ANALYSIS_RUN_EXPIRED",
             )
-            snapshot = graph.get_state(
-                {"configurable": {"thread_id": str(expired_id)}}
-            )
+            snapshot = graph.get_state({"configurable": {"thread_id": str(expired_id)}})
             self.assertEqual(snapshot.values, {})
         finally:
             pool.close()

@@ -430,7 +430,10 @@ def _compare_attribution(
         return "ATTRIBUTION_MISSING", "成功结果缺少确定性归因"
     if case.metric_name and attribution.metric_name != case.metric_name:
         return "ATTRIBUTION_METRIC_MISMATCH", "归因目标指标与案例不一致"
-    if case.comparison_period and attribution.comparison_period != case.comparison_period:
+    if (
+        case.comparison_period
+        and attribution.comparison_period != case.comparison_period
+    ):
         return "ATTRIBUTION_COMPARISON_PERIOD_MISMATCH", "归因比较时期与案例不一致"
     if case.current_period and attribution.current_period != case.current_period:
         return "ATTRIBUTION_CURRENT_PERIOD_MISMATCH", "归因当前时期与案例不一致"
@@ -440,7 +443,9 @@ def _compare_attribution(
         return "ATTRIBUTION_DIRECTION_MISMATCH", "归因变化方向与案例事实不一致"
     if case.expected_change:
         expected_change = _decimal(case.expected_change)
-        if expected_change is None or abs(attribution.total_change - expected_change) > Decimal("0.02"):
+        if expected_change is None or abs(
+            attribution.total_change - expected_change
+        ) > Decimal("0.02"):
             return "ATTRIBUTION_CHANGE_MISMATCH", "归因变化金额与案例事实不一致"
     old_value = _reference_scalar(references, case.case_id, "comparison-overall")
     new_value = _reference_scalar(references, case.case_id, "current-overall")
@@ -592,7 +597,11 @@ def _summarize(
         ),
         report_grounded_accuracy=_accuracy(report_values),
         attribution_accuracy=_accuracy(
-            [item.attribution_passed for item in valid if item.attribution_passed is not None]
+            [
+                item.attribution_passed
+                for item in valid
+                if item.attribution_passed is not None
+            ]
         ),
         summary_judge_accuracy=_accuracy(
             [item.judge_passed for item in valid if item.judge_passed is not None]

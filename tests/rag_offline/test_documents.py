@@ -27,7 +27,9 @@ class DocumentBuildTest(unittest.TestCase):
 
         self.assertIn("别名：销售数量、销量", document.page_content)
         self.assertEqual(document.metadata["formula"], "SUM(f.quantity)")
-        self.assertEqual(document.metadata["filters"], ("f.order_status = 'completed'",))
+        self.assertEqual(
+            document.metadata["filters"], ("f.order_status = 'completed'",)
+        )
         self.assertEqual(
             document.metadata["time_field"],
             "fct_sales_order_line.completion_date_key -> dim_date.full_date",

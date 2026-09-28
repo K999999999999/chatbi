@@ -61,7 +61,9 @@ class RetrievalEvaluationTest(unittest.TestCase):
             )
         )
         self.assertTrue(any(case.filter_payload for case in cases))
-        quantity = next(case for case in cases if case.case_id == "metric-sales-quantity")
+        quantity = next(
+            case for case in cases if case.case_id == "metric-sales-quantity"
+        )
         self.assertEqual(quantity.query, "销售数量和销量")
         self.assertEqual(
             quantity.expected_document_ids,

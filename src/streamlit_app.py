@@ -517,10 +517,9 @@ def _submit_analysis(st: Any, question: str) -> None:
         return
 
     with st.spinner("正在生成经营分析报告..."):
-        if (
-            st.session_state.get(_ANALYSIS_RUN_QUESTION_KEY) != question
-            or not st.session_state.get(_ANALYSIS_RUN_ID_KEY)
-        ):
+        if st.session_state.get(
+            _ANALYSIS_RUN_QUESTION_KEY
+        ) != question or not st.session_state.get(_ANALYSIS_RUN_ID_KEY):
             st.session_state[_ANALYSIS_RUN_ID_KEY] = str(uuid4())
             st.session_state[_ANALYSIS_RUN_QUESTION_KEY] = question
         try:
