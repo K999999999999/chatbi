@@ -31,7 +31,7 @@ Business Analysis 黄金案例中的固定变化金额不是随机数据库值�
 - 保留数据库 Schema / 表 / 列标识、SQL 使用的订单状态机器码（`pending`、`confirmed`、`completed`、`cancelled`）、币种代码、区域代码、来源系统标识等技术值为英文。
 - 保持所有数值事实、键值、日期、金额、数量、状态分布和业务计算不变；翻译不得改变固定评测案例的数值结果。
 - Seed 版本从 `chatbi-sales-mart-dev-v2` 提升到新版本；新空数据库初始化直接使用新 Seed。
-- 已有本地开发环境使用仓库既有的 PostgreSQL 开发环境重置流程全量重建，不增加 v2→v3 定向迁移。重置会清空 `chatbi_mvp` 与 `chatbi_control` 中的本地数据、管理员、账号、Session 和审计记录；重置后按 Runbook 重新创建管理员。此方案只适用于可丢弃的本地开发 / 演示数据，不适用于共享环境或任何需要保留的数据。
+- 已有本地开发环境使用仓库既有的 PostgreSQL 开发环境重置流程全量重建，不增加 v2→v3 定向迁移。重置会清空 `chatbi_mvp` 与 `chatbi_control` 中的本地数据、管理员、账号、Session 和审计记录；重置后按 Runbook 执行应用库迁移以安装经营分析 checkpoint 表，再重新创建管理员。此方案只适用于可丢弃的本地开发 / 演示数据，不适用于共享环境或任何需要保留的数据。
 - 既有重置命令只重置 PostgreSQL，不删除 Qdrant。Seed / metadata 变化后，必须按 Runbook 重建并发布与新数据匹配的 RAG 检索资产，避免旧索引继续提供旧英文演示名称。
 - 数据 Seed 版本、当前结构 `columns.json` 中已有 `value_examples` 和相关 Runbook 同步更新。历史 `column_values.json` 不恢复为活动事实源。
 - Seed 文本变更会改变数据指纹；已有 Baseline 评测报告应按不可直接比较处理，并在新数据上产生新报告。数值参考 SQL 结果应保持一致。若当前发布的 RAG 资产包含旧演示名称，更新后需按仓库工作流重建 / 发布并验证检索资产。

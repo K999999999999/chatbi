@@ -1,6 +1,6 @@
 # 03 中文化本地演示 Seed 并采用开发库全量重置
 
-- Status: in-progress
+- Status: done
 - Owner: ChatBI Agent
 - Blocked by: None (can start immediately)
 - Change Profile: PostgreSQL 开发 Seed、metadata、初始化检查、RAG 资产和 Runbook；高风险；数据库集成测试、RAG 检索 Evaluation 与本地运行流程验收
@@ -17,6 +17,7 @@ Seed 版本从 `chatbi-sales-mart-dev-v2` 升级到新版本。已有本地开�
 - 同步 `columns.json` 中对应的 `value_examples`，保持其与 Seed 维表成员一致。
 - 更新初始化 healthcheck、数据库测试 harness 中固定的 Seed 版本断言，以及 Runbook 的重置 / 重建步骤。
 - 明确 PostgreSQL 重置会清除 `chatbi_mvp` 和 `chatbi_control` 的本地数据、管理员、账号、Session 和审计记录；管理员重置后须显式重建。
+- Runbook 要求重置后重新执行 `uv run --env-file .env python -m src.chatbi_control migrate` 安装经营分析所需的 LangGraph checkpoint 表；该命令不创建管理员。
 - 明确 PostgreSQL 重置不清理 Qdrant；必须按 Runbook 重新构建、验证并发布和新 metadata 匹配的 RAG 资产。
 - 处理 Seed 文本引起的数据指纹变化：数值参考 SQL 结果应保持相同；旧 Baseline 报告保留为历史记录，并在新 Seed 上生成新的验证报告。
 
@@ -32,7 +33,7 @@ Seed 版本从 `chatbi-sales-mart-dev-v2` 升级到新版本。已有本地开�
 - Seed 与 `columns.json` 的受管维度 `value_examples` 一致；确定性测试验证翻译范围及代码值保留。
 - 数值、主键、日期、金额、数量、状态分布和固定 BA 案例参考 SQL 结果与修改前一致。
 - PostgreSQL 初始化健康检查及数据库测试 harness 接受新 Seed 版本。
-- Runbook 清晰记录 PostgreSQL 全量重置的数据清除范围、重置后显式创建管理员、Qdrant 不受影响以及重新构建 / 发布 RAG 的操作。
+- Runbook 清晰记录 PostgreSQL 全量重置的数据清除范围、重置后执行应用库迁移并显式创建管理员、Qdrant 不受影响以及重新构建 / 发布 RAG 的操作。
 - 在新 Seed / metadata 上 RAG 构建和检索 Evaluation 可验证；不得把旧索引视作已更新。
 - 不执行真实数据库或 Qdrant 重置；若验收需要对本地 volume 做破坏性操作，先另行取得明确授权。
 
@@ -66,7 +67,7 @@ Seed 版本从 `chatbi-sales-mart-dev-v2` 升级到新版本。已有本地开�
 
 ## Result
 
-Seed / metadata 已更新到 v3，初始化健康检查、数据库测试 harness 与 Runbook 已同步。临时隔离的完整开发 PostgreSQL 初始化和相关集成测试 18 项通过；全仓确定性测试为 536 passed、14 skipped、124 subtests。未清理本机开发数据库。新 RAG 资产构建 / Evaluation 仍待最终 candidate 验收。
+Seed / metadata 已更新到 v3，初始化健康检查、数据库测试 harness 与 Runbook 已同步。临时隔离的完整开发 PostgreSQL 初始化和相关集成测试 18 项通过；全仓确定性测试为 536 passed、14 skipped、124 subtests。经用户确认，已全量重置本地开发 PostgreSQL，重建中文 Seed，并在重置后执行应用库迁移以安装经营分析 checkpoint 表；管理员尚未重建，需由使用者按 §4.3 显式创建。Qdrant 保留并已发布匹配 v3 的新 RAG 资产。在线检索 Evaluation 29 条全部通过；经营分析 Evaluation 5/5 通过。报告：`reports/evaluation/20260928T111822Z-dc696bc.md`、`reports/evaluation/20260928T112525Z-dc696bc-business-analysis.md`。
 
 ## Comments
 
