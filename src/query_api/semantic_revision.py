@@ -1,5 +1,6 @@
 """Multi-Turn Query V1 的结构化语义修订与确定性合并。"""
 
+import re
 from dataclasses import replace
 
 from src.online_query.contracts import QueryErrorCode
@@ -78,6 +79,14 @@ def revise_semantic_query(
             reason="UNSUPPORTED_ANALYSIS_SCOPE",
         )
 
+    dimension_operation = _dimension_operation(normalized_question)
+    if dimension_operation == "clarify":
+        raise SemanticRevisionError(
+            "请明确是替换现有分组维度，还是在现有维度上增加分组维度",
+            error_code=QueryErrorCode.CLARIFICATION_REQUIRED,
+            reason="DIMENSION_OPERATION_AMBIGUOUS",
+        )
+
     understand_revision = getattr(query_understanding, "understand_revision", None)
     if not callable(understand_revision):
         raise SemanticRevisionError(
@@ -109,6 +118,12 @@ def revise_semantic_query(
             error_code=QueryErrorCode.LLM_ERROR,
             reason="REVISION_CANDIDATE_TYPE_INVALID",
         )
+    if dimension_operation == "replace" and not candidate.dimensions:
+        raise SemanticRevisionError(
+            "请明确要替换成哪个分组维度",
+            error_code=QueryErrorCode.CLARIFICATION_REQUIRED,
+            reason="DIMENSION_REPLACEMENT_TARGET_MISSING",
+        )
     if not _has_semantic_delta(candidate):
         raise SemanticRevisionError(
             "请明确需要新增或修改的查询条件",
@@ -117,7 +132,12 @@ def revise_semantic_query(
         )
 
     try:
-        return _merge_and_validate(previous, candidate, normalized_question)
+        return _merge_and_validate(
+            previous,
+            candidate,
+            normalized_question,
+            replace_dimensions=dimension_operation == "replace",
+        )
     except SemanticQueryCannotAnswer as exc:
         raise SemanticRevisionError(
             "请明确需要新增或修改的查询条件",
@@ -142,6 +162,8 @@ def _merge_and_validate(
     previous: ValidatedSemanticQuery,
     candidate: SemanticQueryCandidate,
     question: str,
+    *,
+    replace_dimensions: bool = False,
 ) -> ValidatedSemanticQuery:
     """执行固定槽位规则，随后交给 Domain 校验。"""
 
@@ -152,7 +174,11 @@ def _merge_and_validate(
     )
     subjects = candidate.subjects or previous.subjects
     metrics = candidate.metrics or previous.metrics
-    dimensions = _append_unique(previous.dimensions, candidate.dimensions)
+    dimensions = (
+        candidate.dimensions
+        if replace_dimensions
+        else _append_unique(previous.dimensions, candidate.dimensions)
+    )
     filters = _merge_filters(previous.filters, candidate.filters)
 
     # None 表示当前追问没有修改时间。先跳过旧时间的重新解析，避免跨午夜
@@ -197,6 +223,30 @@ def _merge_filters(
         else:
             result[position] = item
     return tuple(result)
+
+
+_DIMENSION_REPLACEMENT = re.compile(
+    r"(?:分组维度|分组|维度)\s*(?:改成|改为|换成|替换为|替换成)"
+)
+_DIMENSION_APPEND = re.compile(r"(?:再加(?:上)?|再增加|增加|追加|加上)")
+_DIMENSION_REPLACEMENT_NEGATION = re.compile(
+    r"(?:不是|不要|别|并非)\s*(?:把)?\s*(?:分组维度|分组|维度)\s*"
+    r"(?:改成|改为|换成|替换为|替换成)"
+)
+
+
+def _dimension_operation(question: str) -> str:
+    """只按用户明确的维度操作词选择替换；其他情况沿用追加规则。"""
+
+    has_replacement = _DIMENSION_REPLACEMENT.search(question) is not None
+    has_append = _DIMENSION_APPEND.search(question) is not None
+    if _DIMENSION_REPLACEMENT_NEGATION.search(question) or (
+        has_replacement and has_append
+    ):
+        return "clarify"
+    if has_replacement:
+        return "replace"
+    return "append"
 
 
 def _append_unique(

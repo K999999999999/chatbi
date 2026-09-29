@@ -1,9 +1,9 @@
 # 建立当前 HEAD Evaluation 基线
 
-Status: open
+Status: blocked
 Owner: ChatBI 仓库维护者
 Backup Owner: None
-Blocked by: 03-align-current-docs
+Blocked by: 06-multi-turn-dimension-replacement
 
 ## Change Profile
 
@@ -61,16 +61,22 @@ Blocked by: 03-align-current-docs
 
 ## Result
 
-Golden Set 与当前 Contract 的静态核对未发现实质口径冲突；真实 Evaluation 尚未运行，不能签发当前 HEAD 基线。
+四套评测曾在干净 HEAD `050416b1b66319f2587cc85f9d3f90aa4bd11da0` 上运行。单轮与经营分析通过，多轮有 1 个失败，因此该 HEAD 不能作为通过的 Baseline。历史失败暴露的维度 Contract 冲突已由用户确认按明确措辞区分替换与追加，并由 Ticket 06 实施；旧报告仍仅代表旧 HEAD。当前 Baseline 仍待 Ticket 06 的新 candidate 通过重新评测。
 
 - 单轮 29 cases：指标均来自当前 7 项 `metrics.json`；正向查询、澄清、拒答类型与当前查询 Contract 一致。
 - Multi-Turn 7 conversations / 15 turns：指标替换、时间/维度/过滤修订及失败隔离与当前 Multi-Turn Contract 一致。
 - Business Analysis 10 cases：成功案例仅覆盖毛利 / 人民币净销售额和产品归因；毛利率、区域归因、歧义及无效比较分别对应当前拒答 / 澄清边界。
-- 阻塞：单轮与多轮报告元数据没有记录实际 `rag_asset_version`；对应 CLI 在采集 `RunMetadata` 时没有传入在线 Runtime 的 `asset_version`。Business Analysis 已记录该版本并在评测前后检查版本变化。故即使运行通过，单轮 / 多轮报告也无法识别实际使用的 Qdrant 资产，未满足本 Ticket 的资源可追溯验收条件。
-- 未运行真实 AI Evaluation；Golden Set 和历史报告未改动。报告元数据实现缺口由 Ticket 05 补齐。
+- 单轮：29/29 PASS，0 FAIL，0 INVALID_CASE。报告：`reports/evaluation/20260929T144601Z-050416b.json`。
+- Multi-Turn：6/7 conversations PASS，1 FAIL，0 INVALID_CASE；14/15 turns PASS。失败覆盖项为 dimension replacement。报告：`reports/evaluation/20260929T145624Z-050416b-multi-turn.json`。
+- Business Analysis：10/10 PASS，0 FAIL，0 INVALID_CASE。报告：`reports/evaluation/20260929T150118Z-050416b-business-analysis.json`。
+- Query Understanding 辅助评测：6/6 PASS。报告：`reports/evaluation/20260929T150235Z-050416b-query-understanding.json`。
+- 四份报告均记录相同完整 `git_commit`、`git_dirty=false`；三份必需 RAG 评测均记录 `rag_asset_version=provenance-20260929`，Sales Mart seed 和 data hash 一致。
+- 历史阻塞：`MT-DIMENSION-REPLACE-T2` 要求把分组从“销售区域”替换为“产品线”，旧实现生成 SQL 时同时保留两者。此行为现已按用户确认的 Contract 在 Ticket 06 修正；该报告不能用来判断新实现是否通过。
+- Golden Set 和历史报告未改动；评测期间工作区干净。当前工作区仅有本 Ticket 的结果记录待提交。
 
 ## Comments
 
 - 旧报告只证明其记录的旧 commit 上曾运行过，不作为当前 HEAD 的成功证据。
 - 本 Ticket 使用真实 LLM / RAG / PostgreSQL；执行须遵循仓库规定的候选验收授权，不在 Bootstrap 或确定性测试时隐式运行。
-- 2026-09-29 静态核对发现的单轮 / 多轮报告追溯缺口已由 Ticket 05 修复并通过针对性测试；回到本 Ticket 后仍须按最终稳定 HEAD 和候选验收门禁运行三套真实基线。
+- Ticket 05 已补齐单轮 / 多轮报告的 RAG 资产身份，并通过针对性测试；本次四套报告身份完整。Ticket 06 已依据用户确认修正实现与文档，Golden Set 保持不变；待形成新 clean candidate 并获授权后，重新运行三套必需 Evaluation 和辅助评测。
+- 初始只读案例核对未发现该冲突；真实 Multi-Turn 执行结果触发了对两份已确认规格及该案例来源的复查。

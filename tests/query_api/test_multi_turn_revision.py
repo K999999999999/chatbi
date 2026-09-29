@@ -1,5 +1,6 @@
 """Multi-Turn Query V1 的 Application 语义修订测试。"""
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from unittest import TestCase
 from unittest.mock import Mock
@@ -19,10 +20,12 @@ from src.online_query.contracts import (
     QuerySuccess,
 )
 from src.online_query.query_understanding import (
+    FilterOperator,
     QueryType,
     QueryUnderstandingClarificationRequired,
     SemanticQueryCandidate,
     TimeGranularity,
+    ValidatedFilter,
     ValidatedSemanticQuery,
     ValidatedTime,
 )
@@ -66,6 +69,51 @@ class _RevisionAdapter:
                 subjects=(),
                 metrics=(),
                 dimensions=("销售区域",),
+                time=None,
+                filters=(),
+            )
+        if question == "分组维度改成产品线":
+            return SemanticQueryCandidate(
+                query_type=QueryType.METRIC_ANALYSIS,
+                subjects=(),
+                metrics=(),
+                dimensions=("产品线",),
+                time=None,
+                filters=(),
+            )
+        if question == "再增加产品线":
+            return SemanticQueryCandidate(
+                query_type=QueryType.METRIC_ANALYSIS,
+                subjects=(),
+                metrics=(),
+                dimensions=("产品线",),
+                time=None,
+                filters=(),
+            )
+        if question == "把分组维度改成产品线并再增加销售区域":
+            return SemanticQueryCandidate(
+                query_type=QueryType.METRIC_ANALYSIS,
+                subjects=(),
+                metrics=(),
+                dimensions=("产品线", "销售区域"),
+                time=None,
+                filters=(),
+            )
+        if question == "不要把分组维度改成产品线":
+            return SemanticQueryCandidate(
+                query_type=QueryType.METRIC_ANALYSIS,
+                subjects=(),
+                metrics=(),
+                dimensions=("产品线",),
+                time=None,
+                filters=(),
+            )
+        if question == "维度改成":
+            return SemanticQueryCandidate(
+                query_type=QueryType.METRIC_ANALYSIS,
+                subjects=(),
+                metrics=("毛利率",),
+                dimensions=(),
                 time=None,
                 filters=(),
             )
@@ -184,6 +232,156 @@ class MultiTurnRevisionTest(TestCase):
         self.assertEqual(third_state.dimensions, ("销售区域",))
         self.assertEqual(third_state.time, _initial_query().time)
         self.assertEqual(adapter.questions, ["按销售区域拆开", "改看毛利率"])
+
+    def test_explicit_dimension_replacement_replaces_only_dimension_slot(self) -> None:
+        service = _StatefulService()
+        service.initial = replace(
+            service.initial,
+            filters=(
+                ValidatedFilter(
+                    field_text="订单状态",
+                    operator=FilterOperator.EQUALS,
+                    values=("已完成",),
+                ),
+            ),
+        )
+        adapter = _RevisionAdapter()
+        client = TestClient(create_test_app(service, query_understanding=adapter))
+
+        first = client.post(
+            "/api/v1/query",
+            json={"question": "2025 年第一季度的人民币销售额是多少？"},
+        )
+        conversation_id = first.json()["conversation_id"]
+        second = client.post(
+            "/api/v1/query",
+            json={
+                "question": "按销售区域拆开",
+                "conversation_id": conversation_id,
+            },
+        )
+        replacement = client.post(
+            "/api/v1/query",
+            json={
+                "question": "分组维度改成产品线",
+                "conversation_id": conversation_id,
+            },
+        )
+
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(replacement.status_code, 200)
+        state = service.requests[2].semantic_query
+        self.assertIsNotNone(state)
+        assert state is not None
+        self.assertEqual(state.dimensions, ("产品线",))
+        self.assertEqual(state.metrics, ("人民币销售额",))
+        self.assertEqual(state.time, _initial_query().time)
+        self.assertEqual(
+            state.filters,
+            (
+                ValidatedFilter(
+                    field_text="订单状态",
+                    operator=FilterOperator.EQUALS,
+                    values=("已完成",),
+                ),
+            ),
+        )
+
+    def test_explicit_dimension_append_keeps_existing_dimension(self) -> None:
+        service = _StatefulService()
+        adapter = _RevisionAdapter()
+        client = TestClient(create_test_app(service, query_understanding=adapter))
+
+        first = client.post(
+            "/api/v1/query",
+            json={"question": "2025 年第一季度的人民币销售额是多少？"},
+        )
+        conversation_id = first.json()["conversation_id"]
+        second = client.post(
+            "/api/v1/query",
+            json={
+                "question": "按销售区域拆开",
+                "conversation_id": conversation_id,
+            },
+        )
+        appended = client.post(
+            "/api/v1/query",
+            json={"question": "再增加产品线", "conversation_id": conversation_id},
+        )
+
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(appended.status_code, 200)
+        self.assertEqual(
+            service.requests[2].semantic_query.dimensions,
+            ("销售区域", "产品线"),
+        )
+
+    def test_conflicting_dimension_operations_clarify_without_state_change(
+        self,
+    ) -> None:
+        service = _StatefulService()
+        adapter = _RevisionAdapter()
+        client = TestClient(create_test_app(service, query_understanding=adapter))
+
+        first = client.post(
+            "/api/v1/query",
+            json={"question": "2025 年第一季度的人民币销售额是多少？"},
+        )
+        conversation_id = first.json()["conversation_id"]
+        ambiguous = client.post(
+            "/api/v1/query",
+            json={
+                "question": "把分组维度改成产品线并再增加销售区域",
+                "conversation_id": conversation_id,
+            },
+        )
+
+        self.assertEqual(ambiguous.status_code, 422)
+        self.assertEqual(ambiguous.json()["error_code"], "CLARIFICATION_REQUIRED")
+        self.assertEqual(len(service.requests), 1)
+
+    def test_negated_dimension_replacement_clarifies_without_state_change(self) -> None:
+        service = _StatefulService()
+        adapter = _RevisionAdapter()
+        client = TestClient(create_test_app(service, query_understanding=adapter))
+
+        first = client.post(
+            "/api/v1/query",
+            json={"question": "2025 年第一季度的人民币销售额是多少？"},
+        )
+        conversation_id = first.json()["conversation_id"]
+        ambiguous = client.post(
+            "/api/v1/query",
+            json={
+                "question": "不要把分组维度改成产品线",
+                "conversation_id": conversation_id,
+            },
+        )
+
+        self.assertEqual(ambiguous.status_code, 422)
+        self.assertEqual(ambiguous.json()["error_code"], "CLARIFICATION_REQUIRED")
+        self.assertEqual(len(service.requests), 1)
+
+    def test_dimension_replacement_without_target_does_not_clear_dimensions(
+        self,
+    ) -> None:
+        service = _StatefulService()
+        adapter = _RevisionAdapter()
+        client = TestClient(create_test_app(service, query_understanding=adapter))
+
+        first = client.post(
+            "/api/v1/query",
+            json={"question": "2025 年第一季度的人民币销售额是多少？"},
+        )
+        conversation_id = first.json()["conversation_id"]
+        ambiguous = client.post(
+            "/api/v1/query",
+            json={"question": "维度改成", "conversation_id": conversation_id},
+        )
+
+        self.assertEqual(ambiguous.status_code, 422)
+        self.assertEqual(ambiguous.json()["error_code"], "CLARIFICATION_REQUIRED")
+        self.assertEqual(len(service.requests), 1)
 
     def test_ambiguous_follow_up_does_not_execute_or_mutate_state(self) -> None:
         service = _StatefulService()
@@ -314,6 +512,45 @@ class MultiTurnRevisionTest(TestCase):
         self.assertEqual(service.requests[1].semantic_query.dimensions, ("销售区域",))
         self.assertEqual(service.requests[2].semantic_query.metrics, ("毛利率",))
         self.assertEqual(service.requests[2].semantic_query.dimensions, ())
+
+    def test_failed_dimension_replacement_keeps_previous_dimensions(self) -> None:
+        service = _FailingRevisionService()
+        service.fail_next_revision = False
+        adapter = _RevisionAdapter()
+        client = TestClient(create_test_app(service, query_understanding=adapter))
+
+        first = client.post(
+            "/api/v1/query",
+            json={"question": "2025 年第一季度的人民币销售额是多少？"},
+        )
+        conversation_id = first.json()["conversation_id"]
+        second = client.post(
+            "/api/v1/query",
+            json={
+                "question": "按销售区域拆开",
+                "conversation_id": conversation_id,
+            },
+        )
+        service.fail_next_revision = True
+        failed = client.post(
+            "/api/v1/query",
+            json={
+                "question": "分组维度改成产品线",
+                "conversation_id": conversation_id,
+            },
+        )
+        retry = client.post(
+            "/api/v1/query",
+            json={"question": "再增加产品线", "conversation_id": conversation_id},
+        )
+
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(failed.status_code, 503)
+        self.assertEqual(retry.status_code, 200)
+        self.assertEqual(
+            service.requests[3].semantic_query.dimensions,
+            ("销售区域", "产品线"),
+        )
 
     def test_each_turn_rechecks_current_authorization(self) -> None:
         service = _StatefulService()

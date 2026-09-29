@@ -132,6 +132,8 @@ class QueryUnderstandingLLMTest(unittest.TestCase):
 
         self.assertIn("这是 delta，不是完整查询", prompt)
         self.assertIn("metrics 和 subjects 表示替换对应槽位", prompt)
+        self.assertIn("是否替换或追加由程序根据用户明确措辞确定", prompt)
+        self.assertIn("没有明确替换措辞时按追加处理", prompt)
         self.assertIn('"dimensions":["客户类型"]', prompt)
         self.assertNotIn("2025 年按客户类型统计销售额", prompt)
 
