@@ -109,3 +109,82 @@ class QueryApiIntegrationTest(TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("API_APP_READY", result.stdout)
+
+    def test_production_startup_verifies_rag_and_live_database_schema(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        environment = _main_environment(root, "production")
+        script = """
+from src.chatbi_control import database
+database.verify_control_schema = lambda engine: None
+import src.query_api.main as main
+checks = []
+main._rag_runtime.verify_production_ready = lambda callback: checks.append(callback)
+main.verify_startup_dependencies()
+assert len(checks) == 1
+assert checks[0] == main._query_executor.verify_structure_metadata
+print('PRODUCTION_RAG_READY_GATE_VERIFIED')
+"""
+
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=root,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("PRODUCTION_RAG_READY_GATE_VERIFIED", result.stdout)
+
+    def test_production_startup_rejects_static_retrieval_mode(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        environment = _main_environment(root, "production")
+        environment["RAG_ONLINE_RETRIEVAL_ENABLED"] = "false"
+        script = """
+from src.chatbi_control import database
+database.verify_control_schema = lambda engine: None
+import src.query_api.main as main
+try:
+    main.verify_startup_dependencies()
+except RuntimeError as exc:
+    assert '必须启用在线 RAG' in str(exc)
+else:
+    raise AssertionError('production static retrieval unexpectedly started')
+print('PRODUCTION_STATIC_RETRIEVAL_REJECTED')
+"""
+
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=root,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("PRODUCTION_STATIC_RETRIEVAL_REJECTED", result.stdout)
+
+
+def _main_environment(root: Path, environment_name: str) -> dict[str, str]:
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "CHATBI_ENV": environment_name,
+            "LLM_API_KEY": "test-key",
+            "LLM_BASE_URL": "http://127.0.0.1:1/v1",
+            "LLM_MODEL": "test-model",
+            "POSTGRES_HOST": "127.0.0.1",
+            "POSTGRES_PORT": "5433",
+            "POSTGRES_DB": "chatbi_mvp",
+            "POSTGRES_APP_USER": "chatbi_app",
+            "POSTGRES_APP_PASSWORD": "test-password",
+            "POSTGRES_CONTROL_DB": "chatbi_control",
+            "POSTGRES_CONTROL_APP_USER": "chatbi_control_user",
+            "POSTGRES_CONTROL_APP_PASSWORD": "test-control-password",
+            "CHATBI_ADMIN_SECRET_KEY": "test-admin-secret-key-32-characters",
+            "PYTHONPATH": str(root),
+        }
+    )
+    return environment

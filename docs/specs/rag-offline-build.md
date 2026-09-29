@@ -159,10 +159,13 @@ page_content 用于语义相似度检索；metadata 用于精确身份识别、�
 - 只有全部步骤成功后才能发布新产物。
 - 构建失败时，当前已发布产物保持不变。
 - 源文件不增加业务版本字段。
+- `manifest.json` 记录 Structure Metadata、Semantic Metrics 和 Embedding 配置的稳定 SHA-256 来源指纹；该指纹用于识别派生资产对应的输入，不取代数据库、Metadata 或 Metrics 事实源。
+- `production` 服务启动前必须校验当前 manifest 指纹仍匹配工作区输入，并只读比较 PostgreSQL catalog 与 `tables.json`、`columns.json`、`relationships.json` 的结构投影；任一输入缺失、无法验证或不匹配时必须拒绝 Ready。
+- 旧 manifest 缺少来源指纹时不能作为已验证的生产资产，必须从当前输入重新构建并发布。
 
 ### 5.1 向量集合和关系图的加载契约
 
-本模块只定义离线产物如何被写入、校验和交付；在线检索模块的具体实现另行设计。
+本模块定义离线产物如何被写入、校验和交付；生产服务 Ready 前还必须按本 Spec 的来源指纹和 PostgreSQL catalog 校验规则确认资产仍匹配当前事实源。
 
 构建端必须：
 

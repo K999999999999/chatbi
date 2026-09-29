@@ -10,6 +10,7 @@ from src.authorization import (
     PersistentAuditSink,
     RoleAuthorizationPolicyStore,
 )
+from src.business_analysis.runtime import build_analysis_application
 from src.chatbi_control.database import (
     ControlDatabaseConfig,
     ControlDatabaseMigrationError,
@@ -23,7 +24,6 @@ from src.online_query.query_understanding_llm import LangChainQueryUnderstanding
 from src.online_query.retrieval import OnlineRetriever
 from src.online_query.retrieval.rag_runtime import RagRuntime
 from src.online_query.service import OnlineQueryService
-from src.business_analysis.runtime import build_analysis_application
 
 from .app import create_app
 from .config import (
@@ -33,17 +33,24 @@ from .config import (
 
 load_local_environment()
 _runtime_environment = validate_runtime_configuration()
+_rag_runtime: RagRuntime | None = None
+_query_executor: PsycopgQueryExecutor | None = None
 
 
 def build_service() -> OnlineQueryService:
     """使用现有环境配置创建真实 Online Query 服务。"""
 
+    global _rag_runtime, _query_executor
     trace_recorder = create_trace_recorder()
+    query_executor = PsycopgQueryExecutor.from_env()
+    _query_executor = query_executor
+    _rag_runtime = None
     retrieval_provider = None
     query_understanding = None
     if _rag_online_retrieval_enabled():
+        _rag_runtime = RagRuntime.from_environment()
         retrieval_provider = OnlineRetriever(
-            RagRuntime.from_environment(),
+            _rag_runtime,
             trace_recorder=trace_recorder,
         )
         query_understanding = LangChainQueryUnderstanding.from_env(
@@ -51,7 +58,7 @@ def build_service() -> OnlineQueryService:
         )
     return OnlineQueryService(
         LangChainSQLGenerator.from_env(trace_recorder=trace_recorder),
-        PsycopgQueryExecutor.from_env(),
+        query_executor,
         retrieval_provider=retrieval_provider,
         query_understanding=query_understanding,
         trace_recorder=trace_recorder,
@@ -100,3 +107,9 @@ def verify_startup_dependencies() -> None:
     except ControlDatabaseMigrationError:
         _control_engine.dispose()
         raise
+    if _runtime_environment in {"production", "prod"}:
+        if not _rag_online_retrieval_enabled():
+            raise RuntimeError("production 必须启用在线 RAG Retrieval")
+        if _rag_runtime is None or _query_executor is None:
+            raise RuntimeError("production RAG 资源就绪校验未装配")
+        _rag_runtime.verify_production_ready(_query_executor.verify_structure_metadata)

@@ -256,6 +256,8 @@ uv run --env-file .env python -m src.rag_offline
 构建失败时，旧的 `current.json` 和旧版本集合应保持不变。
 Compose 启动不会下载 Embedding 模型，也不会自动构建索引。
 
+每个新 manifest 都包含 Structure Metadata、Metrics 和 Embedding 配置的来源指纹。修改上述任一输入后，production 服务会拒绝使用旧索引；必须先从新输入完成构建并发布。旧版 manifest 没有来源指纹，也不能作为已验证的 production 资产。
+
 ### 7.3 验证当前发布资产
 
 索引构建完成后检查当前发布结果：
@@ -265,6 +267,8 @@ uv run --env-file .env python -c "from src.rag_offline import OfflineBuildConfig
 ```
 
 新环境的集合数量以当前 tracked 源资产生成结果为准；构建摘要会报告每个集合的文档数、关系边数和检索验证结果。
+
+production 的 `src.query_api.main` 启动流程还会核验当前 RAG manifest 与本地输入指纹，并用 `chatbi_app` 只读比较 PostgreSQL catalog 和导出的表、列、关系 metadata。该校验失败会阻止服务启动；修改 Schema 后按 DDL → 数据库 → metadata 导出 → RAG 重建顺序处理，不要绕过门禁复用旧索引。
 
 ### 7.4 重建索引或重置 Qdrant
 
