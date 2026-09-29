@@ -61,9 +61,16 @@ Blocked by: 03-align-current-docs
 
 ## Result
 
-待实施。
+Golden Set 与当前 Contract 的静态核对未发现实质口径冲突；真实 Evaluation 尚未运行，不能签发当前 HEAD 基线。
+
+- 单轮 29 cases：指标均来自当前 7 项 `metrics.json`；正向查询、澄清、拒答类型与当前查询 Contract 一致。
+- Multi-Turn 7 conversations / 15 turns：指标替换、时间/维度/过滤修订及失败隔离与当前 Multi-Turn Contract 一致。
+- Business Analysis 10 cases：成功案例仅覆盖毛利 / 人民币净销售额和产品归因；毛利率、区域归因、歧义及无效比较分别对应当前拒答 / 澄清边界。
+- 阻塞：单轮与多轮报告元数据没有记录实际 `rag_asset_version`；对应 CLI 在采集 `RunMetadata` 时没有传入在线 Runtime 的 `asset_version`。Business Analysis 已记录该版本并在评测前后检查版本变化。故即使运行通过，单轮 / 多轮报告也无法识别实际使用的 Qdrant 资产，未满足本 Ticket 的资源可追溯验收条件。
+- 未运行真实 AI Evaluation；Golden Set 和历史报告未改动。报告元数据实现缺口由 Ticket 05 补齐。
 
 ## Comments
 
 - 旧报告只证明其记录的旧 commit 上曾运行过，不作为当前 HEAD 的成功证据。
 - 本 Ticket 使用真实 LLM / RAG / PostgreSQL；执行须遵循仓库规定的候选验收授权，不在 Bootstrap 或确定性测试时隐式运行。
+- 2026-09-29 静态核对发现的单轮 / 多轮报告追溯缺口已由 Ticket 05 修复并通过针对性测试；回到本 Ticket 后仍须按最终稳定 HEAD 和候选验收门禁运行三套真实基线。

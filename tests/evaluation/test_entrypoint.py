@@ -6,6 +6,7 @@ from decimal import Decimal
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from src.business_analysis.application import BusinessAnalysisSuccess
@@ -87,10 +88,17 @@ class _SuccessfulRuntime:
 
     def get_snapshot(self) -> object:
         self.get_snapshot_calls += 1
-        return object()
+        return SimpleNamespace(asset_version="test-rag-build")
 
     def close(self) -> None:
         self.close_calls += 1
+
+
+class _ChangingRuntime(_SuccessfulRuntime):
+    def get_snapshot(self) -> object:
+        self.get_snapshot_calls += 1
+        version = "test-rag-build" if self.get_snapshot_calls == 1 else "next-rag-build"
+        return SimpleNamespace(asset_version=version)
 
 
 class _FakeQueryUnderstanding:
@@ -416,32 +424,38 @@ class EvaluationEntrypointTest(unittest.TestCase):
             data = QueryData(columns=("value",), rows=((1,),), truncated=False)
             output_dir = root / "reports"
             stdout = StringIO()
+            runtime = _SuccessfulRuntime()
+            retrieval_provider = _FakeRetrievalProvider(context)
 
-            exit_code = run_cli(
-                [
-                    "--multi-turn",
-                    "--cases",
-                    str(cases_path),
-                    "--output-dir",
-                    str(output_dir),
-                    "--online-retrieval",
-                ],
-                environ={
-                    "LLM_MODEL": "test-model",
-                    "RAG_ONLINE_RETRIEVAL_ENABLED": "true",
-                },
-                context_loader=lambda: context,
-                generator_factory=lambda environ: _FakeGenerator(sql),
-                executor_factory=lambda environ: _FakeExecutor(data),
-                retrieval_factory=lambda: _FakeRetrievalProvider(context),
-                query_understanding_factory=lambda environ: (
-                    _FakeSemanticQueryUnderstanding()
-                ),
-                git_state_reader=lambda project_root: ("abcdef123456", False),
-                context_paths={"context": context_file},
-                stdout=stdout,
-                stderr=StringIO(),
-            )
+            with patch(
+                "src.evaluation.__main__._build_online_retrieval_provider",
+                return_value=retrieval_provider,
+            ):
+                exit_code = run_cli(
+                    [
+                        "--multi-turn",
+                        "--cases",
+                        str(cases_path),
+                        "--output-dir",
+                        str(output_dir),
+                        "--online-retrieval",
+                    ],
+                    environ={
+                        "LLM_MODEL": "test-model",
+                        "RAG_ONLINE_RETRIEVAL_ENABLED": "true",
+                    },
+                    context_loader=lambda: context,
+                    generator_factory=lambda environ: _FakeGenerator(sql),
+                    executor_factory=lambda environ: _FakeExecutor(data),
+                    runtime_factory=lambda: runtime,
+                    query_understanding_factory=lambda environ: (
+                        _FakeSemanticQueryUnderstanding()
+                    ),
+                    git_state_reader=lambda project_root: ("abcdef123456", False),
+                    context_paths={"context": context_file},
+                    stdout=stdout,
+                    stderr=StringIO(),
+                )
 
             reports = list(output_dir.glob("*-multi-turn.json"))
             summaries = list(output_dir.glob("*-multi-turn.md"))
@@ -454,6 +468,9 @@ class EvaluationEntrypointTest(unittest.TestCase):
         self.assertEqual(
             report["metadata"]["evaluation_suite"], "multi_turn_conversation"
         )
+        self.assertEqual(report["metadata"]["rag_asset_version"], "test-rag-build")
+        self.assertEqual(runtime.get_snapshot_calls, 2)
+        self.assertIn("RAG 资产：test-rag-build", summary_report)
         self.assertEqual(report["summary"]["conversation_accuracy"], 1.0)
         self.assertEqual(report["summary"]["execution_accuracy"], 1.0)
         self.assertEqual(len(report["cases"][0]["turns"]), 2)
@@ -597,12 +614,28 @@ class EvaluationEntrypointTest(unittest.TestCase):
                     stdout=StringIO(),
                     stderr=StringIO(),
                 )
+            report = json.loads(
+                next(output_dir.glob("*.json")).read_text(encoding="utf-8")
+            )
 
         self.assertEqual(exit_code, 0)
-        self.assertEqual(runtime.get_snapshot_calls, 1)
+        self.assertEqual(runtime.get_snapshot_calls, 2)
         self.assertEqual(runtime.close_calls, 1)
         self.assertIs(build_provider.call_args.args[0], runtime)
         self.assertEqual(len(provider.requests), 1)
+        self.assertEqual(report["metadata"]["rag_asset_version"], "test-rag-build")
+
+    def test_rag_asset_version_change_is_rejected(self) -> None:
+        from src.evaluation.__main__ import (
+            _preflight_online_retrieval,
+            _verify_rag_asset_version,
+        )
+        from src.evaluation.reporting import ReportingError
+
+        runtime = _ChangingRuntime()
+        asset_version = _preflight_online_retrieval(runtime)
+        with self.assertRaisesRegex(ReportingError, "RAG 资产版本发生变化"):
+            _verify_rag_asset_version(runtime, asset_version)
 
     def test_query_understanding_mode_writes_semantic_report_without_sql_chain(
         self,
