@@ -4,8 +4,8 @@
 
 - Module Spec（模块规格）：`docs/specs/rag-offline-build.md`
 - Runtime Mode（运行模式）：同步 Batch（批处理）
-- 当前状态：Metric Document 分层调整已实现、测试通过并已发布新资产，相关实现已提交
-- 最后更新：2026-09-14
+- 当前状态：RAG 来源指纹及 production Ready 校验已实现；当前 `data/rag/current.json` 指向 `provenance-20260929`。本文件其他历史验收记录仍表示其记录时的状态。
+- 最后更新：2026-09-29
 
 ## 2. 变更背景与边界
 
@@ -35,6 +35,8 @@
 ```
 
 整个构建作为一个发布事务处理。向量集合使用新的物理名称，构建期间不覆盖当前集合；`current.json` 只在所有集合和关系图通过验证后更新。
+
+每个 `manifest.json` 还记录 `provenance`：Structure Metadata、Metrics、Embedding 配置以及它们的组合 SHA-256。生产运行时每次获取当前资产时重新计算工作区指纹，避免服务继续使用与当前输入不符的索引；服务启动时还使用 `chatbi_app` 只读连接将 PostgreSQL catalog 的表、列和关系投影与生成的 JSON 对比。旧 manifest、缺失输入或任一差异会阻止 production Ready。更改 Metadata、Metrics 或 Embedding 配置后，按 Runbook 重新构建并发布索引。
 
 ## 4. 核心 Contract（契约）
 

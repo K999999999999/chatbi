@@ -1,5 +1,6 @@
 """Online RAG Runtime（在线 RAG 运行时）和不可变资产快照。"""
 
+import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,7 +16,9 @@ from src.rag_offline.build import (
 )
 from src.rag_offline.config import OfflineBuildConfig
 from src.rag_offline.embedding import BgeM3EmbeddingProvider, EmbeddingProvider
+from src.rag_offline.provenance import build_provenance
 from src.rag_offline.qdrant_store import QdrantAssetStore, QdrantStoreError
+from src.rag_offline.sources import load_facts
 
 
 class RagRuntimeError(RuntimeError):
@@ -64,11 +67,13 @@ class RagRuntime:
         asset_loader: AssetLoader = load_published_asset,
         store_factory: StoreFactory | None = None,
         embedding_factory: EmbeddingFactory | None = None,
+        production_mode: bool = False,
     ) -> None:
         self._config = config
         self._asset_loader = asset_loader
         self._store_factory = store_factory or _default_store_factory
         self._embedding_factory = embedding_factory or _default_embedding_factory
+        self._production_mode = production_mode
         self._snapshots: dict[str, AssetSnapshot] = {}
         self._lock = RLock()
 
@@ -76,7 +81,11 @@ class RagRuntime:
     def from_environment(cls) -> "RagRuntime":
         """使用项目已有 RAG 环境变量创建运行时。"""
 
-        return cls(OfflineBuildConfig.from_environment())
+        environment = os.getenv("CHATBI_ENV", "").strip().lower()
+        return cls(
+            OfflineBuildConfig.from_environment(),
+            production_mode=environment in {"production", "prod"},
+        )
 
     def get_snapshot(self) -> AssetSnapshot:
         """每次调用只读取一次 current.json，并返回对应版本快照。"""
@@ -85,6 +94,9 @@ class RagRuntime:
             published = self._asset_loader(self._config.output_dir)
         except PublishedAssetError as exc:
             raise AssetUnavailableError(str(exc)) from exc
+
+        if self._production_mode:
+            _validate_provenance(published, self._config)
 
         with self._lock:
             cached = self._snapshots.get(published.build_id)
@@ -122,7 +134,7 @@ class RagRuntime:
         except EmbeddingUnavailableError:
             store.close()
             raise
-        except Exception as exc:
+        except (OSError, RuntimeError) as exc:
             store.close()
             raise EmbeddingUnavailableError(f"Embedding 运行时创建失败：{exc}") from exc
 
@@ -134,6 +146,28 @@ class RagRuntime:
             embedding_provider=embedding,
             qdrant_store=store,
         )
+
+    def verify_production_ready(
+        self,
+        verify_database_schema: Callable[[], None],
+    ) -> AssetSnapshot:
+        """Verify current RAG inputs and live PostgreSQL structure before serving."""
+
+        if not self._production_mode:
+            raise RuntimeError("生产资源就绪校验只能用于 production 模式")
+        snapshot = self.get_snapshot()
+        try:
+            verify_database_schema()
+        except AssetUnavailableError:
+            raise
+        except (OSError, RuntimeError) as exc:
+            message = str(exc).strip()
+            if not message:
+                message = type(exc).__name__
+            raise AssetUnavailableError(
+                f"PostgreSQL Schema 与 Structure Metadata 不一致或无法验证：{message}"
+            ) from None
+        return snapshot
 
 
 def _default_store_factory(config: OfflineBuildConfig) -> QdrantAssetStore:
@@ -182,6 +216,33 @@ def _validate_manifest(
         config.model_name_or_path
     ):
         raise AssetUnavailableError("Embedding Model 与发布资产不匹配")
+
+
+def _validate_provenance(
+    published: PublishedAsset,
+    config: OfflineBuildConfig,
+) -> None:
+    provenance = published.manifest.get("provenance")
+    if not isinstance(provenance, Mapping):
+        raise AssetUnavailableError("Manifest 缺少 RAG 来源指纹，请重建索引")
+
+    current = build_provenance(load_facts(), _runtime_embedding_config(config))
+    for key, expected in current.items():
+        actual = provenance.get(key)
+        if not isinstance(actual, str) or actual != expected:
+            raise AssetUnavailableError(
+                f"RAG 资产来源指纹不匹配：{key}；请重新导出 Metadata 并重建索引"
+            )
+
+
+def _runtime_embedding_config(config: OfflineBuildConfig) -> Mapping[str, Any]:
+    return BgeM3EmbeddingProvider(
+        config.model_name_or_path,
+        batch_size=config.embedding_batch_size,
+        use_fp16=config.embedding_use_fp16,
+        devices=config.embedding_device,
+        model_revision=config.model_revision,
+    ).config
 
 
 def _validate_collections(

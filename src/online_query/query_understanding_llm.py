@@ -289,7 +289,7 @@ def build_query_revision_prompt(
 2. 正常输出 delta 时，顶层字段必须严格包含 query_type、subjects、metrics、dimensions、time、filters；如果当前追问中的业务指标表达无法唯一确定，只返回 {{"outcome": "clarification_required"}}。
 3. 这是 delta，不是完整查询：未被当前追问修改的数组必须返回空数组，未修改时间必须返回 null。
 4. query_type 未明确变化时返回上一轮 query_type；无法判断时返回 unknown。
-5. metrics 和 subjects 表示替换对应槽位；dimensions 表示新增分组维度；filters 中相同 field_text 表示替换，不同 field_text 表示新增。
+5. metrics 和 subjects 表示替换对应槽位；dimensions 只返回当前追问提到的新维度候选，不携带上一轮维度。是否替换或追加由程序根据用户明确措辞确定，你不得自行选择操作；没有明确替换措辞时按追加处理。filters 中相同 field_text 表示替换，不同 field_text 表示新增。
 6. 当前追问只表达“继续”“再看看”等无法确定变化时，所有数组返回空数组，time 返回 null，query_type 返回 unknown。
 7. query_type 只能是 entity_lookup、metric_analysis 或 unknown；所有 enum value 必须使用精确的 English token。
 8. time 没有新的时间条件时返回 null；有新的时间条件时返回 text 和 granularity，granularity 只能是 day、week、month、quarter 或 year。

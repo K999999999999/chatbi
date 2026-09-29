@@ -1,11 +1,17 @@
 """使用 psycopg 以 chatbi_app 只读执行已校验 SQL。"""
 
-from collections.abc import Callable, Mapping
 import os
+from collections.abc import Callable, Mapping
 from typing import Any
 
 import psycopg
 from psycopg.errors import QueryCanceled
+
+from src.rag_offline.sources import DEFAULT_STRUCTURE_DIR
+from src.structure.runtime_schema import (
+    StructureMetadataMismatchError,
+    verify_catalog_matches_metadata,
+)
 
 from .contracts import QueryData, ValidatedSQL
 
@@ -92,6 +98,20 @@ class PsycopgQueryExecutor:
             rows=rows,
             truncated=len(fetched) > 100,
         )
+
+    def verify_structure_metadata(self) -> None:
+        """Compare the live catalog with generated metadata using this DB identity."""
+
+        try:
+            with self._connect(**self._connect_kwargs) as connection:
+                connection.read_only = True
+                verify_catalog_matches_metadata(connection, DEFAULT_STRUCTURE_DIR)
+        except (DatabaseError, StructureMetadataMismatchError):
+            raise
+        except psycopg.Error as exc:
+            raise DatabaseError(
+                "无法验证 PostgreSQL Schema 与 Structure Metadata"
+            ) from exc
 
 
 def _required(source: Mapping[str, str], name: str) -> str:

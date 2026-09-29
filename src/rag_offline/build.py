@@ -1,14 +1,14 @@
 """RAG Offline Build（RAG 离线构建）编排和发布保护。"""
 
+import json
+import re
+import shutil
+import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
-import json
 from pathlib import Path
-import re
-import shutil
 from typing import Any, Protocol
-import uuid
 
 from .config import DEFAULT_ASSET_DIR
 from .documents import (
@@ -19,6 +19,7 @@ from .documents import (
     build_documents,
 )
 from .embedding import EmbeddedText, EmbeddingError, EmbeddingProvider
+from .provenance import build_provenance
 from .qdrant_store import QdrantStoreError
 from .relationships import RelationshipGraphError, build_relationship_graph
 from .sources import (
@@ -28,7 +29,6 @@ from .sources import (
     SourceLoadError,
     load_facts,
 )
-
 
 COLLECTIONS = (TABLE_COLLECTION, COLUMN_COLLECTION, METRIC_COLLECTION)
 CURRENT_POINTER = "current.json"
@@ -191,6 +191,7 @@ def build_offline_assets(
             reloaded[collection] = True
 
         _write_json(staging_dir / "relationship_graph.json", graph.to_dict())
+        embedding_config = _jsonable(dict(embedding.config))
         manifest = {
             "schema_version": 1,
             "status": "READY",
@@ -205,7 +206,8 @@ def build_offline_assets(
             "document_counts": counts,
             "relationship_edge_count": relationship_edge_count,
             "relationship_graph": "relationship_graph.json",
-            "embedding": _jsonable(dict(embedding.config)),
+            "embedding": embedding_config,
+            "provenance": build_provenance(facts, embedding_config),
         }
         _write_json(staging_dir / "manifest.json", manifest)
         staging_dir.replace(final_dir)

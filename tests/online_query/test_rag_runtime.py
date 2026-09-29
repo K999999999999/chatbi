@@ -1,18 +1,21 @@
 """RAG Runtime（在线 RAG 运行时）资产快照测试。"""
 
-from pathlib import Path
 import unittest
+from pathlib import Path
 from unittest.mock import Mock
 
-from src.rag_offline.build import COLLECTIONS, PublishedAsset, PublishedAssetError
-from src.rag_offline.config import OfflineBuildConfig
-from src.rag_offline.qdrant_store import QdrantStoreError
 from src.online_query.retrieval.rag_runtime import (
     AssetUnavailableError,
     EmbeddingUnavailableError,
     RagRuntime,
     RetrievalUnavailableError,
 )
+from src.rag_offline.build import COLLECTIONS, PublishedAsset, PublishedAssetError
+from src.rag_offline.config import OfflineBuildConfig
+from src.rag_offline.embedding import BgeM3EmbeddingProvider
+from src.rag_offline.provenance import build_provenance
+from src.rag_offline.qdrant_store import QdrantStoreError
+from src.rag_offline.sources import load_facts
 
 
 class _FakeStore:
@@ -150,17 +153,102 @@ class RagRuntimeTest(unittest.TestCase):
         with self.assertRaises(AssetUnavailableError):
             runtime.get_snapshot()
 
+    def test_production_rejects_manifest_without_source_provenance(self) -> None:
+        runtime = RagRuntime(
+            self.config,
+            production_mode=True,
+            asset_loader=lambda _: _asset("legacy-build"),
+            store_factory=Mock(),
+            embedding_factory=Mock(),
+        )
+
+        with self.assertRaisesRegex(AssetUnavailableError, "来源指纹"):
+            runtime.get_snapshot()
+
+    def test_production_accepts_manifest_with_matching_source_provenance(self) -> None:
+        embedding_config = BgeM3EmbeddingProvider(
+            self.config.model_name_or_path,
+            batch_size=self.config.embedding_batch_size,
+            use_fp16=self.config.embedding_use_fp16,
+            devices=self.config.embedding_device,
+            model_revision=self.config.model_revision,
+        ).config
+        manifest = dict(_asset("current-build").manifest)
+        manifest["provenance"] = build_provenance(load_facts(), embedding_config)
+        asset = _asset("current-build", manifest=manifest)
+        runtime = RagRuntime(
+            self.config,
+            production_mode=True,
+            asset_loader=lambda _: asset,
+            store_factory=lambda _: _FakeStore(_counts()),
+            embedding_factory=lambda *_: _FakeEmbedding(),
+        )
+
+        self.assertEqual(runtime.get_snapshot().asset_version, "current-build")
+
+    def test_production_ready_verifies_database_schema_after_asset_validation(
+        self,
+    ) -> None:
+        embedding_config = BgeM3EmbeddingProvider(
+            self.config.model_name_or_path,
+            batch_size=self.config.embedding_batch_size,
+            use_fp16=self.config.embedding_use_fp16,
+            devices=self.config.embedding_device,
+            model_revision=self.config.model_revision,
+        ).config
+        manifest = dict(_asset("current-build").manifest)
+        manifest["provenance"] = build_provenance(load_facts(), embedding_config)
+        runtime = RagRuntime(
+            self.config,
+            production_mode=True,
+            asset_loader=lambda _: _asset("current-build", manifest=manifest),
+            store_factory=lambda _: _FakeStore(_counts()),
+            embedding_factory=lambda *_: _FakeEmbedding(),
+        )
+        verified: list[bool] = []
+
+        snapshot = runtime.verify_production_ready(lambda: verified.append(True))
+
+        self.assertEqual(snapshot.asset_version, "current-build")
+        self.assertEqual(verified, [True])
+
+    def test_production_ready_propagates_database_schema_mismatch(self) -> None:
+        embedding_config = BgeM3EmbeddingProvider(
+            self.config.model_name_or_path,
+            batch_size=self.config.embedding_batch_size,
+            use_fp16=self.config.embedding_use_fp16,
+            devices=self.config.embedding_device,
+            model_revision=self.config.model_revision,
+        ).config
+        manifest = dict(_asset("current-build").manifest)
+        manifest["provenance"] = build_provenance(load_facts(), embedding_config)
+        runtime = RagRuntime(
+            self.config,
+            production_mode=True,
+            asset_loader=lambda _: _asset("current-build", manifest=manifest),
+            store_factory=lambda _: _FakeStore(_counts()),
+            embedding_factory=lambda *_: _FakeEmbedding(),
+        )
+
+        with self.assertRaisesRegex(
+            AssetUnavailableError, "Schema 与 Structure Metadata"
+        ):
+            runtime.verify_production_ready(
+                Mock(side_effect=RuntimeError("test schema mismatch"))
+            )
+
 
 def _asset(
     build_id: str,
     *,
     dimension: int = 4,
     model: str = "model",
+    manifest: dict[str, object] | None = None,
 ) -> PublishedAsset:
     collection_names = {
         collection: f"{collection}-{build_id}" for collection in COLLECTIONS
     }
-    manifest = {
+    resolved_manifest = manifest or {
         "status": "READY",
         "build_id": build_id,
         "collections": {
@@ -180,7 +268,7 @@ def _asset(
         manifest_path=Path("manifest.json"),
         collection_names=collection_names,
         relationship_graph={"foreign_keys": []},
-        manifest=manifest,
+        manifest=resolved_manifest,
     )
 
 

@@ -1,10 +1,10 @@
 """Load and validate RAG Offline Build（RAG 离线构建）的权威事实源。"""
 
-from dataclasses import dataclass
+import hashlib
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_STRUCTURE_DIR = PROJECT_ROOT / "src" / "structure" / "generated"
@@ -23,6 +23,7 @@ class Facts:
     columns: tuple[dict[str, Any], ...]
     relationships: tuple[dict[str, Any], ...]
     metrics: tuple[dict[str, Any], ...]
+    source_hashes: dict[str, str] | None = None
 
 
 def load_facts(
@@ -31,17 +32,27 @@ def load_facts(
 ) -> Facts:
     """读取四个事实源，并按离线构建契约完成加载校验。"""
 
-    tables = _normalize_tables(_read_records(structure_dir / "tables.json", "tables"))
-    columns = _normalize_columns(
-        _read_records(structure_dir / "columns.json", "columns"),
-        tables,
+    tables_records, tables_hash = _read_records_with_hash(
+        structure_dir / "tables.json",
+        "tables",
     )
-    relationships = _read_records(
+    columns_records, columns_hash = _read_records_with_hash(
+        structure_dir / "columns.json",
+        "columns",
+    )
+    relationships, relationships_hash = _read_records_with_hash(
         structure_dir / "relationships.json",
         "relationships",
     )
+    metrics_records, metrics_hash = _read_records_with_hash(metrics_path, "metrics")
+
+    tables = _normalize_tables(tables_records)
+    columns = _normalize_columns(
+        columns_records,
+        tables,
+    )
     metrics = _normalize_metrics(
-        _read_records(metrics_path, "metrics"),
+        metrics_records,
         tables,
         columns,
     )
@@ -51,10 +62,23 @@ def load_facts(
         columns=columns,
         relationships=relationships,
         metrics=metrics,
+        source_hashes={
+            "tables": tables_hash,
+            "columns": columns_hash,
+            "relationships": relationships_hash,
+            "metrics": metrics_hash,
+        },
     )
 
 
 def _read_records(path: Path, label: str) -> list[dict[str, Any]]:
+    return _read_records_with_hash(path, label)[0]
+
+
+def _read_records_with_hash(
+    path: Path,
+    label: str,
+) -> tuple[list[dict[str, Any]], str]:
     try:
         content = path.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -70,7 +94,7 @@ def _read_records(path: Path, label: str) -> list[dict[str, Any]]:
         raise SourceLoadError(f"{label} 必须是非空 JSON 数组")
     if any(not isinstance(record, dict) for record in records):
         raise SourceLoadError(f"{label} 的每条记录必须是 JSON 对象")
-    return records
+    return records, hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
 def _normalize_tables(records: list[dict[str, Any]]) -> tuple[dict[str, Any], ...]:

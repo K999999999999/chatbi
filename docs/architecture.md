@@ -4,6 +4,8 @@
 
 ChatBI 是面向业务数据查询的 Domain AI Engine（领域 AI 引擎），当前采用 Modular Monolith（模块化单体）。先完成最小正确闭环，再根据真实需求扩展。
 
+当前处于 MVP 向生产演进阶段。MVP 核心链路已实现；本地开发 / 内部验收证据不构成生产部署或运行保障证明。
+
 ## 当前模块
 
 ### Online Query（在线查询）
@@ -12,11 +14,15 @@ ChatBI 是面向业务数据查询的 Domain AI Engine（领域 AI 引擎），�
 
 ### Query API Adapter（查询接口适配层）
 
-负责把 HTTP JSON 请求转换为现有 Online Query 请求，并把查询结果转换为 HTTP JSON 响应。它不重复 Prompt、LLM、SQL Guard 或数据库执行逻辑，也不负责认证、限流和审计。Multi-Turn Query V1 的短期会话状态由其 Application 边界负责，不由 Online Query 或客户端拥有。
+负责 HTTP Contract、认证、授权、查询调用和响应转换；持久化账号、Session、RBAC 与安全审计由 `src/chatbi_control/`、`src/authorization/` 和 Admin Adapter 协作完成。它不重复 Prompt、LLM、SQL Guard 或数据库执行逻辑，也不提供限流。Multi-Turn Query V1 的短期会话状态由 API Application 边界负责，不由 Online Query 或客户端拥有。
 
-### Multi-Turn Query V1（受控多轮查询目标边界）
+### ChatBI Account & Admin（账号与管理）
 
-这是建立在 Query API 之上的 Application 能力，不是第二条查询链路：
+`src/chatbi_control/` 维护账号、Session、固定 RBAC、审计和 Control DB Schema；`src/authorization/` 负责身份、授权策略和审计 Contract。业务查询数据库 `chatbi_mvp` 与 Control DB `chatbi_control` 使用不同运行账号。
+
+### Multi-Turn Query V1（受控多轮查询）
+
+这是建立在 Query API 之上的已实现 Application 能力，不是第二条查询链路：
 
 - 只保存最后一次成功查询的结构化状态，不保存原始对话、SQL 或结果行；
 - 每一轮先使用当前认证身份和授权策略，再进入现有 `AuthorizedQueryService` 与 `OnlineQueryService`；
@@ -24,9 +30,13 @@ ChatBI 是面向业务数据查询的 Domain AI Engine（领域 AI 引擎），�
 - 会话使用 30 分钟无成功状态更新的 Idle TTL，同一会话同一时刻只允许一个进行中的轮次；
 - 不承担长期历史、Business Analysis、身份事实或业务指标事实。
 
-### Streamlit（当前 POC / 内部入口）
+### Streamlit（当前 MVP / 内部入口）
 
-负责通过 HTTP 调用 Query API Adapter，完成自然语言查询的输入、结果展示和错误提示。它是当前 POC 和内部使用入口，不直接连接 LLM 或数据库。正式前端不是当前必需项；生产化时可以按同一 HTTP API 契约替换页面。
+负责通过 HTTP 调用 Query API Adapter，完成自然语言查询的输入、结果展示和错误提示。它是当前 MVP 和内部使用入口，不直接连接 LLM 或数据库。独立 Web 前端不是当前必需项；后续可按同一 HTTP API Contract 替换页面。
+
+### Business Analysis（经营分析）
+
+负责受控的分析任务拆解、计划校验、绑定当前用户身份的查询执行、结果汇总和总结。工作流状态写入 Control DB 的运行注册表和 LangGraph PostgreSQL checkpoint；它不能绕过 Online Query、授权或 SQL Guard。
 
 ### Evaluation（评测）
 
@@ -42,9 +52,9 @@ ChatBI 是面向业务数据查询的 Domain AI Engine（领域 AI 引擎），�
 flowchart TB
     InternalCaller["当前内部调用方<br/>Python / Tests"] --> Service
     ExternalCaller["未来外部应用"] -.-> Gateway
-    Gateway["API Gateway（未来）<br/>认证、限流、审计"] -.-> API
+    Gateway["API Gateway（可选外部边界）<br/>网关级流量治理"] -.-> API
     API["API Adapter（当前）"] --> Service
-    Streamlit["Streamlit POC（当前）"] --> API
+    Streamlit["Streamlit MVP 页面（当前）"] --> API
 
     subgraph OnlineQuery["Online Query（在线查询模块）"]
         Service["OnlineQueryService<br/>统一查询入口"] --> Context["加载结构与指标上下文"]
@@ -61,7 +71,7 @@ flowchart TB
     Database -->|"结果集"| Result
 
     subgraph EvaluationFlow["Evaluation（离线评测模块）"]
-        Cases["21 条标准测试集"] --> Runner["Evaluation Runner"]
+        Cases["29 条单轮标准案例"] --> Runner["Evaluation Runner"]
         Runner -->|"调用同一正式入口"| Service
         Runner --> Reference["标准 SQL<br/>同一 Guard 与 Executor"]
         ReferenceResult["标准结果"]
@@ -164,7 +174,7 @@ flowchart TB
     subgraph Evaluation["src/evaluation：离线评测代码"]
         EInit["__init__.py<br/>评测模块公开入口"]
         Entry["__main__.py<br/>评测命令行入口<br/>组装真实 LLM 和数据库"]
-        Cases["eval_cases.json<br/>21 条标准测试案例"]
+        Cases["eval_cases.json<br/>29 条单轮标准案例"]
         Evaluator["evaluator.py<br/>加载案例、比较查询结果"]
         Runner["runner.py<br/>逐条运行、隔离失败、统计准确率"]
         Reporting["reporting.py<br/>生成指纹、JSON 和 Markdown 报告<br/>可选基线比较"]
@@ -309,9 +319,10 @@ erDiagram
 RAG Offline Build 已实现：
 
 - `scripts/metadata/export_schema.py` 仍只是结构导出辅助脚本，不等同于离线构建。
-- `src/structure/generated/` 和 `src/semantic/metrics.json` 是权威输入。
+- `src/structure/generated/` 是从实际 PostgreSQL catalog 导出的结构投影；`src/semantic/metrics.json` 是指标定义与口径事实源。
 - `src/rag_offline/` 负责校验事实、生成文档、向量化、写入 Qdrant、构建关系图和发布完整资产。
-- `data/rag/current.json` 是当前发布指针，版本目录保存 manifest 和关系图。
+- `data/rag/current.json` 是当前发布指针，版本目录保存 manifest 和关系图。Manifest 记录结构 Metadata、Metrics 和 Embedding 配置来源指纹。
+- production 服务进入 Ready 前比较 PostgreSQL catalog、Structure Metadata 和当前 manifest；旧 manifest、输入变更或无法核验时 fail closed。
 
 Online Retrieval V1 已接入 Online Query：实体类、单指标和多指标问题统一使用同一条 `metrics=0/1/N` 检索流程，并从已发布 RAG 资产组装最小动态上下文。在线 RAG 技术故障统一 Fail Closed（失败关闭）并返回 `CONTEXT_ERROR`；静态上下文只在显式静态评测/基础模式下使用。直接关系只允许认证的 FK→PK 和 `LEFT JOIN`；多指标最多 5 个，真实在线 RAG 结果以当前分支重新执行的报告为准。
 
@@ -328,7 +339,7 @@ Online Retrieval V1 已接入 Online Query：实体类、单指标和多指标�
   -> 返回查询结果或受控失败
 ```
 
-节点属于 Online Query 模块内部，不自动等同于顶级模块。最终节点 Contract 和代码落位在 Online Query Module Spec 确认后进入 Implementation Design。
+节点属于 Online Query 模块内部，不自动等同于顶级模块；具体行为以当前 `docs/specs/` Contract 和代码为准。
 
 通过 HTTP 调用时，先经过 Query API Adapter，再进入同一条 Online Query 主链路。
 
@@ -339,9 +350,9 @@ Online Retrieval V1 已接入 Online Query：实体类、单指标和多指标�
 - BGE-M3：只对离线检索文档正文和检索评测问题生成向量，不决定业务事实。
 - Qdrant：保存版本化 TABLE、COLUMN、METRIC 检索集合，不保存业务真相。
 - 已发布 RAG 资产：当前为 Online Query 默认提供动态结构和指标上下文；静态知识文件只用于显式静态评测/基础模式，不作为在线 RAG 技术故障 fallback。
-- Query API Adapter：当前提供同步 HTTP JSON 接口，只做协议转换。
-- Streamlit：当前用于 POC 和内部使用，只通过 HTTP 调用 API；未来正式前端可以复用同一 API 契约。
-- API Gateway：未来位于 ChatBI 外部边界，负责认证、限流、审计和流量治理；核心模块不绑定具体网关产品。
+- Query API Adapter：当前提供同步 HTTP JSON 接口、身份认证、授权和多轮 Application 边界；安全审计由授权与 Control DB Adapter 协作持久化。当前没有 API 限流。
+- Streamlit：当前作为 MVP / 内部入口，只通过 HTTP 调用 API；后续正式前端可以复用同一 API Contract。
+- API Gateway：如未来部署需要，可放在 ChatBI 外部边界处理网关级流量治理；当前不依赖具体网关产品。
 
 ## 稳定约束
 
@@ -349,7 +360,8 @@ Online Retrieval V1 已接入 Online Query：实体类、单指标和多指标�
 - Query API Adapter 只能调用现有 Online Query 公开入口，不复制查询逻辑。
 - Multi-Turn Application 边界只能保存受控结构化查询状态，不能把会话状态当作身份、授权或业务真相。
 - Multi-Turn 的每一轮必须经过当前授权入口；只有成功结果可以更新状态，状态失效、越权和并发冲突必须 Fail Closed。
-- Streamlit POC 只能调用 Query API，不直接访问 LLM、SQL Guard 或数据库。
+- Streamlit 只能调用 Query API，不直接访问 LLM、SQL Guard 或数据库。
+- Business Analysis 必须通过当前授权的 Online Query 执行计划中的查询；checkpoint 只保存受控工作流状态。
 - Evaluation 必须复用正式 Online Query 链路，不维护另一套 SQL 生成逻辑。
 - RAG Offline Build 只能读取已确认 JSON 事实，不得扫描或修改 PostgreSQL。
 - 只有三个集合和关系图全部重载校验通过后，才能替换当前发布指针。
@@ -358,15 +370,10 @@ Online Retrieval V1 已接入 Online Query：实体类、单指标和多指标�
 
 ## 当前状态
 
-- 数据库、结构记录、指标目录和标准评测集已准备。
-- 结构导出辅助脚本已存在。
-- Online Query Module Spec 与 Implementation Design 已确认。
-- Online Query 已实现，Software Test 与真实 PostgreSQL 集成测试已通过。
-- Query API Adapter 已实现，提供 `/health` 和 `/api/v1/query`；API 确定性测试已通过。
-- Multi-Turn Query V1 的目标边界已确认并记录；Application 会话生命周期、`conversation_id`、TTL、用户归属、单会话并发控制、结构化语义修订和 Streamlit 多轮联动已实现，确定性验收证据见 `docs/acceptance/multi-turn-query-v1-20260919.md`。
-- Streamlit 页面已实现，提供问题输入、当前会话、新建会话、结果展示和受控错误提示；真实 AI Evaluation、Business Acceptance 和 Real E2E 证据见 `docs/acceptance/multi-turn-query-v1-20260919.md`。
-- Evaluation 已实现并复用正式 Online Query 链路；当前分支最近一次真实在线 RAG 评测为 20/21，Execution Accuracy=95.24%，唯一失败为一次 S04 Query Understanding LLM_ERROR，单例重跑已成功；JSON 数据报告和 Markdown 总结报告按本地策略忽略。
-- 旧版扁平 POC 链路及其重复测试已删除。
-- RAG Offline Build 已实现并发布 BGE-M3 / Qdrant 离线资产；TABLE=7、COLUMN=69、METRIC=7、关系边=9，固定检索评测 6/6 通过。
-- Online Retrieval、Schema Linking 和关系图在线路径查找已完成 V1 实现；统一 `metrics=0/1/N`、直接 FK→PK、最多 5 个指标和 Fail Closed 边界已通过确定性验收。最近一次真实 Qdrant、LLM 和 PostgreSQL 评测已在本次字段与查询理解修复后重新建立；跨事实表、经营分析等复杂多指标组合仍属于后续边界。
-- 正式前端 UI 不是当前下一步必做项，继续使用 Streamlit，待生产化需求明确后再决定。
+- Online Query、Query API、内置认证与授权、持久化审计、Streamlit、Multi-Turn Query V1 和 Business Analysis 均已在当前代码中实现，并有对应确定性测试；数据库集成与日期化 Business Acceptance 证据按其运行时间解释。
+- 当前 Semantic Metrics 有 7 个定义；Sales Mart 结构投影包含 7 张表、69 个字段、25 条关系事实，其中 9 条为外键 Join Edge。
+- Golden Set 当前包含单轮 29 个案例、多轮 7 个 Conversation / 15 个轮次、Business Analysis 10 个案例；Query Understanding 6 个案例为辅助证据。
+- RAG Offline Build 和 Online Retrieval V1 已实现。新 manifest 记录输入指纹；production 启动时校验 catalog、Metadata 和当前发布资产，不匹配时拒绝 Ready。
+- PostgreSQL 首次初始化需在基础 init 完成后运行 `src.chatbi_control migrate`；它通过 `PostgresSaver.setup()` 安装 checkpoint 表和权限，healthcheck / API 启动检查验证其完整性。
+- 日期化 Acceptance 和 ignored reports 是历史证据，不代表当前 HEAD。Evaluation 当前结果以带 Git Commit / Git Dirty 身份的报告为准；本轮当前 HEAD 基线由 Ticket 04 建立。
+- 当前入口是同步 Query API 与 Streamlit。多源、多 Schema、多租户、任意复杂分析和生产部署运行保障不属于已验收的当前 Contract。

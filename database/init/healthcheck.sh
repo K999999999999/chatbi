@@ -61,9 +61,19 @@ control_ready=$(
         --command "
             SELECT 1
             FROM schema_migrations
-            WHERE version = 'chatbi-control-v1'
+            WHERE version = 'chatbi-control-v2'
               AND (SELECT count(*) FROM roles) >= 2
               AND (SELECT count(*) FROM permissions) >= 4
+              AND to_regclass('public.checkpoints') IS NOT NULL
+              AND to_regclass('public.checkpoint_blobs') IS NOT NULL
+              AND to_regclass('public.checkpoint_writes') IS NOT NULL
+              AND to_regclass('public.checkpoint_migrations') IS NOT NULL
+              AND EXISTS (SELECT 1 FROM checkpoint_migrations)
+              AND has_table_privilege(
+                    'chatbi_control_user',
+                    'checkpoint_migrations',
+                    'SELECT'
+                  )
               AND has_database_privilege(
                     'chatbi_control_user',
                     'chatbi_control',
@@ -71,6 +81,18 @@ control_ready=$(
                   )
               AND has_table_privilege('chatbi_control_user', 'users', 'INSERT')
               AND NOT has_table_privilege('chatbi_control_user', 'users', 'DELETE')
+              AND has_table_privilege('chatbi_control_user', 'checkpoints', 'SELECT')
+              AND has_table_privilege('chatbi_control_user', 'checkpoints', 'INSERT')
+              AND has_table_privilege('chatbi_control_user', 'checkpoints', 'UPDATE')
+              AND has_table_privilege('chatbi_control_user', 'checkpoints', 'DELETE')
+              AND has_table_privilege('chatbi_control_user', 'checkpoint_blobs', 'SELECT')
+              AND has_table_privilege('chatbi_control_user', 'checkpoint_blobs', 'INSERT')
+              AND has_table_privilege('chatbi_control_user', 'checkpoint_blobs', 'UPDATE')
+              AND has_table_privilege('chatbi_control_user', 'checkpoint_blobs', 'DELETE')
+              AND has_table_privilege('chatbi_control_user', 'checkpoint_writes', 'SELECT')
+              AND has_table_privilege('chatbi_control_user', 'checkpoint_writes', 'INSERT')
+              AND has_table_privilege('chatbi_control_user', 'checkpoint_writes', 'UPDATE')
+              AND has_table_privilege('chatbi_control_user', 'checkpoint_writes', 'DELETE')
               AND NOT (
                     SELECT rolsuper
                     FROM pg_roles

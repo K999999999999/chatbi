@@ -185,6 +185,7 @@ def render_multi_turn_markdown(report: Mapping[str, object]) -> str:
             f"- Git Commit：{_cell(metadata.get('git_commit'))}",
             f"- Git Dirty：{_cell(metadata.get('git_dirty'))}",
             f"- Model：{_cell(metadata.get('model'))}",
+            f"- RAG 资产：{_cell(metadata.get('rag_asset_version'))}",
             "",
         ]
     )

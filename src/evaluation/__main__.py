@@ -129,6 +129,7 @@ def run_cli(
     args = parser.parse_args(argv)
     trace_recorder: TraceRecorder | None = None
     rag_runtime: RagRuntime | None = None
+    rag_asset_version: str | None = None
 
     try:
         try:
@@ -205,7 +206,7 @@ def run_cli(
                 )
                 try:
                     rag_runtime = runtime_builder()
-                    _preflight_online_retrieval(rag_runtime)
+                    rag_asset_version = _preflight_online_retrieval(rag_runtime)
                 except ReportingError:
                     raise
                 except Exception as exc:
@@ -253,6 +254,8 @@ def run_cli(
             context,
             trace_recorder=trace_recorder,
         )
+        if rag_runtime is not None and rag_asset_version is not None:
+            _verify_rag_asset_version(rag_runtime, rag_asset_version)
         metadata = collect_run_metadata(
             run,
             git_commit=git_commit,
@@ -263,6 +266,7 @@ def run_cli(
                 _default_context_paths() if context_paths is None else context_paths
             ),
             sales_mart_fingerprint=sales_mart_fingerprint,
+            rag_asset_version=rag_asset_version,
         )
         report = create_report(run, metadata, baseline)
         report_path = args.output_dir / f"{metadata.run_id}.json"
@@ -386,6 +390,7 @@ def _run_multi_turn_cli_impl(
     context = context_loader()
     retrieval_provider = None
     query_understanding = None
+    rag_asset_version: str | None = None
     if args.online_retrieval:
         if not _rag_online_retrieval_enabled(environ):
             raise ReportingError(
@@ -400,7 +405,7 @@ def _run_multi_turn_cli_impl(
             try:
                 runtime = runtime_builder()
                 runtime_holder[0] = runtime
-                _preflight_online_retrieval(runtime)
+                rag_asset_version = _preflight_online_retrieval(runtime)
             except ReportingError:
                 raise
             except Exception as exc:
@@ -446,6 +451,8 @@ def _run_multi_turn_cli_impl(
         executor,
         context,
     )
+    if runtime_holder[0] is not None and rag_asset_version is not None:
+        _verify_rag_asset_version(runtime_holder[0], rag_asset_version)
     git_commit, git_dirty = git_state_reader(PROJECT_ROOT)
     sales_mart_fingerprint = collect_sales_mart_fingerprint(environ)
     metadata = collect_run_metadata(
@@ -458,6 +465,7 @@ def _run_multi_turn_cli_impl(
             _default_context_paths() if context_paths is None else context_paths
         ),
         sales_mart_fingerprint=sales_mart_fingerprint,
+        rag_asset_version=rag_asset_version,
     )
     report = create_multi_turn_report(run, metadata, baseline)
     report_path = args.output_dir / f"{metadata.run_id}-multi-turn.json"
@@ -533,7 +541,7 @@ def _run_business_analysis_cli_impl(
             try:
                 rag_runtime = runtime_builder()
                 runtime_holder[0] = rag_runtime
-                _preflight_online_retrieval(rag_runtime)
+                rag_asset_version = _preflight_online_retrieval(rag_runtime)
             except ReportingError:
                 raise
             except Exception as exc:
@@ -542,7 +550,6 @@ def _run_business_analysis_cli_impl(
                 rag_runtime,
                 trace_recorder,
             )
-            rag_asset_version = rag_runtime.get_snapshot().asset_version
         else:
             retrieval_provider = retrieval_factory()
         query_understanding = (
@@ -595,11 +602,8 @@ def _run_business_analysis_cli_impl(
         close = getattr(application, "close", None)
         if callable(close):
             close()
-    if (
-        rag_runtime is not None
-        and rag_asset_version != rag_runtime.get_snapshot().asset_version
-    ):
-        raise ReportingError("评测期间发布的 RAG 资产版本发生变化")
+    if rag_runtime is not None and rag_asset_version is not None:
+        _verify_rag_asset_version(rag_runtime, rag_asset_version)
     git_commit, git_dirty = git_state_reader(PROJECT_ROOT)
     metadata = collect_run_metadata(
         run,
@@ -731,13 +735,30 @@ def _build_evaluation_authorized_service(
     return authorized_service, auth_context
 
 
-def _preflight_online_retrieval(runtime: RagRuntime) -> None:
+def _preflight_online_retrieval(runtime: RagRuntime) -> str:
     """在运行案例前验证一次在线 RAG 资产和运行时依赖。"""
 
     try:
-        runtime.get_snapshot()
+        snapshot = runtime.get_snapshot()
+        asset_version = snapshot.asset_version
+        if not isinstance(asset_version, str) or not asset_version.strip():
+            raise ReportingError("在线 RAG 资产缺少有效版本号")
+        return asset_version
+    except ReportingError:
+        raise
     except Exception as exc:
         raise ReportingError(f"在线 RAG 评测前置检查失败：{exc}") from exc
+
+
+def _verify_rag_asset_version(runtime: RagRuntime, expected_version: str) -> None:
+    """防止一次 Evaluation 混用多个在线 RAG 发布版本。"""
+
+    try:
+        current_version = runtime.get_snapshot().asset_version
+    except Exception as exc:
+        raise ReportingError(f"评测期间无法确认 RAG 资产版本：{exc}") from exc
+    if current_version != expected_version:
+        raise ReportingError("评测期间发布的 RAG 资产版本发生变化")
 
 
 def _shutdown_rag_runtime(runtime: RagRuntime | None) -> None:

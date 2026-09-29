@@ -23,7 +23,11 @@ from src.business_analysis.run_store import (
     AnalysisRunStatus,
     PostgresAnalysisRunStore,
 )
-from src.chatbi_control.database import ControlDatabaseConfig, create_control_engine
+from src.chatbi_control.database import (
+    ControlDatabaseConfig,
+    create_control_engine,
+    verify_control_schema,
+)
 
 
 class _CheckpointState(TypedDict):
@@ -272,6 +276,13 @@ class PostgresDevelopmentEnvironmentTest(unittest.TestCase):
     def test_control_schema_rbac_and_runtime_permissions_are_initialized_without_admin(
         self,
     ) -> None:
+        config = ControlDatabaseConfig.from_environment(require_migrator=False)
+        engine = create_control_engine(config)
+        try:
+            verify_control_schema(engine)
+        finally:
+            engine.dispose()
+
         with (
             self._connect(
                 "chatbi_control",
@@ -329,6 +340,25 @@ class PostgresDevelopmentEnvironmentTest(unittest.TestCase):
                     False,
                 ),
             )
+
+        with (
+            self._connect(
+                "chatbi_control",
+                user_variable="POSTGRES_MIGRATOR_USER",
+                password_variable="POSTGRES_MIGRATOR_PASSWORD",
+            ) as connection,
+            connection.cursor() as cursor,
+        ):
+            cursor.execute(
+                """
+                    SELECT to_regclass('public.checkpoints') IS NOT NULL,
+                           to_regclass('public.checkpoint_blobs') IS NOT NULL,
+                           to_regclass('public.checkpoint_writes') IS NOT NULL,
+                           to_regclass('public.checkpoint_migrations') IS NOT NULL,
+                           EXISTS (SELECT 1 FROM checkpoint_migrations)
+                    """
+            )
+            self.assertEqual(cursor.fetchone(), (True, True, True, True, True))
 
     def test_analysis_runs_are_owner_bound_checkpointed_and_expired(self) -> None:
         config = ControlDatabaseConfig.from_environment(require_migrator=False)
