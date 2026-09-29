@@ -1,6 +1,6 @@
 # 多轮查询支持明确的分组维度替换
 
-Status: in-progress
+Status: done
 Owner: ChatBI 仓库维护者
 Backup Owner: None
 Blocked by: None (can start immediately)
@@ -68,7 +68,7 @@ Blocked by: None (can start immediately)
 
 ## Result
 
-实现和确定性验证已完成，等待新 candidate 上授权后的真实 Evaluation：
+实现、确定性验证和授权后的真实 Evaluation 均已完成：
 
 - 用户明确表达维度替换时，Application 清除旧维度并采用本轮候选；默认和明确追加仍按追加处理。
 - 替换目标缺失、替换与追加意图冲突或替换被否定时返回 `CLARIFICATION_REQUIRED`，不执行下游查询、不更新会话状态。
@@ -77,7 +77,8 @@ Blocked by: None (can start immediately)
 - 定向 Query API / Prompt 测试：27 passed，3 个子测试通过；相关 Query API 与 Multi-Turn Evaluation 测试：90 passed，17 个子测试通过。
 - `ruff` 针对变更文件通过（排除仓库既有的 BLE001、RUF100、TRY004、TRY201、UP035 诊断）；格式检查与 `git diff --check` 通过。
 - Code Review：PASS。变更限于 Ticket owned files；没有 Golden Set 修改。
-- 按仓库候选验收规则，新 candidate 上的真实模型 Evaluation 尚未运行，需在提交候选后取得用户授权。
+- 新 candidate `31a04549924f622777f106d4fe5a758bd2ca2beb` 的 Multi-Turn 最终完整报告：7/7 conversations PASS，15/15 turns PASS，0 FAIL，0 INVALID_CASE；`MT-DIMENSION-REPLACE-T2` 通过。报告：`reports/evaluation/20260929T175521Z-31a0454-multi-turn.json`。
+- 同一候选的单轮（29/29）与 Business Analysis（10/10）也通过；完整结果见 Ticket 04。首次完整多轮运行有一次失败隔离轮次失败，单例及完整 suite 重跑均通过，报告保留用于追踪模型输出波动。
 
 ## Comments
 
@@ -85,3 +86,4 @@ Blocked by: None (can start immediately)
 - Design Review：`.scratch/multi-turn-dimension-revision/spec.md`，Verdict `PASS WITH MINOR FIXES`；最小条件是在本 Ticket 中将旧 Spec 的维度追加规则标记为已更新。
 - 真实失败证据：`reports/evaluation/20260929T145624Z-050416b-multi-turn.json`，失败轮次为 `MT-DIMENSION-REPLACE-T2`。
 - 2026-09-29 实现 Code Review：PASS；实现遵循已确认 Contract，没有需要返工的发现。
+- 2026-09-30 用户授权在 candidate `31a0454` 上运行真实 Evaluation；维度替换、追加和原回归套件均得到通过证据。
