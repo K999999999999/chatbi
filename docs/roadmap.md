@@ -1,37 +1,34 @@
-# ChatBI 当前优先级与执行计划
+# ChatBI MVP → 生产演进路线
 
-## 当前目标
-0.1.0 Demo Candidate
+## 当前阶段
 
-## P0 核心正确性
-- [ ] 修复经营分析
-- [ ] 自然查询 Golden Set 人工验收
-- [ ] 自然查询完整 Evaluation
-- [ ] 经营分析 Golden Set 人工验收
-- [ ] 经营分析 Evaluation
-- [ ] 冻结功能 Baseline
+ChatBI 的 MVP 核心能力已经形成：自然语言查询、Online Retrieval、Query API、内置身份与 RBAC、多轮查询、经营分析及对应测试 / Evaluation 工具均在当前代码中实现。
 
-## P1 Demo 收尾
-- [ ] 数字格式统一
-- [ ] 启动/初始化文档重构
-- [ ] .env.example 对齐 WSL
-- [ ] bootstrap-dev.sh
-- [ ] evaluation 移出 src
+当前工作是建立可重复核验的生产准备基线。仓库尚未声称已完成生产部署、容量验证或生产运行保障；具体部署和运营 Contract 需在相应工作启动前定义。
 
-## P2 工程包装
-- [ ] FastAPI Docker 化
-- [ ] Streamlit Docker 化
-- [ ] Compose 全栈启动
-- [ ] Dev 源码挂载
-- [ ] Demo 固定镜像
-- [ ] Clean Clone 再验收
+## 当前基线工作
 
-## P3 后续体验
-- [ ] SSE 流式输出
-- [ ] 正式 Web 前端
+- [x] RAG manifest 记录 Structure Metadata、Metrics 和 Embedding 配置来源指纹。
+- [x] production Ready 校验当前 PostgreSQL catalog、结构 metadata 与发布资产；无法验证或不一致时拒绝服务。
+- [x] clean bootstrap 安装 Control DB migration、LangGraph checkpoint 表与权限；缺少关键对象时 healthcheck 失败。
+- [x] Runbook 描述从新环境初始化到服务运行的步骤。
+- [ ] 在最终 clean commit 上核对 Golden Set 与当前 Contract，然后运行 29 个单轮、7 个多轮、10 个 Business Analysis 案例的完整 Evaluation；要求各必需套件 `0 FAIL`、`0 INVALID_CASE`。
+- [ ] 保留并清楚标记 Evaluation 报告的 commit、工作区状态、案例集及资源身份，避免历史结果被误认为当前 HEAD 结果。
 
-## Release
-- [ ] Demo 固定问题
-- [ ] README Demo 截图
-- [ ] 最终回归
-- [ ] v0.1.0-demo
+## 当前 MVP 能力边界
+
+- 单一 PostgreSQL `mart_sales` 数据源；没有多 Schema、多租户或多数据源 Contract。
+- 在线多指标查询最多支持 5 个指标，Join 只使用可认证的直接 FK→PK 关系。
+- Business Analysis 受当前已登记的指标和分析范围约束。
+- 同步 API 与 Streamlit 是当前入口；SSE 和独立 Web 前端不属于当前 MVP。
+
+## 后续生产工作
+
+在明确目标运行环境和业务要求后，再为生产部署、Secret 注入、可用性 / 容量、备份恢复、监控告警、发布和回滚设计独立 Contract 与验收。此路线图不预先承诺具体平台或实现方案。
+
+## 事实源
+
+- 产品行为和支持范围：[`product-scope.md`](product-scope.md) 与 `docs/specs/`。
+- 架构边界：[`architecture.md`](architecture.md)。
+- 可执行初始化和维护流程：[`runbook.md`](runbook.md)。
+- 当前 Evaluation 结果：带有当前 commit 身份的报告；日期化 `docs/acceptance/` 与旧 reports 是历史证据。

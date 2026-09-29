@@ -6,7 +6,7 @@
 
 当前开发流程只使用 WSL / Linux 运行 Python、ChatBI 和 RAG 构建，并使用 Docker Compose 运行 PostgreSQL 与 Qdrant。仓库中的 Dev Container 配置文件保留，但不属于当前支持或验收的开发入口。
 
-当前系统是本地开发 / 内部验证环境，不是 Production Ready（生产可用）部署。自动测试使用隔离 PostgreSQL 和 CI Fixture；黄金评测复用开发库 `chatbi_mvp`；生产数据库不属于本文档范围。
+ChatBI 当前处于 MVP 向生产演进阶段。本 Runbook 覆盖本地开发 / 内部验证流程，不代表已经完成生产部署。自动测试使用隔离 PostgreSQL 和 CI Fixture；黄金评测复用开发库 `chatbi_mvp`；生产数据库不属于本文档范围。
 
 按目标选择流程：
 
@@ -68,6 +68,7 @@ cp .env.example .env
 - Qdrant：`QDRANT_API_KEY` 默认是仅供回环绑定本地开发的公开值，不要用于共享或生产环境。
 - RAG：保持 `RAG_MODEL_DIR=.model-cache/bge-m3-5617a9f61b02` 和 `RAG_EMBEDDING_DEVICE=auto`。
   模型为 `BAAI/bge-m3` revision `5617a9f61b028005a4858fdac845db406aefb181`，dense 维度为 1024。
+- Observability 默认关闭。需要导出 Trace 时再设置 `CHATBI_OBSERVABILITY_ENABLED=true` 并配置 OTLP Endpoint / Headers；内容 Trace 默认保持关闭。变量语义和 Secret 处理见 [`docs/specs/observability.md`](specs/observability.md)。
 - `.env.example` 已包含 WSL / Linux 宿主进程使用的 PostgreSQL 和 Qdrant 回环地址；只有本机端口不同于默认值时才需要调整。
 
 `.env` 不得提交到 Git。不要在终端回显密码、API Key 或完整连接字符串。
@@ -332,7 +333,7 @@ PR 前的分支、candidate、用户授权、验收和交付顺序以 [`docs/age
 
 ## 9. 运行真实 LLM Evaluation
 
-真实评测会向配置的外部 LLM 发送 21 条测试问题以及结构和指标上下文。执行前必须确认：
+单轮真实评测会向配置的外部 LLM 发送当前 Golden Set 中的 29 条问题以及结构和指标上下文。多轮和 Business Analysis 是单独运行的套件，分别包含 7 个 Conversation / 15 个轮次和 10 个案例。执行前必须确认：
 
 - 当前网络和 LLM 配置可用。
 - 允许发送这些测试数据。

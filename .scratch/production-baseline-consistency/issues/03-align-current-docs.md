@@ -1,6 +1,6 @@
 # 文档对齐当前 MVP Contract 与运行流程
 
-Status: open
+Status: done
 Owner: ChatBI 仓库维护者
 Backup Owner: None
 Blocked by: 01-rag-resource-provenance-gate, 02-clean-bootstrap-checkpoints
@@ -57,7 +57,14 @@ Blocked by: 01-rag-resource-provenance-gate, 02-clean-bootstrap-checkpoints
 
 ## Result
 
-待实施。
+已完成。README、Product Scope、Roadmap、Architecture、Runbook、Evaluation Spec 和 Online Query Spec 已统一更新为“MVP 向生产演进”定位，明确当前已实现的 API 认证 / RBAC、多轮查询、经营分析、RAG 资产指纹与 checkpoint bootstrap 行为。过期的 21 案例、5 指标、POC / Demo 阶段和历史 `20/21` 当前状态已更正；日期化 Acceptance / 历史报告未修改。
+
+核对证据：
+
+- 从当前案例和事实源文件读取并验证数量：29 单轮、7 多轮 Conversation / 15 轮、10 Business Analysis、6 Query Understanding、7 Metrics、7 表、69 列、25 条关系事实。
+- 修改文档中的本地 Markdown 链接均存在。
+- `git diff --check` 通过；`docs/acceptance/` 无变更。
+- 没有编写尚未运行的 AI Evaluation 结果；当前 HEAD 报告由 Ticket 04 生成。
 
 ## Comments
 

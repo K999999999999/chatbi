@@ -14,6 +14,8 @@ Evaluation（评测）是离线回归评测工具，不参与用户在线请求�
 - 第一轮建立 Baseline，不设置准确率门槛。
 - 后续使用同一测试集和同一比较规则复测，并与上一份有效报告比较。
 
+Evaluation Module 不设对所有产品版本通用的准确率门槛；当前 MVP 生产准备基线另有明确验收要求：在最终 clean commit 上，必需套件必须各自 `0 FAIL`、`0 INVALID_CASE`。该要求不改写此模块的通用报告与比较 Contract。
+
 面向业务能力的评测集分为三类，分别运行并分别出报告：
 
 | 评测集 | 案例文件 | 运行参数 | 计分单位 |
@@ -21,6 +23,8 @@ Evaluation（评测）是离线回归评测工具，不参与用户在线请求�
 | 单轮自然查询 | `src/evaluation/eval_cases.json` | `--single-turn`（默认模式） | 单条问题 |
 | 多轮自然查询 | `src/evaluation/multi_turn_eval_cases.json` | `--multi-turn --online-retrieval` | 完整 Conversation |
 | 经营分析 | `src/evaluation/business_analysis_cases.json` | `--business-analysis --online-retrieval` | 单条经营分析场景 |
+
+当前仓库中的集合规模为：单轮 29 个案例、多轮 7 个 Conversation / 15 个轮次、经营分析 10 个案例。`src/evaluation/query_understanding_cases.json` 有 6 个辅助语义案例；它不替代上述三类业务套件。数量应从相应案例文件读取，不用历史报告数量推断。
 
 经营分析案例使用通用语义任务描述，不在案例中绑定 SQL 或固定数值。成功案例由两个独立的 LLM Judge 分别评估任务拆解覆盖度和总结质量；任一维度失败都不跳过另一维度。澄清与拒绝案例按预期结果类型和错误码确定性评估。结果报告分别给出结果类型、任务拆解、总结质量和端到端准确率。Query Understanding（查询理解）语义集是辅助回归，不是第四类业务评测集。
 
