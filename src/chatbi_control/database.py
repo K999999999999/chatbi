@@ -9,7 +9,7 @@ from typing import Any
 
 import psycopg
 from psycopg import sql
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import URL, Engine
 
 from .bootstrap import control_sql_directory
@@ -151,6 +151,54 @@ def verify_control_schema(engine: Engine) -> None:
         raise ControlDatabaseMigrationError(
             "ChatBI 应用库 Schema 版本不完整，请先使用 chatbi_migrator 完成迁移"
         )
+    try:
+        with engine.connect() as connection:
+            if connection.dialect.name == "postgresql":
+                checkpoint_ready = connection.execute(
+                    text(
+                        """
+                        SELECT
+                            to_regclass('public.checkpoints') IS NOT NULL
+                            AND to_regclass('public.checkpoint_blobs') IS NOT NULL
+                            AND to_regclass('public.checkpoint_writes') IS NOT NULL
+                            AND to_regclass('public.checkpoint_migrations') IS NOT NULL
+                            AND EXISTS (SELECT 1 FROM checkpoint_migrations)
+                            AND has_table_privilege(current_user, 'checkpoint_migrations', 'SELECT')
+                            AND has_table_privilege(current_user, 'checkpoints', 'SELECT')
+                            AND has_table_privilege(current_user, 'checkpoints', 'INSERT')
+                            AND has_table_privilege(current_user, 'checkpoints', 'UPDATE')
+                            AND has_table_privilege(current_user, 'checkpoints', 'DELETE')
+                            AND has_table_privilege(current_user, 'checkpoint_blobs', 'SELECT')
+                            AND has_table_privilege(current_user, 'checkpoint_blobs', 'INSERT')
+                            AND has_table_privilege(current_user, 'checkpoint_blobs', 'UPDATE')
+                            AND has_table_privilege(current_user, 'checkpoint_blobs', 'DELETE')
+                            AND has_table_privilege(current_user, 'checkpoint_writes', 'SELECT')
+                            AND has_table_privilege(current_user, 'checkpoint_writes', 'INSERT')
+                            AND has_table_privilege(current_user, 'checkpoint_writes', 'UPDATE')
+                            AND has_table_privilege(current_user, 'checkpoint_writes', 'DELETE')
+                        """
+                    )
+                ).scalar_one()
+            else:
+                table_names = set(inspect(connection).get_table_names())
+                checkpoint_ready = {
+                    "checkpoints",
+                    "checkpoint_blobs",
+                    "checkpoint_writes",
+                    "checkpoint_migrations",
+                }.issubset(table_names)
+                if checkpoint_ready:
+                    checkpoint_ready = connection.execute(
+                        text("SELECT EXISTS (SELECT 1 FROM checkpoint_migrations)")
+                    ).scalar_one()
+    except Exception as exc:
+        raise ControlDatabaseMigrationError(
+            "经营分析 checkpoint Schema 或运行权限未安装，请先运行 migration"
+        ) from exc
+    if not checkpoint_ready:
+        raise ControlDatabaseMigrationError(
+            "经营分析 checkpoint Schema 或运行权限未安装，请先运行 migration"
+        )
 
 
 def initialize_control_database(
@@ -212,6 +260,12 @@ def _install_analysis_checkpoints(
                             sql.Identifier(config.app_user),
                         )
                     )
+                cursor.execute(
+                    sql.SQL("GRANT SELECT ON TABLE {} TO {}").format(
+                        sql.Identifier("checkpoint_migrations"),
+                        sql.Identifier(config.app_user),
+                    )
+                )
     except Exception as exc:
         raise ControlDatabaseMigrationError(
             "经营分析 checkpoint Schema 或运行权限安装失败"

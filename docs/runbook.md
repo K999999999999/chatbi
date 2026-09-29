@@ -81,10 +81,15 @@ cp .env.example .env
 先在 `.env` 中准备好本地 PostgreSQL 连接配置，然后启动 PostgreSQL：
 
 ```bash
+docker compose up -d postgres
+docker compose exec -T postgres sh /workspace/database/init/wait_for_base_initialization.sh
+uv run --env-file .env python -m src.chatbi_control migrate
 docker compose up -d --wait postgres
 ```
 
-空的项目 PostgreSQL named volume 首次启动时会自动建立 `chatbi_mvp`、完整 Sales Mart Schema、`chatbi_app` 只读账号和确定性合成开发 Seed，并创建同一 PostgreSQL 服务中的 `chatbi_control` 数据库、运行账号、Schema、固定 RBAC 和权限。只有空数据卷会执行这次初始化；日常重启不会重建或重播 Seed。容器只有在两个数据库、Seed 版本和关键权限检查通过后才报告健康。
+空的项目 PostgreSQL named volume 首次启动时会自动建立 `chatbi_mvp`、完整 Sales Mart Schema、`chatbi_app` 只读账号和确定性合成开发 Seed，并创建同一 PostgreSQL 服务中的 `chatbi_control` 数据库、运行账号、Schema、固定 RBAC 和权限。接着必须运行 `migrate`；该命令幂等地应用当前 Control DB migration，并通过锁定版本的 LangGraph `PostgresSaver.setup()` 建立 `checkpoints`、`checkpoint_blobs`、`checkpoint_writes` 和 `checkpoint_migrations`，再授予运行账号所需的 checkpoint 表权限。
+
+首次启动时不能在 migration 前使用 `docker compose up --wait postgres`：健康检查会有意等待 checkpoint 对象，而它们由宿主机上的 migration 命令安装。上面的流程先启动容器但不等待健康，再等待 PostgreSQL 接受连接、完成 migration，最后等待完整健康检查。健康检查验证两个数据库、Seed 版本、Control DB migration、checkpoint 表及版本记录和运行权限；缺少其中任一项时 PostgreSQL 容器保持不健康。日常重启不会重建或重播 Seed，也不会移除 checkpoint 状态。
 
 更新 Control DB migration 时可单独执行幂等 migration 命令；它不会创建管理员：
 
@@ -98,11 +103,11 @@ uv run --env-file .env python -m src.chatbi_control migrate
 uv run --env-file .env python -m src.chatbi_control create-admin --username admin-1
 ```
 
-管理员密码不放入 `.env.example`、Compose 或 Seed。首次启动和初始化不创建任何用户。API 运行进程只使用 `POSTGRES_CONTROL_APP_PASSWORD`，不使用迁移密码。启动 API 时仍会用 `chatbi_control_user` 检查 `schema_migrations` 中的 `chatbi-control-v1`；Schema 未完整迁移时，认证、SQLAdmin 和查询入口不会启动。
+管理员密码不放入 `.env.example`、Compose 或 Seed。首次启动和初始化不创建任何用户。API 运行进程只使用 `POSTGRES_CONTROL_APP_PASSWORD`，不使用迁移密码。启动 API 时会用 `chatbi_control_user` 检查 `schema_migrations` 中的 `chatbi-control-v2`，并验证 checkpoint 表、版本记录及运行权限；Schema 未完整迁移时，认证、SQLAdmin 和查询入口不会启动。
 
 ### 4.4 重置 PostgreSQL 开发环境
 
-升级本地开发 Seed（例如 v2 到 v3）时不执行数据迁移；使用此命令全量重建本地 PostgreSQL 开发环境。命令会先显示并确认当前 Compose 项目拥有的 PostgreSQL named volume，然后只删除 `postgres_data`，重新启动并等待 PostgreSQL、Sales Mart、Control DB 和 Seed 健康：
+升级本地开发 Seed（例如 v2 到 v3）时不执行数据迁移；使用此命令全量重建本地 PostgreSQL 开发环境。命令会先显示并确认当前 Compose 项目拥有的 PostgreSQL named volume，然后只删除 `postgres_data`，重新启动、等待 Sales Mart Seed 与 Control DB 基础 migration 完成、安装 checkpoint，再等待 PostgreSQL、Control DB、checkpoint 和 Seed 的完整健康检查：
 
 ```bash
 uv run python -m scripts.reset_dev_postgres
@@ -110,7 +115,7 @@ uv run python -m scripts.reset_dev_postgres
 
 该重置会清除 `chatbi_mvp`、`chatbi_control` 中所有开发数据、账号、Session 和审计记录。它不会删除 Qdrant volume 或其他 Compose 项目的数据。正常启动和关闭使用 Compose 服务命令，不使用 `docker compose down -v`。
 
-重置后先执行 `uv run --env-file .env python -m src.chatbi_control migrate`，应用应用库迁移并安装经营分析所需的 LangGraph checkpoint 表；此命令可重复执行，不会创建管理员。随后按 §4.3 显式创建首个管理员。Qdrant volume 和旧的已发布 RAG 索引仍保留；若 Seed 或 `columns.json` metadata 已更新，必须按 §7.2 构建、验证并发布匹配新数据的新索引，不能把旧索引当作已更新资产。
+重置命令已自动应用应用库迁移并安装经营分析所需的 LangGraph checkpoint 表；它可重复运行且不会创建管理员。随后按 §4.3 显式创建首个管理员。Qdrant volume 和旧的已发布 RAG 索引仍保留；若 Seed 或 `columns.json` metadata 已更新，必须按 §7.2 构建、验证并发布匹配新数据的新索引，不能把旧索引当作已更新资产。
 
 ### 4.5 登录、首次改密和管理后台
 
@@ -122,7 +127,7 @@ uv run python -m scripts.reset_dev_postgres
 
 ## 5. 启动基础设施
 
-启动 PostgreSQL 和 Qdrant：
+按 §4.3 完成 PostgreSQL 的首次 migration 和 checkpoint 初始化后，再启动 PostgreSQL 和 Qdrant：
 
 ```bash
 docker compose up -d --wait postgres qdrant

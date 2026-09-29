@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
 
@@ -100,6 +101,8 @@ def reset_compose_volume(
     confirmation_phrase: str,
     deletion_summary: str,
     confirmed: bool,
+    wait_for_health: bool = True,
+    after_recreate: Callable[[], None] | None = None,
 ) -> int:
     version = _run(
         ["docker", "version", "--format", "{{.Server.Version}}"],
@@ -174,10 +177,21 @@ def reset_compose_volume(
         project_root=project_root,
         operation=f"Removing the verified {volume_key} volume",
     )
+    up_arguments = ["docker", "compose", "up", "--detach"]
+    if wait_for_health:
+        up_arguments.append("--wait")
+    up_arguments.append(service)
     _run(
-        ["docker", "compose", "up", "--detach", "--wait", service],
+        up_arguments,
         project_root=project_root,
         operation=f"Recreating this project's {service} service",
     )
-    print(f"The {volume_key} volume was recreated.")
+    if after_recreate is not None:
+        after_recreate()
+    if wait_for_health or after_recreate is not None:
+        print(f"The {volume_key} volume was recreated.")
+    else:
+        print(
+            f"The {volume_key} volume was recreated; service initialization is pending."
+        )
     return 0

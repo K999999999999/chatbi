@@ -1,6 +1,7 @@
 """Safely recreate only this Compose project's PostgreSQL development volume."""
 
 import argparse
+import subprocess
 import sys
 from pathlib import Path
 
@@ -41,7 +42,52 @@ def _reset_postgres(project_root: Path, *, confirmed: bool) -> int:
         confirmation_phrase="DELETE POSTGRES DATA",
         deletion_summary="chatbi_mvp and chatbi_control development data",
         confirmed=confirmed,
+        wait_for_health=False,
+        after_recreate=lambda: _initialize_postgres(project_root),
     )
+
+
+def _initialize_postgres(project_root: Path) -> None:
+    wait_command = [
+        "docker",
+        "compose",
+        "exec",
+        "-T",
+        "postgres",
+        "sh",
+        "/workspace/database/init/wait_for_base_initialization.sh",
+    ]
+    ready = subprocess.run(
+        wait_command,
+        cwd=project_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if ready.returncode != 0:
+        raise PostgresResetError("PostgreSQL did not accept connections after reset.")
+
+    migrated = subprocess.run(
+        [sys.executable, "-m", "src.chatbi_control", "migrate"],
+        cwd=project_root,
+        check=False,
+    )
+    if migrated.returncode != 0:
+        raise PostgresResetError(
+            "Control DB migrations and checkpoint setup failed after reset."
+        )
+
+    healthy = subprocess.run(
+        ["docker", "compose", "up", "--detach", "--wait", "postgres"],
+        cwd=project_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if healthy.returncode != 0:
+        raise PostgresResetError(
+            "PostgreSQL did not pass the complete initialization healthcheck."
+        )
 
 
 def main(argv: list[str] | None = None) -> int:

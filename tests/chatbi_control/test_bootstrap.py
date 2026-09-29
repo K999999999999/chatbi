@@ -172,6 +172,22 @@ class ControlBootstrapTest(TestCase):
             connection.exec_driver_sql(
                 "INSERT INTO schema_migrations(version) VALUES ('chatbi-control-v2')"
             )
+        with self.assertRaisesRegex(ControlDatabaseMigrationError, "checkpoint"):
+            verify_control_schema(self.engine)
+
+        with self.engine.begin() as connection:
+            for table in (
+                "checkpoints",
+                "checkpoint_blobs",
+                "checkpoint_writes",
+            ):
+                connection.exec_driver_sql(f"CREATE TABLE {table} (id INTEGER)")
+            connection.exec_driver_sql(
+                "CREATE TABLE checkpoint_migrations (v INTEGER PRIMARY KEY)"
+            )
+            connection.exec_driver_sql(
+                "INSERT INTO checkpoint_migrations(v) VALUES (0)"
+            )
 
         verify_control_schema(self.engine)
 

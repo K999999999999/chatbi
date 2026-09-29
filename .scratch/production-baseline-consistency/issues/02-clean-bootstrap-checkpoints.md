@@ -1,6 +1,6 @@
 # 全新环境初始化 Business Analysis checkpoint
 
-Status: open
+Status: done
 Owner: ChatBI 仓库维护者
 Backup Owner: None
 Blocked by: None (can start immediately)
@@ -61,7 +61,14 @@ Blocked by: None (can start immediately)
 
 ## Result
 
-待实施。
+已完成。PostgreSQL 容器 healthcheck 和 API 的 Control DB startup check 均验证 Control DB v2、LangGraph checkpoint 表 / migration 记录及 `chatbi_control_user` 所需权限。clean bootstrap 与 PostgreSQL reset 都先等待 Sales Mart Seed 和 Control DB 基础 migration 完成，再运行 `src.chatbi_control migrate`，最后等待完整健康；这避免 `pg_isready` 早于 Docker 初始化脚本完成时的竞态，也避免 migration 与 healthcheck 相互等待。
+
+验证证据：
+
+- 确定性测试：22 passed；development PostgreSQL 集成测试：18 passed。
+- 使用独立 Compose project 和 5543 端口验证空 volume 初始化、migration 后 healthy；撤销 checkpoint 权限后 API Schema 检查拒绝且容器变为 unhealthy；恢复权限后容器恢复 healthy。另一次隔离初始化在 PostgreSQL restart 后仍保留全部四张 checkpoint 表并恢复 healthy；第三次隔离运行验证 `reset_dev_postgres` 自身完成 volume 重建、migration 和 healthcheck。所有临时 Compose project 的 volume 和容器随后均已删除。
+- 当前开发数据库执行幂等 migration 后，原数据卷健康恢复；未重置数据库或删除用户数据。
+- Ruff CI 子集、Shell 语法检查通过。
 
 ## Comments
 
