@@ -130,7 +130,7 @@ jobs:
           uv run --python 3.11 --locked --no-sync \
             python -m src.rag_offline --build-id "$build_id"
 
-      - name: Run 21-case real online evaluation
+      - name: Run full single-turn real online evaluation
         env:
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
@@ -147,7 +147,7 @@ jobs:
             --online-retrieval \
             --output-dir "${RUNNER_TEMP}/chatbi-real-evaluation"
 
-      - name: Assert 21/21 real E2E acceptance
+      - name: Assert full single-turn real E2E acceptance
         if: ${{ success() }}
         env:
           REPORT_DIR: ${{ runner.temp }}/chatbi-real-evaluation
@@ -159,9 +159,10 @@ jobs:
           test "$report_count" -eq 1
           report_path=$(find "$REPORT_DIR" -maxdepth 1 -type f -name '*.json' -print -quit)
 
-          uv run --python 3.11 --locked --no-sync python -c \
-            "import json, sys; summary = json.load(open(sys.argv[1], encoding='utf-8'))['summary']; expected = {'total_cases': 21, 'valid_cases': 21, 'passed': 21, 'failed': 0, 'invalid_cases': 0}; mismatches = {key: (summary.get(key), value) for key, value in expected.items() if summary.get(key) != value}; accuracy = summary.get('execution_accuracy'); mismatches['execution_accuracy'] = (accuracy, 1.0) if accuracy != 1.0 else mismatches.get('execution_accuracy'); mismatches = {key: value for key, value in mismatches.items() if value is not None}; assert not mismatches, f'Real E2E acceptance failed: {mismatches}'; print('Real E2E acceptance: 21/21 passed, Execution Accuracy=100%')" \
-            "$report_path"
+          uv run --python 3.11 --locked --no-sync \
+            python -m evaluation.common.real_e2e_acceptance \
+            --cases evaluation/suites/single_turn/cases.json \
+            --report "$report_path"
 
       - name: Upload Real E2E reports
         if: ${{ always() }}

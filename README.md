@@ -2,7 +2,7 @@
 
 ChatBI 是一个面向业务数据查询的 Domain AI Engine（领域 AI 引擎），当前处于 MVP 向生产演进阶段，采用 Modular Monolith（模块化单体）。它把自然语言问题转换为业务语义、受控 SQL 和数据库结果，并通过确定性程序校验模型候选。
 
-当前 MVP 已包含自然语言查询、在线 RAG、登录与 RBAC、多轮查询和经营分析。生产部署、运行保障和当前 HEAD 的 AI Evaluation 基线仍在核验中；本地 Runbook 不代表已完成生产部署。包版本号来源于 [`pyproject.toml`](pyproject.toml)，精确代码状态以 Git commit 为准。
+当前 MVP 已包含自然语言查询、在线 RAG、登录与 RBAC、多轮查询和经营分析。生产部署、运行保障和当前候选的 AI Evaluation 基线仍在核验中；历史基线只适用于其报告记录的 commit。本地 Runbook 不代表已完成生产部署。包版本号来源于 [`pyproject.toml`](pyproject.toml)，精确代码状态以 Git commit 为准。
 
 ## 新 clone：快速开始
 

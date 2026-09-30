@@ -6,6 +6,8 @@ ChatBI 的 MVP 核心能力已经形成：自然语言查询、Online Retrieval�
 
 当前工作是建立可重复核验的生产准备基线。仓库尚未声称已完成生产部署、容量验证或生产运行保障；具体部署和运营 Contract 需在相应工作启动前定义。
 
+历史完整 Evaluation 基线对应 commit `31a04549924f622777f106d4fe5a758bd2ca2beb`。当前候选只有在三套正式报告均指向同一最终 clean commit、`git_dirty=false` 且各自 `0 FAIL`、`0 INVALID_CASE` 后才能标记为已核验。
+
 ## 当前基线工作
 
 - [x] RAG manifest 记录 Structure Metadata、Metrics 和 Embedding 配置来源指纹。
