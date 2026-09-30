@@ -6,6 +6,7 @@
 
 - 默认用中文沟通、编写 Spec、Ticket、ADR、Review 和报告；Commit 摘要使用中文，格式为 `<type>(<scope>): <中文摘要>`。技术术语、Skill、命令、API、类名、函数名、路径和代码保持原样；引用英文时保留原文并补充中文解释。
 - 先给结论，区分事实、决定、假设和建议；需要用户决定时一次只问最关键的问题。
+- 涉及仓库外状态或本机配置（例如 Plugin 的来源、安装、启用、版本和同步状态）时，先检查对应配置和文件；证据不足时明确标为未确认，不凭对话记忆或局部线索断言。
 - 保留用户已有修改，不覆盖、不删除、不回退，也不把无关文件加入当前交付。
 
 ## Project & Source of Truth
@@ -26,10 +27,13 @@
 
 ## Workflow
 
-- 工程请求先由 `ask-matt` 判断阶段、范围和风险。目标、成功标准、事实源或边界不清时进入 `grill-with-docs`；小范围、单会话且不改变稳定 Contract 的修改可直接实施。
-- 多阶段 Feature 依次经过 Spec 确认、`design-review`、Ticket 草案与 Ticket Readiness Review、用户确认 Ticket 拆分，再进入实现。细节见 [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md)。
-- Ticket Readiness Review 在当前上下文只读执行，不启动独立 Agent；它不替代设计审查、实现后的 Code Review 或 PR Review。
-- 仓库规则引用的 workflow Skills 可能由 Codex 环境中的 `engineering-workflow` Plugin 提供；Harness 的说明和依赖边界见 [`docs/agents/agent-harness.md`](docs/agents/agent-harness.md)。
+- 每个进入本仓库的新会话，在首条回复前检查当前仓库、branch / worktree、`git status` 和活动工作记录；回复开头用一行状态栏说明阶段、工作项、工作区状态、上次停点和下一步。只读咨询标明“只读咨询 / 无实施阶段”。
+- 以当前 branch / worktree 唯一匹配 `.scratch/<feature>/status.md` 中的活动记录；没有唯一匹配时，报告候选并请用户选择，不根据旧聊天或目录名猜测。
+- 工作区有修改时先列明并判断归属。能由当前活动工作记录确认属于正在继续的任务时，可以恢复该任务；归属不明或属于其他任务时，暂停新的写入操作并请用户决定。不得自动 stash、reset、checkout、commit、覆盖或移动改动。
+- 先判断用户是在需求发现、需求澄清、Spec 待确认、待拆 Ticket、待实施、实施、验证 / Review、PR 检查、合并后 Harness 复盘或其他状态。问题 / 机会尚无明确目标时进入需求发现，通过讨论和必要的只读查证整理候选目标；已有候选目标但行为、范围或验收仍不清时进入 `workflow-grill-with-docs`；不得把两者都称作需求澄清。
+- 每个确定要实施的工程改动都有工作记录。小改动使用短 Spec 并经用户确认后直接实施；复杂改动经过完整 Spec 确认、`workflow-design-review`、`workflow-to-tickets` 草案、当前上下文的 `workflow-ticket-readiness` 和用户确认拆分，再进入实现。细节见 [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md)。
+- `ask-matt` 是用户主动要求流程导航时使用的可选 Skill，不是每个请求的必经入口。Ticket Readiness Review 在当前上下文只读执行，不启动独立 Agent；它不替代设计审查、实现后的 Code Review 或 PR Review。
+- 仓库规则引用的 workflow Skills 由 Codex 环境中的 `engineering-workflow` Plugin 提供；调用时使用已安装 Plugin 暴露的精确名称。Harness 的说明和依赖边界见 [`docs/agents/agent-harness.md`](docs/agents/agent-harness.md)。
 
 ## Quality & Security
 
