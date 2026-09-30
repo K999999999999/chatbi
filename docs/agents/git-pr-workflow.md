@@ -47,21 +47,21 @@
 
 ### 2. Define the work
 
-- 小范围单会话修改可以直接实施，不强制创建 Spec 或 Ticket；
+- 每个确定要实施的工程改动都创建工作记录；小范围单会话修改使用短 Spec，不要求拆 Ticket；
 - 需求、Contract、范围或架构影响不清楚时，先建立并确认 Spec；
-- 多阶段 Feature 在 Spec 确认并通过 `design-review` 后拆分 Ticket；
-- `to-tickets` 形成草案后，必须先通过当前上下文的 Ticket Readiness Review，再由用户确认 Ticket 拆分；
+- 多阶段 Feature 在完整 Spec 确认并通过 `workflow-design-review` 后拆分 Ticket；
+- `workflow-to-tickets` 形成草案后，必须先通过当前上下文的 `workflow-ticket-readiness`，再由用户确认 Ticket 拆分；
 - 用户确认 Ticket 拆分后，按依赖顺序选择 Ticket 实施；
 - Spec / Ticket 的确认不自动授权 Push、PR 或 Merge。
 
-计划合入 `master` 的变更，无论大小，都在形成 candidate 后通过一个 PR 交付；小变更只跳过不必要的 Spec / Ticket，不跳过 targeted tests、Diff Review、candidate 检查、required checks 和合并后清理。只读咨询、诊断和不准备合入仓库的临时实验不进入 PR 流程。
+计划合入 `master` 的变更，无论大小，都在形成 candidate 后通过一个 PR 交付；小变更使用短 Spec、不拆 Ticket，但不跳过 targeted tests、Diff Review、candidate 检查、required checks 和合并后清理。只读咨询、诊断和不准备合入仓库的临时实验不进入 PR 流程。
 
 ### 3. Implement on one branch
 
 - 在同一个 Feature branch 中按 Ticket 实施；
 - 开始实现前确认当前 Ticket 已通过 Ticket Readiness Review，且没有遗留的 Contract / Architecture 决策；
 - 每个逻辑阶段运行对应 targeted tests；
-- 通过 TDD、Code Review 和 Diff Review 收敛实现；
+- 通过 `workflow-tdd`、`workflow-code-review` 和 Diff Review 收敛实现；
 - 只提交当前目标相关文件；
 - Commit Message 使用 `<type>(<scope>): <中文摘要>`；
 - 不因某个 Ticket 完成就自动创建 PR。
@@ -129,7 +129,19 @@ Agent 必须先向用户说明：
 gh pr view <PR> --json number,url,state,mergedAt,mergeStateStatus,headRefName,baseRefName,autoMergeRequest,statusCheckRollup
 ```
 
-#### 6.2 已合并时的自动清理
+#### 6.2 合并后 Harness 复盘
+
+PR 确认已 `MERGED` 后，每个交付都必须完成一次简短 Harness 复盘，再清理 Feature branch。即使自动清理因工作区修改或其他依赖而暂停，也要完成复盘。
+
+检查本次 Agent 工作是否因项目背景、规则、工具或验证方式不足而发生误解、漏验、返工或需要用户纠正：
+
+- 没有发现缺口：在 PR 的“合并后 Harness 复盘”栏记录“无新增缺口”。
+- 发现缺口：记录具体表现和根因，创建后续 Harness 改进项并关联到 PR；改进项要说明要调整的规则、文档、Skill、工具或验证方式，以及如何检查改进有效。
+- 如果问题来自产品实现本身，按产品 Bug / Regression 处理；如果 Agent 的工作环境也导致问题，同时创建 Harness 改进项。
+
+复盘只记录可行动的缺口，不要求每个 PR 另写一份复盘文档。已合并的产品 PR 不因复盘发现而追加无关改动；Harness 改进按独立目标交付。
+
+#### 6.3 已合并时的自动清理
 
 只有 PR 已明确为 `MERGED`，且满足下方 Routine cleanup authorization 的全部条件时，才执行：
 
@@ -143,14 +155,14 @@ gh pr view <PR> --json number,url,state,mergedAt,mergeStateStatus,headRefName,ba
 8. 保留仍有回滚价值的 `backup/*` 和 `codex/backup-*` branch，不把它们当作日常开发线；
 9. 只有以上检查全部通过，才能在完成报告中明确说明：“当前工作区已恢复到干净的 `master`，可以开始下一个 Feature”。
 
-#### 6.3 PR 尚未合并或异常时
+#### 6.4 PR 尚未合并或异常时
 
 - `OPEN`、`BLOCKED`、CI 仍在运行或 Review 未完成：保留 head branch，不执行分支清理，报告 PR 状态、检查进度和下一等待条件；
 - `CLOSED` 但未 `MERGED`：不删除可能仍有价值的 Feature branch，报告关闭状态并暂停；
 - 发现用户修改、未推送 Commit、Stacked PR、其他 worktree 依赖或 branch 归属不确定：暂停自动收尾并请求用户决定；
 - 不因为 branch 看起来旧、PR 看起来已经过期或名称相似就批量删除历史 branch。
 
-#### 6.4 Post-PR 完成报告
+#### 6.5 Post-PR 完成报告
 
 PR 后报告至少包含：
 
@@ -158,6 +170,7 @@ PR 后报告至少包含：
 - CI / required checks 的通过、失败或仍在运行状态；
 - 当前 `master`、HEAD 和 `git status`；
 - 删除的本地 / 远端 Feature branch 和保留的 backup branch；
+- 合并后 Harness 复盘结论及后续改进项链接；无新增缺口时明确记录“无新增缺口”；
 - 是否存在未处理问题、等待条件或风险；
 - 只有完成自动收尾并验证干净时，明确告知可以开始下一个 Feature。
 
@@ -195,4 +208,4 @@ Stacked PR 必须记录：
 
 ### Resume
 
-恢复工作时，不默认相信旧的对话、Spec 摘要、branch 名称或历史报告。先检查 live checkout 的 branch、HEAD、status、worktree、远端关系和当前 `.scratch` 记录，再决定继续、切回 `master`、保留为 backup 或停止使用。
+恢复工作时，不默认相信旧的对话、Spec 摘要、branch 名称或历史报告。先检查 live checkout 的 branch、HEAD、status、worktree、远端关系和当前 `.scratch` `status.md` / Spec / Ticket 记录，再决定继续、切回 `master`、保留为 backup 或停止使用。分支与活动状态记录不唯一匹配时，列出候选并请用户选择。

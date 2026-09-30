@@ -25,6 +25,12 @@ ChatBI 产品本身也有模型输出的确定性护栏，例如业务语义解�
 
 `AGENTS.md` 中引用的部分 workflow Skill 由 Codex 环境安装的 `engineering-workflow` Plugin 提供，Skill 实现没有复制进本仓库。新环境缺少该 Plugin 时，Agent 应先遵循仓库中已有的 `AGENTS.md` 和 `docs/agents/` 规则；无法执行某个 Skill 专属流程时，说明缺失，不应假设 Skill 已运行。
 
+## 会话状态与恢复
+
+新会话开始时，Agent 依据实时 Git / worktree 状态和 `.scratch/<feature>/status.md` 报告当前阶段、工作区状态、上次停点和下一步。Plugin 安装本身不会修改项目规则；要让其他项目获得相同入口，应通过 `setup-engineering-workflow` 检查该项目现有约定，并经用户确认后写入其 Agent instructions。
+
+PR 合并后按 [`git-pr-workflow.md`](git-pr-workflow.md) 执行 Harness 复盘；产品实现缺陷与 Agent 工作环境缺口分别记录，避免相互替代。
+
 ## 什么时候更新本文
 
 - 当 `AGENTS.md`、文档地图、工程工作流程、验证入口或 Skill 依赖发生变化，且这些变化让本文的说明不再准确时，更新本文。
