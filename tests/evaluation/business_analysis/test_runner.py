@@ -6,7 +6,9 @@ from pathlib import Path
 from src.authorization import AuthContext
 from src.business_analysis.application import BusinessAnalysisSuccess
 from src.business_analysis.reporting import BusinessAnalysisReport
-from evaluation.suites.business_analysis.business_analysis_evaluation import load_business_analysis_cases
+from evaluation.suites.business_analysis.business_analysis_evaluation import (
+    load_business_analysis_cases,
+)
 from evaluation.suites.business_analysis.business_analysis_runner import (
     BusinessAnalysisCaseStatus,
     JudgeResult,

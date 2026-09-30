@@ -54,7 +54,9 @@ class MultiTurnEvaluationTest(unittest.TestCase):
         self.reference = QueryData(columns=("value",), rows=((1,),), truncated=False)
 
     def test_standard_multi_turn_set_loads_and_expected_sql_passes_guard(self) -> None:
-        from evaluation.suites.multi_turn.multi_turn_evaluation import load_multi_turn_cases
+        from evaluation.suites.multi_turn.multi_turn_evaluation import (
+            load_multi_turn_cases,
+        )
         from src.online_query.context import load_query_context
         from src.online_query.sql_guard import validate_sql
 
@@ -96,7 +98,9 @@ class MultiTurnEvaluationTest(unittest.TestCase):
                     validate_sql(turn.expected_sql, context)
 
     def test_loader_requires_outcome_error_for_expected_failure_turns(self) -> None:
-        from evaluation.suites.multi_turn.multi_turn_evaluation import load_multi_turn_cases
+        from evaluation.suites.multi_turn.multi_turn_evaluation import (
+            load_multi_turn_cases,
+        )
 
         invalid_case = {
             "id": "MT01",

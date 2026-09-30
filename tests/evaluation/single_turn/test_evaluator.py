@@ -128,7 +128,10 @@ class EvaluationCaseLoadingTest(unittest.TestCase):
         self.assertIn("question", cases[0].validation_error or "")
 
     def test_rejects_missing_invalid_non_array_and_empty_files(self) -> None:
-        from evaluation.suites.single_turn.evaluator import EvaluationLoadError, load_evaluation_cases
+        from evaluation.suites.single_turn.evaluator import (
+            EvaluationLoadError,
+            load_evaluation_cases,
+        )
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -152,7 +155,10 @@ class EvaluationCaseLoadingTest(unittest.TestCase):
                 load_evaluation_cases(empty)
 
     def test_rejects_duplicate_case_ids(self) -> None:
-        from evaluation.suites.single_turn.evaluator import EvaluationLoadError, load_evaluation_cases
+        from evaluation.suites.single_turn.evaluator import (
+            EvaluationLoadError,
+            load_evaluation_cases,
+        )
 
         with TemporaryDirectory() as directory:
             path = Path(directory) / "cases.json"
