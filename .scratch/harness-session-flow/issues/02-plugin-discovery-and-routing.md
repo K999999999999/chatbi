@@ -1,6 +1,6 @@
 # Ticket 02：对齐 Plugin 的需求发现、澄清与路由
 
-Status: in-progress
+Status: done
 
 ## Owner
 
@@ -63,7 +63,12 @@ Ticket 01.
 
 ## Result
 
-待实施。
+已在外置 Plugin 新增 manual-only `workflow-discovery`；明确其与 `workflow-grill-with-docs`（需求澄清）的职责边界。`ask-matt` 调整为可选导航器，并对齐短 Spec 直接实施、完整 Spec 进入设计审查与 Ticket 的路由。Plugin / 仓库 README 与元数据同步更新，Ticket / Readiness 中 Ticket 术语检查通过。
+
+- Plugin commit：`695fa88 docs(workflow): 区分需求发现与澄清`（本地提交，未 Push）。
+- `quick_validate.py`：新 Skill、`ask-matt`、`workflow-grill-with-docs` 均通过。
+- 自检：Plugin JSON 可解析；13 个 Skill 名称与目录匹配且均为 `allow_implicit_invocation: false`；`git diff --check` 通过；三类流程场景走查通过。
+- 限制：本机未找到 README 所述 `validate_plugin.py`，因此使用 JSON / Skill 元数据检查代替该 Plugin 专用 validator。
 
 ## Comments
 

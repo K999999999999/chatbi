@@ -1,6 +1,6 @@
 # Ticket 03：让新项目初始化和 Spec 流程采用会话约定
 
-Status: open
+Status: done
 
 ## Owner
 
@@ -61,7 +61,13 @@ Ticket 02.
 
 ## Result
 
-待实施。
+更新了外置 Plugin 的 `setup-engineering-workflow`、`workflow-to-spec` 和 Plugin README：安装 Plugin 不会改动项目；显式初始化时先检查项目现状、提出具体文件方案并等待用户确认；短 Spec 至少记录目标、预期结果、验收和验证，确认后可直接实施；复杂工作使用完整 Spec，并进入设计审查和 Ticket 门禁。
+
+- Plugin commit：`2b0bf46 docs(workflow): 补齐仓库初始化与短规格流程`（本地提交，未 Push）。
+- `quick_validate.py`：两个修改过的 Skill 均通过。
+- Plugin JSON 可解析；13 个 Skill 名称与目录匹配且均为 `allow_implicit_invocation: false`；`git diff --check` 通过。
+- 使用 `codex plugin remove engineering-workflow@personal` 和 `codex plugin add engineering-workflow@personal` 同步缓存；Codex CLI 报告安装成功且 Plugin 仍启用。源目录与缓存 `diff -qr` 无差异；缓存含 13 个 Skill 并包含 `workflow-discovery`。
+- 限制：本机没有 README 所述 `validate_plugin.py`；本会话无法启动新 Thread 检验 Skill 对话加载，需在下次新 Thread 确认可见性。
 
 ## Comments
 
