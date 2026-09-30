@@ -3,7 +3,9 @@
 import unittest
 from decimal import Decimal
 
-from src.evaluation.multi_turn_api_client import QueryApiConversationClient
+from evaluation.suites.multi_turn.multi_turn_api_client import (
+    QueryApiConversationClient,
+)
 from src.online_query.contracts import (
     OnlineRetrievalResult,
     QueryContext,

@@ -51,7 +51,7 @@ Natural Language
 | ChatBI Account & Admin | [`src/chatbi_control/`](src/chatbi_control/)、[`src/authorization/`](src/authorization/) | 内置账号、数据库 Session、固定角色权限、SQLAdmin 和持久化安全审计 | 初始化见 [`docs/runbook.md`](docs/runbook.md) |
 | Business Analysis | [`src/business_analysis/`](src/business_analysis/) | 受控的分析任务拆解、校验、授权查询执行、结果汇总和总结 | [`docs/specs/query-api.md`](docs/specs/query-api.md) |
 | RAG Offline Build | [`src/rag_offline/`](src/rag_offline/)；`python -m src.rag_offline` | 事实校验、文档构建、Embedding、Qdrant、关系图和资产发布 | [`docs/specs/rag-offline-build.md`](docs/specs/rag-offline-build.md) |
-| Evaluation | [`src/evaluation/`](src/evaluation/)；`python -m src.evaluation` | 标准案例执行、结果比较和评测报告 | [`docs/specs/evaluation.md`](docs/specs/evaluation.md) |
+| Evaluation | [`evaluation/`](evaluation/)；`python -m evaluation` | 标准案例执行、结果比较和评测报告 | [`docs/specs/evaluation.md`](docs/specs/evaluation.md) |
 | Observability | [`src/observability/`](src/observability/) | Trace Contract、No-op、OpenTelemetry 和安全属性处理 | [`docs/specs/observability.md`](docs/specs/observability.md) |
 
 ## 仓库地图

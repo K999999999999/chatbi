@@ -8,7 +8,7 @@ from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from src.evaluation.runner import (
+from evaluation.suites.single_turn.runner import (
     CaseEvaluation,
     CaseStatus,
     EvaluationRun,
@@ -19,7 +19,7 @@ from src.online_query.contracts import QueryData
 
 class EvaluationReportingTest(unittest.TestCase):
     def test_collects_reproducible_metadata_without_secrets_or_endpoint(self) -> None:
-        from src.evaluation.reporting import collect_run_metadata
+        from evaluation.common.reporting import collect_run_metadata
 
         run = self._run((CaseStatus.PASS,))
         environ = {
@@ -61,7 +61,7 @@ class EvaluationReportingTest(unittest.TestCase):
         self.assertEqual(len(metadata.reference_result_hash), 64)
 
     def test_records_development_database_seed_summary_and_hash(self) -> None:
-        from src.evaluation.reporting import (
+        from evaluation.common.reporting import (
             SalesMartDataFingerprint,
             collect_run_metadata,
         )
@@ -96,7 +96,7 @@ class EvaluationReportingTest(unittest.TestCase):
         )
 
     def test_writes_and_loads_json_report(self) -> None:
-        from src.evaluation.reporting import (
+        from evaluation.common.reporting import (
             collect_run_metadata,
             create_report,
             load_report,
@@ -131,7 +131,7 @@ class EvaluationReportingTest(unittest.TestCase):
         self.assertIsNone(loaded["baseline_comparison"])
 
     def test_renders_human_readable_summary_without_baseline(self) -> None:
-        from src.evaluation.reporting import create_report, render_markdown_report
+        from evaluation.common.reporting import create_report, render_markdown_report
 
         run = self._run((CaseStatus.PASS, CaseStatus.FAIL, CaseStatus.INVALID_CASE))
         report = create_report(run, self._metadata())
@@ -156,7 +156,7 @@ class EvaluationReportingTest(unittest.TestCase):
         self.assertIn("本次未执行自动基线比较", markdown)
 
     def test_report_exposes_query_understanding_failure_stage(self) -> None:
-        from src.evaluation.reporting import create_report, render_markdown_report
+        from evaluation.common.reporting import create_report, render_markdown_report
 
         run = self._run((CaseStatus.FAIL,))
         run = replace(
@@ -192,7 +192,7 @@ class EvaluationReportingTest(unittest.TestCase):
         )
 
     def test_renders_regression_and_improvement_summary(self) -> None:
-        from src.evaluation.reporting import create_report, render_markdown_report
+        from evaluation.common.reporting import create_report, render_markdown_report
 
         baseline = self._report(
             test_hash="same-test",
@@ -212,7 +212,7 @@ class EvaluationReportingTest(unittest.TestCase):
         self.assertIn("状态未变化 1 条", markdown)
 
     def test_compares_regressions_and_improvements(self) -> None:
-        from src.evaluation.reporting import compare_baseline
+        from evaluation.common.reporting import compare_baseline
 
         baseline = self._report(
             test_hash="same-test",
@@ -234,7 +234,7 @@ class EvaluationReportingTest(unittest.TestCase):
         self.assertEqual(comparison["unchanged"], ["C"])
 
     def test_does_not_compare_reports_from_different_evaluation_suites(self) -> None:
-        from src.evaluation.reporting import compare_baseline
+        from evaluation.common.reporting import compare_baseline
 
         baseline = self._report(
             test_hash="same-test",
@@ -255,7 +255,7 @@ class EvaluationReportingTest(unittest.TestCase):
         self.assertEqual(comparison["reason"], "评测集类别不同")
 
     def test_refuses_regression_claim_when_inputs_are_incomparable(self) -> None:
-        from src.evaluation.reporting import compare_baseline
+        from evaluation.common.reporting import compare_baseline
 
         baseline = self._report(
             test_hash="test-a",
@@ -285,7 +285,7 @@ class EvaluationReportingTest(unittest.TestCase):
         self.assertEqual(database_comparison["regressions"], [])
 
     def test_missing_data_fingerprint_marks_baseline_not_comparable(self) -> None:
-        from src.evaluation.reporting import compare_baseline
+        from evaluation.common.reporting import compare_baseline
 
         current = self._report(
             test_hash="test-a",
@@ -306,7 +306,7 @@ class EvaluationReportingTest(unittest.TestCase):
         self.assertEqual(comparison["regressions"], [])
 
     def test_seed_version_change_is_recorded_when_data_hash_is_unchanged(self) -> None:
-        from src.evaluation.reporting import (
+        from evaluation.common.reporting import (
             compare_baseline,
             render_markdown_report,
         )
@@ -353,7 +353,7 @@ class EvaluationReportingTest(unittest.TestCase):
         self.assertIn("Seed 版本与 Baseline 不同", markdown)
 
     def test_rejects_invalid_report_file(self) -> None:
-        from src.evaluation.reporting import ReportingError, load_report
+        from evaluation.common.reporting import ReportingError, load_report
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -411,7 +411,7 @@ class EvaluationReportingTest(unittest.TestCase):
 
     @staticmethod
     def _metadata():
-        from src.evaluation.reporting import RunMetadata
+        from evaluation.common.reporting import RunMetadata
 
         return RunMetadata(
             run_id="20260831T120000Z-abcdef1",

@@ -46,26 +46,8 @@ from src.online_query.retrieval import OnlineRetriever
 from src.online_query.retrieval.rag_runtime import RagRuntime
 from src.online_query.service import OnlineQueryService
 
-from .business_analysis_evaluation import load_business_analysis_cases
-from .business_analysis_judge import LangChainBusinessAnalysisJudge
-from .business_analysis_reporting import (
-    create_business_analysis_report,
-    render_business_analysis_markdown,
-)
-from .business_analysis_runner import run_business_analysis_evaluation
-from .database_fingerprint import collect_sales_mart_fingerprint
-from .evaluator import EvaluationLoadError, load_evaluation_cases
-from .multi_turn_api_client import QueryApiConversationClient
-from .multi_turn_evaluation import (
-    MultiTurnEvaluationLoadError,
-    load_multi_turn_cases,
-    run_multi_turn_evaluation,
-)
-from .multi_turn_reporting import (
-    create_multi_turn_report,
-    write_multi_turn_markdown_report,
-)
-from .reporting import (
+from .common.database_fingerprint import collect_sales_mart_fingerprint
+from .common.reporting import (
     ReportingError,
     collect_run_metadata,
     create_report,
@@ -73,25 +55,51 @@ from .reporting import (
     write_markdown_report,
     write_report,
 )
-from .runner import run_evaluation
-from .semantic_evaluation import (
+from .suites.business_analysis.business_analysis_evaluation import (
+    load_business_analysis_cases,
+)
+from .suites.business_analysis.business_analysis_judge import (
+    LangChainBusinessAnalysisJudge,
+)
+from .suites.business_analysis.business_analysis_reporting import (
+    create_business_analysis_report,
+    render_business_analysis_markdown,
+)
+from .suites.business_analysis.business_analysis_runner import (
+    run_business_analysis_evaluation,
+)
+from .suites.multi_turn.multi_turn_api_client import QueryApiConversationClient
+from .suites.multi_turn.multi_turn_evaluation import (
+    MultiTurnEvaluationLoadError,
+    load_multi_turn_cases,
+    run_multi_turn_evaluation,
+)
+from .suites.multi_turn.multi_turn_reporting import (
+    create_multi_turn_report,
+    write_multi_turn_markdown_report,
+)
+from .suites.query_understanding.semantic_evaluation import (
     SemanticEvaluationLoadError,
     create_query_understanding_report,
     evaluate_query_understanding,
     load_query_understanding_cases,
     write_query_understanding_report,
 )
+from .suites.single_turn.evaluator import EvaluationLoadError, load_evaluation_cases
+from .suites.single_turn.runner import run_evaluation
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CASES_PATH = PROJECT_ROOT / "src" / "evaluation" / "eval_cases.json"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_CASES_PATH = (
+    PROJECT_ROOT / "evaluation" / "suites" / "single_turn" / "cases.json"
+)
 DEFAULT_QUERY_UNDERSTANDING_CASES_PATH = (
-    PROJECT_ROOT / "src" / "evaluation" / "query_understanding_cases.json"
+    PROJECT_ROOT / "evaluation" / "suites" / "query_understanding" / "cases.json"
 )
 DEFAULT_BUSINESS_ANALYSIS_CASES_PATH = (
-    PROJECT_ROOT / "src" / "evaluation" / "business_analysis_cases.json"
+    PROJECT_ROOT / "evaluation" / "suites" / "business_analysis" / "cases.json"
 )
 DEFAULT_MULTI_TURN_CASES_PATH = (
-    PROJECT_ROOT / "src" / "evaluation" / "multi_turn_eval_cases.json"
+    PROJECT_ROOT / "evaluation" / "suites" / "multi_turn" / "cases.json"
 )
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "reports" / "evaluation"
 

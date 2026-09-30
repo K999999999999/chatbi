@@ -9,7 +9,7 @@ from unittest.mock import Mock
 
 import psycopg
 
-from src.evaluation.database_fingerprint import (
+from evaluation.common.database_fingerprint import (
     SalesMartFingerprintError,
     collect_sales_mart_fingerprint,
 )

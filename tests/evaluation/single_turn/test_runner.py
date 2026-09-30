@@ -2,7 +2,7 @@
 
 import unittest
 
-from src.evaluation.evaluator import EvaluationCase
+from evaluation.suites.single_turn.evaluator import EvaluationCase
 from src.online_query.contracts import (
     QueryContext,
     QueryData,
@@ -53,7 +53,7 @@ class EvaluationRunnerTest(unittest.TestCase):
         )
 
     def test_runs_existing_service_and_builds_summary(self) -> None:
-        from src.evaluation.runner import CaseStatus, run_evaluation
+        from evaluation.suites.single_turn.runner import CaseStatus, run_evaluation
 
         cases = (
             self._case("S01", "问题一", "simple"),
@@ -88,7 +88,7 @@ class EvaluationRunnerTest(unittest.TestCase):
         self.assertEqual(set(run.reference_results), {"S01", "M01"})
 
     def test_records_query_failure_and_continues_next_case(self) -> None:
-        from src.evaluation.runner import CaseStatus, run_evaluation
+        from evaluation.suites.single_turn.runner import CaseStatus, run_evaluation
 
         cases = (
             self._case("S01", "失败问题", "simple"),
@@ -119,7 +119,7 @@ class EvaluationRunnerTest(unittest.TestCase):
         self.assertEqual(len(service.calls), 2)
 
     def test_scores_expected_outcomes_separately_from_execution_accuracy(self) -> None:
-        from src.evaluation.runner import CaseStatus, run_evaluation
+        from evaluation.suites.single_turn.runner import CaseStatus, run_evaluation
 
         clarification = EvaluationCase(
             id="R01",
@@ -177,7 +177,7 @@ class EvaluationRunnerTest(unittest.TestCase):
         self.assertEqual(len(executor.calls), 1)
 
     def test_invalid_case_and_invalid_gold_sql_do_not_call_service(self) -> None:
-        from src.evaluation.runner import CaseStatus, run_evaluation
+        from evaluation.suites.single_turn.runner import CaseStatus, run_evaluation
 
         malformed = EvaluationCase(
             id="BAD01",
@@ -214,7 +214,7 @@ class EvaluationRunnerTest(unittest.TestCase):
         self.assertIsNone(run.summary.execution_accuracy)
 
     def test_gold_execution_failure_and_truncation_are_invalid(self) -> None:
-        from src.evaluation.runner import CaseStatus, run_evaluation
+        from evaluation.suites.single_turn.runner import CaseStatus, run_evaluation
 
         case = self._case("S01", "问题", "simple")
         service = _FakeService({"问题": self._success("evaluation-S01")})
@@ -239,7 +239,7 @@ class EvaluationRunnerTest(unittest.TestCase):
     def test_service_exception_and_truncated_system_result_do_not_stop_run(
         self,
     ) -> None:
-        from src.evaluation.runner import CaseStatus, run_evaluation
+        from evaluation.suites.single_turn.runner import CaseStatus, run_evaluation
 
         cases = (
             self._case("S01", "异常问题", "simple"),

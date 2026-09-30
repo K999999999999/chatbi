@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from src.evaluation.business_analysis_evaluation import (
+from evaluation.suites.business_analysis.business_analysis_evaluation import (
     BusinessAnalysisEvaluationLoadError,
     load_business_analysis_cases,
 )
@@ -13,9 +13,9 @@ from src.evaluation.business_analysis_evaluation import (
 
 class BusinessAnalysisEvaluationTest(unittest.TestCase):
     def test_standard_cases_cover_success_clarification_and_refusal(self) -> None:
-        root = Path(__file__).resolve().parents[2]
+        root = Path(__file__).resolve().parents[3]
         cases = load_business_analysis_cases(
-            root / "src" / "evaluation" / "business_analysis_cases.json"
+            root / "evaluation" / "suites" / "business_analysis" / "cases.json"
         )
         self.assertEqual(len(cases), 10)
         self.assertEqual(

@@ -143,7 +143,7 @@ jobs:
           set -euo pipefail
 
           uv run --python 3.11 --locked --no-sync \
-            python -m src.evaluation \
+            python -m evaluation \
             --online-retrieval \
             --output-dir "${RUNNER_TEMP}/chatbi-real-evaluation"
 

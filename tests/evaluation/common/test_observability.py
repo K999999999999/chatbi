@@ -12,8 +12,8 @@ from src.authorization import (
     StaticAuthorizationPolicyStore,
     StaticIdentityProviderAdapter,
 )
-from src.evaluation.evaluator import EvaluationCase
-from src.evaluation.runner import CaseStatus, run_evaluation
+from evaluation.suites.single_turn.evaluator import EvaluationCase
+from evaluation.suites.single_turn.runner import CaseStatus, run_evaluation
 from src.observability import QuerySource, create_in_memory_recorder
 from src.online_query.contracts import (
     QueryContext,
@@ -206,7 +206,7 @@ class EvaluationObservabilityT4BTest(unittest.TestCase):
         )
 
     def test_report_contains_safe_correlation_and_loads_old_baseline(self) -> None:
-        from src.evaluation.reporting import (
+        from evaluation.common.reporting import (
             RunMetadata,
             compare_baseline,
             create_report,

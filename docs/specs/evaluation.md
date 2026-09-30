@@ -20,18 +20,20 @@ Evaluation Module 不设对所有产品版本通用的准确率门槛；当前 M
 
 | 评测集 | 案例文件 | 运行参数 | 计分单位 |
 |---|---|---|---|
-| 单轮自然查询 | `src/evaluation/eval_cases.json` | `--single-turn`（默认模式） | 单条问题 |
-| 多轮自然查询 | `src/evaluation/multi_turn_eval_cases.json` | `--multi-turn --online-retrieval` | 完整 Conversation |
-| 经营分析 | `src/evaluation/business_analysis_cases.json` | `--business-analysis --online-retrieval` | 单条经营分析场景 |
+| 单轮自然查询 | `evaluation/suites/single_turn/cases.json` | `--single-turn`（默认模式） | 单条问题 |
+| 多轮自然查询 | `evaluation/suites/multi_turn/cases.json` | `--multi-turn --online-retrieval` | 完整 Conversation |
+| 经营分析 | `evaluation/suites/business_analysis/cases.json` | `--business-analysis --online-retrieval` | 单条经营分析场景 |
 
-当前仓库中的集合规模为：单轮 29 个案例、多轮 7 个 Conversation / 15 个轮次、经营分析 10 个案例。`src/evaluation/query_understanding_cases.json` 有 6 个辅助语义案例；它不替代上述三类业务套件。数量应从相应案例文件读取，不用历史报告数量推断。
+实现按 `evaluation/common/` 的共享能力和 `evaluation/suites/<suite>/` 的套件实现分类；每个套件的案例文件与对应代码放在同一目录。确定性软件测试按相同套件边界放在 `tests/evaluation/<suite>/`，公共能力测试放在 `tests/evaluation/common/`。
+
+当前仓库中的集合规模为：单轮 29 个案例、多轮 7 个 Conversation / 15 个轮次、经营分析 10 个案例。`evaluation/suites/query_understanding/cases.json` 有 6 个辅助语义案例；它不替代上述三类业务套件。数量应从相应案例文件读取，不用历史报告数量推断。
 
 经营分析案例使用通用语义任务描述，不在案例中绑定 SQL 或固定数值。成功案例由两个独立的 LLM Judge 分别评估任务拆解覆盖度和总结质量；任一维度失败都不跳过另一维度。澄清与拒绝案例按预期结果类型和错误码确定性评估。结果报告分别给出结果类型、任务拆解、总结质量和端到端准确率。Query Understanding（查询理解）语义集是辅助回归，不是第四类业务评测集。
 
 Query Understanding 语义评测单独运行：
 
 ```text
-uv run --env-file .env python -m src.evaluation --query-understanding
+uv run --env-file .env python -m evaluation --query-understanding
 ```
 
 该模式只调用 Query Understanding Adapter，不连接 PostgreSQL、不执行 SQL，适合快速判断结构化语义和失败原因；它不属于普通 CI，也不替代完整 Online Retrieval Real E2E。
@@ -40,7 +42,7 @@ uv run --env-file .env python -m src.evaluation --query-understanding
 
 ### 标准测试集
 
-默认读取 `src/evaluation/eval_cases.json`。每条案例包含：
+默认读取 `evaluation/suites/single_turn/cases.json`。每条案例包含：
 
 ```text
 id
@@ -70,7 +72,7 @@ order_sensitive（可选，默认 false）
 当前标准多轮集合包含 7 个 Conversation、15 个轮次，覆盖指标 / 时间替换、维度追加 / 替换、Filter 追加 / 替换和失败状态隔离。Filter 案例使用已登记的销售区域及华东、华南值，不依赖企业客户筛选字段。
 
 Query Understanding（查询理解）使用独立的语义评测集
-`src/evaluation/query_understanding_cases.json`。该评测集只验证结构化语义，不执行 Retrieval、SQL Guard 或数据库；其中 `time: null` 表示用户没有提出时间过滤条件，不属于案例缺陷。
+`evaluation/suites/query_understanding/cases.json`。该评测集只验证结构化语义，不执行 Retrieval、SQL Guard 或数据库；其中 `time: null` 表示用户没有提出时间过滤条件，不属于案例缺陷。
 
 ### 待评测系统
 
@@ -229,10 +231,10 @@ Query 与 Business Analysis 的数据库型报告必须记录当前开发 Seed �
 
 ### AI Evaluation（AI 评测）
 
-- 使用 `uv run --env-file .env python -m src.evaluation --single-turn --online-retrieval`，单轮案例能够顺序运行完成；成功查询与标准 SQL 结果比对，澄清/拒答按期望错误码判定。
-- 使用 `uv run --env-file .env python -m src.evaluation --multi-turn --online-retrieval`，完整 Conversation 按顺序运行；首轮创建会话，后续轮次复用同一 `conversation_id`，场景之间隔离。
-- 使用 `uv run --env-file .env python -m src.evaluation --business-analysis --online-retrieval`，运行现有经营分析黄金测试集。
-- 使用 `uv run --env-file .env python -m src.evaluation --query-understanding`，独立验证 `query_type`、`metrics`、`dimensions` 和 `time`，其中没有时间条件的案例必须明确期望 `time = null`。
+- 使用 `uv run --env-file .env python -m evaluation --single-turn --online-retrieval`，单轮案例能够顺序运行完成；成功查询与标准 SQL 结果比对，澄清/拒答按期望错误码判定。
+- 使用 `uv run --env-file .env python -m evaluation --multi-turn --online-retrieval`，完整 Conversation 按顺序运行；首轮创建会话，后续轮次复用同一 `conversation_id`，场景之间隔离。
+- 使用 `uv run --env-file .env python -m evaluation --business-analysis --online-retrieval`，运行现有经营分析黄金测试集。
+- 使用 `uv run --env-file .env python -m evaluation --query-understanding`，独立验证 `query_type`、`metrics`、`dimensions` 和 `time`，其中没有时间条件的案例必须明确期望 `time = null`。
 - 生成包含单条结果的 JSON 数据报告，以及包含总体结论、准确率和失败摘要的 Markdown 总结报告。
 - 后续报告能够识别相对上一份有效报告的回退和改善案例。
 - 单轮报告展示执行准确率、outcome 命中率和场景覆盖；多轮报告展示 Conversation 结论和轮次级诊断；三类报告不生成跨类别总准确率。

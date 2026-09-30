@@ -13,7 +13,7 @@ from src.online_query.contracts import QueryData
 
 class EvaluationCaseLoadingTest(unittest.TestCase):
     def test_loads_valid_cases_and_defaults_order_sensitive_to_false(self) -> None:
-        from src.evaluation.evaluator import load_evaluation_cases
+        from evaluation.suites.single_turn.evaluator import load_evaluation_cases
 
         with TemporaryDirectory() as directory:
             path = Path(directory) / "cases.json"
@@ -38,7 +38,7 @@ class EvaluationCaseLoadingTest(unittest.TestCase):
     def test_loads_expected_outcome_without_reference_sql_and_coverage_tags(
         self,
     ) -> None:
-        from src.evaluation.evaluator import load_evaluation_cases
+        from evaluation.suites.single_turn.evaluator import load_evaluation_cases
 
         case = self._case(
             "R01",
@@ -59,7 +59,7 @@ class EvaluationCaseLoadingTest(unittest.TestCase):
         self.assertEqual(loaded.coverage, ("refusal",))
 
     def test_requires_reference_sql_for_result_matching_cases(self) -> None:
-        from src.evaluation.evaluator import load_evaluation_cases
+        from evaluation.suites.single_turn.evaluator import load_evaluation_cases
 
         case = self._case("S01", expected_sql="")
         with TemporaryDirectory() as directory:
@@ -72,9 +72,9 @@ class EvaluationCaseLoadingTest(unittest.TestCase):
         self.assertIn("expected_sql", loaded.validation_error or "")
 
     def test_loads_current_twenty_one_case_standard_set(self) -> None:
-        from src.evaluation.evaluator import load_evaluation_cases
+        from evaluation.suites.single_turn.evaluator import load_evaluation_cases
 
-        cases = load_evaluation_cases(Path("src/evaluation/eval_cases.json"))
+        cases = load_evaluation_cases(Path("evaluation/suites/single_turn/cases.json"))
 
         self.assertEqual(len(cases), 29)
         self.assertTrue(all(case.is_valid for case in cases))
@@ -100,16 +100,16 @@ class EvaluationCaseLoadingTest(unittest.TestCase):
         )
 
     def test_t01_gold_sql_returns_only_the_requested_sales_amount(self) -> None:
-        from src.evaluation.evaluator import load_evaluation_cases
+        from evaluation.suites.single_turn.evaluator import load_evaluation_cases
 
-        cases = load_evaluation_cases(Path("src/evaluation/eval_cases.json"))
+        cases = load_evaluation_cases(Path("evaluation/suites/single_turn/cases.json"))
         case = next(case for case in cases if case.id == "T01")
         query = parse_one(case.expected_sql)
 
         self.assertEqual(len(query.expressions), 1)
 
     def test_preserves_one_invalid_record_for_later_invalid_case_result(self) -> None:
-        from src.evaluation.evaluator import load_evaluation_cases
+        from evaluation.suites.single_turn.evaluator import load_evaluation_cases
 
         with TemporaryDirectory() as directory:
             path = Path(directory) / "cases.json"
@@ -128,7 +128,10 @@ class EvaluationCaseLoadingTest(unittest.TestCase):
         self.assertIn("question", cases[0].validation_error or "")
 
     def test_rejects_missing_invalid_non_array_and_empty_files(self) -> None:
-        from src.evaluation.evaluator import EvaluationLoadError, load_evaluation_cases
+        from evaluation.suites.single_turn.evaluator import (
+            EvaluationLoadError,
+            load_evaluation_cases,
+        )
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -152,7 +155,10 @@ class EvaluationCaseLoadingTest(unittest.TestCase):
                 load_evaluation_cases(empty)
 
     def test_rejects_duplicate_case_ids(self) -> None:
-        from src.evaluation.evaluator import EvaluationLoadError, load_evaluation_cases
+        from evaluation.suites.single_turn.evaluator import (
+            EvaluationLoadError,
+            load_evaluation_cases,
+        )
 
         with TemporaryDirectory() as directory:
             path = Path(directory) / "cases.json"
@@ -180,7 +186,7 @@ class EvaluationCaseLoadingTest(unittest.TestCase):
 
 class ResultComparisonTest(unittest.TestCase):
     def test_ignores_column_names_but_preserves_column_order(self) -> None:
-        from src.evaluation.evaluator import results_match
+        from evaluation.suites.single_turn.evaluator import results_match
 
         expected = self._data(("region", "sales"), (("华东", 100),))
         renamed = self._data(("地区", "销售额"), (("华东", 100),))
@@ -190,7 +196,7 @@ class ResultComparisonTest(unittest.TestCase):
         self.assertFalse(results_match(reordered, expected))
 
     def test_requires_same_column_and_row_counts(self) -> None:
-        from src.evaluation.evaluator import results_match
+        from evaluation.suites.single_turn.evaluator import results_match
 
         expected = self._data(("region", "sales"), (("华东", 100),))
         fewer_columns = self._data(("region",), (("华东",),))
@@ -203,7 +209,7 @@ class ResultComparisonTest(unittest.TestCase):
         self.assertFalse(results_match(more_rows, expected))
 
     def test_ignores_row_order_by_default_and_preserves_duplicates(self) -> None:
-        from src.evaluation.evaluator import results_match
+        from evaluation.suites.single_turn.evaluator import results_match
 
         expected = self._data(("value",), ((1,), (1,), (2,)))
         reordered = self._data(("other_name",), ((2,), (1,), (1,)))
@@ -213,7 +219,7 @@ class ResultComparisonTest(unittest.TestCase):
         self.assertFalse(results_match(wrong_duplicates, expected))
 
     def test_checks_row_order_when_order_sensitive(self) -> None:
-        from src.evaluation.evaluator import results_match
+        from evaluation.suites.single_turn.evaluator import results_match
 
         expected = self._data(("value",), ((1,), (2,)))
         reordered = self._data(("value",), ((2,), (1,)))
@@ -222,7 +228,7 @@ class ResultComparisonTest(unittest.TestCase):
         self.assertFalse(results_match(reordered, expected, order_sensitive=True))
 
     def test_compares_nulls_and_non_numeric_values_exactly(self) -> None:
-        from src.evaluation.evaluator import results_match
+        from evaluation.suites.single_turn.evaluator import results_match
 
         expected = self._data(("a", "b"), ((None, "1"),))
         same = self._data(("x", "y"), ((None, "1"),))
@@ -234,7 +240,7 @@ class ResultComparisonTest(unittest.TestCase):
         self.assertFalse(results_match(wrong_type, expected))
 
     def test_uses_absolute_and_relative_numeric_tolerance(self) -> None:
-        from src.evaluation.evaluator import results_match
+        from evaluation.suites.single_turn.evaluator import results_match
 
         expected = self._data(
             ("small", "large"),
@@ -255,7 +261,7 @@ class ResultComparisonTest(unittest.TestCase):
     def test_normalizes_numeric_strings_only_for_json_transport_comparisons(
         self,
     ) -> None:
-        from src.evaluation.evaluator import results_match
+        from evaluation.suites.single_turn.evaluator import results_match
 
         expected = self._data(
             ("amount", "customer_code"),
@@ -283,7 +289,7 @@ class ResultComparisonTest(unittest.TestCase):
         )
 
     def test_rejects_truncated_results(self) -> None:
-        from src.evaluation.evaluator import results_match
+        from evaluation.suites.single_turn.evaluator import results_match
 
         expected = self._data(("value",), ((1,),))
         truncated = QueryData(

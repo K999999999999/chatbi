@@ -19,7 +19,7 @@ from src.online_query.contracts import (
 )
 from src.online_query.sql_guard import validate_sql
 
-from .evaluator import results_match
+from ..single_turn.evaluator import results_match
 
 _OUTCOMES = frozenset(
     {"result_match", "clarification_required", "cannot_answer", "query_failure"}

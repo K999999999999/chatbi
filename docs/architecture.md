@@ -171,22 +171,28 @@ flowchart TB
     Relationships --> Context
     Metrics --> Context
 
-    subgraph Evaluation["src/evaluation：离线评测代码"]
+    subgraph Evaluation["evaluation：离线评测代码"]
         EInit["__init__.py<br/>评测模块公开入口"]
         Entry["__main__.py<br/>评测命令行入口<br/>组装真实 LLM 和数据库"]
-        Cases["eval_cases.json<br/>29 条单轮标准案例"]
-        Evaluator["evaluator.py<br/>加载案例、比较查询结果"]
-        Runner["runner.py<br/>逐条运行、隔离失败、统计准确率"]
-        Reporting["reporting.py<br/>生成指纹、JSON 和 Markdown 报告<br/>可选基线比较"]
+        Common["common/<br/>共享报告、数据指纹和 Markdown 渲染"]
+        SingleCases["suites/single_turn/cases.json<br/>单轮标准案例"]
+        SingleRunner["suites/single_turn/<br/>案例加载、比较和运行"]
+        MultiSuite["suites/multi_turn/<br/>Conversation 案例、运行和报告"]
+        AnalysisSuite["suites/business_analysis/<br/>案例、Judge、运行和报告"]
+        UnderstandingSuite["suites/query_understanding/<br/>语义案例与评测"]
         Reports["reports/evaluation/<br/>保存评测结果"]
 
-        EInit --> Evaluator
-        Entry --> Runner
-        Cases --> Evaluator
-        Evaluator --> Runner
-        Runner -->|"复用正式查询入口"| Service
-        Runner --> Reporting
-        Reporting --> Reports
+        EInit --> Entry
+        Entry --> SingleRunner
+        Entry --> MultiSuite
+        Entry --> AnalysisSuite
+        Entry --> UnderstandingSuite
+        SingleCases --> SingleRunner
+        SingleRunner -->|"复用正式查询入口"| Service
+        SingleRunner --> Common
+        MultiSuite --> Common
+        AnalysisSuite --> Common
+        Common --> Reports
     end
 
     subgraph RAGOffline["src/rag_offline：RAG 离线构建代码"]

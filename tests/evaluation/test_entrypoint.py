@@ -145,10 +145,10 @@ class _FakeSemanticQueryUnderstanding:
 
 class EvaluationEntrypointTest(unittest.TestCase):
     def setUp(self) -> None:
-        from src.evaluation.reporting import SalesMartDataFingerprint
+        from evaluation.common.reporting import SalesMartDataFingerprint
 
         self.database_fingerprint_patch = patch(
-            "src.evaluation.__main__.collect_sales_mart_fingerprint",
+            "evaluation.__main__.collect_sales_mart_fingerprint",
             return_value=SalesMartDataFingerprint(
                 seed_version="dev-seed-v1",
                 data_summary={
@@ -164,7 +164,7 @@ class EvaluationEntrypointTest(unittest.TestCase):
         self.addCleanup(self.database_fingerprint_patch.stop)
 
     def test_business_analysis_mode_fails_closed_without_llm_judge(self) -> None:
-        from src.evaluation.__main__ import run_cli
+        from evaluation.__main__ import run_cli
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -303,7 +303,7 @@ class EvaluationEntrypointTest(unittest.TestCase):
         self.assertIn("Business Analysis End-to-End Accuracy: 0.00%", stdout.getvalue())
 
     def test_runs_same_online_service_and_writes_report(self) -> None:
-        from src.evaluation.__main__ import run_cli
+        from evaluation.__main__ import run_cli
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -383,7 +383,7 @@ class EvaluationEntrypointTest(unittest.TestCase):
     def test_multi_turn_mode_runs_query_api_conversations_and_writes_separate_report(
         self,
     ) -> None:
-        from src.evaluation.__main__ import run_cli
+        from evaluation.__main__ import run_cli
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -428,7 +428,7 @@ class EvaluationEntrypointTest(unittest.TestCase):
             retrieval_provider = _FakeRetrievalProvider(context)
 
             with patch(
-                "src.evaluation.__main__._build_online_retrieval_provider",
+                "evaluation.__main__._build_online_retrieval_provider",
                 return_value=retrieval_provider,
             ):
                 exit_code = run_cli(
@@ -478,7 +478,7 @@ class EvaluationEntrypointTest(unittest.TestCase):
         self.assertIn("查询执行准确率", summary_report)
 
     def test_online_retrieval_mode_injects_provider(self) -> None:
-        from src.evaluation.__main__ import run_cli
+        from evaluation.__main__ import run_cli
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -519,7 +519,7 @@ class EvaluationEntrypointTest(unittest.TestCase):
         self.assertIsInstance(provider.requests[0], RetrievalRequest)
 
     def test_online_retrieval_preflight_stops_before_cases(self) -> None:
-        from src.evaluation.__main__ import run_cli
+        from evaluation.__main__ import run_cli
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -572,7 +572,7 @@ class EvaluationEntrypointTest(unittest.TestCase):
         self.assertEqual(list(output_dir.glob("*")), [])
 
     def test_online_retrieval_reuses_preflight_runtime(self) -> None:
-        from src.evaluation.__main__ import run_cli
+        from evaluation.__main__ import run_cli
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -587,7 +587,7 @@ class EvaluationEntrypointTest(unittest.TestCase):
             provider = _FakeRetrievalProvider(context)
 
             with patch(
-                "src.evaluation.__main__._build_online_retrieval_provider",
+                "evaluation.__main__._build_online_retrieval_provider",
                 return_value=provider,
             ) as build_provider:
                 exit_code = run_cli(
@@ -626,11 +626,11 @@ class EvaluationEntrypointTest(unittest.TestCase):
         self.assertEqual(report["metadata"]["rag_asset_version"], "test-rag-build")
 
     def test_rag_asset_version_change_is_rejected(self) -> None:
-        from src.evaluation.__main__ import (
+        from evaluation.__main__ import (
             _preflight_online_retrieval,
             _verify_rag_asset_version,
         )
-        from src.evaluation.reporting import ReportingError
+        from evaluation.common.reporting import ReportingError
 
         runtime = _ChangingRuntime()
         asset_version = _preflight_online_retrieval(runtime)
@@ -640,7 +640,7 @@ class EvaluationEntrypointTest(unittest.TestCase):
     def test_query_understanding_mode_writes_semantic_report_without_sql_chain(
         self,
     ) -> None:
-        from src.evaluation.__main__ import run_cli
+        from evaluation.__main__ import run_cli
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -701,7 +701,7 @@ class EvaluationEntrypointTest(unittest.TestCase):
         self.assertIn("Query Understanding Accuracy: 100.00%", stdout.getvalue())
 
     def test_returns_nonzero_when_evaluation_has_failed_case(self) -> None:
-        from src.evaluation.__main__ import run_cli
+        from evaluation.__main__ import run_cli
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -740,7 +740,7 @@ class EvaluationEntrypointTest(unittest.TestCase):
         self.assertIn("Execution Accuracy: 0.00%", stdout.getvalue())
 
     def test_returns_nonzero_when_evaluation_has_invalid_case(self) -> None:
-        from src.evaluation.__main__ import run_cli
+        from evaluation.__main__ import run_cli
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -786,7 +786,7 @@ class EvaluationEntrypointTest(unittest.TestCase):
         self.assertIn("Execution Accuracy: N/A", stdout.getvalue())
 
     def test_loads_explicit_baseline(self) -> None:
-        from src.evaluation.__main__ import run_cli
+        from evaluation.__main__ import run_cli
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -837,7 +837,7 @@ class EvaluationEntrypointTest(unittest.TestCase):
         self.assertFalse(report["baseline_comparison"]["comparable"])
 
     def test_returns_controlled_error_without_leaking_secret(self) -> None:
-        from src.evaluation.__main__ import run_cli
+        from evaluation.__main__ import run_cli
 
         stderr = StringIO()
         exit_code = run_cli(
