@@ -27,14 +27,16 @@ Stage: PR 检查中
 - Ticket 01、02、03 均已完成，Plugin PR 和 ChatBI Draft PR 已创建。
 - Plugin PR #1：`https://github.com/K999999999999/agent-plugins/pull/1`，状态 `OPEN`；无 CI checks。
 - ChatBI PR #37：`https://github.com/K999999999999/chatbi/pull/37`，状态 `OPEN` / Draft；自动合并检查因 Draft 被跳过。
-- ChatBI CI：确定性测试、代码质量、SQL Guard、PostgreSQL 集成、启动 Smoke、Secret scan、静态安全检查通过；Dependency audit 因 `urllib3 2.7.0` 报告 3 个 CVE 失败。该 PR 没有修改依赖文件。
+- Dependency audit 修复：`uv.lock` 将间接依赖 `urllib3` 从 `2.7.0` 更新至 `2.8.0`，提交 `e3ffd18`；没有修改直接依赖约束或应用代码。
+- 本地验证：锁文件检查通过、`pip-audit` 未发现已知漏洞、pytest `573 passed, 14 skipped, 128 subtests passed`。
+- ChatBI CI 在提交 `e3ffd18` 上全部通过；之后的状态记录提交会触发 CI 重跑，恢复时须核对 PR 实时状态。
 - 当前实现基线：`c78cf06c3c37339720f32990ebdca9ea8e7a34a7`；初始 Git 状态只有本工作项 `.scratch/harness-session-flow/` 未跟踪。
 - 原工作区中的 Harness 文档改动和 `.scratch/engineering-quality-gates/` 未移动、未修改。
 
 ## 未决事项
 
-- ChatBI Draft PR 的 Dependency audit 未通过；需先决定是否另开依赖升级工作，不应将该 Draft 转为 Ready。
+- ChatBI PR 保持 Draft，等待用户 Review 并决定何时标为 Ready；标为 Ready 会触发仓库自动 Squash Auto-merge 流程。
 
 ## 下一步
 
-- Review 两个 PR；ChatBI 依赖审计问题解决并所有 required checks 通过后，再由用户决定是否将 Draft 标为 Ready。
+- 等待用户 Review Plugin PR #1 和 ChatBI Draft PR #37；用户确认 Ready 后再更新 ChatBI PR 状态，并检查自动合并与最终 CI 结果。
