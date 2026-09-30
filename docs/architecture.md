@@ -381,5 +381,5 @@ Online Retrieval V1 已接入 Online Query：实体类、单指标和多指标�
 - Golden Set 当前包含单轮 29 个案例、多轮 7 个 Conversation / 15 个轮次、Business Analysis 10 个案例；Query Understanding 6 个案例为辅助证据。
 - RAG Offline Build 和 Online Retrieval V1 已实现。新 manifest 记录输入指纹；production 启动时校验 catalog、Metadata 和当前发布资产，不匹配时拒绝 Ready。
 - PostgreSQL 首次初始化需在基础 init 完成后运行 `src.chatbi_control migrate`；它通过 `PostgresSaver.setup()` 安装 checkpoint 表和权限，healthcheck / API 启动检查验证其完整性。
-- 日期化 Acceptance 和 ignored reports 是历史证据，不代表当前 HEAD。Evaluation 当前结果以带 Git Commit / Git Dirty 身份的报告为准；本轮当前 HEAD 基线由 Ticket 04 建立。
+- 日期化 Acceptance 和 ignored reports 是历史证据，不代表当前候选。Evaluation 基线只有在单轮、多轮和 Business Analysis 三套报告均记录同一最终 clean commit、`git_dirty=false`，且各自满足 `0 FAIL`、`0 INVALID_CASE` 后才成立。commit `31a04549924f622777f106d4fe5a758bd2ca2beb` 上的通过结果是历史基线；后续候选需重新评测。
 - 当前入口是同步 Query API 与 Streamlit。多源、多 Schema、多租户、任意复杂分析和生产部署运行保障不属于已验收的当前 Contract。
