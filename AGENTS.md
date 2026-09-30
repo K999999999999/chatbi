@@ -1,227 +1,54 @@
-# AGENTS.md
-
 # ChatBI AI Development Rules
 
-本文件定义 Codex / AI Coding Agent 在本仓库中的项目规则。具体 Architecture（架构）、Domain（领域）、Spec（规格）和当前状态，以对应 Source of Truth（事实源）为准。
+本文件是 ChatBI Coding Agent 的精简入口和必须遵守的稳定规则。Harness 的组成和读取方式见 [`docs/agents/agent-harness.md`](docs/agents/agent-harness.md)；详细流程和领域 Contract 以本文列出的 Source of Truth 为准。
 
-## Language
+## Language & Collaboration
 
-- 默认使用中文生成 Spec、Ticket、ADR、Code Review、工程报告和完成报告。
-- Commit Message 使用 `<type>(<scope>): <中文摘要>`；`type`、`scope` 可以保持 Conventional Commit（约定式提交）格式，摘要必须使用中文。
-- English 技术术语、Skill 名称、命令名、API、类名、函数名、文件路径和代码保持原样。
-- 需要引用原始英文内容时，保留原文并补充中文解释。
+- 默认用中文沟通、编写 Spec、Ticket、ADR、Review 和报告；Commit 摘要使用中文，格式为 `<type>(<scope>): <中文摘要>`。技术术语、Skill、命令、API、类名、函数名、路径和代码保持原样；引用英文时保留原文并补充中文解释。
+- 先给结论，区分事实、决定、假设和建议；需要用户决定时一次只问最关键的问题。
+- 保留用户已有修改，不覆盖、不删除、不回退，也不把无关文件加入当前交付。
 
-## Communication
+## Project & Source of Truth
 
-- 先给直接结论，再说明原因和影响。
-- 使用直白、完整的中文说明，不只给出“可以”“不可以”“需要澄清”等结论，必须说明对象、原因和下一步行动。
-- 明确区分当前事实、已经确认的决定、待确认的问题、假设和建议，不得把假设表达成已确认结论。
-- 讨论多个方案时，明确推荐方案、主要取舍和适用边界；存在不确定性时直接说明不确定点。
-- 说明工作流程时，明确当前阶段、已经完成的内容、尚未完成的内容，以及是否需要用户确认。
-- 每次需要用户决策时，只提出一个最关键的问题，并说明这个决定会影响什么。
-- Skill 名称、阶段名称和技术术语不能替代解释；首次使用或容易混淆时，先用普通中文说明其作用。
+- ChatBI 是 Domain AI Engine（领域 AI 引擎），Architecture 是 Modular Monolith（模块化单体）。遵循 Business First、Domain Owns Business Truth、Model proposes, program decides、Stable Core, Replaceable Edge 和 Do Not Overbuild。
+- 业务正确优先，其次是最小完整闭环、验证、可维护性和 Production Readiness。
+- `docs/architecture.md` 定义架构；`docs/product-scope.md` 定义当前产品边界；`docs/specs/` 定义行为 Contract；`docs/designs/` 记录实现设计；`docs/acceptance/`、Tests 和 Evaluation 提供验收证据。
+- 上层已确认的事实源优先于下层实现。Legacy Code、旧 Metadata 或派生产物不得反向修改已确认的 Architecture、Domain 或 Contract；实现冲突时先检查实现。
+- 领域任务按 [`docs/agents/domain.md`](docs/agents/domain.md) 读取相关事实源。不要为补齐形式创建空文档。
 
-## Agent skills
+## Architecture & Model Boundaries
 
-这里仅保留当前仓库的本地配置指针，不重复编写 Skill 的工作流程：
+- 保持依赖方向：`Interfaces → Application → Domain`；Application 依赖 Port / Contract，Infrastructure 提供 Adapter。
+- Domain 不依赖具体 Provider、Database 或 Platform SDK；Infrastructure 不定义业务真相；不为假设中的未来需求建设复杂抽象。
+- 系统边界、核心业务链、稳定对象语义、一级模块职责、依赖方向、Business Source of Truth、公共 Contract、Authorization / State 不变量发生变化前，先取得用户确认。
+- 查询链路保持 `Natural Language → Business Semantic Resolution → SemanticQuery → Certified Physical Mapping → SQL`，不得从 Natural Language 直接映射到 Database Column。
+- LLM 输出始终是 Untrusted Candidate；Business Truth、Metric Definition、Authorization、Data Scope 和 SQL Safety 由权威数据、Contract 和确定性代码裁决。模型生成的 SQL 必须经过确定性 SQL Guard。
 
-### Local task tracker
+## Workflow
 
-Spec、Ticket 和路径规划使用本地 Markdown，详见 `docs/agents/issue-tracker.md`。
+- 工程请求先由 `ask-matt` 判断阶段、范围和风险。目标、成功标准、事实源或边界不清时进入 `grill-with-docs`；小范围、单会话且不改变稳定 Contract 的修改可直接实施。
+- 多阶段 Feature 依次经过 Spec 确认、`design-review`、Ticket 草案与 Ticket Readiness Review、用户确认 Ticket 拆分，再进入实现。细节见 [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md)。
+- Ticket Readiness Review 在当前上下文只读执行，不启动独立 Agent；它不替代设计审查、实现后的 Code Review 或 PR Review。
+- 仓库规则引用的 workflow Skills 可能由 Codex 环境中的 `engineering-workflow` Plugin 提供；Harness 的说明和依赖边界见 [`docs/agents/agent-harness.md`](docs/agents/agent-harness.md)。
 
-### Spec / Design Review
+## Quality & Security
 
-已确认的 Spec 在进入 `to-tickets` 前必须经过 `design-review` 的只读审查；审查范围和 Verdict 由该 Skill 负责，审查不修改代码或文档。
+- 行为变化同步更新相应 Software Test、AI Evaluation 或 Business Acceptance；新 Bad Case 加入 Regression。没有适用验证证据，不得声称目标行为已完成。
+- Software Test 验证确定性软件行为；AI Evaluation 验证模型行为；Business Acceptance 验证业务目标。具体验证按改动风险选择。
+- 真实 API Key、Token、Password、Connection String 和其他 Secret 不得进入 Source Code、Git、Logs、Documentation 或 Test Data。`.env` 是本地真实配置；`.env.example` 是安全模板。
 
-### Workflow routing
+## Git & Delivery
 
-所有工程请求先由 `ask-matt` 判断当前阶段、范围和风险。`grill-with-docs` 只在目标、成功标准、事实源或边界不清时触发；小范围、单会话且不改变稳定 Contract 的修改可以直接进入 `implement`。多阶段 Feature 必须经过 Spec 确认、`design-review`、Ticket Readiness Review 和 Ticket 确认后再实现。
+- 新的 Feature、Bug Fix 或工程目标从已同步的 `master` 和干净工作区开始；一个目标默认使用一个 active branch 和一个 active worktree。
+- 默认只做本地 Commit。Push、创建或更新 PR 必须先取得用户明确确认；Agent 不直接 Merge。详细候选、验证、PR、Auto-merge 和清理规则见 [`docs/agents/git-pr-workflow.md`](docs/agents/git-pr-workflow.md)。
+- 只提交当前目标相关改动；Contract、适用验证、Review 和 Diff 检查完成后才能 Commit。高风险链路及验证级别按 Git / PR 流程执行。
+- 交付报告用中文列出提交内容、验证结果和剩余问题。未运行的验证要明确标注。
 
-`Ticket Readiness Review` 是当前上下文中的只读门禁，不启动独立 Agent；它检查 Ticket 的 Scope、依赖、验收行为、验证证据、owned files 和 Done When 是否足以安全实施。它不替代 Spec `design-review`、实现后的 `code-review` 或 PR Review。
+## Documentation Map
 
-### Domain docs
-
-领域文档的读取位置和边界详见 `docs/agents/domain.md`。
-
-### Git / PR workflow
-
-Branch、worktree、Commit、Pull Request 和完成后的本地清理规则详见 `docs/agents/git-pr-workflow.md`。
-
-## ChatBI Identity & Core Principles
-
-ChatBI = Domain AI Engine（领域 AI 引擎）
-Architecture = Modular Monolith（模块化单体）
-
-始终遵循：
-
-- Business First（业务优先）
-- Domain Owns Business Truth（领域拥有业务事实）
-- Model proposes, program decides（模型提出，程序裁决）
-- Stable Core, Replaceable Edge（稳定核心，可替换边缘）
-- Do Not Overbuild（不过度建设）
-
-优先级为：
-
-业务正确 → 最小完整闭环 → Test / Evaluation → 可维护 → Production Readiness。
-
-## Source of Truth
-
-职责：
-
-- Architecture：系统结构、边界、不变量
-- Engineering：长期工程规则
-- Domain：业务事实、规则、口径
-- Feature / Module Spec：行为契约
-- Code：Contract 的实现
-- Tests / Evaluation：正确性证据
-
-规则：
-
-- 上层事实源优先于下层实现。
-- 不得用 Legacy Code、旧 Metadata 或 Derived Artifact 反向修改已确认的 Architecture、Domain 或 Contract。
-- 实现与设计冲突时，先检查并修正实现。
-
-## Architecture & Layer Boundary
-
-以下变化必须先确认：
-
-- 系统定位或边界
-- 核心业务链
-- 核心对象稳定语义
-- Module 一级职责
-- 分层 / 依赖方向
-- Business Source of Truth
-- 稳定公共 Contract
-- Security / Authorization / State 不变量
-
-稳定依赖：
-
-```text
-Interfaces
-→ Application
-→ Domain
-
-Application
-→ Port / Contract
-← Infrastructure Adapter
-```
-
-禁止：
-
-- Domain 依赖具体 Provider、Database 或 Platform SDK；
-- Infrastructure 定义业务真相；
-- 为假设中的未来提前建设复杂抽象。
-
-## Semantic & Model Rule
-
-保持：
-
-```text
-Natural Language
-→ Business Semantic Resolution
-→ SemanticQuery
-→ Certified Physical Mapping
-→ SQL
-```
-
-不得直接从 Natural Language 映射到 Database Column。
-
-LLM 输出始终视为 Untrusted Candidate（不可信候选）。LLM 可以提出候选，但不得最终决定：
-
-- Business Truth
-- Metric Definition
-- Authorization
-- Data Scope
-- SQL Safety
-
-最终由 Authoritative Data、Contract 和 Deterministic Code 裁决。模型生成 SQL 必须经过确定性 SQL Guard。
-
-## Quality Evidence
-
-- 行为变化必须同步更新相应测试。
-- Software Test 验证确定性软件正确性；AI Evaluation 验证 AI 行为；Business Acceptance 验证业务目标是否满足。
-- 新的 Bad Case 应加入 Regression（回归）集合。
-- 没有相应验证，不得声称目标行为已经完成。
-- 具体 TDD、Code Review、测试执行和报告格式由对应 Skill 负责。
-
-## Security Rule
-
-真实 API Key、Token、Password、Connection String 和其他 Secret 不得进入：
-
-- Source Code
-- Git
-- Logs
-- Documentation
-- Test Data
-
-`.env` 是本地真实配置，`.env.example` 是可提交的安全模板。
-
-## Delivery Boundary
-
-- 每次修改只覆盖已确认的 Scope，不混入无关 Feature、重构、清理或未来能力。
-- 保留用户已有修改，不覆盖、不删除、不回退，也不把无关文件加入当前提交。
-- 默认只做本地 Commit，不 Push、不创建 PR、不创建外部 Issue，除非用户明确要求。
-- 计划合入 `master` 的变更，无论大小，统一采用 `Feature branch → candidate → PR → required checks → Auto-merge → 合并后清理`；小变更可以跳过 Spec / Ticket，但不能跳过相关测试、Diff Review、candidate 检查和 PR 门禁。
-- 只有 Contract、相关验证和 Diff 检查完成后才提交；无法确认修改归属或验证失败时不提交。
-- Commit Message 使用 `<type>(<scope>): <中文摘要>`，完成报告使用中文说明提交内容、验证结果和剩余问题。
-
-## Branch / Worktree Workflow
-
-- `master` 是默认基线；开始新的 Feature、Bug Fix 或工程目标前，先确认 `master` 已同步、工作区干净，再创建一个目标明确的 Feature branch。
-- 一个已确认的目标默认只使用一个 active branch 和一个 active worktree；多个 Ticket、多个逻辑 Commit 在同一个 Feature branch 上完成。
-- 不为每个 Ticket、每个 Commit 或每次测试单独创建 branch；并行 branch、stacked PR 或额外 worktree 只有在用户明确确认并记录 base、依赖和清理责任后才允许。
-- `backup/*` 和 `codex/backup-*` 只用于回滚保护，不作为日常开发线，不创建 PR。
-- 恢复工作前必须重新检查当前 branch、HEAD、worktree、Git status 和相关 `.scratch` 记录；已被主干或其他 candidate supersede 的 branch 不继续追加开发。
-- 一个 Feature 形成唯一 candidate 后，其他同目标候选 branch 停止使用；PR 合并后，回到 `master`，按本文档的安全清理规则自动收尾，不为同一交付重复请求常规清理确认；明确放弃的 candidate 只有在归属和清理范围明确时才处理。
-- 常规清理只针对当前 PR 对应的唯一 Feature branch：确认 PR 已合并、工作区没有用户修改、没有额外未推送 Commit、没有依赖它的 Open / Stacked PR，且目标不是 `master`、受保护分支或 `backup/*` / `codex/backup-*` 后，Agent 可以删除本地 Feature worktree / branch，并按仓库的 `delete_branch_on_merge` 设置清理远端 branch。
-- 分支归属、合并状态、用户修改或依赖关系有任何不确定时，必须暂停并询问；历史遗留分支的批量清理仍需单独确认。
-- 详细的分支创建、Ticket 实施、candidate、PR 和清理顺序以 `docs/agents/git-pr-workflow.md` 为准。
-
-## AI Agent Commit & Pull Request Workflow
-
-本节定义 Agent（智能代理）在本仓库中的提交与 Pull Request（合并请求）协作流程。它是项目协作约定，不把 PR 或完整 Real E2E（真实端到端）绑定到固定的 commit 数量。
-
-### Commit 数量与目标判断
-
-- 一个 PR 只承载一个清晰、已确认的业务目标或工程目标；不以“几个 commit”作为拆分标准。
-- Agent 根据 Scope、改动风险、逻辑完整性和是否已经形成可运行的 candidate commit（候选提交）判断是否适合进入 PR 阶段。
-- 多个相关的小 commit 可以放在同一个 PR；较大的功能应按 Contract、实现、测试等逻辑边界形成多个 commit，只有能够独立验收且边界清楚时才拆成多个 PR。
-- 开发过程中的每个逻辑阶段运行对应的 targeted tests（针对性测试）；不因为每个 commit 都完成就机械运行完整 Real E2E。
-
-### PR 前的 Agent 门禁
-
-Agent 判断当前改动已经形成适合提交 PR 的 candidate commit 后，必须先向用户发送明确提醒，说明确认后将执行本地最终验收，并在验收通过后 Push / 创建或更新 PR；提醒还必须说明：
-
-- 当前 PR 的目标和包含的 commit 范围；
-- 当前改动是否属于需要完整 Real E2E 的高风险范围；
-- 仍然缺少哪些验证。
-
-Agent 只能在用户明确确认后进入 PR 前验收。该次确认同时授权后续成功路径的 Push / 创建或更新 PR；确认后的顺序固定为：
-
-```text
-用户确认
-→ 确认最终 candidate commit 和 git_dirty=false
-→ 按风险运行 targeted tests / AI Evaluation / Business Acceptance
-→ 影响高风险链路时运行本地完整 Real E2E
-→ 检查适用的测试、Evaluation、Business Acceptance 和 Real E2E 报告
-→ 验证通过后 Push / 创建或更新 PR
-```
-
-- 如果最终本地 E2E 失败，Agent 不得声称可以提交 PR；应报告失败案例和原因，修复后重新形成 candidate commit 并验证。
-- 本地 E2E 通过后如果又修改了会影响行为的代码，必须重新验证；只修改文档、注释或不影响运行行为的内容时，可以按风险重新判断。
-- 上述用户确认是 Push、创建或更新 PR 的外部状态授权。当前仓库的 `.github/workflows/enable-auto-merge.yml` 可能在符合条件的 PR 事件后自动请求 Squash Auto-merge；Agent 不直接执行 Merge，必须在 PR 前说明该自动行为、目标 PR、合并策略和当前检查状态，并在执行后验证 PR 状态。Stacked PR 只有在最终 base、required checks（必需检查）和 branch protection（分支保护）明确后才允许启用 Auto-merge；生产部署仍需单独确认。
-- 每次创建或更新 PR 后，Agent 使用等待 / 监控机制累计等待至少 2 分钟，再检查 PR 的真实状态；如果 PR 已 `MERGED`，在满足常规清理条件时无需再次请求用户确认，自动同步 `master`、清理本次 PR 对应的本地和远端无用 Feature branch / worktree、检查工作区和备份分支，并输出“可以开始下一个 Feature”的完成报告。PR 仍在等待、检查失败、已关闭但未合并，或分支归属 / 依赖不明确时，不得清理，必须报告当前状态和阻塞原因。
-
-### 风险与验证级别
-
-- Retrieval、Prompt、Semantic、RAG Offline Build、Embedding、Qdrant、LLM 配置、Evaluation cases 或 SQL 生成链路的改动，默认属于高风险，需要在最终 candidate commit 上运行本地完整 Real E2E。
-- Authorization、State、API Contract 或数据范围变化至少需要对应的模块 / 集成测试和 Business Acceptance 或安全验收；如果同时影响模型、Retrieval 或 SQL 生成链路，再按上一条执行完整 Real E2E。
-- 文档、注释、纯测试、纯 CI 或不影响运行行为的整理，运行相关 targeted tests，不要求完整 Real E2E。
-- 完整 Real E2E 使用本地 `.env`、本地 PostgreSQL、Qdrant、BGE-M3 和真实 LLM；不提交 `.env`，不在日志或报告中暴露 Secret。
-- GitHub Actions 的快速 CI 在 Push / Pull Request 更新后自动运行；独立 Real E2E workflow 只按需手动触发，不作为普通 PR 的自动步骤。
-
-## Final Principle
+- Harness 组成、后续 AI 的读取入口和文档维护触发条件：[`docs/agents/agent-harness.md`](docs/agents/agent-harness.md)
+- 架构和产品边界：[`docs/architecture.md`](docs/architecture.md)、[`docs/product-scope.md`](docs/product-scope.md)
+- 行为 Contract、实现设计、验收证据：`docs/specs/`、`docs/designs/`、`docs/acceptance/`
+- 本地开发、服务运行和评测：[`docs/runbook.md`](docs/runbook.md)、`evaluation/`、`reports/evaluation/`
 
 > Contract 内自主执行，Contract 外停止扩张。
-
-> 先完成最小正确闭环，再根据真实需求演进。
