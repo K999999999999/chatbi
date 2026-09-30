@@ -54,11 +54,11 @@ class MultiTurnEvaluationTest(unittest.TestCase):
         self.reference = QueryData(columns=("value",), rows=((1,),), truncated=False)
 
     def test_standard_multi_turn_set_loads_and_expected_sql_passes_guard(self) -> None:
-        from src.evaluation.multi_turn_evaluation import load_multi_turn_cases
+        from evaluation.suites.multi_turn.multi_turn_evaluation import load_multi_turn_cases
         from src.online_query.context import load_query_context
         from src.online_query.sql_guard import validate_sql
 
-        cases = load_multi_turn_cases(Path("src/evaluation/multi_turn_eval_cases.json"))
+        cases = load_multi_turn_cases(Path("evaluation/suites/multi_turn/cases.json"))
         context = load_query_context()
 
         self.assertEqual(len(cases), 7)
@@ -96,7 +96,7 @@ class MultiTurnEvaluationTest(unittest.TestCase):
                     validate_sql(turn.expected_sql, context)
 
     def test_loader_requires_outcome_error_for_expected_failure_turns(self) -> None:
-        from src.evaluation.multi_turn_evaluation import load_multi_turn_cases
+        from evaluation.suites.multi_turn.multi_turn_evaluation import load_multi_turn_cases
 
         invalid_case = {
             "id": "MT01",
@@ -125,7 +125,7 @@ class MultiTurnEvaluationTest(unittest.TestCase):
         self.assertIn("expected_error_code", cases[0].validation_error or "")
 
     def test_runs_whole_conversations_in_isolated_shared_sessions(self) -> None:
-        from src.evaluation.multi_turn_evaluation import (
+        from evaluation.suites.multi_turn.multi_turn_evaluation import (
             ConversationResponse,
             MultiTurnCase,
             MultiTurnStatus,
@@ -264,7 +264,7 @@ class MultiTurnEvaluationTest(unittest.TestCase):
         self.assertEqual(run.summary.outcome_accuracy, 1.0)
 
     def test_normalizes_numeric_values_serialized_as_strings_by_query_api(self) -> None:
-        from src.evaluation.multi_turn_evaluation import (
+        from evaluation.suites.multi_turn.multi_turn_evaluation import (
             ConversationResponse,
             MultiTurnCase,
             MultiTurnStatus,

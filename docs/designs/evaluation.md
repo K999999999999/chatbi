@@ -28,23 +28,29 @@ Evaluation（评测）实现为一个离线回归评测 Runner（运行器），
 
 ## 最小代码结构
 
-继续使用现有 `src/evaluation/`，内部不再分层建目录。
+评测工具从运行时代码 `src/` 中独立出来，根目录 `evaluation/` 只承载离线评测代码。共享能力与具体评测套件分开；每个套件的案例文件和实现代码放在同一目录。
 
-| 文件 | 职责 |
+| 路径 | 职责 |
 |---|---|
-| `eval_cases.json` | 已确认的 21 条标准案例 |
-| `evaluator.py` | 加载案例、比较结果、运行案例、汇总准确率和比较上一份报告 |
-| `__main__.py` | 创建现有 Online Query 依赖，可选装配在线 RAG、收集运行指纹、保存 JSON 报告并打印摘要 |
-| `__init__.py` | 只导出评测入口和结果类型 |
+| `evaluation/__main__.py` | CLI 入口和依赖装配，按参数调度对应套件 |
+| `evaluation/common/` | 各套件共用的报告、指纹、错误处理和 Markdown 渲染 |
+| `evaluation/suites/single_turn/` | 单轮标准案例、加载 / 比较逻辑和顺序运行器 |
+| `evaluation/suites/multi_turn/` | 多轮 Conversation 案例、API 客户端、运行与报告逻辑 |
+| `evaluation/suites/business_analysis/` | 经营分析案例、Judge、运行与报告逻辑 |
+| `evaluation/suites/query_understanding/` | 查询理解语义案例与评测逻辑 |
 
-测试放在 `tests/evaluation/`：
+Software Test（软件测试）按相同分类放在 `tests/evaluation/`：
 
-| 文件 | 职责 |
+| 路径 | 职责 |
 |---|---|
-| `test_evaluator.py` | 案例加载、结果比较、失败隔离、汇总和能力回退测试 |
-| `test_evaluation_entrypoint.py` | 依赖组装、运行指纹和报告写入测试，不调用真实 LLM |
+| `tests/evaluation/test_entrypoint.py` | CLI 参数分派、依赖装配和入口级报告行为 |
+| `tests/evaluation/common/` | 共享报告、数据指纹与 Observability 行为 |
+| `tests/evaluation/single_turn/` | 单轮案例加载、结果比较、运行器和验收测试 |
+| `tests/evaluation/multi_turn/` | 多轮案例、Conversation API 客户端和运行行为 |
+| `tests/evaluation/business_analysis/` | 经营分析案例、Judge、运行器和报告行为 |
+| `tests/evaluation/query_understanding/` | 查询理解语义评测行为 |
 
-当前不拆 `loader.py`、`comparator.py`、`runner.py`、`version.py` 和 `ports/`。只有一个文件出现明确独立复杂度后再拆分。
+调整只改变目录和导入边界，不改变已有评测行为或案例 Contract。
 
 ## 复用现有系统
 
@@ -212,8 +218,8 @@ JSON 是机器可读评测证据；Markdown 是由同一份 JSON 数据确定性
 真实评测命令设计为：
 
 ```text
-uv run --env-file .env python -m src.evaluation --online-retrieval
-uv run --env-file .env python -m src.evaluation --online-retrieval --baseline <report-path>
+uv run --env-file .env python -m evaluation --online-retrieval
+uv run --env-file .env python -m evaluation --online-retrieval --baseline <report-path>
 ```
 
 运行时从现有 `.env` 获取 LLM 和 PostgreSQL 配置。没有明确授权时，不执行真实命令。

@@ -3,17 +3,17 @@
 import unittest
 from dataclasses import replace
 
-from src.evaluation.business_analysis_reporting import (
+from evaluation.suites.business_analysis.business_analysis_reporting import (
     create_business_analysis_report,
     render_business_analysis_markdown,
 )
-from src.evaluation.business_analysis_runner import (
+from evaluation.suites.business_analysis.business_analysis_runner import (
     BusinessAnalysisCaseEvaluation,
     BusinessAnalysisCaseStatus,
     BusinessAnalysisEvaluationRun,
     BusinessAnalysisEvaluationSummary,
 )
-from src.evaluation.reporting import RunMetadata
+from evaluation.common.reporting import RunMetadata
 
 
 class BusinessAnalysisReportingTest(unittest.TestCase):

@@ -9,8 +9,8 @@ from src.authorization import (
     StaticAuthorizationPolicyStore,
     StaticIdentityProviderAdapter,
 )
-from src.evaluation.evaluator import load_evaluation_cases
-from src.evaluation.runner import CaseStatus, run_evaluation
+from evaluation.suites.single_turn.evaluator import load_evaluation_cases
+from evaluation.suites.single_turn.runner import CaseStatus, run_evaluation
 from src.online_query.context import load_query_context
 from src.online_query.contracts import QueryData, ValidatedSQL
 from src.online_query.service import OnlineQueryService
@@ -46,9 +46,9 @@ class V1AcceptanceTest(unittest.TestCase):
     def test_standard_corpus_passes_v1_guard_and_empty_result_contract(
         self,
     ) -> None:
-        root = Path(__file__).resolve().parents[2]
+        root = Path(__file__).resolve().parents[3]
         all_cases = load_evaluation_cases(
-            root / "src" / "evaluation" / "eval_cases.json"
+            root / "evaluation" / "suites" / "single_turn" / "cases.json"
         )
         cases = tuple(
             case for case in all_cases if case.expected_outcome == "result_match"

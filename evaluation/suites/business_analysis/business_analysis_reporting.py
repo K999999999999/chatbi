@@ -3,8 +3,8 @@
 from collections.abc import Mapping
 
 from .business_analysis_runner import BusinessAnalysisEvaluationRun
-from .reporting import RunMetadata, compare_baseline
-from .reporting_markdown import _render_run_info
+from ...common.reporting import RunMetadata, compare_baseline
+from ...common.reporting_markdown import _render_run_info
 
 
 def create_business_analysis_report(

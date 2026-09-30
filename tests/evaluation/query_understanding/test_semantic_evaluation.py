@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from src.evaluation.semantic_evaluation import (
+from evaluation.suites.query_understanding.semantic_evaluation import (
     QueryUnderstandingEvaluation,
     create_query_understanding_report,
     evaluate_query_understanding,
@@ -24,9 +24,9 @@ class _AdapterFailure(ValueError):
 
 class SemanticEvaluationTest(unittest.TestCase):
     def setUp(self) -> None:
-        root = Path(__file__).resolve().parents[2]
+        root = Path(__file__).resolve().parents[3]
         self.cases = load_query_understanding_cases(
-            root / "src" / "evaluation" / "query_understanding_cases.json"
+            root / "evaluation" / "suites" / "query_understanding" / "cases.json"
         )
 
     def test_cases_cover_no_time_and_explicit_time_boundaries(self) -> None:

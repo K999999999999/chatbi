@@ -13,7 +13,7 @@ from src.online_query.contracts import QueryData
 
 from .reporting_errors import ReportingError
 from .reporting_markdown import render_markdown_report
-from .runner import CaseStatus, EvaluationRun
+from ..suites.single_turn.runner import CaseStatus, EvaluationRun
 
 
 class EvaluationReferenceRun(Protocol):

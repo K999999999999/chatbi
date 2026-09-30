@@ -4,8 +4,8 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from .multi_turn_evaluation import MultiTurnEvaluationRun
-from .reporting import RunMetadata, compare_baseline
-from .reporting_errors import ReportingError
+from ...common.reporting import RunMetadata, compare_baseline
+from ...common.reporting_errors import ReportingError
 
 
 def create_multi_turn_report(

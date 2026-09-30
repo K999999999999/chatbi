@@ -441,7 +441,7 @@ CHATBI_OTLP_TIMEOUT_SECONDS=5
 
 ### 11.2 Evaluation
 
-`src/evaluation/__main__.py` 使用相同构造函数创建 TraceRecorder，并将同一实例传入正式查询链路。`run_evaluation()` 增加有默认值的可选 TraceRecorder 参数，每个实际调用 Online Query 的案例由 Evaluation 外层持有 TraceScope，Service 复用该 Trace。CLI 退出前只执行一次 Flush，使 20 个案例的 Span 能发送完成。
+`evaluation/__main__.py` 使用相同构造函数创建 TraceRecorder，并将同一实例传入正式查询链路。`run_evaluation()` 增加有默认值的可选 TraceRecorder 参数，每个实际调用 Online Query 的案例由 Evaluation 外层持有 TraceScope，Service 复用该 Trace。CLI 退出前只执行一次 Flush，使 20 个案例的 Span 能发送完成。
 
 `CaseEvaluation` 和 JSON/Markdown 报告增加可选 `trace_id`：
 

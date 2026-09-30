@@ -342,7 +342,7 @@ PR 前的分支、candidate、用户授权、验收和交付顺序以 [`docs/age
 执行：
 
 ```bash
-uv run --env-file .env python -m src.evaluation --online-retrieval
+uv run --env-file .env python -m evaluation --online-retrieval
 ```
 
 Query 与 Business Analysis 黄金评测复用日常开发库 `chatbi_mvp`，expected SQL 和模型 SQL 都使用同一个只读数据库账号和执行器。报告记录 Seed 版本、Sales Mart 行数 / 日期范围摘要、实际数据 Hash 和 Hash 算法。显式比较 Baseline 时，数据 Hash / 算法 / 摘要或标准结果不同、或旧报告没有指纹时会标为 `NOT_COMPARABLE`，并说明原因，不报告回退 / 改善。无需另建评测数据库。
@@ -364,7 +364,7 @@ test -d .model-cache/bge-m3-5617a9f61b02
 指定历史报告进行回退比较：
 
 ```bash
-uv run --env-file .env python -m src.evaluation --online-retrieval --baseline reports/evaluation/<previous-report>.json
+uv run --env-file .env python -m evaluation --online-retrieval --baseline reports/evaluation/<previous-report>.json
 ```
 
 `--online-retrieval` 是真实 RAG 验收的必要开关；不带该参数的入口只适合显式静态上下文的确定性软件测试，不代表在线 RAG 技术故障可以回退静态 Schema。

@@ -6,8 +6,8 @@ from pathlib import Path
 from src.authorization import AuthContext
 from src.business_analysis.application import BusinessAnalysisSuccess
 from src.business_analysis.reporting import BusinessAnalysisReport
-from src.evaluation.business_analysis_evaluation import load_business_analysis_cases
-from src.evaluation.business_analysis_runner import (
+from evaluation.suites.business_analysis.business_analysis_evaluation import load_business_analysis_cases
+from evaluation.suites.business_analysis.business_analysis_runner import (
     BusinessAnalysisCaseStatus,
     JudgeResult,
     run_business_analysis_evaluation,
@@ -61,9 +61,9 @@ class BusinessAnalysisRunnerTest(unittest.TestCase):
 
     @staticmethod
     def _cases():
-        root = Path(__file__).resolve().parents[2]
+        root = Path(__file__).resolve().parents[3]
         return load_business_analysis_cases(
-            root / "src/evaluation/business_analysis_cases.json"
+            root / "evaluation/suites/business_analysis/cases.json"
         )
 
 
