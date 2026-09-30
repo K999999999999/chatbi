@@ -30,8 +30,8 @@ Stage: 完成
 
 ## 未决事项
 
-- 新 Thread 行为无法在当前会话内验证；下次新建 Thread 时确认 `workflow-discovery` 可见且仍需显式调用。
+None。
 
 ## 下一步
 
-- 新 Thread 确认 Plugin Skill 可见后，本工作项无需继续变更；若不可见，再按 Codex 支持方式排查。
+- 本工作项完成；无需后续工程动作。

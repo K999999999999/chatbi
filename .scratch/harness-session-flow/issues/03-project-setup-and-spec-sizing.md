@@ -67,7 +67,8 @@ Ticket 02.
 - `quick_validate.py`：两个修改过的 Skill 均通过。
 - Plugin JSON 可解析；13 个 Skill 名称与目录匹配且均为 `allow_implicit_invocation: false`；`git diff --check` 通过。
 - 使用 `codex plugin remove engineering-workflow@personal` 和 `codex plugin add engineering-workflow@personal` 同步缓存；Codex CLI 报告安装成功且 Plugin 仍启用。源目录与缓存 `diff -qr` 无差异；缓存含 13 个 Skill 并包含 `workflow-discovery`。
-- 限制：本机没有 README 所述 `validate_plugin.py`；本会话无法启动新 Thread 检验 Skill 对话加载，需在下次新 Thread 确认可见性。
+- 新建 Codex CLI Thread 做只读情境验收：显式调用 `workflow-discovery` 后正确判断为需求发现、依据项目规则播报状态、提出一个发现问题，且未修改工作区。
+- 限制：本机没有 README 所述 `validate_plugin.py`；已由 JSON、Skill 元数据和新 Thread 情境验收补足，但未运行该专用 validator。
 
 ## Comments
 
