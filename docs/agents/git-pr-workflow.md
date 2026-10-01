@@ -6,7 +6,7 @@
 
 - `AGENTS.md`：Agent 必须遵守的项目规则和授权边界；
 - 本文档：Branch、worktree、Commit、candidate、PR 和清理的详细工作顺序；
-- `.scratch/<feature>/`：当前 Feature 的 Spec、Ticket 和过程记录，不等于 Git branch，也不等于 PR；
+- `.scratch/<feature>/`：当前 Feature 的 Spec、Ticket 和长期过程 / 验收记录，不等于 Git branch，也不等于 PR；本机实时状态保存在 Git 公共目录；
 - `.github/pull_request_template.md`：PR 提交时的目标、风险、验证和 Review Checklist；
 - `.github/workflows/`：GitHub 上实际执行的 CI、Real E2E 和 Auto-merge automation。
 
@@ -51,7 +51,7 @@
 - 需求、Contract、范围或架构影响不清楚时，先建立并确认 Spec；
 - 多阶段 Feature 在完整 Spec 确认并通过 `workflow-design-review` 后拆分 Ticket；
 - `workflow-to-tickets` 形成草案后，必须先通过当前上下文的 `workflow-ticket-readiness`，再由用户确认 Ticket 拆分；
-- 用户确认 Ticket 拆分后，按依赖顺序选择 Ticket 实施；
+- Ticket 拆分确认与整体实施授权分别记录；用户已授权整个目标时，按依赖顺序连续实施全部 Ticket，不逐 Ticket 请求选择或继续确认；范围授权有限时只执行已授权 Ticket / 范围；
 - Spec / Ticket 的确认不自动授权 Push、PR 或 Merge。
 
 计划合入 `master` 的变更，无论大小，都在形成 candidate 后通过一个 PR 交付；小变更使用短 Spec、不拆 Ticket，但不跳过 targeted tests、Diff Review、candidate 检查、required checks 和合并后清理。只读咨询、诊断和不准备合入仓库的临时实验不进入 PR 流程。
@@ -59,7 +59,7 @@
 ### 3. Implement on one branch
 
 - 在同一个 Feature branch 中按 Ticket 实施；
-- 开始实现前确认当前 Ticket 已通过 Ticket Readiness Review，且没有遗留的 Contract / Architecture 决策；
+- 开始实现前确认 Ticket 拆分已通过 Ticket Readiness Review，且没有遗留的 Contract / Architecture 决策；完整目标授权后无需再次通过用户选择具体 Ticket 才开始；
 - 每个逻辑阶段运行对应 targeted tests；
 - 通过 `workflow-tdd`、`workflow-code-review` 和 Diff Review 收敛实现；
 - 只提交当前目标相关文件；
@@ -78,22 +78,20 @@
 
 候选阶段只形成本地可验收状态，不自动 Push 或创建 PR。
 
-### 5. User confirmation and PR
+### 5. 发布授权与 PR
 
-Agent 必须先向用户说明：
+形成 candidate 后，Agent 在聊天中向用户说明 PR 的唯一目标、提交范围、风险、验证证据和自动合并行为，再取得明确的 Push / PR 发布授权。PR 正文用于保留事实，不能替代聊天中的发布授权或后续交接。
 
-- PR 的唯一目标；
-- 包含的 commit 范围；
-- 是否涉及 Retrieval、Prompt、Semantic、RAG、Embedding、Qdrant、LLM、Evaluation cases 或 SQL 生成；
-- 必须执行的最终验证和仍缺少的证据。
+发布授权绑定当前工作项与已说明的范围。授权后可持续执行该范围内的 Push、创建 / 更新 PR、CI 修复、状态跟进、复盘和安全清理，不为每次正常推进重复询问；目标、范围或关键决定变化时重新确认。
 
-用户确认后，按以下顺序执行：
+按以下顺序执行：
 
 ```text
-用户确认
+发布授权
 → 最终确认 branch、HEAD 和 git_dirty=false
 → 按风险运行 targeted tests / AI Evaluation / Business Acceptance / Real E2E
 → 检查测试结果、Evaluation 报告和未验证范围
+→ 核对已有验证是否绑定当前 HEAD、base 和范围；相关行为 / 基线改变时重跑受影响检查，未受影响的证据可复用
 → Push
 → 创建或更新一个 PR
 → 检查 CI、required checks 和 PR 状态
@@ -107,7 +105,7 @@ Agent 必须先向用户说明：
 - Auto-merge：请求满足条件后自动合并；
 - Merge：实际合并 PR。
 
-当前仓库的 `.github/workflows/enable-auto-merge.yml` 可能在符合条件的 PR 事件后自动请求 Squash Auto-merge。Agent 不直接 Merge；创建或更新 PR 前必须向用户说明这一自动行为，并在之后验证 PR 的真实状态。Stacked PR 不得默认启用 Auto-merge。
+当前仓库的 `.github/workflows/enable-auto-merge.yml` 会在符合条件的 PR 事件后请求 Squash Auto-merge。动作前会读取 GitHub 上的实时 PR，核对 `state`、Draft、head SHA、base branch 和 head repository 是否仍与事件快照一致；旧事件、状态未知、PR 已关闭、仍为 Draft、base 不再是 `master` 或 head 已变化时跳过，不调用启用动作。普通独立 PR 以 required checks 自动合并为默认，不额外要求用户 PR Review；Agent 不直接人工 Merge。依赖 PR 必须依照依赖门禁保持 Draft，直到前置 PR、最终 base 和适用检查均满足。聊天授权前必须说明目标仓库的真实 Auto-merge 行为，之后核实 PR 的真实状态。Stacked / 依赖 PR 不得提前启用 Auto-merge。
 
 ### 6. PR 后状态检查与自动收尾
 
@@ -115,9 +113,9 @@ Agent 必须先向用户说明：
 
 #### 6.1 等待和检查
 
-1. 记录 PR number、URL、head branch、base branch、提交 HEAD 和创建 / 更新时间；
-2. 使用产品提供的 wait / monitor 机制累计等待至少 2 分钟；不要用一次超过 60 秒的阻塞式 sleep，必要时分段等待；
-3. 等待结束后读取真实状态，至少检查：
+1. 创建 / 更新后立即记录 PR number、URL、head branch、base branch、提交 HEAD、授权范围和时间，并核实一次真实状态；在聊天中交接 PR 链接、自动合并状态、CI 进度和下一检查条件；
+2. 若 CI 或合并仍在等待，使用事件或 monitor；否则按约两分钟的间隔继续核实，不因达到某个等待时长而结束任务。任何单次阻塞等待不得超过 60 秒，必要时分段等待，并在聊天中报告有意义的进展；
+3. 每次核实时读取真实状态，至少检查：
    - `state`、`mergedAt`、`mergeStateStatus`；
    - `headRefName`、`baseRefName`；
    - `autoMergeRequest` 和 Auto-merge（自动合并）策略；
@@ -126,7 +124,7 @@ Agent 必须先向用户说明：
 推荐使用：
 
 ```text
-gh pr view <PR> --json number,url,state,mergedAt,mergeStateStatus,headRefName,baseRefName,autoMergeRequest,statusCheckRollup
+gh pr view <PR> --json number,url,state,isDraft,mergedAt,mergeStateStatus,headRefOid,headRefName,baseRefName,autoMergeRequest,statusCheckRollup
 ```
 
 #### 6.2 合并后 Harness 复盘
@@ -157,7 +155,7 @@ PR 确认已 `MERGED` 后，每个交付都必须完成一次简短 Harness 复�
 
 #### 6.4 PR 尚未合并或异常时
 
-- `OPEN`、`BLOCKED`、CI 仍在运行或 Review 未完成：保留 head branch，不执行分支清理，报告 PR 状态、检查进度和下一等待条件；
+- `OPEN`、`BLOCKED`、CI / required checks 仍在运行或失败：保留 head branch，不执行分支清理，报告 PR 状态、检查进度和下一等待条件；
 - `CLOSED` 但未 `MERGED`：不删除可能仍有价值的 Feature branch，报告关闭状态并暂停；
 - 发现用户修改、未推送 Commit、Stacked PR、其他 worktree 依赖或 branch 归属不确定：暂停自动收尾并请求用户决定；
 - 不因为 branch 看起来旧、PR 看起来已经过期或名称相似就批量删除历史 branch。
@@ -184,7 +182,7 @@ PR 后报告至少包含：
 - 没有 Open PR、Stacked PR 或其他 worktree 依赖该 branch；
 - 目标不是 `master`、受保护 branch、`backup/*` 或 `codex/backup-*`。
 
-自动清理顺序为：等待至少 2 分钟并检查 PR 状态 → 回到 `master` → fast-forward 同步 `master` → 删除当前 Feature 的本地 worktree / branch → 检查仓库的 `delete_branch_on_merge` → 必要时删除已确认的远端 head branch → 再次检查工作区和远端引用。
+自动清理顺序为：确认 PR 已合并且状态事实最新 → 回到 `master` → fast-forward 同步 `master` → 删除当前 Feature 的本地 worktree / branch → 检查仓库的 `delete_branch_on_merge` → 在持续发布授权范围内必要时删除已确认的远端 head branch → 再次检查工作区和远端引用。
 
 以下情况仍必须暂停并请求用户确认：无法确认 branch 与当前 PR 的唯一归属、PR 未合并、存在 Stacked PR 或其他依赖、发现用户修改、目标是 backup / protected branch，或要批量处理当前交付之外的历史遗留 branch。不得因为“看起来旧”就自动删除历史 branch。
 
@@ -202,10 +200,12 @@ Stacked PR 必须记录：
 - parent PR 和最终 base；
 - required checks 和 branch protection；
 - 合并顺序；
-- parent 合并后如何更新 child branch。
+- parent 合并后如何将 child branch 更新到最终 base，并重跑 / 复用哪些验证。
+
+依赖未满足前，child PR 保持 Draft。parent 全部合并后，核对 child 的实时 head、base 和 Draft 状态，将 base 更新到最终目标，再按实际影响重跑受 base 变化影响的 CI / 验证。只有 parent 已合并、head 与最终 base 核对完成、适用 required checks 通过后才转为 Ready；切换 base 前的旧检查不能单独作为最终验收证据。无法读取依赖或 PR 实时状态时继续保持 Draft 并记录阻塞。
 
 如果这些条件不清楚，使用单一 Feature branch 和单一 PR。
 
 ### Resume
 
-恢复工作时，不默认相信旧的对话、Spec 摘要、branch 名称或历史报告。先检查 live checkout 的 branch、HEAD、status、worktree、远端关系和当前 `.scratch` `status.md` / Spec / Ticket 记录，再决定继续、切回 `master`、保留为 backup 或停止使用。分支与活动状态记录不唯一匹配时，列出候选并请用户选择。
+恢复工作时，不默认相信旧对话、Spec 摘要、branch 名称或历史报告。先读取 Git 公共目录的共享实时状态，再核对当前 checkout 的 branch、HEAD、status、worktree、远端关系、`.scratch` 长期记录和 PR 实况；按工作项 ID 与仓库 / PR 身份恢复，不要求当前 branch 唯一匹配。若归属、授权或工作之间存在无法消解的冲突，列出已核实事实并只询问解决冲突所需的决定；没有相关未完成工作时正常响应当前请求。

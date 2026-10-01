@@ -27,24 +27,28 @@
 
 ## Workflow
 
-- 每个进入本仓库的新会话，在首条回复前检查当前仓库、branch / worktree、`git status` 和活动工作记录；回复开头用一行状态栏说明阶段、工作项、工作区状态、上次停点和下一步。只读咨询标明“只读咨询 / 无实施阶段”。
-- 以当前 branch / worktree 唯一匹配 `.scratch/<feature>/status.md` 中的活动记录；没有唯一匹配时，报告候选并请用户选择，不根据旧聊天或目录名猜测。
+- 每个进入本仓库的新会话，在首条回复前检查当前仓库、branch / worktree、`git status`、`.scratch/` 长期工作记录和 Git 公共目录中的本机实时进度；回复开头用一行状态栏说明阶段、工作项、工作区状态、上次停点和下一步。只读咨询标明“只读咨询 / 无实施阶段”。
+- 通过 `git rev-parse --path-format=absolute --git-common-dir` 定位当前仓库及所有 linked worktree 共享的 Git 公共目录；检查其中活动状态及工作项关联的其他仓库记录。`.git` 内容属于本机状态，不加入 Commit。记录发现流程见 [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md)。
+- 以工作项 ID、仓库身份和记录里的 branch / worktree / PR 身份核实活动工作；不要求当前 branch 必须匹配，也不因位于 `master` 就忽略已发布的未完成交付。`.scratch/<feature>/status.md` 是长期规划与历史依据，本机记录是实时进度；前者过期时检查实时 Git / 远端后继续修正，不能直接要求用户辨认旧候选。
+- 自动继续可由明确记录的授权范围覆盖的同一工作项，尤其是已经发布的 PR 跟进与收尾。归属或授权无法核实、多个工作互相冲突、发现用户修改阻碍写入 / 清理，才停下来说明事实并询问最关键的问题。没有相关未完成工作时，正常处理当前请求。
 - 工作区有修改时先列明并判断归属。能由当前活动工作记录确认属于正在继续的任务时，可以恢复该任务；归属不明或属于其他任务时，暂停新的写入操作并请用户决定。不得自动 stash、reset、checkout、commit、覆盖或移动改动。
 - 先判断用户是在需求发现、需求澄清、Spec 待确认、待拆 Ticket、待实施、实施、验证 / Review、PR 检查、合并后 Harness 复盘或其他状态。问题 / 机会尚无明确目标时进入需求发现，通过讨论和必要的只读查证整理候选目标；已有候选目标但行为、范围或验收仍不清时进入 `workflow-grill-with-docs`；不得把两者都称作需求澄清。
-- 每个确定要实施的工程改动都有工作记录。小改动使用短 Spec 并经用户确认后直接实施；复杂改动经过完整 Spec 确认、`workflow-design-review`、`workflow-to-tickets` 草案、当前上下文的 `workflow-ticket-readiness` 和用户确认拆分，再进入实现。细节见 [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md)。
-- `ask-matt` 是用户主动要求流程导航时使用的可选 Skill，不是每个请求的必经入口。Ticket Readiness Review 在当前上下文只读执行，不启动独立 Agent；它不替代设计审查、实现后的 Code Review 或 PR Review。
+- 每个确定要实施的工程改动都有 `.scratch/` 长期记录和本机实时进度。小改动先写短 Spec；用户明确给出稳定任务时，该指令同时构成短 Spec 的实施授权，无需重复确认。复杂改动经过完整 Spec 确认、`workflow-design-review`、`workflow-to-tickets` 草案、当前上下文的 `workflow-ticket-readiness` 和用户确认拆分。完整目标已获授权时按依赖连续实施全部 Tickets，不逐个等待选择或“继续”；只授权部分目标时仅实施该范围。细节见 [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md)。
+- 关键业务行为、功能链路、Contract、技术 / 依赖选择、模块职责、数据 / 安全和验证方式必须查清并在 Spec 确认。实施需改变已确认目标、范围或关键技术决定时先说明影响并取得确认；局部编码选择可在约束内处理。只读查证仍不足时，先定义并确认小实验。
+- `ask-matt` 是用户主动要求流程导航时使用的可选 Skill，不是每个请求的必经入口。阶段 Skills 在目标、上下文和授权满足时可按流程使用，无需用户手动逐个调用。Ticket Readiness Review 在当前上下文只读执行，不启动独立 Agent；它不替代设计审查或实现后的 Code Review。PR Review 由仓库真实流程定义，不新增用户 Review 阶段。
 - 仓库规则引用的 workflow Skills 由 Codex 环境中的 `engineering-workflow` Plugin 提供；调用时使用已安装 Plugin 暴露的精确名称。Harness 的说明和依赖边界见 [`docs/agents/agent-harness.md`](docs/agents/agent-harness.md)。
 
 ## Quality & Security
 
-- 行为变化同步更新相应 Software Test、AI Evaluation 或 Business Acceptance；新 Bad Case 加入 Regression。没有适用验证证据，不得声称目标行为已完成。
+- 行为变化同步更新相应 Software Test、AI Evaluation 或 Business Acceptance；新 Bad Case 加入 Regression。验证记录需关联候选提交、适用基线、覆盖范围和结果；代码与 Contract 未变且证据仍适用时可以复用，相关行为或基线变化后重跑受影响检查。
+- 正式 Spec、Contract、Runbook、验收入口等适用事实源的更新属于 Done When；记录更新位置或不适用理由，不能只以代码和测试通过报告完成。
 - Software Test 验证确定性软件行为；AI Evaluation 验证模型行为；Business Acceptance 验证业务目标。具体验证按改动风险选择。
 - 真实 API Key、Token、Password、Connection String 和其他 Secret 不得进入 Source Code、Git、Logs、Documentation 或 Test Data。`.env` 是本地真实配置；`.env.example` 是安全模板。
 
 ## Git & Delivery
 
 - 新的 Feature、Bug Fix 或工程目标从已同步的 `master` 和干净工作区开始；一个目标默认使用一个 active branch 和一个 active worktree。
-- 默认只做本地 Commit。Push、创建或更新 PR 必须先取得用户明确确认；Agent 不直接 Merge。详细候选、验证、PR、Auto-merge 和清理规则见 [`docs/agents/git-pr-workflow.md`](docs/agents/git-pr-workflow.md)。
+- 默认只做本地 Commit。发布前在聊天中说明 PR 目标、提交范围、风险、验证结果和目标仓库的 Auto-merge 行为，并取得用户明确发布授权；PR 正文不是请求授权或交接的唯一位置。授权在同一目标和范围内覆盖 CI 修复、PR 更新、复盘和安全清理，不重复询问。普通独立 PR 按目标仓库真实规则默认 Auto-merge；依赖 PR 按前置关系保护。Agent 不直接人工 Merge。详细候选、验证、PR、Auto-merge 和清理规则见 [`docs/agents/git-pr-workflow.md`](docs/agents/git-pr-workflow.md)。
 - 只提交当前目标相关改动；Contract、适用验证、Review 和 Diff 检查完成后才能 Commit。高风险链路及验证级别按 Git / PR 流程执行。
 - 交付报告用中文列出提交内容、验证结果和剩余问题。未运行的验证要明确标注。
 
