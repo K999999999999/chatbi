@@ -1,6 +1,6 @@
 # Ticket 01：经营分析计划拆解与确定性校验
 
-- Status: open
+- Status: done
 - Owner: Business Analysis Application / Semantic
 - Blocked by: None (can start immediately)
 - Canonical Source: `.scratch/business-analysis-v1/spec.md`
@@ -79,3 +79,5 @@
 - Ticket Readiness Review：READY。
 - 不引入 `langgraph` 或其他新的编排 Framework；具体 LLM Provider 复用现有工程配置，留在 Implementation Design 中确定。
 - 当前 Ticket 不装配真实 LLM、Retrieval 或数据库；完整链路由后续 Ticket 负责。
+
+历史收尾核对（2026-10-01）：依据本 Ticket Result 与 `docs/acceptance/business-analysis-v1-20260921.md` 修正遗漏的状态更新；保留原验收结果，未重跑历史验证。

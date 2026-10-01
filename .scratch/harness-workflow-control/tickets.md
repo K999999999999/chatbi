@@ -1,12 +1,14 @@
 # Ticket 拆分与确认记录：Harness 工作流控制与交付闭环
 
-Status: confirmed; formal Tickets are in `issues/`
+Status: historical; formal Tickets are in `issues/`
 Date: 2026-10-01
 Spec: spec.md（用户已确认）
 Design Review: design-review.md（最终 PASS；R01–R05 已落实）
 Owner: 当前主 Agent；关键决定由用户确认。
 
 用户已确认本拆分并授权按依赖顺序完成全部 5 项；正式 Ticket 位于 `issues/`，其状态以各 Ticket 文件为准。实施授权不包含尚未取得的 Push / PR 授权。
+
+> 本文件为历史拆分快照，各段授权与路径描述属于当时上下文；正式 Tickets 01–05 已完成。当前阶段与授权从共享本机实时记录读取，不从此快照推定。
 
 ## 依赖与公共边界
 
@@ -190,7 +192,7 @@ Blocked by: Ticket 03
 
 ## Ticket 05：整体验收、当前任务迁移与本机安装同步
 
-Status: in-progress
+Status: done
 Owner: 当前主 Agent
 Blocked by: Ticket 04
 
@@ -229,4 +231,4 @@ Done When：本地适用验收、Review、Diff 和安装核对完成，两个仓
 
 ### Result / Comments
 
-待实施；覆盖全部决定和 S01–S20。发布阶段仍需取得明确授权，按各仓库实际保护、自动化与发布边界执行，之后持续跟进直至收尾。
+历史收尾核对（2026-10-01）：原“待实施”字段已过期。正式 [Ticket 05](issues/05-acceptance-migration-and-plugin-sync.md) 已完成，整体验收见 [验收记录](../../docs/acceptance/harness-workflow-control.md)。后续交付与清理完成事实以 Git 公共目录的同 ID 实时记录为准。
