@@ -1,6 +1,8 @@
 # Business Analysis V1（经营分析 V1）
 
-Status: draft
+Status: historical
+
+> 历史版本说明（2026-10-01）：本版已实施并有 [验收记录](../../docs/acceptance/business-analysis-v1-20260921.md)，原 draft 字段未随交付更新。当前经营分析范围由 [双时期产品因素归因 V1](../business-analysis-root-cause-v1/spec.md) 承接，正式行为以 [Query API 经营分析 Contract](../../docs/specs/query-api.md) 为准。下文保留旧版设计原文，不作为待实施目标。
 
 ## Problem Statement
 
