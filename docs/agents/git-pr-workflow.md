@@ -73,6 +73,7 @@
 - 当前 branch 和最终 HEAD；
 - `git_dirty=false`，没有未跟踪文件；
 - Contract、相关测试、Diff Review 和 `git diff --check` 已完成；
+- 已核对 `docs/roadmap.md`，按 [路线图维护规则](agent-harness.md#路线图读取与维护) 同步受影响的目标、依赖和验收状态，或记录不适用理由；优先级与范围变化已经用户确认；
 - 高风险链路是否需要 Real E2E；
 - 当前 PR 目标、commit 范围、未执行验证和剩余风险。
 
@@ -130,6 +131,8 @@ gh pr view <PR> --json number,url,state,isDraft,mergedAt,mergeStateStatus,headRe
 #### 6.2 合并后 Harness 复盘
 
 PR 确认已 `MERGED` 后，每个交付都必须完成一次简短 Harness 复盘，再清理 Feature branch。即使自动清理因工作区修改或其他依赖而暂停，也要完成复盘。
+
+同时核对合并事实是否影响路线图状态；沿用 [路线图维护规则](agent-harness.md#路线图读取与维护) 记录更新位置或不适用理由，不将合并或 CI 通过视为真实 Evaluation 或生产验收通过。
 
 检查本次 Agent 工作是否因项目背景、规则、工具或验证方式不足而发生误解、漏验、返工或需要用户纠正：
 
