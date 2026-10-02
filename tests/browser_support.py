@@ -1,6 +1,7 @@
 """浏览器确定性验收：真实账号 / HTTP，业务服务替身与真实 AI 验收分开。"""
 
 import os
+from decimal import Decimal
 from pathlib import Path
 
 from sqlalchemy import create_engine
@@ -14,6 +15,14 @@ from src.authorization import (
     RoleAuthorizationPolicyStore,
     hash_password,
 )
+from src.business_analysis.application import BusinessAnalysisSuccess
+from src.business_analysis.attribution import (
+    BusinessAnalysisAttribution,
+    ProductContribution,
+    FactorContribution,
+)
+from src.business_analysis.reporting import BusinessAnalysisReport
+from src.business_analysis.execution import TaskResult, TaskStatus
 from src.chatbi_control.bootstrap import seed_rbac
 from src.chatbi_control.models import Base, User
 from src.online_query.contracts import QueryErrorCode, QueryFailure, QuerySuccess
@@ -52,6 +61,57 @@ class BrowserQueryFixture:
         )
 
 
+class BrowserAnalysisFixture:
+    def analyze(self, question, *, request_id, auth_context, analysis_run_id):
+        return BusinessAnalysisSuccess(
+            request_id,
+            BusinessAnalysisReport(
+                "两期经营分析报告",
+                "按两期销售证据汇总。",
+                ("数据比较已完成。",),
+                "以证据结果为准。",
+                ("产品变化贡献已核验。",),
+                ("检查主要产品。",),
+                ("current-overall",),
+                (),
+                BusinessAnalysisAttribution(
+                    "人民币毛利",
+                    "2025年2月",
+                    "2025年1月",
+                    Decimal("120"),
+                    Decimal("100"),
+                    Decimal("-20"),
+                    (
+                        ProductContribution(
+                            "产品A",
+                            Decimal("-20"),
+                            "continuing",
+                            (FactorContribution("销量效应", Decimal("-20")),),
+                        ),
+                    ),
+                    (
+                        ProductContribution(
+                            "产品A",
+                            Decimal("-20"),
+                            "continuing",
+                            (FactorContribution("销量效应", Decimal("-20")),),
+                        ),
+                    ),
+                ),
+            ),
+            (
+                TaskResult(
+                    "current-overall",
+                    TaskStatus.COMPLETED,
+                    ("人民币毛利",),
+                    ((100,),),
+                    1,
+                ),
+            ),
+            analysis_run_id,
+        )
+
+
 def create_browser_app():
     engine = create_engine(
         "sqlite+pysqlite:///:memory:",
@@ -81,6 +141,7 @@ def create_browser_app():
     directory = Path(__file__).resolve().parents[1] / "frontend/dist"
     return create_app(
         BrowserQueryFixture(),
+        analysis_service=BrowserAnalysisFixture(),
         auth_service=auth,
         audit_sink=InMemoryAuditSink(),
         identity_provider=LocalSessionIdentityProvider(auth),

@@ -1,6 +1,6 @@
 # 03. 经营分析与模式切换
 
-Status: open
+Status: done
 Owner: 当前主 Agent
 Canonical Source: ../r1-spec.md、../r1-design.md、../r1-design-review.md、../r1-ticket-readiness.md
 
@@ -36,7 +36,12 @@ Canonical Source: ../r1-spec.md、../r1-design.md、../r1-design-review.md、../
 
 ## Result
 
-尚未实施。
+已接入手动双模式、独立草稿 / 时间线、分析 UUID、原问题手动重试、报告 / 归因 / 任务证据展示；后端业务模块、指标与 Prompt 未改。
+
+- RED：分析两条新用例因缺少模式按钮失败。
+- GREEN：类型 / 构建、Chrome 全部 9 项通过；新增 3 项分析覆盖模式隔离 / 原成功编号保留、断网后同 ID / 问题重试且下一任务使用新 ID、受控拒绝不提供静默重建。API analysis / browser 回归 20 passed。
+- Code Review：PASS；BASE 395a979，范围前端分析接入 / HTTP fixture / 测试 / Runbook。检查 1200 秒上限、报告任务 ID 比对、允许重试错误集、首轮分析不含 conversation_id、React 文本转义、按后端数值展示。共享表格允许被截断证据的原始 row_count，普通 query 仍严格验证实际行数。
+- 正式 Spec / Design 已定义本次行为，无 Contract 变更；Runbook 同步分析操作。真实 AI 验收仍待 04，历史 AI 基线未改称当前结果。
 
 ## Comments
 

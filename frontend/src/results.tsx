@@ -20,19 +20,20 @@ export function tableData(value: unknown): TableData {
   if (!Array.isArray(p.rows) || p.rows.length > 100 || !p.rows.every(row => Array.isArray(row)
       && row.length === columns.length && row.every(cell => cell === null || typeof cell === 'string'
         || typeof cell === 'boolean' || (typeof cell === 'number' && Number.isFinite(cell))))
-      || !Number.isSafeInteger(p.row_count) || Number(p.row_count) !== p.rows.length
+      || !Number.isSafeInteger(p.row_count) || Number(p.row_count) < p.rows.length
       || typeof p.truncated !== 'boolean') throw new Error('响应表格无效');
   return { columns, rows: p.rows as Cell[][], row_count: Number(p.row_count), truncated: p.truncated };
 }
 export function queryResult(value: unknown): QueryResult {
   const p = object(value);
+  if (p.row_count !== (p.rows as unknown[])?.length) throw new Error('响应行数无效');
   if (p.mode !== undefined && p.mode !== 'query') throw new Error('响应模式无效');
   return { ...tableData(p), request_id: text(p.request_id), conversation_id: text(p.conversation_id), sql: text(p.sql) };
 }
 
 export function ResultTable({ data }: { data: TableData }) {
   return <div className="result-table">
-    <p className="result-meta">返回 {data.row_count} 行{data.truncated ? ' · 结果已截断，仅展示部分数据（最多 100 行）。' : ''}</p>
+    <p className="result-meta">展示 {data.rows.length} 行{data.truncated ? ' · 结果已截断，仅展示部分数据（最多 100 行）。' : ''}</p>
     {!data.rows.length ? <p>查询成功，没有匹配的数据。</p> : <div className="table-scroll"><table>
       <thead><tr>{data.columns.map((name, i) => <th key={i}>{name}</th>)}</tr></thead>
       <tbody>{data.rows.map((row, i) => <tr key={i}>{row.map((cell, j) => <td key={j}>
