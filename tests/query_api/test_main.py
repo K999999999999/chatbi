@@ -190,6 +190,8 @@ def _main_environment(root: Path, environment_name: str) -> dict[str, str]:
         {
             "CHATBI_ENV": environment_name,
             "RAG_ONLINE_RETRIEVAL_ENABLED": "true",
+            "CHATBI_OBSERVABILITY_ENABLED": "false",
+            "CHATBI_TRACE_CONTENT_ENABLED": "false",
             "LLM_API_KEY": "test-key",
             "LLM_BASE_URL": "http://127.0.0.1:1/v1",
             "LLM_MODEL": "test-model",

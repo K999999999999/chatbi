@@ -69,6 +69,8 @@ class PostgresDevelopmentEnvironmentTest(unittest.TestCase):
             "LLM_MODEL": "test-model",
             "LLM_BASE_URL": "http://127.0.0.1:1/v1",
             "RAG_ONLINE_RETRIEVAL_ENABLED": "false",
+            "CHATBI_OBSERVABILITY_ENABLED": "false",
+            "CHATBI_TRACE_CONTENT_ENABLED": "false",
         }
         with patch.dict(os.environ, settings):
             with TestClient(app) as client:
