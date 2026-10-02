@@ -15,5 +15,7 @@ Scope: 本工作项短 Spec；验收器、Real E2E workflow、Evaluation / 工�
 - 文档：更新正式 Evaluation Contract、Runbook、路线图、产品范围与架构，保留历史验收原文和生产范围待确认状态。
 
 Verification: 见 verification.md；94 PASS / 1 SKIP / 22 subtests，隔离开发 DB 19 PASS，静态与工作流语法 PASS。
+
+修订 Review：初次 Review 未识别原 ignore 模式不能覆盖报告分目录；真实多轮报告 dirty 揭示问题后，新增递归忽略与实际 Git 回归，95 PASS / 1 SKIP / 22 subtests。额外范围仅 `.gitignore`、该回归和工作项证据，当前 Review PASS；原失败报告保留，不把旧候选结果复用为新候选 AI 基线。
 Remaining: 最终 clean commit 真实三套与诊断待运行；远端 CI / Real E2E、生产验收未运行。Review PASS 不代表这些外部验证已通过。
 Next: 本地 Commit 后运行已授权真实评测，不追加改写 tracked 结果记录。

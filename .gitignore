@@ -26,5 +26,5 @@ backups/
 项目参考课程/
 
 # 评测生成的临时报告，不纳入仓库；历史已提交报告不受影响。
-reports/evaluation/*.json
-reports/evaluation/*.md
+reports/evaluation/**/*.json
+reports/evaluation/**/*.md
