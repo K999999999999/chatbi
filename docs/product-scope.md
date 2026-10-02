@@ -16,9 +16,16 @@ ChatBI 是面向业务数据分析的 Domain AI Engine（领域 AI 引擎）。�
 
 ### API、身份与多轮查询
 
-- Query API 提供同步 HTTP JSON 接口和 Streamlit MVP 页面。
+- Query API 提供同步 HTTP JSON 接口，React + TypeScript + Vite 提供电脑端 Web 页面；默认问数，手动切换独立经营分析模式。Streamlit 已移除。
 - 内置账号、Session、固定 RBAC、授权校验及持久化审计已实现；首个管理员必须显式创建。
 - Multi-Turn Query V1 已实现服务端 `conversation_id`、身份绑定、短期结构化状态、TTL、并发控制和失败后保留上一成功状态。
+
+### 网页身份与状态
+
+- 指定账号使用，无公众注册；浏览器 HttpOnly Cookie，同源网页 / API 与 CSRF 校验，线上要求 HTTPS；旧 Bearer / SQLAdmin 兼容。
+- 30 分钟无活动 / 8 小时绝对登录期限；无记住我与周期保活。查询权限账号共享同一套业务数据，无部门 / 区域行列隔离。
+- R1 不保存长期聊天，刷新清空临时展示 / 查询编号；query / analysis 草稿与记录分开。失联后问数需新对话，分析可手动使用原问题 / UUID 恢复。
+- 详细行为见 [Web Spec](specs/web-dialogue-v1.md)，实际候选证据见 [R1 Acceptance](acceptance/web-dialogue-v1-20261003.md)。
 
 ### 经营分析
 
@@ -51,7 +58,7 @@ ChatBI 是面向业务数据分析的 Domain AI Engine（领域 AI 引擎）。�
 - 任意 PostgreSQL 数据库、多个 Schema 或多租户支持。
 - 超出当前 Semantic Contract 的指标、维度、跨事实表 Join、多跳 Join 或超过 5 个指标的组合。
 - 任意复杂分析 Agent、SQL 自动修复、多模型投票或开放式任务编排。
-- SSE / WebSocket 和独立 React / Vue 前端；当前使用同步 API 与 Streamlit。
+- 手机适配、SSE / WebSocket、图表、长期聊天历史和导出；分别按后续路线推进，当前网页使用同步 HTTP。
 - 生产环境部署方案、容量 / 可用性承诺、生产数据迁移和流量发布流程；这些不由 MVP 本地运行证据自动满足。
 
 ## 生产演进中的当前基线工作

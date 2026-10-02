@@ -21,9 +21,9 @@ Observability 只记录和关联已有业务行为，不决定业务事实、RAG
 - 评测执行者：关联评测用例、运行耗时、模型和 RAG 资产版本。
 - API 调用方：获得可以用于问题反馈的请求编号和 Trace 标识。
 
-## 3. 当前事实
+## 3. 实施前基线（历史事实）
 
-- Query API 和 Online Query 已使用 `request_id` 关联请求，Streamlit 会展示该编号。
+- Query API 和 Online Query 已使用 `request_id` 关联请求，电脑端 Web 在“查看请求信息”中展示该编号与 Header 的 Trace ID。
 - Evaluation（评测）只记录一次查询的总耗时，没有节点耗时。
 - Online Query 只在部分 Retrieval fallback 场景写入日志，没有完整成功和失败 Trace。
 - Online Retrieval 已返回 `asset_version`、状态、候选命中、分数、Join 路径和原始检索证据。

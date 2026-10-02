@@ -50,6 +50,14 @@ from src.online_query.contracts import (
     QuerySuccess,
 )
 
+from .browser import (
+    COOKIE_NAME,
+    BrowserIdentityProvider,
+    BrowserSettings,
+    mount_browser_auth,
+    mount_web_files,
+    reject_browser_request,
+)
 from .conversation import (
     ConversationConflictError,
     ConversationLease,
@@ -197,6 +205,7 @@ def create_app(
     admin_engine: Engine | None = None,
     admin_secret_key: str | None = None,
     admin_session_factory: Any | None = None,
+    browser_settings: BrowserSettings | None = None,
     conversation_store: ConversationStore | None = None,
     query_understanding: object | None = None,
     analysis_service: AnalysisService | None = None,
@@ -226,10 +235,13 @@ def create_app(
             query_understanding,
             analysis_service,
             analysis_service_factory,
+            browser_settings,
         )
     ):
         raise ValueError("runtime_factory 和直接资源注入不能混用")
     provider = identity_provider or _MissingIdentityProvider()
+    if auth_service is not None:
+        provider = BrowserIdentityProvider(auth_service, provider)
     authorization_store = policy_store or _UnavailablePolicyStore()
     active_conversation_store = (
         conversation_store
@@ -258,6 +270,7 @@ def create_app(
         app.state.identity_provider = provider
         app.state.authorization_policy_store = authorization_store
         app.state.auth_service = auth_service
+        app.state.browser_settings = browser_settings
         app.state.audit_sink = audit_sink
         app.state.trace_recorder = recorder
         app.state.conversation_store = active_conversation_store
@@ -268,7 +281,7 @@ def create_app(
     async def lifespan(app: FastAPI):
         nonlocal provider, authorization_store, authorized_service
         nonlocal auth_service, audit_sink, recorder, query_understanding
-        nonlocal active_analysis_service
+        nonlocal active_analysis_service, browser_settings
         if runtime_factory is None:
             try:
                 yield
@@ -296,6 +309,10 @@ def create_app(
                 )
                 audit_sink = dependencies.audit_sink
                 auth_service = dependencies.auth_service
+                browser_settings = dependencies.browser_settings
+                if auth_service is not None:
+                    provider = BrowserIdentityProvider(auth_service, provider)
+                mount_web_files(app, browser_settings)
                 recorder = dependencies.trace_recorder
                 query_understanding = dependencies.query_understanding
                 authorized_service = AuthorizedQueryService(
@@ -322,14 +339,7 @@ def create_app(
                 yield
             finally:
                 # 删除本轮挂载与引用，下一轮 lifespan 不复用已关闭资源。
-                app.router.routes[:] = [
-                    route
-                    for route in app.routes
-                    if not (
-                        getattr(route, "path", None) == "/admin"
-                        and route not in original_routes
-                    )
-                ]
+                app.router.routes[:] = list(original_routes)
                 for attribute in ("sqladmin", "sqladmin_engine"):
                     if hasattr(app.state, attribute):
                         delattr(app.state, attribute)
@@ -338,6 +348,7 @@ def create_app(
                 authorized_service = None
                 auth_service = audit_sink = recorder = query_understanding = None
                 active_analysis_service = None
+                browser_settings = None
                 publish_bindings(app)
 
     app = FastAPI(title="ChatBI Query API", version="0.1.0", lifespan=lifespan)
@@ -359,13 +370,36 @@ def create_app(
         request: Request,
         call_next: Any,
     ) -> JSONResponse:
-        if request.url.path != "/api/v1/query":
-            return await call_next(request)
+        path = request.url.path
+        if path != "/api/v1/query":
+            response = await call_next(request)
+            if path.startswith("/auth/"):
+                response.headers["Cache-Control"] = "no-store"
+            return response
         request_id = _request_id_from_header(request.headers.get("X-Request-ID"))
         request.state.request_id = request_id
         with _http_trace_scope(recorder, request_id) as trace_scope:
-            response = await call_next(request)
+            rejection = None
+            if request.cookies.get(COOKIE_NAME):
+                try:
+                    reject_browser_request(request, browser_settings, write=True)
+                except HTTPException as exc:
+                    code = (
+                        QueryErrorCode.AUTHORIZATION_DENIED
+                        if exc.status_code == 403
+                        else QueryErrorCode.AUTHENTICATION_UNAVAILABLE
+                    )
+                    rejection = JSONResponse(
+                        status_code=exc.status_code,
+                        content={
+                            "request_id": request_id,
+                            "error_code": code.value,
+                            "error_message": exc.detail,
+                        },
+                    )
+            response = rejection if rejection is not None else await call_next(request)
             response.headers["X-Trace-ID"] = trace_scope.trace_id
+            response.headers["Cache-Control"] = "no-store"
             return response
 
     @app.get("/health")
@@ -536,6 +570,9 @@ def create_app(
             trace_recorder=recorder,
         )
 
+    mount_browser_auth(app)
+    if runtime_factory is None:
+        mount_web_files(app, browser_settings)
     return app
 
 

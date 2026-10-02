@@ -17,6 +17,8 @@ from src.business_analysis.application import BusinessAnalysisSuccess
 from src.observability.contracts import TraceRecorder
 from src.online_query.contracts import QueryFailure, QueryRequest, QueryResult
 
+from .browser import BrowserSettings
+
 
 class QueryService(Protocol):
     """API Adapter 依赖的最小下游执行接口。"""
@@ -47,6 +49,7 @@ class RuntimeDependencies:
     """一次应用启动所需的服务及边缘依赖，所有权由工厂持有。"""
 
     service: QueryService
+    browser_settings: BrowserSettings | None = None
     audit_sink: AuditSink | None = None
     identity_provider: IdentityProviderAdapter | None = None
     policy_store: AuthorizationPolicyStore | None = None

@@ -30,7 +30,7 @@ Qdrant（Compose 服务 qdrant:6333；宿主机回环端口 6333）
 FastAPI（WSL / Linux 内监听 127.0.0.1:8000）
     └─ Online Query + SQL Guard + PostgreSQL
 
-Streamlit（WSL / Linux 内监听 127.0.0.1:8501）
+Vite Web（WSL / Linux 开发监听 127.0.0.1:5173；打包后由 FastAPI 同源提供）
     └─ HTTP 调用 FastAPI
 ```
 
@@ -122,7 +122,7 @@ uv run python -m scripts.reset_dev_postgres
 
 ### 4.5 登录、首次改密和管理后台
 
-- Streamlit 打开后先使用内置账号登录；首个管理员首次登录必须修改密码。
+- Web 网页打开后先使用内置账号登录；首个管理员首次登录必须修改密码。
 - HTTP 客户端先调用 `POST /auth/login`，再把返回的 `access_token` 作为 `Authorization: Bearer <token>` 访问 `/auth/me`、`/auth/change-password`、`/auth/logout` 和查询接口。
 - 管理员访问 `http://127.0.0.1:8000/admin`，使用同一套 ChatBI 账号。只有 `admin` 角色可以进入 SQLAdmin；`analyst` 只能执行查询。
 - SQLAdmin 的用户、角色、权限和审计事件页面使用 `chatbi_control`；用户禁止物理删除，角色 / 权限 / 审计事件只读。
@@ -196,19 +196,17 @@ curl --fail http://127.0.0.1:8000/health
 
 生产探针设计须区分 HTTP liveness 与动态 readiness；当前固定 `/health` 响应不能作为下游恢复或完整就绪证据。启动时 production 来源指纹 / catalog 门禁也不等于运行期间持续监测。
 
-### 6.2 启动 Streamlit
+### 6.2 启动电脑端 Web
 
-在另一个 WSL / Linux 终端中运行，并绑定到回环地址：
+安装 Node 24；开发前显式设置 `CHATBI_WEB_ORIGIN=http://127.0.0.1:5173`，保持 `CHATBI_WEB_DIST_DIR` 为空，再启动上节 FastAPI。
 
 ```bash
-uv run streamlit run src/streamlit_app.py --server.address 127.0.0.1 --server.port 8501
+cd frontend
+npm ci
+npm run dev
 ```
 
-浏览器打开：
-
-`http://127.0.0.1:8501`
-
-Streamlit 只调用 FastAPI，不直接访问 LLM、SQL Guard 或 PostgreSQL。
+打开 `http://127.0.0.1:5173`。Vite 将 `/api` / `/auth` / `/health` 代理到回环 API；网页只通过 HTTP 使用后端。打包同源运行见 [Web 开发与打包](#web-开发与打包)。
 
 ### 6.3 Observability / Trace ID（可观测性 / 链路编号）
 
@@ -217,7 +215,7 @@ Streamlit 只调用 FastAPI，不直接访问 LLM、SQL Guard 或 PostgreSQL。
 取得链路编号的方式：
 
 - 直接调用 Query API 时，从成功响应或 HTTP Error 的 `X-Trace-ID` Header 读取；错误响应仍优先查看现有 `error_code`、`error_message` 和 `request_id`。
-- 使用 Streamlit 时，从成功页面或错误页面的“链路编号：<trace_id>”读取；“请求编号：<request_id>”仍保持独立显示。
+- 网页成功 / 受控错误后展开“查看请求信息”，读取独立的请求编号和链路编号；Header 缺失不当作业务失败。
 - Header 缺失时不代表查询失败，也不应人为把 JSON Body 中的字段当作 Trace ID。
 
 定位一次查询时，以同一个 `trace_id` 从 `query.request` 根节点开始，依次查看固定节点：
@@ -333,7 +331,7 @@ uv run --python 3.11 --locked python -m pytest -q
 
 ### 8.3 GitHub Actions CI
 
-`.github/workflows/ci.yml` 在 `master` 的 Push、Pull Request 和手动触发时执行锁文件检查、纯软件回归、PostgreSQL 集成测试和 API/Streamlit 启动 Smoke Test（冒烟测试）。CI 使用 Python 3.11 和锁定的 `uv` 版本；PostgreSQL 集成测试使用 `database/ci/bootstrap.sql` 中的 CI-only 合成 Fixture（测试夹具），不使用本地业务数据。CI 不调用真实 LLM，也不替代 AI Evaluation（AI 评测）或 Business Acceptance（业务验收）。
+`.github/workflows/ci.yml` 在 `master` 的 Push、Pull Request 和手动触发时执行锁文件检查、纯软件回归、PostgreSQL 集成测试和 API / 打包 Web 登录、首次改密与退出的 Smoke Test（冒烟测试）。CI 使用 Python 3.11 和锁定的 `uv` 版本；PostgreSQL 集成测试使用 `database/ci/bootstrap.sql` 中的 CI-only 合成 Fixture（测试夹具），不使用本地业务数据。CI 不调用真实 LLM，也不替代 AI Evaluation（AI 评测）或 Business Acceptance（业务验收）。
 
 ### 8.4 PR 前本地验收流程
 
@@ -435,7 +433,7 @@ GitHub 手动 Real E2E 按同一原则执行三套正式评测、确定性身份
 curl --fail http://127.0.0.1:8000/health
 ```
 
-Streamlit 的 `CHATBI_API_BASE_URL` 默认是 `http://127.0.0.1:8000`；只有 API 使用其他地址时才需要修改。
+本地 Vite 代理指向 `http://127.0.0.1:8000`；网页使用相对 URL。检查 API 地址、`CHATBI_WEB_ORIGIN` 与实际网页 Origin 是否精确一致；打包模式同时核对 `CHATBI_WEB_DIST_DIR`。
 
 ### 查询被拒绝
 
@@ -459,3 +457,38 @@ Streamlit 的 `CHATBI_API_BASE_URL` 默认是 `http://127.0.0.1:8000`；只有 A
 - `FILESYSTEM`：本地目录或权限问题。
 
 先确认 `current.json` 仍指向旧版本，再处理失败构建；不要直接删除旧集合。
+
+## Web 开发与打包
+
+安装 Node 24 和 npm，进入 `frontend` 执行 `npm ci`。在本地 `.env` 显式设置 `CHATBI_WEB_ORIGIN=http://127.0.0.1:5173`，启动 FastAPI 后运行 `npm run dev`；浏览器打开该地址。真实凭证仅填入本地配置和登录表单，不写入仓库。
+
+打包使用 `npm run build`。以 FastAPI 同源提供打包网页时，设置 `CHATBI_WEB_DIST_DIR=frontend/dist`，并将 `CHATBI_WEB_ORIGIN` 设置为实际网页地址（本地如 `http://127.0.0.1:8000`）。API-only 运行可同时留空这两个配置。线上 Origin 必须为 HTTPS；完整生产部署验收仍属于 R6。
+
+浏览器使用独立 Cookie 登录接口，旧 Bearer 和管理后台继续兼容。当前仅电脑端；刷新保持登录但不恢复临时聊天，长期历史在 R3 实现。
+
+网页问数：登录后输入完整问题（如“2025年2月人民币净销售额是多少”），成功后可围绕上一成功状态追问。表格明确区分 NULL、零与空字符串；经校验 SQL 可展开查看。受控失败不会覆盖上一成功状态；网络中断、客户端超时或响应无效时，结果未确认，需点击“新建问数对话”并补全问题。前端不会自动重发，刷新会清空当前展示与会话编号。
+
+网页经营分析：手动切换“经营分析”，提供完整的指标与两个时期（如“分析2025年2月相比2025年1月的人民币毛利变化”）。仅支持既有人民币净销售额 / 毛利的产品因素归因，不继承问数条件。报告、归因数值和任务证据按后端返回显示。失联后可点击“重试原分析”，草稿编辑不会改变该任务的原问题 / UUID；明确的过期或语义拒绝不能静默重建任务。等待期间两种模式都禁止再次发送与切换，仍可编辑下一条草稿或退出。
+
+### R1 桌面浏览器验收
+
+```bash
+cd frontend
+npm ci
+npm run build
+npx playwright install --with-deps chrome
+npm test
+npm run test:dev
+```
+
+`npm test` 验证打包入口，`test:dev` 验证 Vite 同源代理；两者使用真实 HTTP / Cookie / Session 和确定性业务服务替身，不调用真实模型。桌面窗口为 1440 × 1000，Chrome channel；可用 `CHATBI_CHROME_PATH` 指定本机 Chrome 可执行文件。所有配置关闭 Trace / 视频 / 自动截图。CI 使用 `scripts/smoke_web.py` 检查正式 API 的打包页面、Cookie 登录 / 首次改密 / 退出，凭证仅通过环境传递，不调用模型。
+
+真实 AI 验收需本地 `.env` 已具备模型、RAG、业务只读 PostgreSQL、应用库和管理签名配置，服务端能读取现有数据；必须在 clean candidate 上运行：
+
+```bash
+cd frontend
+npm run build
+npm run test:real
+```
+
+此命令生成一个独立 `web-e2e-*` analyst 验收账号，随机密码只在进程环境中传递；服务退出时禁用该账号并撤销会话，保留应用库安全审计 / 分析记录，不修改已有账号或业务数据。实际请求复用正式 runtime、授权、SQL Guard 与数据库执行；独立参考 SQL 使用业务只读账号。报告在 ignored `reports/browser-real/`，含实际提交 / Chrome / 对照结果，不含密码 / Cookie / Session Token；不要公开上传业务原始报告。安全 reporter 不输出断言内容或凭证。真实资源缺失或闭环失败不得将确定性替身通过作为替换验收。

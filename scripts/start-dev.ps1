@@ -86,6 +86,9 @@ if (-not (Test-Path -LiteralPath $envFile)) {
 if ($null -eq (Get-Command "uv" -ErrorAction SilentlyContinue)) {
     throw "未找到 uv，请先安装或加入 PATH。"
 }
+if ($null -eq (Get-Command "npm" -ErrorAction SilentlyContinue)) {
+    throw "未找到 npm，请先安装 Node 24 与 npm。"
+}
 if ($null -eq (Get-Command "docker" -ErrorAction SilentlyContinue)) {
     throw "未找到 Docker，请先启动 Docker Desktop。"
 }
@@ -103,7 +106,7 @@ finally {
 }
 
 $apiPortInUse = Test-ListeningPort -Port 8000
-$uiPortInUse = Test-ListeningPort -Port 8501
+$uiPortInUse = Test-ListeningPort -Port 5173
 
 if ($apiPortInUse) {
     Write-Warning "端口 8000 已被占用，跳过启动 FastAPI；不会终止现有进程。"
@@ -112,17 +115,17 @@ else {
     Write-Host "正在打开 FastAPI 终端..."
     Start-DevTerminal `
         -Title "ChatBI FastAPI" `
-        -Command "`$env:POSTGRES_HOST='127.0.0.1'; `$env:POSTGRES_PORT='5433'; `$env:RAG_QDRANT_URL='http://127.0.0.1:6333'; uv run uvicorn src.query_api.main:app --host 127.0.0.1 --port 8000"
+        -Command "`$env:POSTGRES_HOST='127.0.0.1'; `$env:POSTGRES_PORT='5433'; `$env:RAG_QDRANT_URL='http://127.0.0.1:6333'; `$env:CHATBI_WEB_ORIGIN='http://127.0.0.1:5173'; `$env:CHATBI_WEB_DIST_DIR=''; uv run uvicorn src.query_api.main:app --host 127.0.0.1 --port 8000"
 }
 
 if ($uiPortInUse) {
-    Write-Warning "端口 8501 已被占用，跳过启动 Streamlit；不会终止现有进程。"
+    Write-Warning "端口 5173 已被占用，跳过启动 Vite；不会终止现有进程。"
 }
 else {
-    Write-Host "正在打开 Streamlit 终端..."
+    Write-Host "正在打开 Vite 终端..."
     Start-DevTerminal `
-        -Title "ChatBI Streamlit" `
-        -Command "uv run streamlit run src/streamlit_app.py --server.address 127.0.0.1 --server.port 8501"
+        -Title "ChatBI Vite" `
+        -Command "Set-Location frontend; npm ci; if (`$LASTEXITCODE -eq 0) { npm run dev }"
 }
 
 $checks = @(
@@ -132,8 +135,8 @@ $checks = @(
         Ready = $false
     },
     [pscustomobject]@{
-        Name = "Streamlit"
-        Uri = "http://127.0.0.1:8501/_stcore/health"
+        Name = "Vite"
+        Uri = "http://127.0.0.1:5173"
         Ready = $false
     }
 )
@@ -165,5 +168,5 @@ if (@($checks | Where-Object { -not $_.Ready }).Count -gt 0) {
 }
 
 Write-Host "ChatBI 本地开发服务已启动。"
-Write-Host "页面地址：http://127.0.0.1:8501"
+Write-Host "页面地址：http://127.0.0.1:5173"
 Write-Host "停止服务：在两个服务终端中分别按 Ctrl+C。"

@@ -18,12 +18,12 @@ dependencies = [
     "sqladmin>=0.20,<1",
     "sqlalchemy>=2,<3",
     "sqlglot>=27,<31",
-    "streamlit>=1.40,<2",
     "pydantic>=2,<3",
     "starlette>=0.40,<2",
     "wtforms>=3,<4",
     "langgraph>=1,<2",
     "langgraph-checkpoint-postgres>=3,<4",
+    "itsdangerous>=2.2,<3",
 ]
 
 [dependency-groups]

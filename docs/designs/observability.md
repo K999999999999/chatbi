@@ -451,14 +451,11 @@ CHATBI_OTLP_TIMEOUT_SECONDS=5
 - 不在报告中复制整棵 Trace、Prompt 或 Span 属性；
 - 旧 Baseline（基线）没有该字段时仍可读取和比较。
 
-### 11.3 Streamlit
+### 11.3 电脑端 Web（R1 替换后的入口）
 
-`src/streamlit_app.py` 从成功响应和 `HTTPError` 的 `X-Trace-ID` Header 读取 Trace ID：
+`frontend/src/api.ts` 从成功 / 受控错误响应的 `X-Trace-ID` Header 读取经过格式校验的 Trace ID；`Chat.tsx` 在“查看请求信息”中显示请求编号与链路编号。二者只保存在页面内存，不伪装成 Query API JSON 字段；Header 缺失不导致业务失败。
 
-- 成功页面显示“链路编号”；
-- 错误页面同时显示请求编号和链路编号；
-- Header 缺失时保持兼容，不把它当作查询失败；
-- Trace ID 只保存在页面本地响应对象，不伪装成 Query API JSON 字段。
+历史 Streamlit 客户端已在 R1 核心替换验收后移除；T4C 的历史交付记录保留，当前行为与测试见 [Web Design](web-dialogue-v1.md) 和 `frontend/tests/query.spec.ts`。
 
 ## 12. 影响分析
 
@@ -634,7 +631,7 @@ CHATBI_OTLP_TIMEOUT_SECONDS=5
 - `tests/observability/`：Contract、No-op、上下文继承、Safe Wrapper、Exporter 配置和安全字段。
 - `tests/online_query/`：全部成功、拒绝、失败、超时和 fallback Span。
 - `tests/query_api/`：Trace Header、无效请求和响应序列化。
-- `tests/streamlit/`：成功和错误 Header 显示及缺失兼容。
+- `frontend/tests/query.spec.ts`：成功和错误 Header / 请求编号展示；`tests/query_api/test_browser_auth.py`：CSRF 拒绝仍保留关联。
 - `tests/evaluation/`：Evaluation 来源和案例关联。
 - T1～T4C 已分别完成并通过各自测试，独立提交为 `97a2d15`、`9935731`、`1243796`、`d23f8e4`、`e187282`、`eb56975`、`c60e073`。
 - 当前全量确定性测试：230 passed、6 skipped、79 subtests。
@@ -710,7 +707,7 @@ V1 不实现：
 - LangChain 不同 Provider 的 Token Metadata 兼容处理是否按字段逐个回退且严格 fail-open；
 - 异常路径是否显式关闭 OTel 自动异常记录，并且没有任何原始异常文本进入 Trace 或 Warning；
 - Evaluation 的 success/failure/unexpected/exception 与未执行案例的 `trace_id` 是否符合报告契约；
-- Streamlit 保存 Trace ID 的方式是否会误改 API JSON 契约；
+- Web 客户端保存 Header Trace ID 的方式不得误改 API JSON 契约；
 - T5 使用 Langfuse Cloud 还是已有 Self-hosted Endpoint；该选择只影响运行配置，不影响代码设计。
 
 ## 19. 第三方事实来源

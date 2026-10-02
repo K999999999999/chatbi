@@ -2,14 +2,14 @@
 
 ChatBI 是一个面向业务数据查询的 Domain AI Engine（领域 AI 引擎），当前处于 MVP 向生产演进阶段，采用 Modular Monolith（模块化单体）。它把自然语言问题转换为业务语义、受控 SQL 和数据库结果，并通过确定性程序校验模型候选。
 
-当前 MVP 已包含自然语言查询、在线 RAG、登录与 RBAC、多轮查询和经营分析。生产部署、运行保障和当前候选的 AI Evaluation 基线仍在核验中；历史基线只适用于其报告记录的 commit。本地 Runbook 不代表已完成生产部署。包版本号来源于 [`pyproject.toml`](pyproject.toml)，精确代码状态以 Git commit 为准。
+当前 MVP 已包含电脑端 Web 登录 / 对话与经营分析入口、自然语言查询、在线 RAG、登录与 RBAC、多轮查询和经营分析。生产部署、运行保障和当前候选的 AI Evaluation 基线仍在核验中；历史基线只适用于其报告记录的 commit。本地 Runbook 不代表已完成生产部署。包版本号来源于 [`pyproject.toml`](pyproject.toml)，精确代码状态以 Git commit 为准。
 
 ## 新 clone：快速开始
 
 当前开发入口为 WSL / Linux 本地环境：ChatBI、RAG 构建和开发命令在 WSL / Linux 中运行，Docker Compose 启动 PostgreSQL 和 Qdrant。Dev Container 配置文件保留在仓库中，但不属于当前开发流程。完整步骤、环境变量说明和故障排查见 [`docs/runbook.md`](docs/runbook.md)。
 
 1. 从 [`.env.example`](.env.example) 复制出本地 `.env`，按 Runbook 配置服务地址和本地 Secret。不要提交 `.env`。
-2. 在 WSL / Linux 终端执行 `uv sync --locked`。
+2. 在 WSL / Linux 终端执行 `uv sync --locked`；安装 Node 24，在 `frontend/` 执行 `npm ci`。
 3. 在仓库根目录启动基础服务并按顺序完成首次 Control DB migration：
 
    ```bash
@@ -34,7 +34,7 @@ Natural Language
   → LLM proposes SQL candidate
   → deterministic SQL Guard
   → read-only PostgreSQL
-  → Query API response / Streamlit display
+  → Query API response / Web display
 ```
 
 核心原则是 `Model proposes, program decides`：LLM 只提出候选，程序和权威事实最终决定业务口径、数据范围、SQL 安全和数据库执行。
@@ -47,7 +47,7 @@ Natural Language
 | --- | --- | --- | --- |
 | Online Query | [`src/online_query/`](src/online_query/)；`OnlineQueryService.execute()`、`OnlineRetriever.retrieve()` | 授权后的查询编排、上下文、Online Retrieval、SQL Guard 和数据库执行 | [`docs/specs/online-query.md`](docs/specs/online-query.md)、[`docs/specs/online-retrieval.md`](docs/specs/online-retrieval.md) |
 | Query API Adapter | [`src/query_api/`](src/query_api/)；`src/query_api/main.py`、`AuthorizedQueryService.query()` | HTTP `POST /api/v1/query` 和 `GET /health`，负责服务端身份授权后调用 Online Query | [`docs/specs/query-api.md`](docs/specs/query-api.md) |
-| Streamlit | [`src/streamlit_app.py`](src/streamlit_app.py) | 通过 HTTP 调用 Query API 的当前 MVP 页面和内部入口 | 内部入口 |
+| Web Frontend | [`frontend/`](frontend/) | React + TypeScript + Vite 电脑端登录、问数 / 追问、经营分析及证据展示；只通过 HTTP 访问 API | [Web Spec](docs/specs/web-dialogue-v1.md) |
 | ChatBI Account & Admin | [`src/chatbi_control/`](src/chatbi_control/)、[`src/authorization/`](src/authorization/) | 内置账号、数据库 Session、固定角色权限、SQLAdmin 和持久化安全审计 | 初始化见 [`docs/runbook.md`](docs/runbook.md) |
 | 应用初始化与装配 | [`src/bootstrap/`](src/bootstrap/)；`python -m src.bootstrap --help` | 运行资源装配、启动检查、失败清理 / 关闭和四类显式初始化命令 | [`docs/specs/bootstrap.md`](docs/specs/bootstrap.md) |
 | Business Analysis | [`src/business_analysis/`](src/business_analysis/) | 受控的分析任务拆解、校验、授权查询执行、结果汇总和总结 | [`docs/specs/query-api.md`](docs/specs/query-api.md) |
@@ -59,6 +59,7 @@ Natural Language
 
 | 路径 | 用途 |
 | --- | --- |
+| `frontend/` | 电脑端网页、npm lockfile 与 Playwright 浏览器验收 |
 | `src/` | 产品源码、模块入口和生成的结构事实 |
 | `tests/` | Software Test（软件测试）和集成测试 |
 | `scripts/` | Metadata Export 和本地开发脚本 |
@@ -87,3 +88,7 @@ uv run --python 3.11 --locked python -m pytest -q
 - [`docs/architecture.md`](docs/architecture.md)：稳定架构、模块边界和代码地图。
 - [`docs/specs/`](docs/specs/) 与 [`docs/designs/`](docs/designs/)：模块行为契约和实现设计。
 - [`tests/`](tests/) 与 [`docs/acceptance/`](docs/acceptance/)：确定性测试和历史验收证据。历史结果只代表对应运行时；修改代码后应基于当前 commit 重新验证。
+
+## 电脑端 Web 入口
+
+当前默认入口为 React + TypeScript + Vite 网页。开发 / 打包入口见 [Runbook](docs/runbook.md#web-开发与打包)，行为见 [Web Spec](docs/specs/web-dialogue-v1.md)，证据见 [R1 验收](docs/acceptance/web-dialogue-v1-20261003.md)。Streamlit 已移除。刷新保留有效登录但清空当前对话；图表、长期历史和流式按后续路线推进。

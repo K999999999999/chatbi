@@ -10,7 +10,7 @@
 		"runServices": ["devcontainer"],
 		"workspaceFolder": "/workspaces/chatbi-engine",
 		"shutdownAction": "stopContainer",
-		"forwardPorts": [8000, 8501],
+		"forwardPorts": [8000, 5173],
 		"remoteEnv": {
 			"LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}"
 		},
