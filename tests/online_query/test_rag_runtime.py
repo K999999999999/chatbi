@@ -153,6 +153,38 @@ class RagRuntimeTest(unittest.TestCase):
         with self.assertRaises(AssetUnavailableError):
             runtime.get_snapshot()
 
+    def test_unexpected_embedding_failure_still_closes_store(self) -> None:
+        store = _FakeStore(_counts())
+        store.close = Mock(side_effect=RuntimeError("cleanup failure"))
+        runtime = RagRuntime(
+            self.config,
+            asset_loader=lambda _: _asset("build"),
+            store_factory=lambda _: store,
+            embedding_factory=Mock(side_effect=ValueError("unexpected model failure")),
+        )
+        with self.assertRaisesRegex(ValueError, "unexpected model failure"):
+            runtime.get_snapshot()
+        store.close.assert_called_once()
+
+    def test_close_continues_after_client_failure_and_is_idempotent(self) -> None:
+        assets = iter((_asset("old"), _asset("new")))
+        first = _FakeStore(_counts())
+        first.close = Mock(side_effect=RuntimeError("cleanup failure"))
+        second = _FakeStore(_counts())
+        stores = iter((first, second))
+        runtime = RagRuntime(
+            self.config,
+            asset_loader=lambda _: next(assets),
+            store_factory=lambda _: next(stores),
+            embedding_factory=lambda *_: _FakeEmbedding(),
+        )
+        runtime.get_snapshot()
+        runtime.get_snapshot()
+        runtime.close()
+        runtime.close()
+        first.close.assert_called_once()
+        self.assertEqual(second.close_count, 1)
+
     def test_production_rejects_manifest_without_source_provenance(self) -> None:
         runtime = RagRuntime(
             self.config,

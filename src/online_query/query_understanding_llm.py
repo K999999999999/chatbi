@@ -67,6 +67,8 @@ class LangChainQueryUnderstanding:
         environ: Mapping[str, str] | None = None,
         *,
         trace_recorder: TraceRecorder | None = None,
+        http_client: object | None = None,
+        http_async_client: object | None = None,
     ) -> "LangChainQueryUnderstanding":
         source = os.environ if environ is None else environ
         api_key = source.get("LLM_API_KEY", "").strip()
@@ -92,6 +94,11 @@ class LangChainQueryUnderstanding:
         timeout = min(timeout, _MAX_LLM_TIMEOUT_SECONDS)
 
         base_url = source.get("LLM_BASE_URL", "").strip() or None
+        client_options = {}
+        if http_client is not None:
+            client_options["http_client"] = http_client
+        if http_async_client is not None:
+            client_options["http_async_client"] = http_async_client
         try:
             model = ChatOpenAI(
                 api_key=api_key,
@@ -102,6 +109,7 @@ class LangChainQueryUnderstanding:
                 timeout=timeout,
                 max_retries=0,
                 use_responses_api=False,
+                **client_options,
             )
         except Exception as exc:
             raise LLMError("LLM 配置无效") from exc

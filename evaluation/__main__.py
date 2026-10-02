@@ -17,10 +17,10 @@ from src.authorization import (
     StaticAuthorizationPolicyStore,
     StaticIdentityProviderAdapter,
 )
+from src.bootstrap.analysis import build_analysis_application
 from src.business_analysis.runtime import (
     DEFAULT_DIMENSIONS_PATH,
     _build_chat_model,
-    build_analysis_application,
 )
 from src.observability.contracts import TraceRecorder
 from src.observability.tracing import create_trace_recorder

@@ -276,7 +276,7 @@ def _run_tests(
     )
     if profile == "development":
         migrated = subprocess.run(
-            [sys.executable, "-m", "src.chatbi_control", "migrate"],
+            [sys.executable, "-m", "src.bootstrap", "migrate"],
             cwd=project_root,
             env=test_environment,
             check=False,
@@ -284,7 +284,7 @@ def _run_tests(
         if migrated.returncode != 0:
             return migrated.returncode
         tests.append("tests/chatbi_control/test_postgres_dev_environment.py")
-        tests.append("tests/evaluation/test_database_fingerprint.py")
+        tests.append("tests/evaluation/common/test_database_fingerprint.py")
     completed = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", *tests],
         cwd=project_root,

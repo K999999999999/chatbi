@@ -1,4 +1,4 @@
-"""Business Analysis 生产装配和语义上下文加载。"""
+"""Business Analysis 语义上下文加载与模型适配配置。"""
 
 from __future__ import annotations
 
@@ -10,17 +10,10 @@ from math import isfinite
 from pathlib import Path
 
 from langchain_openai import ChatOpenAI
-from langgraph.checkpoint.postgres import PostgresSaver
-from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
-from psycopg.conninfo import make_conninfo
-from psycopg.rows import dict_row
-from psycopg_pool import ConnectionPool
 
-from src.chatbi_control.database import ControlDatabaseConfig, create_control_engine
 from src.online_query.contracts import QueryErrorCode, QueryFailure
 from src.online_query.query_understanding import FilterOperator, TimeGranularity
 
-from .application import AuthorizedQueryEntry, BusinessAnalysisApplication
 from .attribution import (
     BusinessAnalysisAttribution,
     FactorContribution,
@@ -38,58 +31,15 @@ from .contracts import (
     AnalysisTaskType,
     AnalysisTimeRange,
 )
-from .decomposer import LangChainAnalysisRequestExtractor
 from .execution import TaskError, TaskResult, TaskStatus
 from .reporting import (
     AnalysisReportError,
     BusinessAnalysisReport,
-    LangChainAnalysisSummarizer,
 )
-from .run_store import PostgresAnalysisRunStore
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_METRICS_PATH = PROJECT_ROOT / "src" / "semantic" / "metrics.json"
 DEFAULT_DIMENSIONS_PATH = PROJECT_ROOT / "src" / "semantic" / "dimensions.json"
-
-
-def build_analysis_application(
-    authorized_query_service: AuthorizedQueryEntry,
-    *,
-    environ: Mapping[str, str] | None = None,
-    metrics_path: Path = DEFAULT_METRICS_PATH,
-    dimensions_path: Path = DEFAULT_DIMENSIONS_PATH,
-) -> BusinessAnalysisApplication:
-    """装配真实 LLM 边缘和当前语义事实。"""
-
-    model = _build_chat_model(environ)
-    control_config = ControlDatabaseConfig.from_environment(
-        None if environ is None else dict(environ),
-        require_migrator=False,
-    )
-    control_engine = create_control_engine(control_config)
-    checkpoint_pool = ConnectionPool(
-        make_conninfo(**control_config.app_connection_kwargs()),
-        kwargs={"autocommit": True, "row_factory": dict_row},
-        min_size=1,
-        max_size=10,
-        open=True,
-    )
-    checkpointer = PostgresSaver(
-        checkpoint_pool,
-        serde=JsonPlusSerializer(allowed_msgpack_modules=_checkpoint_allowed_types()),
-    )
-    application = BusinessAnalysisApplication(
-        authorized_query_service,
-        decomposer=LangChainAnalysisRequestExtractor(model),
-        summarizer=LangChainAnalysisSummarizer(model),
-        context_provider=lambda: load_analysis_context(
-            metrics_path=metrics_path,
-            dimensions_path=dimensions_path,
-        ),
-        checkpointer=checkpointer,
-        run_store=PostgresAnalysisRunStore(control_engine),
-    )
-    return application
 
 
 def _checkpoint_allowed_types() -> list[tuple[str, str]]:
@@ -137,7 +87,12 @@ def load_analysis_context(
     )
 
 
-def _build_chat_model(environ: Mapping[str, str] | None) -> object:
+def _build_chat_model(
+    environ: Mapping[str, str] | None,
+    *,
+    http_client: object | None = None,
+    http_async_client: object | None = None,
+) -> object:
     source = os.environ if environ is None else environ
     api_key = source.get("LLM_API_KEY", "").strip()
     model_name = source.get("LLM_MODEL", "").strip()
@@ -157,6 +112,11 @@ def _build_chat_model(environ: Mapping[str, str] | None) -> object:
     ):
         raise RuntimeError("经营分析 LLM 数字配置无效")
     base_url = source.get("LLM_BASE_URL", "").strip() or None
+    client_options = {}
+    if http_client is not None:
+        client_options["http_client"] = http_client
+    if http_async_client is not None:
+        client_options["http_async_client"] = http_async_client
     try:
         return ChatOpenAI(
             api_key=api_key,
@@ -167,6 +127,7 @@ def _build_chat_model(environ: Mapping[str, str] | None) -> object:
             timeout=timeout,
             max_retries=0,
             use_responses_api=False,
+            **client_options,
         )
     except Exception as exc:
         raise RuntimeError("经营分析 LLM 配置无效") from exc

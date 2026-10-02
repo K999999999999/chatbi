@@ -68,7 +68,7 @@ class QueryApiIntegrationTest(TestCase):
         self.assertEqual([item.sql for item in executor.sqls], [sql])
         self.assertEqual(len(generator.prompts), 1)
 
-    def test_main_module_assembles_real_dependencies_without_connecting(self) -> None:
+    def test_main_module_creates_application_without_connecting(self) -> None:
         root = Path(__file__).resolve().parents[2]
         environment = os.environ.copy()
         environment.update(
@@ -114,14 +114,23 @@ class QueryApiIntegrationTest(TestCase):
         root = Path(__file__).resolve().parents[2]
         environment = _main_environment(root, "production")
         script = """
-from src.chatbi_control import database
-database.verify_control_schema = lambda engine: None
-import src.query_api.main as main
-checks = []
-main._rag_runtime.verify_production_ready = lambda callback: checks.append(callback)
-main.verify_startup_dependencies()
-assert len(checks) == 1
-assert checks[0] == main._query_executor.verify_structure_metadata
+from unittest.mock import Mock, patch
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from src.bootstrap import readiness, runtime
+from src.query_api.main import app
+rag = Mock()
+engine = create_engine('sqlite+pysqlite:///:memory:')
+with (
+    patch.object(readiness, 'verify_control_schema'),
+    patch.object(runtime, 'create_control_engine', return_value=engine),
+    patch.object(runtime.RagRuntime, 'from_environment', return_value=rag),
+    patch.object(runtime, 'build_analysis_application', return_value=Mock()),
+):
+    with TestClient(app) as client:
+        assert client.get('/health').status_code == 200
+    callback = rag.verify_production_ready.call_args.args[0]
+    assert callback.__self__.__class__.__name__ == 'PsycopgQueryExecutor'
 print('PRODUCTION_RAG_READY_GATE_VERIFIED')
 """
 
@@ -142,15 +151,23 @@ print('PRODUCTION_RAG_READY_GATE_VERIFIED')
         environment = _main_environment(root, "production")
         environment["RAG_ONLINE_RETRIEVAL_ENABLED"] = "false"
         script = """
-from src.chatbi_control import database
-database.verify_control_schema = lambda engine: None
-import src.query_api.main as main
-try:
-    main.verify_startup_dependencies()
-except RuntimeError as exc:
-    assert '必须启用在线 RAG' in str(exc)
-else:
-    raise AssertionError('production static retrieval unexpectedly started')
+from unittest.mock import patch
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from src.bootstrap import readiness, runtime
+from src.query_api.main import app
+engine = create_engine('sqlite+pysqlite:///:memory:')
+with (
+    patch.object(readiness, 'verify_control_schema'),
+    patch.object(runtime, 'create_control_engine', return_value=engine),
+):
+    try:
+        with TestClient(app):
+            pass
+    except RuntimeError as exc:
+        assert '必须启用在线 RAG' in str(exc)
+    else:
+        raise AssertionError('production static retrieval unexpectedly started')
 print('PRODUCTION_STATIC_RETRIEVAL_REJECTED')
 """
 
@@ -172,6 +189,9 @@ def _main_environment(root: Path, environment_name: str) -> dict[str, str]:
     environment.update(
         {
             "CHATBI_ENV": environment_name,
+            "RAG_ONLINE_RETRIEVAL_ENABLED": "true",
+            "CHATBI_OBSERVABILITY_ENABLED": "false",
+            "CHATBI_TRACE_CONTENT_ENABLED": "false",
             "LLM_API_KEY": "test-key",
             "LLM_BASE_URL": "http://127.0.0.1:1/v1",
             "LLM_MODEL": "test-model",

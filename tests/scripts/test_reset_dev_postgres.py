@@ -70,7 +70,7 @@ def test_postgres_reset_initializes_migrations_before_waiting_for_health(
     commands = [call.args[0] for call in run.call_args_list]
     assert commands[0][:5] == ["docker", "compose", "exec", "-T", "postgres"]
     assert commands[0][-1] == "/workspace/database/init/wait_for_base_initialization.sh"
-    assert commands[1][-2:] == ["src.chatbi_control", "migrate"]
+    assert commands[1][-2:] == ["src.bootstrap", "migrate"]
     assert commands[2] == ["docker", "compose", "up", "--detach", "--wait", "postgres"]
 
 

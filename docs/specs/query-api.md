@@ -230,7 +230,7 @@ API 对请求体解析失败时，也必须返回上述 `QueryFailure` 形状，
 
 - API Adapter 已落位于 `src/query_api/`。
 - `app.py` 提供应用工厂、请求/响应模型、路由和错误映射。
-- `main.py` 组装现有 `LangChainSQLGenerator`、`PsycopgQueryExecutor` 和 `OnlineQueryService`，再由 `create_app()` 包装为 `AuthorizedQueryService`。
+- `main.py` 仅创建无运行资源副作用的应用，`src/bootstrap/` 在 lifespan 内装配真实依赖并执行就绪门禁，`create_app()` 将查询服务绑定为 `AuthorizedQueryService`；失败清理与关闭规则见 [初始化与运行资源 Spec](bootstrap.md)。
 - FastAPI 运行依赖已写入 `pyproject.toml`，具体解析版本由 `uv.lock` 锁定。
 - API 确定性测试与原有 Online Query、Evaluation 回归测试已通过。
 - 已使用真实 `.env` 完成一次 HTTP 到 LLM、SQL Guard 和 PostgreSQL 的闭环验证，返回 `200` 和 1 行结果。

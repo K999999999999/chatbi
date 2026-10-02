@@ -1,26 +1,18 @@
 """RAG Offline Build 命令行入口。"""
 
-import argparse
 import json
-from pathlib import Path
+from argparse import Namespace
+from contextlib import ExitStack
 
-from dotenv import load_dotenv
+from src.rag_offline.build import build_offline_assets
+from src.rag_offline.config import OfflineBuildConfig
+from src.rag_offline.embedding import BgeM3EmbeddingProvider
+from src.rag_offline.qdrant_store import QdrantAssetStore
 
-from .build import build_offline_assets
-from .config import OfflineBuildConfig
-from .embedding import BgeM3EmbeddingProvider
-from .qdrant_store import QdrantAssetStore
+from .lifecycle import register_cleanup
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="构建 ChatBI RAG Offline 资产")
-    parser.add_argument("--structure-dir", type=Path)
-    parser.add_argument("--metrics-path", type=Path)
-    parser.add_argument("--output-dir", type=Path)
-    parser.add_argument("--build-id")
-    args = parser.parse_args()
-
-    load_dotenv(override=False)
+def build_rag(args: Namespace) -> int:
     settings = OfflineBuildConfig.from_environment()
     structure_dir = args.structure_dir or None
     metrics_path = args.metrics_path or None
@@ -39,7 +31,8 @@ def main() -> int:
         api_key=settings.qdrant_api_key,
         timeout=settings.qdrant_timeout_seconds,
     )
-    try:
+    with ExitStack() as resources:
+        register_cleanup(resources, "rag_build_store", store.close)
         kwargs = {
             "embedding": embedding,
             "store": store,
@@ -53,12 +46,6 @@ def main() -> int:
         if metrics_path is not None:
             kwargs["metrics_path"] = metrics_path
         summary = build_offline_assets(**kwargs)
-    finally:
-        store.close()
 
     print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
     return 0 if summary.published else 1
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

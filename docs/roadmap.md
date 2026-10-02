@@ -20,6 +20,7 @@ ChatBI 的 MVP 核心能力已经形成：自然语言查询、Online Retrieval�
 - [x] production Ready 校验当前 PostgreSQL catalog、结构 metadata 与发布资产；无法验证或不一致时拒绝服务。
 - [x] clean bootstrap 安装 Control DB migration、LangGraph checkpoint 表与权限；缺少关键对象时 healthcheck 失败。
 - [x] Runbook 描述从新环境初始化到服务运行的步骤。
+- [x] 运行资源装配、启动检查、失败清理和关闭集中到 `src/bootstrap/`；四类初始化命令统一入口，旧入口已移除。行为与验收边界见 [初始化 Spec](specs/bootstrap.md)。
 - [ ] 在最终 clean commit 上核对 Golden Set 与当前 Contract，然后运行 29 个单轮、7 个多轮、10 个 Business Analysis 案例的完整 Evaluation；要求各必需套件 `0 FAIL`、`0 INVALID_CASE`。
 - [ ] 保留并清楚标记 Evaluation 报告的 commit、工作区状态、案例集及资源身份，避免历史结果被误认为当前 HEAD 结果。
 

@@ -30,13 +30,15 @@ query_api → online_query
 
 ## 最小代码结构
 
-代码只新增一个模块和三个文件：
+HTTP Adapter 与真实运行装配分离：
 
 | 文件 | 职责 |
 |---|---|
 | `src/query_api/__init__.py` | 导出 `create_app()`，不在导入时创建真实服务 |
 | `src/query_api/app.py` | FastAPI 应用工厂、请求模型、响应转换、HTTP 状态映射和 `/health`、`/api/v1/query` 路由 |
-| `src/query_api/main.py` | 创建真实 `LangChainSQLGenerator`、`PsycopgQueryExecutor`、`OnlineQueryService`，提供 Uvicorn/FastAPI 入口 `app` |
+| `src/query_api/main.py` | 创建无资源副作用的应用，提供 Uvicorn/FastAPI 入口 `app` |
+| `src/query_api/runtime.py` | HTTP Adapter 接收的启动依赖与服务接口，不依赖具体 bootstrap 实现 |
+| `src/bootstrap/` | 真实资源装配、启动门禁、完整生命周期和显式初始化命令 |
 
 不新增 `ports/`、`middleware/`、`schemas/`、`container/` 或独立 DTO 目录。当前接口数量和转换逻辑都很少，直接放在 `app.py` 最清楚。
 
@@ -130,16 +132,9 @@ POST /api/v1/query
 
 ## `main.py` 设计
 
-`main.py` 只负责生产组装：
+`main.py` 将 bootstrap 的运行生命周期工厂交给 `create_app()`，提供 `app` 入口；不在模块导入时创建真实服务、连接或模型资源。
 
-```text
-LangChainSQLGenerator.from_env()
-PsycopgQueryExecutor.from_env()
-OnlineQueryService(generator, executor)
-create_app(service)
-```
-
-它复用 Online Query 当前的环境变量和初始化逻辑，不新增 `.env` 读取器，不改变 LLM 或 PostgreSQL 配置。
+真实装配位于 `src/bootstrap/`。它复用当前配置加载器和环境变量，不改变 LLM 或 PostgreSQL 配置；模块导入不创建运行资源。单一 FastAPI 提前定义根路由和 Middleware，lifespan 内创建并绑定服务，随后挂载 SQLAdmin，关闭时解除本轮绑定并清理资源。直接注入测试方式保留。具体生命周期与命令边界见 [初始化 Spec](../specs/bootstrap.md)。
 
 缺少 LLM 或数据库必要配置时，真实服务启动失败并尽早暴露配置问题。测试不导入生产 `main.app`，而是使用 `create_app(fake_service)`。
 
@@ -215,7 +210,7 @@ error_message
 
 ### T4：真实服务组装和 HTTP 验证
 
-- 在 `main.py` 复用现有 LLM、数据库和 Online Query 组装逻辑。
+- 在 `src/bootstrap/` 复用现有 LLM、数据库和 Online Query 组装逻辑，`main.py` 保留启动入口。
 - 验证配置失败的启动行为。
 - 完成一次真实 HTTP 端到端验证。
 
@@ -238,5 +233,5 @@ error_message
 
 - T1、T2、T3、T4 的代码实现已完成，并分别提交。
 - `src/query_api/app.py` 的应用工厂、成功响应、请求校验和错误映射已由确定性测试覆盖。
-- `src/query_api/main.py` 已复用现有 LLM、数据库和 Online Query 组装逻辑；测试同时验证真实服务对象能够进入现有查询链路。
+- 初始实现由 `src/query_api/main.py` 复用 LLM、数据库和 Online Query 组装逻辑；当前装配已迁入 `src/bootstrap/`，入口保持不变。历史测试与当前候选验证分别解释。
 - API 测试与原有测试全量通过；已使用真实 `.env` 完成一次 HTTP 到 LLM、SQL Guard 和 PostgreSQL 的闭环验证。

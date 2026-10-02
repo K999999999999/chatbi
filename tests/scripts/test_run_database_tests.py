@@ -225,6 +225,25 @@ def test_temporary_container_is_cleaned_when_tests_are_interrupted(monkeypatch) 
     cleanup.assert_called_once_with("docker", f"chatbi-db-test-{run_id}", run_id)
 
 
+def test_development_runner_selects_existing_tests_after_migration(monkeypatch):
+    root = Path(__file__).resolve().parents[2]
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append(command)
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(run_database_tests.subprocess, "run", run)
+    result = run_database_tests._run_tests(
+        root, 43127, profile="development", migrator_password="test-migrator"
+    )
+    assert result == 0
+    assert calls[0][-2:] == ["src.bootstrap", "migrate"]
+    targets = calls[1][4:]
+    assert targets
+    assert all((root / target.split("::", 1)[0]).is_file() for target in targets)
+
+
 def test_temporary_development_runner_shares_generated_migrator_password(
     monkeypatch,
 ) -> None:

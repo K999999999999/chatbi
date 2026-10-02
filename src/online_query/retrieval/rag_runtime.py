@@ -1,5 +1,6 @@
 """Online RAG Runtime（在线 RAG 运行时）和不可变资产快照。"""
 
+import logging
 import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -113,7 +114,7 @@ class RagRuntime:
             snapshots = tuple(self._snapshots.values())
             self._snapshots.clear()
         for snapshot in snapshots:
-            snapshot.qdrant_store.close()
+            _close_store(snapshot.qdrant_store)
 
     def _create_snapshot(self, published: PublishedAsset) -> AssetSnapshot:
         _validate_manifest(published, self._config)
@@ -126,17 +127,20 @@ class RagRuntime:
             embedding_config = _embedding_config(published.manifest)
             embedding = self._embedding_factory(self._config, embedding_config)
         except AssetUnavailableError:
-            store.close()
+            _close_store(store)
             raise
         except QdrantStoreError as exc:
-            store.close()
+            _close_store(store)
             raise RetrievalUnavailableError(str(exc)) from exc
         except EmbeddingUnavailableError:
-            store.close()
+            _close_store(store)
             raise
         except (OSError, RuntimeError) as exc:
-            store.close()
+            _close_store(store)
             raise EmbeddingUnavailableError(f"Embedding 运行时创建失败：{exc}") from exc
+        except BaseException:
+            _close_store(store)
+            raise
 
         return AssetSnapshot(
             asset_version=published.build_id,
@@ -168,6 +172,15 @@ class RagRuntime:
                 f"PostgreSQL Schema 与 Structure Metadata 不一致或无法验证：{message}"
             ) from None
         return snapshot
+
+
+def _close_store(store: QdrantAssetStore) -> None:
+    try:
+        store.close()
+    except Exception as error:
+        logging.getLogger(__name__).warning(
+            "RAG cleanup failed: error_type=%s", type(error).__name__
+        )
 
 
 def _default_store_factory(config: OfflineBuildConfig) -> QdrantAssetStore:

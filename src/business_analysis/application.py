@@ -126,6 +126,7 @@ class BusinessAnalysisApplication:
         self._graph = self._build_graph()
         self._cleanup_stop: Event | None = None
         self._cleanup_thread: Thread | None = None
+        self._closed = False
         if isinstance(run_store, PostgresAnalysisRunStore):
             self._cleanup_stop = Event()
             self._cleanup_thread = Thread(
@@ -139,18 +140,29 @@ class BusinessAnalysisApplication:
     def close(self) -> None:
         """释放生产装配持有的 checkpoint 和运行登记连接池。"""
 
+        if self._closed:
+            return
+        self._closed = True
         if self._cleanup_stop is not None:
             self._cleanup_stop.set()
         if self._cleanup_thread is not None:
-            self._cleanup_thread.join(timeout=2)
-        if self._run_store is not None:
-            close_store = getattr(self._run_store, "close", None)
-            if callable(close_store):
-                close_store()
+            try:
+                self._cleanup_thread.join(timeout=2)
+            except Exception as error:
+                _LOGGER.warning(
+                    "Analysis thread cleanup failed: error_type=%s",
+                    type(error).__name__,
+                )
         connection_pool = getattr(self._checkpointer, "conn", None)
-        close = getattr(connection_pool, "close", None)
-        if callable(close):
-            close()
+        for resource in (self._run_store, connection_pool):
+            close = getattr(resource, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception as error:
+                    _LOGGER.warning(
+                        "Analysis cleanup failed: error_type=%s", type(error).__name__
+                    )
 
     def analyze(
         self,

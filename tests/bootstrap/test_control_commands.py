@@ -3,13 +3,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.chatbi_control import cli
+from src.bootstrap import commands
+from src.bootstrap import control as cli
 
 
 def test_migrate_command_initializes_only_schema_and_rbac(capsys) -> None:
     config = object()
     with (
-        patch.object(cli, "load_dotenv"),
         patch.object(
             cli.ControlDatabaseConfig, "from_environment", return_value=config
         ),
@@ -17,7 +17,7 @@ def test_migrate_command_initializes_only_schema_and_rbac(capsys) -> None:
         patch.object(cli, "create_control_engine") as create_engine,
         patch.object(cli, "create_first_admin") as create_admin,
     ):
-        assert cli.main(["migrate"]) == 0
+        assert cli.migrate() == 0
 
     initialize.assert_called_once_with(config)
     create_engine.assert_not_called()
@@ -34,7 +34,6 @@ def test_create_admin_uses_runtime_database_without_running_migrations(capsys) -
     session.begin.return_value = nullcontext()
 
     with (
-        patch.object(cli, "load_dotenv"),
         patch.object(
             cli.ControlDatabaseConfig,
             "from_environment",
@@ -51,7 +50,7 @@ def test_create_admin_uses_runtime_database_without_running_migrations(capsys) -
         ),
         patch.object(cli, "initialize_control_database") as initialize,
     ):
-        assert cli.main(["create-admin", "--username", "admin-1"]) == 0
+        assert cli.create_admin("admin-1") == 0
 
     from_environment.assert_called_once_with(require_migrator=False)
     verify_schema.assert_called_once_with(engine)
@@ -68,7 +67,6 @@ def test_create_admin_uses_runtime_database_without_running_migrations(capsys) -
 
 def test_mismatched_admin_passwords_stop_before_database_access(capsys) -> None:
     with (
-        patch.object(cli, "load_dotenv"),
         patch.object(
             cli.getpass,
             "getpass",
@@ -76,7 +74,7 @@ def test_mismatched_admin_passwords_stop_before_database_access(capsys) -> None:
         ),
         patch.object(cli.ControlDatabaseConfig, "from_environment") as from_environment,
     ):
-        assert cli.main(["create-admin", "--username", "admin-1"]) == 2
+        assert cli.create_admin("admin-1") == 2
 
     from_environment.assert_not_called()
     assert "两次密码不一致" in capsys.readouterr().err
@@ -84,6 +82,6 @@ def test_mismatched_admin_passwords_stop_before_database_access(capsys) -> None:
 
 def test_cli_requires_an_explicit_subcommand() -> None:
     with pytest.raises(SystemExit) as error:
-        cli.main([])
+        commands.main([])
 
     assert error.value.code == 2
