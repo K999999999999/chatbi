@@ -1,7 +1,9 @@
 """QueryUnderstandingAdapter（查询理解适配器）测试。"""
 
 import json
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock, patch
 
@@ -19,6 +21,7 @@ from src.online_query.query_understanding_llm import (
     build_query_revision_prompt,
     build_query_understanding_prompt,
 )
+from src.semantic.metric_vocabulary import load_metric_vocabulary
 
 
 class QueryUnderstandingLLMTest(unittest.TestCase):
@@ -136,6 +139,10 @@ class QueryUnderstandingLLMTest(unittest.TestCase):
         self.assertIn("没有明确替换措辞时按追加处理", prompt)
         self.assertIn('"dimensions":["客户类型"]', prompt)
         self.assertNotIn("2025 年按客户类型统计销售额", prompt)
+        self.assertIn('"人民币毛利"', prompt)
+        self.assertIn('"毛利"', prompt)
+        self.assertIn("“利润”未唯一指向列表中的指标", prompt)
+        self.assertIn("metrics 必须输出该指标的规范名称", prompt)
 
     def test_prompt_requires_one_object_without_physical_resources(self) -> None:
         prompt = build_query_understanding_prompt("查询销售额")
@@ -145,11 +152,18 @@ class QueryUnderstandingLLMTest(unittest.TestCase):
         self.assertIn("metrics", prompt)
         self.assertIn("明细行数", prompt)
         self.assertIn("已完成订单数量", prompt)
-        self.assertIn("最小指标表达式", prompt)
         self.assertIn("利润", prompt)
         self.assertIn('"outcome": "clarification_required"', prompt)
-        self.assertIn("不得猜测或改写为某个指标", prompt)
-        self.assertIn("毛利、净利润或其他口径", prompt)
+        self.assertIn("无法唯一对应到一个指标时，不得猜测", prompt)
+        self.assertIn("例如“利润”未唯一指向列表中的指标", prompt)
+        self.assertIn('"人民币毛利"', prompt)
+        self.assertIn('"毛利"', prompt)
+        self.assertIn('"毛利率"', prompt)
+        self.assertIn('"毛利润率"', prompt)
+        self.assertIn("“利润”未唯一指向列表中的指标", prompt)
+        self.assertIn("“毛利”对应“人民币毛利”", prompt)
+        self.assertNotIn("SUM(f.net_sales_amount_cny", prompt)
+        self.assertNotIn("fct_sales_order_line", prompt)
         self.assertIn("由程序返回 CANNOT_ANSWER", prompt)
         self.assertIn("当前数据状态", prompt)
         self.assertIn("不要输出物理表名、物理字段名", prompt)
@@ -161,6 +175,29 @@ class QueryUnderstandingLLMTest(unittest.TestCase):
             '"text": "2025 年第一季度", "granularity": "quarter"',
             prompt,
         )
+
+    def test_metric_vocabulary_comes_from_metric_source(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            metrics_path = Path(directory) / "metrics.json"
+            metrics_path.write_text(
+                json.dumps(
+                    [{"name": "测试规范指标", "aliases": ["测试说法"]}],
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                load_metric_vocabulary(metrics_path),
+                (("测试规范指标", ("测试说法",)),),
+            )
+
+        with patch(
+            "src.online_query.query_understanding_llm.load_metric_vocabulary",
+            return_value=(("测试规范指标", ("测试说法",)),),
+        ):
+            prompt = build_query_understanding_prompt("查询测试说法")
+        self.assertIn('"name":"测试规范指标","aliases":["测试说法"]', prompt)
 
     def test_provider_exception_retries_once_then_returns_candidate(self) -> None:
         model = Mock()
