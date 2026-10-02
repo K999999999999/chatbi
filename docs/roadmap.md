@@ -6,7 +6,7 @@ ChatBI 的 MVP 核心能力已经形成：自然语言查询、Online Retrieval�
 
 生产准备基线已在 clean commit `6a5e6ccc6504ebc0947a6addb4abb02d87b566d3` 核验：正式单轮 29/29、多轮 7/7（15 个轮次）、Business Analysis 10/10，均 `0 FAIL`、`0 INVALID_CASE`，三次独立多轮诊断各 7/7 通过。原始报告保存在本机 ignored 目录 `reports/evaluation/baseline-20261003T6a5e6cc/{formal,diagnostic-1,diagnostic-2,diagnostic-3}`；它们绑定该提交、案例集和运行资源，后续提交不自动继承通过身份，报告也不保证在新 clone 中存在。
 
-产品 V1 的需求方向和优先顺序已确认。[R1 完整 Spec](../.scratch/chatbi-product-v1/r1-spec.md) 已获用户整体确认，设计审查与 Ticket Readiness 已通过，[五项实施拆分](../.scratch/chatbi-product-v1/r1-tickets-draft.md)和整体实施范围已获确认；R1 电脑端入口、旧入口移除和本地验收已完成（[证据](acceptance/web-dialogue-v1-20261003.md)），待单独发布授权；下一需求为 R2 结果解释与可视化细化；其他需求的具体行为、技术与验收指标仍待细化。仓库尚未声称已完成独立 Web 前端、生产部署、容量验证或生产运行保障。
+产品 V1 的需求方向和优先顺序已确认。[R1 完整 Spec](../.scratch/chatbi-product-v1/r1-spec.md) 已获用户整体确认，设计审查与 Ticket Readiness 已通过，[五项实施拆分](../.scratch/chatbi-product-v1/r1-tickets-draft.md)和整体实施范围已获确认；R1 电脑端入口、旧入口移除和本地验收已完成（[证据](acceptance/web-dialogue-v1-20261003.md)），发布授权已获，PR 与 required checks 状态以 GitHub 实时信息为准；下一需求为 R2 结果解释与可视化细化；其他需求的具体行为、技术与验收指标仍待细化。仓库尚未声称已完成独立 Web 前端、生产部署、容量验证或生产运行保障。
 
 历史完整 Evaluation 基线包括 commit `31a04549924f622777f106d4fe5a758bd2ca2beb` 和较新的 `564343216e4493f832f07efb345c03b058a04eb5`；后者的三套通过证据及此前多轮失败见[工作项验收记录](../.scratch/engineering-quality-gates/issues/04-current-candidate-evaluation-baseline.md#result)。历史通过结果不代表当前 HEAD 或模型稳定性。当前候选只有在三套正式报告均指向同一最终 clean commit、`git_dirty=false` 且各自 `0 FAIL`、`0 INVALID_CASE` 后才能标记为已核验。
 
@@ -61,7 +61,7 @@ flowchart TD
 
 | ID | 需求 | 交付范围与验收方向 | 当前状态 |
 | --- | --- | --- | --- |
-| R1 | Web 对话与经营分析入口 | 仅电脑端；React + TypeScript + Vite，复用 FastAPI。登录 / 首次改密、问数 / 追问、澄清 / 拒绝及独立分析模式；Cookie 登录兼容 Bearer，验收后移除 Streamlit。刷新暂回到空白对话，历史由 R3 实现 | Spec 已确认，设计 / Readiness 通过，五项 Ticket 已确认；五项 Ticket 完成；Streamlit 已移除，最终代码候选本地验收通过，待发布授权 |
+| R1 | Web 对话与经营分析入口 | 仅电脑端；React + TypeScript + Vite，复用 FastAPI。登录 / 首次改密、问数 / 追问、澄清 / 拒绝及独立分析模式；Cookie 登录兼容 Bearer，验收后移除 Streamlit。刷新暂回到空白对话，历史由 R3 实现 | Spec 已确认，设计 / Readiness 通过，五项 Ticket 已完成；Streamlit 已移除，最终代码候选本地验收通过，发布授权已获；PR 与 required checks 状态以 GitHub 实时信息为准 |
 | R2 | 结果解释与可视化 | 明确列类型、指标、单位、有效时间范围和分组含义；表格 / 图表切换、归因证据及贡献展示；正确处理空值、空结果与截断，不由展示层猜测业务口径 | 待澄清 |
 | R3 | 历史与成果管理 | 历史列表、重新打开、保存查询 / 报告和删除；定义结果快照与重新查询、历史重开与继续追问、保留期限；读取历史仍检查当前身份和权限 | 待澄清 |
 | R4 | 执行状态与流式反馈 | 先验收真实执行进度与最终结果，再验收分析文字逐步展示；定义失败、超时、断连、重试、重复提交、取消 / 恢复边界和事件 Contract | 待澄清 |

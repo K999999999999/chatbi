@@ -58,3 +58,5 @@ Canonical Source: ../r1-spec.md、../r1-design.md、../r1-design-review.md、../
 
 
 完成结论：最终clean代码候选 `0e4000b1455c9a67d4daae3f4992da6d79a8ac0b` 的真实Chrome闭环与关闭后账号清理强制核验PASS，构建Hash / 模型与RAG身份 / 对照结果记录于ignored报告；全部软件 / 集成 / browser / startup / 依赖 / 安全验证与Review已具备。最终Acceptance、Web Spec/Design和Roadmap回填完成事实；R1本地Done，只有发布另需授权。Windows脚本与Dev Container运行、本地gitleaks/远端CI未执行，主声明环境为WSL/Linux，适用边界已写明。未改业务语义或虚构新的全量AI基线。
+
+2026-10-03 发布授权更新：用户在聊天中明确确认将当前 R1 candidate 发布到 `chatbi/master`。授权涵盖该目标的 Push、创建 / 更新单个 PR、范围内 CI 修复与跟进，以及仓库规则允许的自动合并后正常收尾；不授权人工 Merge，也不涵盖 R2–R7。实时 PR / CI 状态记录于 GitHub 与 Git 公共目录工作状态。

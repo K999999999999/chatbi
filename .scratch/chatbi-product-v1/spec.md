@@ -106,4 +106,4 @@ Done When：目标、路线、未决问题与证据适用提交已记录，文�
 
 ## R1 本地交付事实（2026-10-03）
 
-已确认的五项R1 Ticket已连续完成；React / TypeScript / Vite电脑端网页、Cookie登录 / 首次改密 / 退出、问数 / 追问 / 基础表格 / SQL、独立经营分析 / 原任务恢复已落地。Streamlit活动入口已移除。最终代码候选0e4000b本地软件 / 桌面Chrome / 真实模型与数据库闭环通过，证据见 docs/acceptance/web-dialogue-v1-20261003.md。未发布PR，发布另需授权；产品V1整体仍未完成，下一优先级为R2结果解释与可视化需求细化，不自动承诺实现未确认行为。
+已确认的五项R1 Ticket已连续完成；React / TypeScript / Vite电脑端网页、Cookie登录 / 首次改密 / 退出、问数 / 追问 / 基础表格 / SQL、独立经营分析 / 原任务恢复已落地。Streamlit活动入口已移除。最终代码候选0e4000b本地软件 / 桌面Chrome / 真实模型与数据库闭环通过，证据见 docs/acceptance/web-dialogue-v1-20261003.md。用户已单独授权发布 R1 PR 至 `chatbi/master`；PR 与 CI 状态以 GitHub 实时信息为准。产品V1整体仍未完成，下一优先级为R2结果解释与可视化需求细化，不自动承诺实现未确认行为。

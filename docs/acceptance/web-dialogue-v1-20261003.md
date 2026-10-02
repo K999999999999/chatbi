@@ -2,7 +2,7 @@
 
 ## 结论与适用范围
 
-R1 电脑端 Web 的实现、旧入口替换与本地验收完成。最终代码候选为 clean `0e4000b1455c9a67d4daae3f4992da6d79a8ac0b`；此前 Ticket 04 核心替换证据绑定 `c8fe37ed6be41e9d754fd82bfeb22685f4392fd2`，下文保留对应阶段与首次关闭问题。后续只回填文档 / 状态，不改变已验证代码和行为；未发布 PR 或公网服务，不构成生产部署证明。
+R1 电脑端 Web 的实现、旧入口替换与本地验收完成。最终代码候选为 clean `0e4000b1455c9a67d4daae3f4992da6d79a8ac0b`；此前 Ticket 04 核心替换证据绑定 `c8fe37ed6be41e9d754fd82bfeb22685f4392fd2`，下文保留对应阶段与首次关闭问题。此验收记录描述本地代码与业务证据，不表达 PR 实时状态；PR 与 required checks 以 GitHub 实时信息为准。没有公网部署，不构成生产部署证明。
 
 Contract：[Web Spec](../specs/web-dialogue-v1.md)、[Web Design](../designs/web-dialogue-v1.md)。范围仅电脑端、指定账号、同步请求；图表、长期历史、流式、导出和生产运行验收仍按 R2–R7。
 
