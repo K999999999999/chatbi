@@ -87,3 +87,7 @@ uv run --python 3.11 --locked python -m pytest -q
 - [`docs/architecture.md`](docs/architecture.md)：稳定架构、模块边界和代码地图。
 - [`docs/specs/`](docs/specs/) 与 [`docs/designs/`](docs/designs/)：模块行为契约和实现设计。
 - [`tests/`](tests/) 与 [`docs/acceptance/`](docs/acceptance/)：确定性测试和历史验收证据。历史结果只代表对应运行时；修改代码后应基于当前 commit 重新验证。
+
+## R1 Web 前端迁移
+
+新增电脑端 React + TypeScript + Vite 网页；开发 / 打包入口见 [Runbook](docs/runbook.md#r1-新网页开发入口迁移期间)，行为见 [Web Spec](docs/specs/web-dialogue-v1.md)。迁移期间暂保留 Streamlit，新网页核心闭环验收后移除。

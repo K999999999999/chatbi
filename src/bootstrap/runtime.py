@@ -21,6 +21,7 @@ from src.online_query.query_understanding_llm import LangChainQueryUnderstanding
 from src.online_query.retrieval import OnlineRetriever
 from src.online_query.retrieval.rag_runtime import RagRuntime
 from src.online_query.service import OnlineQueryService
+from src.query_api.browser import BrowserSettings
 from src.query_api.config import load_local_environment, validate_runtime_configuration
 from src.query_api.runtime import RuntimeDependencies
 
@@ -99,6 +100,7 @@ async def create_runtime() -> AsyncIterator[RuntimeDependencies]:
 
         yield RuntimeDependencies(
             service=service,
+            browser_settings=BrowserSettings.from_environment(os.environ),
             audit_sink=audit,
             auth_service=auth,
             identity_provider=LocalSessionIdentityProvider(auth),

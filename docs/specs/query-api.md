@@ -237,3 +237,7 @@ API 对请求体解析失败时，也必须返回上述 `QueryFailure` 形状，
 - Multi-Turn Query V1 的公共 Contract 已确认并完成文档同步；Ticket 01～04 已完成会话生命周期、结构化语义修订、Streamlit 当前会话联动和分层验收；真实 AI Evaluation、Real E2E 及本次三轮场景的 Business Acceptance 证据见 `docs/acceptance/multi-turn-query-v1-20260919.md`。
 
 当前 Streamlit POC 页面通过 HTTP 调用本 API；正式前端是否采用 React、Vue 或其他方案，仍属于后续范围。
+
+## R1 浏览器入口
+
+浏览器登录使用 `/auth/browser/login`、`/auth/browser/me`、`/auth/browser/logout`、`/auth/browser/change-password`，旧 `/auth/*` Bearer 路由继续兼容。查询 body / result Contract 不变；Cookie 身份、CSRF 门禁和网页入口见 [Web Spec](web-dialogue-v1.md) 及 [Web Design](../designs/web-dialogue-v1.md)。本文早期“不负责用户登录 / 身份”的描述仅指查询核心不自行定义身份事实，不能用于删除当前内置账号能力。

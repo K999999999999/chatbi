@@ -459,3 +459,11 @@ Streamlit 的 `CHATBI_API_BASE_URL` 默认是 `http://127.0.0.1:8000`；只有 A
 - `FILESYSTEM`：本地目录或权限问题。
 
 先确认 `current.json` 仍指向旧版本，再处理失败构建；不要直接删除旧集合。
+
+## R1 新网页开发入口（迁移期间）
+
+安装 Node 24 和 npm，进入 `frontend` 执行 `npm ci`。在本地 `.env` 显式设置 `CHATBI_WEB_ORIGIN=http://127.0.0.1:5173`，启动 FastAPI 后运行 `npm run dev`；浏览器打开该地址。真实凭证仅填入本地配置和登录表单，不写入仓库。
+
+打包使用 `npm run build`。以 FastAPI 同源提供打包网页时，设置 `CHATBI_WEB_DIST_DIR=frontend/dist`，并将 `CHATBI_WEB_ORIGIN` 设置为实际网页地址（本地如 `http://127.0.0.1:8000`）。API-only 运行可同时留空这两个配置。线上 Origin 必须为 HTTPS；完整生产部署验收仍属于 R6。
+
+浏览器使用独立 Cookie 登录接口，旧 Bearer 和管理后台继续兼容。当前仅电脑端；刷新保持登录但不恢复临时聊天，长期历史在 R3 实现。
