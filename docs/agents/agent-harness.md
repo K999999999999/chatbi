@@ -14,6 +14,7 @@
 | --- | --- | --- |
 | 项目入口与稳定边界 | `AGENTS.md` | 告诉 Agent 应遵循的核心原则和下一步读取位置 |
 | 架构、产品与行为事实 | `docs/architecture.md`、`docs/product-scope.md`、`docs/specs/`、`docs/designs/` | 说明系统边界、当前产品范围、行为 Contract 和实现设计 |
+| 路线与优先级 | `docs/roadmap.md` | 汇总当前目标、依赖、验收状态与优先级确认状态；受产品边界和已确认 Contract 约束 |
 | 领域事实读取边界 | `docs/agents/domain.md` | 说明领域任务的事实源读取顺序和文档边界 |
 | 工程工作流程 | `docs/agents/issue-tracker.md`、`docs/agents/git-pr-workflow.md` | 说明 `.scratch/` 长期工作记录、本机实时状态、实施门禁、分支、PR 和交付规则 |
 | 正确性反馈 | `tests/`、`evaluation/`、`.github/workflows/ci.yml`、`.github/workflows/real-e2e.yml` | 提供确定性测试、AI Evaluation、集成检查和真实 E2E 证据 |
@@ -30,6 +31,16 @@ ChatBI 产品本身也有模型输出的确定性护栏，例如业务语义解�
 新会话开始时，Agent 检查实时 Git / worktree、长期 `.scratch/` 记录和 Git 公共目录中的本机共享进度，按工作项 ID 与真实 PR 身份核验恢复当前阶段、工作区状态、上次停点和下一步；不能仅按当前 branch 匹配。状态查找与冲突规则见 [`issue-tracker.md`](issue-tracker.md)。Plugin 安装本身不会修改项目规则；要让其他项目获得相同入口，应通过 `setup-engineering-workflow` 检查该项目现有约定，并经用户确认后写入其 Agent instructions。
 
 PR 合并后按 [`git-pr-workflow.md`](git-pr-workflow.md) 执行 Harness 复盘；产品实现缺陷与 Agent 工作环境缺口分别记录，避免相互替代。
+
+## 路线图读取与维护
+
+判断下一步、启动新目标或调整计划时，读取 `docs/roadmap.md`，结合 `docs/product-scope.md` 和相关 Spec、Design、Acceptance、工作记录及可核实的 Git / 验证事实判断当前状态。旧文档中的“后续”可能已被后续工作完成，不能直接当作当前待办；文档不一致时依据已确认事实源和证据核对，不从旧实现反推新范围。
+
+以下变化影响路线图时，在相应规划或交付中同步维护：用户确认目标或优先级、直接依赖变化、能力验收、工作完成，以及新证据表明现有描述过期。每次交付记录路线图更新位置或不适用理由；合并后核对是否有新的状态事实需要维护，必要时沿用同一目标的授权边界处理。
+
+Agent 可依据明确证据更新完成状态、依赖事实和过期描述，并关联适用 Spec / 验收证据；证据不足时标为未确认。优先级重排、新增承诺或范围变化先提出建议并取得用户确认；建议与已确认决定分别标记，不能把讨论顺序或技术偏好写成已确认优先级。尚未排定的工作注明“优先级待确认”，不强制为所有事项分配 P0 / P1 等级。
+
+路线图保存跨工作项的方向和顺序，不复制 Git 公共目录的会话实时进度，也不改写日期化历史 Acceptance。评测成绩仍绑定报告中的 commit、案例集及资源身份；路线图更新不能把旧报告改称当前 HEAD 已通过，候选变化后的验证要求仍按对应 Contract 执行。
 
 ## 什么时候更新本文
 

@@ -8,6 +8,12 @@ ChatBI 的 MVP 核心能力已经形成：自然语言查询、Online Retrieval�
 
 历史完整 Evaluation 基线对应 commit `31a04549924f622777f106d4fe5a758bd2ca2beb`。当前候选只有在三套正式报告均指向同一最终 clean commit、`git_dirty=false` 且各自 `0 FAIL`、`0 INVALID_CASE` 后才能标记为已核验。
 
+## 路线顺序与优先级状态
+
+当前路线先完成生产准备基线核验，再依据明确的目标运行环境和业务要求定义生产工作。后续生产工作中的各项优先级尚未确认；检索优化和产品能力扩展也不因旧文档将其列为“后续”而成为已授权目标。
+
+路线图按已确认目标和可核验证据维护；状态变化与优先级决定分别记录。读取时机、更新触发条件及用户确认边界见 [Harness 路线图维护规则](agents/agent-harness.md#路线图读取与维护)。
+
 ## 当前基线工作
 
 - [x] RAG manifest 记录 Structure Metadata、Metrics 和 Embedding 配置来源指纹。
