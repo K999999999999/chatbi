@@ -15,5 +15,5 @@ export default defineConfig({
     viewport: { width: 1440, height: 1000 }, trace: 'off', video: 'off', screenshot: 'off' },
   webServer: { command: 'uv run --locked uvicorn tests.browser_real_support:create_browser_real_app --factory --host 127.0.0.1 --port 18002',
     cwd: '..', url: 'http://127.0.0.1:18002/health', reuseExistingServer: false, timeout: 120000,
-    stdout: 'ignore', stderr: 'ignore' },
+    gracefulShutdown: { signal: 'SIGTERM', timeout: 30000 }, stdout: 'ignore', stderr: 'ignore' },
 });

@@ -1,13 +1,15 @@
 """显式真实浏览器验收：专用账号 + 正式 runtime，退出后禁用验收账号。"""
 
 import os
+import json
+from pathlib import Path
 from contextlib import asynccontextmanager
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from src.authorization import hash_password
 from src.bootstrap.runtime import create_runtime
-from src.chatbi_control.models import Role, User
+from src.chatbi_control.models import Role, User, UserSession
 from src.query_api.app import create_app
 
 
@@ -44,5 +46,27 @@ def create_browser_real_app():
             finally:
                 # 保留账号 / 安全审计 / 分析证据，禁用账号并撤销会话。
                 dependencies.auth_service.disable_user(user_id)
+                with sessions() as session:
+                    disabled = not session.get(User, user_id).is_active
+                    active_sessions = session.scalar(
+                        select(func.count())
+                        .select_from(UserSession)
+                        .where(
+                            UserSession.user_id == user_id,
+                            UserSession.revoked_at.is_(None),
+                        )
+                    )
+                directory = Path(__file__).resolve().parents[1] / "reports/browser-real"
+                directory.mkdir(parents=True, exist_ok=True)
+                (directory / f"cleanup-{username}.json").write_text(
+                    json.dumps(
+                        {
+                            "username": username,
+                            "disabled": disabled,
+                            "active_sessions": active_sessions,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
 
     return create_app(runtime_factory=runtime)

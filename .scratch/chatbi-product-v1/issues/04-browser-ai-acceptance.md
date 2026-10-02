@@ -49,3 +49,6 @@ Canonical Source: ../r1-spec.md、../r1-design.md、../r1-design-review.md、../
 ## Comments
 
 2026-10-03 用户确认五项拆分并授权完整 R1 实施；不包含 Push / PR 发布。
+
+
+首次真实闭环：clean `2b182b5fc6e8e09ae2b3c4a1f00b1c7abe53519f` / Chrome154 通过；问数、追问、4个分析任务及程序产品归因与独立参考一致。发现 Playwright 默认 SIGKILL 导致 fixture finally 未运行；已仅禁用本次唯一归属账号并撤销 Session。验收关闭改用 SIGTERM / 30 秒，并生成不含凭证的账号清理证据；修复后需重跑真实验收。核心业务代码未变化。

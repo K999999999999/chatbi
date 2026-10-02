@@ -12,7 +12,7 @@ test('real Chrome login → model/RAG query → followup → two-period analysis
   const dirty = execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim();
   if (dirty) throw new Error('真实验收只接受 clean candidate');
   const reference = JSON.parse(execFileSync('uv', ['run', '--locked', 'python', '-m', 'tests.browser_real_reference'], { cwd: root, encoding: 'utf8' }));
-  const evidence: Record<string, unknown> = { commit, at: new Date().toISOString(), chrome: browser.version(), platform: process.platform, reference };
+  const evidence: Record<string, unknown> = { username: process.env.CHATBI_REAL_E2E_USERNAME, commit, at: new Date().toISOString(), chrome: browser.version(), platform: process.platform, reference };
   const directory = resolve(root, 'reports/browser-real'); mkdirSync(directory, { recursive: true });
   const reportPath = resolve(directory, `${new Date().toISOString().replace(/[:.]/g, '-')}-${commit.slice(0, 7)}.json`);
   try {
