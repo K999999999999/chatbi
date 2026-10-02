@@ -44,7 +44,7 @@ ChatBI 是面向业务数据分析的 Domain AI Engine（领域 AI 引擎）。�
 - Business Analysis：10 个案例。
 - Query Understanding：6 个辅助语义案例。
 
-当前候选的正式 Evaluation 基线只有在三套报告均记录同一最终 clean commit、`git_dirty=false`，并满足零失败、零无效案例后才能确认。此前通过的基线对应历史 commit `31a04549924f622777f106d4fe5a758bd2ca2beb`，不代表当前候选；旧报告只代表报告记录的 commit 和资源状态。不要用历史 `20/21` 或其他旧分数描述当前能力。
+当前候选的正式 Evaluation 基线只有在三套报告均记录同一最终 clean commit、`git_dirty=false`，并满足零失败、零无效案例后才能确认。历史通过基线包括 `31a04549924f622777f106d4fe5a758bd2ca2beb` 和较新的 `564343216e4493f832f07efb345c03b058a04eb5`，后者此前也出现多轮失败，记录见[验收工作项](../.scratch/engineering-quality-gates/issues/04-current-candidate-evaluation-baseline.md#result)。它们不代表当前候选或稳定性；旧报告只代表报告记录的 commit 和资源状态。不要用历史 `20/21` 或其他旧分数描述当前能力。
 
 ## 当前明确不包含
 

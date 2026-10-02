@@ -55,6 +55,13 @@ jobs:
       RAG_QDRANT_TIMEOUT_SECONDS: "30"
       RAG_COLLECTION_PREFIX: chatbi
       RAG_ONLINE_RETRIEVAL_ENABLED: "true"
+      POSTGRES_MIGRATOR_USER: chatbi_migrator
+      POSTGRES_MIGRATOR_PASSWORD: ci-migrator-password
+      POSTGRES_CONTROL_DB: chatbi_control
+      POSTGRES_CONTROL_APP_USER: chatbi_control_user
+      POSTGRES_CONTROL_APP_PASSWORD: ci-control-password
+      POSTGRES_CONTROL_MIGRATOR_USER: chatbi_migrator
+      POSTGRES_CONTROL_BOOTSTRAP_DB: postgres
       CHATBI_RUNTIME_ENV: ci
       CHATBI_TRACE_CONTENT_ENABLED: "false"
 
@@ -108,7 +115,7 @@ jobs:
           echo '::error::Qdrant did not become ready within 120 seconds.'
           exit 1
 
-      - name: Bootstrap isolated PostgreSQL fixture
+      - name: Bootstrap full isolated Sales Mart seed
         env:
           PGPASSWORD: ci-migrator-password
         run: >-
@@ -119,7 +126,17 @@ jobs:
           psql --set ON_ERROR_STOP=1
           --host 127.0.0.1 --port 5433
           --username chatbi_migrator --dbname chatbi_mvp
-          --file /database/ci/bootstrap.sql
+          --set business_db=chatbi_mvp
+          --set app_user=chatbi_app --set app_password=ci-app-password
+          --set control_app_user=chatbi_control_user
+          --set control_app_password=ci-control-password
+          --file /database/init/00_create_runtime_roles.sql
+          --file /database/sales_mart/001_create_schema.sql
+          --file /database/dev/seed_sales_mart.sql
+          --file /database/grants.sql
+
+      - name: Initialize Control DB and checkpoints
+        run: uv run --python 3.11 --locked --no-sync python -m src.bootstrap migrate
 
       - name: Build real BGE-M3 and Qdrant assets
         shell: bash
@@ -130,7 +147,8 @@ jobs:
           uv run --python 3.11 --locked --no-sync \
             python -m src.bootstrap build-rag --build-id "$build_id"
 
-      - name: Run full single-turn real online evaluation
+      - name: Run all three formal suites and verify baseline identity
+        id: baseline
         env:
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
@@ -140,29 +158,46 @@ jobs:
           LLM_TIMEOUT_SECONDS: "30"
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
 
-          uv run --python 3.11 --locked --no-sync \
-            python -m evaluation \
-            --online-retrieval \
-            --output-dir "${RUNNER_TEMP}/chatbi-real-evaluation"
-
-      - name: Assert full single-turn real E2E acceptance
-        if: ${{ success() }}
-        env:
-          REPORT_DIR: ${{ runner.temp }}/chatbi-real-evaluation
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          report_count=$(find "$REPORT_DIR" -maxdepth 1 -type f -name '*.json' | wc -l)
-          test "$report_count" -eq 1
-          report_path=$(find "$REPORT_DIR" -maxdepth 1 -type f -name '*.json' -print -quit)
-
+          report_dir="${RUNNER_TEMP}/chatbi-real-evaluation/formal"
+          status=0
+          for suite in single-turn multi-turn business-analysis; do
+            uv run --python 3.11 --locked --no-sync \
+              python -m evaluation --"$suite" --online-retrieval \
+              --output-dir "$report_dir" || status=1
+          done
           uv run --python 3.11 --locked --no-sync \
             python -m evaluation.common.real_e2e_acceptance \
-            --cases evaluation/suites/single_turn/cases.json \
-            --report "$report_path"
+            --report-dir "$report_dir" --expected-commit "$GITHUB_SHA" \
+            --expected-rag-version "ci-${GITHUB_SHA:0:12}" || status=1
+          exit "$status"
+
+      - name: Record three independent multi-turn diagnostics
+        id: diagnostics
+        if: ${{ !cancelled() && (steps.baseline.outcome == 'success' || steps.baseline.outcome == 'failure') }}
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}
+          LLM_TEMPERATURE: "0.1"
+          LLM_MAX_TOKENS: "1200"
+          LLM_TIMEOUT_SECONDS: "30"
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          for attempt in 1 2 3; do
+            report_dir="${RUNNER_TEMP}/chatbi-real-evaluation/diagnostic-$attempt"
+            if uv run --python 3.11 --locked --no-sync \
+              python -m evaluation --multi-turn --online-retrieval \
+              --output-dir "$report_dir"; then
+              echo "Diagnostic $attempt: PASS" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "Diagnostic $attempt: FAIL or unavailable; inspect retained report" >> "$GITHUB_STEP_SUMMARY"
+              echo '::warning::Multi-turn stability diagnostic failed; formal baseline result remains unchanged.'
+            fi
+          done
 
       - name: Upload Real E2E reports
         if: ${{ always() }}
