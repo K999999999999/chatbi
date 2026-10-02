@@ -43,7 +43,7 @@ class EmbeddingProviderTest(unittest.TestCase):
     def test_model_loading_requires_a_prepared_local_snapshot(self) -> None:
         provider = BgeM3EmbeddingProvider(model_name_or_path="missing-model")
 
-        with self.assertRaisesRegex(EmbeddingError, "prepare_embedding_model.py"):
+        with self.assertRaisesRegex(EmbeddingError, "src.bootstrap prepare-model"):
             provider._load_model()
 
     def test_bge_adapter_parses_dense_and_sparse_outputs(self) -> None:

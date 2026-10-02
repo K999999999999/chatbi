@@ -2,6 +2,8 @@
 
 ## 1. 模块目标
 
+显式构建入口为 `python -m src.bootstrap build-rag`，模型准备为 `python -m src.bootstrap prepare-model`；命令装配归集中初始化边界，具体构建和业务 API 仍由本模块负责。原 `python -m src.rag_offline` 入口已移除。命令与资源生命周期见 [初始化 Spec](bootstrap.md)。
+
 RAG Offline Build（RAG 离线构建）负责把已确认的数据库结构和指标事实转换为可供后续在线检索使用的离线产物。
 
 本模块只构建检索知识，不生成 SQL、不执行查询、不修改数据库。

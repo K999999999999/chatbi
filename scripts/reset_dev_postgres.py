@@ -68,7 +68,7 @@ def _initialize_postgres(project_root: Path) -> None:
         raise PostgresResetError("PostgreSQL did not accept connections after reset.")
 
     migrated = subprocess.run(
-        [sys.executable, "-m", "src.chatbi_control", "migrate"],
+        [sys.executable, "-m", "src.bootstrap", "migrate"],
         cwd=project_root,
         check=False,
     )

@@ -5,7 +5,6 @@ import os
 import sys
 from pathlib import Path
 
-from dotenv import load_dotenv
 from huggingface_hub import snapshot_download
 
 from src.rag_offline.config import (
@@ -24,8 +23,7 @@ def _model_directory() -> Path:
     return path if path.is_absolute() else PROJECT_ROOT / path
 
 
-def main() -> int:
-    load_dotenv(override=False)
+def prepare_model() -> int:
     destination = _model_directory()
     try:
         resolved = snapshot_download(
@@ -61,7 +59,3 @@ def main() -> int:
         )
     )
     return 0 if (destination / "config.json").is_file() else 1
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

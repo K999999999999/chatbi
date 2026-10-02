@@ -153,11 +153,20 @@ flowchart TB
     subgraph QueryAPI["src/query_api：HTTP 接口适配层"]
         APIInit["__init__.py<br/>公开 create_app"]
         APIApp["app.py<br/>HTTP/Pydantic 模型、路由、结果转换"]
-        APIMain["main.py<br/>组装真实服务和 API 入口"]
+        APIMain["main.py<br/>无资源副作用的 API 入口"]
 
         APIInit --> APIApp
         APIMain --> APIApp
         APIApp -->|"调用现有入口"| Service
+    end
+
+    subgraph Bootstrap["src/bootstrap：应用装配边界"]
+        Runtime["runtime.py / analysis.py<br/>运行资源创建与释放"]
+        Ready["readiness.py<br/>确定性启动门禁"]
+        InitCommands["commands.py<br/>显式初始化命令"]
+        APIMain --> Runtime
+        Runtime --> Ready
+        Runtime --> Service
     end
 
     subgraph StreamlitApp["src/streamlit_app.py：验证页面"]
@@ -380,6 +389,6 @@ Online Retrieval V1 已接入 Online Query：实体类、单指标和多指标�
 - 当前 Semantic Metrics 有 7 个定义；Sales Mart 结构投影包含 7 张表、69 个字段、25 条关系事实，其中 9 条为外键 Join Edge。
 - Golden Set 当前包含单轮 29 个案例、多轮 7 个 Conversation / 15 个轮次、Business Analysis 10 个案例；Query Understanding 6 个案例为辅助证据。
 - RAG Offline Build 和 Online Retrieval V1 已实现。新 manifest 记录输入指纹；production 启动时校验 catalog、Metadata 和当前发布资产，不匹配时拒绝 Ready。
-- PostgreSQL 首次初始化需在基础 init 完成后运行 `src.chatbi_control migrate`；它通过 `PostgresSaver.setup()` 安装 checkpoint 表和权限，healthcheck / API 启动检查验证其完整性。
+- PostgreSQL 首次初始化需在基础 init 完成后运行 `src.bootstrap migrate`；它通过 `PostgresSaver.setup()` 安装 checkpoint 表和权限，healthcheck / API 启动检查验证其完整性。
 - 日期化 Acceptance 和 ignored reports 是历史证据，不代表当前候选。Evaluation 基线只有在单轮、多轮和 Business Analysis 三套报告均记录同一最终 clean commit、`git_dirty=false`，且各自满足 `0 FAIL`、`0 INVALID_CASE` 后才成立。commit `31a04549924f622777f106d4fe5a758bd2ca2beb` 上的通过结果是历史基线；后续候选需重新评测。
 - 当前入口是同步 Query API 与 Streamlit。多源、多 Schema、多租户、任意复杂分析和生产部署运行保障不属于已验收的当前 Contract。

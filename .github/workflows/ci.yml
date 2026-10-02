@@ -235,11 +235,11 @@ jobs:
           printf 'CHATBI_ADMIN_SECRET_KEY=%s\n' "$ci_admin_secret_key" >> .env.ci
 
           uv run --python 3.11 --locked --no-sync --env-file .env.ci \
-            python -m src.chatbi_control migrate
+            python -m src.bootstrap migrate
 
           printf '%s\n%s\n' "$ci_admin_password" "$ci_admin_password" |
             uv run --python 3.11 --locked --no-sync --env-file .env.ci \
-              python -m src.chatbi_control create-admin --username admin-1
+              python -m src.bootstrap create-admin --username admin-1
 
           uv run --python 3.11 --locked --no-sync --env-file .env.ci \
             uvicorn src.query_api.main:app --host 127.0.0.1 --port 8000 \

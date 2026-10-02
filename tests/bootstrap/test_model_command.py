@@ -1,7 +1,7 @@
 from pathlib import Path
 from unittest.mock import patch
 
-from scripts import prepare_embedding_model
+from src.bootstrap import model as prepare_embedding_model
 from src.rag_offline.config import DEFAULT_MODEL, DEFAULT_MODEL_REVISION
 
 
@@ -12,7 +12,6 @@ def test_prepare_downloads_the_pinned_model_revision_to_local_cache(
 ) -> None:
     model_directory = tmp_path / "bge-m3"
     monkeypatch.setenv("RAG_MODEL_DIR", str(model_directory))
-    monkeypatch.setattr(prepare_embedding_model, "load_dotenv", lambda **_: None)
 
     def download(**kwargs) -> str:
         destination = Path(kwargs["local_dir"])
@@ -23,7 +22,7 @@ def test_prepare_downloads_the_pinned_model_revision_to_local_cache(
     with patch.object(
         prepare_embedding_model, "snapshot_download", side_effect=download
     ) as call:
-        assert prepare_embedding_model.main() == 0
+        assert prepare_embedding_model.prepare_model() == 0
 
     assert call.call_args.kwargs["repo_id"] == DEFAULT_MODEL
     assert call.call_args.kwargs["revision"] == DEFAULT_MODEL_REVISION

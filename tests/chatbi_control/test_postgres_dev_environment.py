@@ -1,6 +1,7 @@
 """Integration checks for a freshly initialized local development PostgreSQL."""
 
 import os
+import threading
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import UTC, datetime, timedelta
@@ -11,6 +12,7 @@ from unittest.mock import patch
 from uuid import uuid4
 
 import psycopg
+from fastapi.testclient import TestClient
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.graph import END, START, StateGraph
 from psycopg.conninfo import make_conninfo
@@ -54,6 +56,36 @@ class PostgresDevelopmentEnvironmentTest(unittest.TestCase):
             user=os.environ[user_variable],
             password=os.environ[password_variable],
             connect_timeout=5,
+        )
+
+    def test_api_startup_uses_full_runtime_and_releases_analysis_thread(self) -> None:
+        from src.query_api.main import app
+
+        initial_threads = set(threading.enumerate())
+        settings = {
+            "CHATBI_ENV": "development",
+            "CHATBI_ADMIN_SECRET_KEY": "test-admin-secret-32-characters-long",
+            "LLM_API_KEY": "test-key",
+            "LLM_MODEL": "test-model",
+            "LLM_BASE_URL": "http://127.0.0.1:1/v1",
+            "RAG_ONLINE_RETRIEVAL_ENABLED": "false",
+        }
+        with patch.dict(os.environ, settings):
+            with TestClient(app) as client:
+                self.assertEqual(client.get("/health").status_code, 200)
+                self.assertEqual(
+                    client.get("/admin/", follow_redirects=False).status_code, 302
+                )
+                self.assertEqual(client.post("/api/v1/query", json={}).status_code, 400)
+                self.assertIsNotNone(app.state.analysis_service)
+            self.assertIsNone(app.state.query_service)
+            self.assertIsNone(app.state.analysis_service)
+        remaining = set(threading.enumerate()) - initial_threads
+        self.assertFalse(
+            any(
+                thread.name == "business-analysis-checkpoint-cleanup"
+                for thread in remaining
+            )
         )
 
     def test_synthetic_seed_covers_dates_dimensions_statuses_and_metrics(self) -> None:
@@ -478,7 +510,7 @@ class PostgresDevelopmentEnvironmentTest(unittest.TestCase):
         self,
     ) -> None:
         from src.authorization.passwords import verify_password
-        from src.chatbi_control.cli import main
+        from src.bootstrap.commands import main
 
         with (
             self._connect(
@@ -513,7 +545,7 @@ class PostgresDevelopmentEnvironmentTest(unittest.TestCase):
         admin_stderr = StringIO()
         with (
             patch(
-                "src.chatbi_control.cli.getpass.getpass",
+                "src.bootstrap.control.getpass.getpass",
                 side_effect=[admin_password, admin_password],
             ),
             redirect_stdout(admin_stdout),
@@ -552,7 +584,7 @@ class PostgresDevelopmentEnvironmentTest(unittest.TestCase):
         duplicate_stderr = StringIO()
         with (
             patch(
-                "src.chatbi_control.cli.getpass.getpass",
+                "src.bootstrap.control.getpass.getpass",
                 side_effect=[
                     "another-admin-password-123",
                     "another-admin-password-123",

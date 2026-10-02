@@ -15,7 +15,7 @@ ChatBI 是一个面向业务数据查询的 Domain AI Engine（领域 AI 引擎�
    ```bash
    docker compose up -d postgres qdrant
    docker compose exec -T postgres sh /workspace/database/init/wait_for_base_initialization.sh
-   uv run --env-file .env python -m src.chatbi_control migrate
+   uv run --env-file .env python -m src.bootstrap migrate
    docker compose up -d --wait postgres qdrant
    ```
 
@@ -49,8 +49,9 @@ Natural Language
 | Query API Adapter | [`src/query_api/`](src/query_api/)；`src/query_api/main.py`、`AuthorizedQueryService.query()` | HTTP `POST /api/v1/query` 和 `GET /health`，负责服务端身份授权后调用 Online Query | [`docs/specs/query-api.md`](docs/specs/query-api.md) |
 | Streamlit | [`src/streamlit_app.py`](src/streamlit_app.py) | 通过 HTTP 调用 Query API 的当前 MVP 页面和内部入口 | 内部入口 |
 | ChatBI Account & Admin | [`src/chatbi_control/`](src/chatbi_control/)、[`src/authorization/`](src/authorization/) | 内置账号、数据库 Session、固定角色权限、SQLAdmin 和持久化安全审计 | 初始化见 [`docs/runbook.md`](docs/runbook.md) |
+| 应用初始化与装配 | [`src/bootstrap/`](src/bootstrap/)；`python -m src.bootstrap --help` | 运行资源装配、启动检查、失败清理 / 关闭和四类显式初始化命令 | [`docs/specs/bootstrap.md`](docs/specs/bootstrap.md) |
 | Business Analysis | [`src/business_analysis/`](src/business_analysis/) | 受控的分析任务拆解、校验、授权查询执行、结果汇总和总结 | [`docs/specs/query-api.md`](docs/specs/query-api.md) |
-| RAG Offline Build | [`src/rag_offline/`](src/rag_offline/)；`python -m src.rag_offline` | 事实校验、文档构建、Embedding、Qdrant、关系图和资产发布 | [`docs/specs/rag-offline-build.md`](docs/specs/rag-offline-build.md) |
+| RAG Offline Build | [`src/rag_offline/`](src/rag_offline/)；`python -m src.bootstrap build-rag` | 事实校验、文档构建、Embedding、Qdrant、关系图和资产发布 | [`docs/specs/rag-offline-build.md`](docs/specs/rag-offline-build.md) |
 | Evaluation | [`evaluation/`](evaluation/)；`python -m evaluation` | 标准案例执行、结果比较和评测报告 | [`docs/specs/evaluation.md`](docs/specs/evaluation.md) |
 | Observability | [`src/observability/`](src/observability/) | Trace Contract、No-op、OpenTelemetry 和安全属性处理 | [`docs/specs/observability.md`](docs/specs/observability.md) |
 

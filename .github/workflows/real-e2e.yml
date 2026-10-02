@@ -128,7 +128,7 @@ jobs:
 
           build_id="ci-${GITHUB_SHA:0:12}"
           uv run --python 3.11 --locked --no-sync \
-            python -m src.rag_offline --build-id "$build_id"
+            python -m src.bootstrap build-rag --build-id "$build_id"
 
       - name: Run full single-turn real online evaluation
         env:

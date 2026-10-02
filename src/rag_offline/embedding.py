@@ -165,7 +165,7 @@ class BgeM3EmbeddingProvider:
         if not Path(self.model_name_or_path).is_dir():
             raise EmbeddingError(
                 "Embedding 模型本地快照不存在；先运行 "
-                "uv run python scripts/prepare_embedding_model.py"
+                "uv run python -m src.bootstrap prepare-model"
             )
         try:
             from FlagEmbedding import BGEM3FlagModel

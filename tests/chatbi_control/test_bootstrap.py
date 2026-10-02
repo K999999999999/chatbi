@@ -197,7 +197,7 @@ class ControlBootstrapTest(TestCase):
             [
                 sys.executable,
                 "-c",
-                "from src.chatbi_control.cli import main; print('CLI_READY')",
+                "from src.bootstrap.commands import main; print('CLI_READY')",
             ],
             cwd=root,
             capture_output=True,

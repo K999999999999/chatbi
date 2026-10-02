@@ -42,6 +42,8 @@ WSL / Linux 是当前唯一支持的本地开发入口。ChatBI 和 RAG 构建�
 
 ## 4. 首次准备
 
+应用初始化统一使用 `python -m src.bootstrap`，提供 `migrate`、`create-admin`、`prepare-model` 和 `build-rag`。`--help` 或子命令的 `--help` 查看参数；旧 Control DB、模型准备脚本和 RAG 模块命令入口已移除，不提供兼容转发。各操作仍显式执行，服务启动不会自动迁移、创建管理员、下载模型或重建索引。生命周期与失败边界见 [初始化 Spec](specs/bootstrap.md)。
+
 ### 4.1 环境要求
 
 - WSL / Linux 终端和可用的 Docker Engine / Compose。
@@ -84,7 +86,7 @@ cp .env.example .env
 ```bash
 docker compose up -d postgres
 docker compose exec -T postgres sh /workspace/database/init/wait_for_base_initialization.sh
-uv run --env-file .env python -m src.chatbi_control migrate
+uv run --env-file .env python -m src.bootstrap migrate
 docker compose up -d --wait postgres
 ```
 
@@ -95,13 +97,13 @@ docker compose up -d --wait postgres
 更新 Control DB migration 时可单独执行幂等 migration 命令；它不会创建管理员：
 
 ```bash
-uv run --env-file .env python -m src.chatbi_control migrate
+uv run --env-file .env python -m src.bootstrap migrate
 ```
 
 首个管理员创建必须显式执行。命令会隐藏读取并确认密码，要求至少 12 位；重复创建会失败：
 
 ```bash
-uv run --env-file .env python -m src.chatbi_control create-admin --username admin-1
+uv run --env-file .env python -m src.bootstrap create-admin --username admin-1
 ```
 
 管理员密码不放入 `.env.example`、Compose 或 Seed。首次启动和初始化不创建任何用户。API 运行进程只使用 `POSTGRES_CONTROL_APP_PASSWORD`，不使用迁移密码。启动 API 时会用 `chatbi_control_user` 检查 `schema_migrations` 中的 `chatbi-control-v2`，并验证 checkpoint 表、版本记录及运行权限；Schema 未完整迁移时，认证、SQLAdmin 和查询入口不会启动。
@@ -165,6 +167,8 @@ PostgreSQL 和 Qdrant 都使用 Compose 项目专属 named volume，不读取源
 ## 6. 启动 Online Query
 
 ### 6.1 启动 FastAPI
+
+`main.py` 导入只创建应用。服务启动时由 `src/bootstrap/` 装配运行资源并完成就绪检查，失败时释放已创建资源并拒绝启动；正常关闭统一释放数据库、checkpoint、RAG、模型 HTTP clients 和 Tracing。RAG 内部继续按需加载，production 门禁要求的加载仍在启动检查期间执行。
 
 在 WSL / Linux 终端中运行，并绑定到回环地址：
 
@@ -238,7 +242,7 @@ RAG Offline Build 读取以下权威事实源：
 首次构建前，按仓库锁定的 BGE-M3 revision 下载模型；脚本会复用本地缓存，不会把模型权重加入 Git：
 
 ```bash
-uv run --env-file .env python -m scripts.prepare_embedding_model
+uv run --env-file .env python -m src.bootstrap prepare-model
 ```
 
 该 revision 是 Hugging Face 仓库的完整 commit SHA。首次下载约 2.3 GB 的 PyTorch 模型文件；准备脚本跳过不被 `BGEM3FlagModel` 使用的 ONNX 模型和示例图片。后续运行复用 `.model-cache/bge-m3-5617a9f61b02`。不要用浮动的 `main` 代替该 revision。
@@ -248,7 +252,7 @@ uv run --env-file .env python -m scripts.prepare_embedding_model
 从 Git 中的结构与 Semantic 源资产构建索引。`--build-id` 可省略；省略时 Builder 会生成唯一版本号：
 
 ```bash
-uv run --env-file .env python -m src.rag_offline
+uv run --env-file .env python -m src.bootstrap build-rag
 ```
 
 构建成功后会：
@@ -285,8 +289,8 @@ production 的 `src.query_api.main` 启动流程还会核验当前 RAG manifest 
 ```bash
 uv run python -m scripts.reset_dev_qdrant
 uv run python scripts/check_dev_qdrant.py
-uv run --env-file .env python -m scripts.prepare_embedding_model
-uv run --env-file .env python -m src.rag_offline
+uv run --env-file .env python -m src.bootstrap prepare-model
+uv run --env-file .env python -m src.bootstrap build-rag
 ```
 
 重置命令会确认并只删除当前 Compose 项目的 `qdrant_data`，然后重新启动 Qdrant。它不会删除 PostgreSQL 数据卷。清空后必须重新构建索引，再启动依赖 RAG 的 ChatBI。

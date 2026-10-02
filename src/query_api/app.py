@@ -2,10 +2,16 @@
 
 import logging
 import re
-from collections.abc import Iterator
-from contextlib import asynccontextmanager, contextmanager
+from collections.abc import Callable, Iterator
+from contextlib import (
+    AbstractAsyncContextManager,
+    AbstractContextManager,
+    AsyncExitStack,
+    asynccontextmanager,
+    contextmanager,
+)
 from enum import StrEnum
-from typing import Any, NoReturn, Protocol
+from typing import Any, NoReturn
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request, Response, status
@@ -51,6 +57,12 @@ from .conversation import (
     ConversationUnavailableError,
     InMemoryConversationStore,
 )
+from .runtime import (
+    AnalysisService,
+    AnalysisServiceFactory,
+    QueryService,
+    RuntimeDependencies,
+)
 from .semantic_revision import SemanticRevisionError, revise_semantic_query
 
 _TRACE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
@@ -73,30 +85,6 @@ _HTTP_STATUS_BY_ERROR = {
     QueryErrorCode.UNSUPPORTED_ANALYSIS: 422,
     QueryErrorCode.CONVERSATION_CONFLICT: 409,
 }
-
-
-class QueryService(Protocol):
-    """API Adapter 依赖的最小下游执行接口。"""
-
-    def execute(self, request: QueryRequest) -> QueryResult:
-        """执行一次已经通过授权的在线查询。"""
-
-
-class AnalysisService(Protocol):
-    def analyze(
-        self,
-        question: str,
-        *,
-        request_id: str,
-        auth_context: AuthContext,
-        analysis_run_id: str,
-    ) -> BusinessAnalysisSuccess | QueryFailure:
-        """执行不读取普通会话的单轮经营分析。"""
-
-
-class AnalysisServiceFactory(Protocol):
-    def __call__(self, authorized_service: AuthorizedQueryService) -> AnalysisService:
-        """使用 API 已装配的授权入口创建经营分析应用。"""
 
 
 class QueryMode(StrEnum):
@@ -199,7 +187,7 @@ class _UnavailablePolicyStore:
 
 
 def create_app(
-    service: QueryService,
+    service: QueryService | None = None,
     trace_recorder: TraceRecorder | None = None,
     *,
     audit_sink: AuditSink | None = None,
@@ -213,9 +201,34 @@ def create_app(
     query_understanding: object | None = None,
     analysis_service: AnalysisService | None = None,
     analysis_service_factory: AnalysisServiceFactory | None = None,
+    runtime_factory: Callable[
+        [],
+        AbstractContextManager[RuntimeDependencies]
+        | AbstractAsyncContextManager[RuntimeDependencies],
+    ]
+    | None = None,
 ) -> FastAPI:
     """创建绑定查询服务的 FastAPI 应用。"""
 
+    if (service is None) == (runtime_factory is None):
+        raise ValueError("需要直接注入 service 或提供 runtime_factory，不能同时提供")
+    if runtime_factory is not None and any(
+        dependency is not None
+        for dependency in (
+            trace_recorder,
+            audit_sink,
+            identity_provider,
+            policy_store,
+            auth_service,
+            admin_engine,
+            admin_secret_key,
+            admin_session_factory,
+            query_understanding,
+            analysis_service,
+            analysis_service_factory,
+        )
+    ):
+        raise ValueError("runtime_factory 和直接资源注入不能混用")
     provider = identity_provider or _MissingIdentityProvider()
     authorization_store = policy_store or _UnavailablePolicyStore()
     active_conversation_store = (
@@ -223,37 +236,112 @@ def create_app(
         if conversation_store is not None
         else InMemoryConversationStore()
     )
-    authorized_service = AuthorizedQueryService(
-        service,
-        authorization_store,
-        audit_sink=audit_sink,
+    authorized_service = (
+        AuthorizedQueryService(service, authorization_store, audit_sink=audit_sink)
+        if service is not None
+        else None
     )
     active_analysis_service = analysis_service
     if active_analysis_service is None and analysis_service_factory is not None:
         active_analysis_service = analysis_service_factory(authorized_service)
     recorder = trace_recorder or getattr(service, "_trace_recorder", None)
-    if recorder is None:
+    owned_recorder = None
+    if recorder is None and runtime_factory is None:
         try:
             recorder = create_trace_recorder()
+            owned_recorder = recorder
         except Exception:
             recorder = None
 
+    def publish_bindings(app: FastAPI) -> None:
+        app.state.query_service = authorized_service
+        app.state.identity_provider = provider
+        app.state.authorization_policy_store = authorization_store
+        app.state.auth_service = auth_service
+        app.state.audit_sink = audit_sink
+        app.state.trace_recorder = recorder
+        app.state.conversation_store = active_conversation_store
+        app.state.query_understanding = query_understanding
+        app.state.analysis_service = active_analysis_service
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        del app
-        try:
-            yield
-        finally:
-            close = getattr(active_analysis_service, "close", None)
-            if callable(close):
-                close()
+        nonlocal provider, authorization_store, authorized_service
+        nonlocal auth_service, audit_sink, recorder, query_understanding
+        nonlocal active_analysis_service
+        if runtime_factory is None:
+            try:
+                yield
+            finally:
+                try:
+                    close = getattr(active_analysis_service, "close", None)
+                    if callable(close):
+                        close()
+                finally:
+                    if owned_recorder is not None:
+                        owned_recorder.shutdown()
+            return
+
+        async with AsyncExitStack() as scope:
+            context = runtime_factory()
+            if isinstance(context, AbstractAsyncContextManager):
+                dependencies = await scope.enter_async_context(context)
+            else:
+                dependencies = scope.enter_context(context)
+            original_routes = tuple(app.routes)
+            try:
+                provider = dependencies.identity_provider or _MissingIdentityProvider()
+                authorization_store = (
+                    dependencies.policy_store or _UnavailablePolicyStore()
+                )
+                audit_sink = dependencies.audit_sink
+                auth_service = dependencies.auth_service
+                recorder = dependencies.trace_recorder
+                query_understanding = dependencies.query_understanding
+                authorized_service = AuthorizedQueryService(
+                    dependencies.service, authorization_store, audit_sink=audit_sink
+                )
+                if dependencies.analysis_service_factory is not None:
+                    active_analysis_service = dependencies.analysis_service_factory(
+                        authorized_service
+                    )
+                if dependencies.admin_engine is not None:
+                    if auth_service is None or not dependencies.admin_secret_key:
+                        raise ValueError(
+                            "SQLAdmin 需要统一 AuthService 和显式 secret key"
+                        )
+                    mount_admin(
+                        app,
+                        engine=dependencies.admin_engine,
+                        auth_service=auth_service,
+                        secret_key=dependencies.admin_secret_key,
+                        session_factory=dependencies.admin_session_factory,
+                        audit_sink=audit_sink,
+                    )
+                publish_bindings(app)
+                yield
+            finally:
+                # 删除本轮挂载与引用，下一轮 lifespan 不复用已关闭资源。
+                app.router.routes[:] = [
+                    route
+                    for route in app.routes
+                    if not (
+                        getattr(route, "path", None) == "/admin"
+                        and route not in original_routes
+                    )
+                ]
+                for attribute in ("sqladmin", "sqladmin_engine"):
+                    if hasattr(app.state, attribute):
+                        delattr(app.state, attribute)
+                provider = _MissingIdentityProvider()
+                authorization_store = _UnavailablePolicyStore()
+                authorized_service = None
+                auth_service = audit_sink = recorder = query_understanding = None
+                active_analysis_service = None
+                publish_bindings(app)
 
     app = FastAPI(title="ChatBI Query API", version="0.1.0", lifespan=lifespan)
-    app.state.query_service = authorized_service
-    app.state.identity_provider = provider
-    app.state.authorization_policy_store = authorization_store
-    app.state.auth_service = auth_service
-
+    publish_bindings(app)
     if admin_engine is not None:
         if auth_service is None or not admin_secret_key:
             raise ValueError("SQLAdmin 需要统一 AuthService 和显式 secret key")
@@ -265,11 +353,6 @@ def create_app(
             session_factory=admin_session_factory,
             audit_sink=audit_sink,
         )
-    app.state.audit_sink = audit_sink
-    app.state.trace_recorder = recorder
-    app.state.conversation_store = active_conversation_store
-    app.state.query_understanding = query_understanding
-    app.state.analysis_service = active_analysis_service
 
     @app.middleware("http")
     async def observability_middleware(
