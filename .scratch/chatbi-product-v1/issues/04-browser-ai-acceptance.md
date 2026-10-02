@@ -1,6 +1,6 @@
 # 04. 桌面浏览器验收与真实 AI 闭环
 
-Status: in-progress
+Status: done
 Owner: 当前主 Agent
 Canonical Source: ../r1-spec.md、../r1-design.md、../r1-design-review.md、../r1-ticket-readiness.md
 
@@ -52,3 +52,6 @@ Canonical Source: ../r1-spec.md、../r1-design.md、../r1-design-review.md、../
 
 
 首次真实闭环：clean `2b182b5fc6e8e09ae2b3c4a1f00b1c7abe53519f` / Chrome154 通过；问数、追问、4个分析任务及程序产品归因与独立参考一致。发现 Playwright 默认 SIGKILL 导致 fixture finally 未运行；已仅禁用本次唯一归属账号并撤销 Session。验收关闭改用 SIGTERM / 30 秒，并生成不含凭证的账号清理证据；修复后需重跑真实验收。核心业务代码未变化。
+
+
+最终切片结论：clean `c8fe37ed6be41e9d754fd82bfeb22685f4392fd2` 的真实 Chrome 闭环重跑 PASS，自动清理 disabled=true / active_sessions=0；Review 修复项复核 PASS。正式 Acceptance 已写入 `docs/acceptance/web-dialogue-v1-20261003.md`，包含提交 / 环境 / 参考值 / 证据适用性、首次关闭问题和修复证明。软件证据与历史 AI 基线明确分开；R1 业务语义未变，未冒称全量 Golden Set 新基线。可以进入 05 删除旧入口。

@@ -1,6 +1,6 @@
 # 05. 切换默认入口、移除 Streamlit 与完整 R1 收尾
 
-Status: open
+Status: in-progress
 Owner: 当前主 Agent
 Canonical Source: ../r1-spec.md、../r1-design.md、../r1-design-review.md、../r1-ticket-readiness.md
 
