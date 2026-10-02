@@ -176,6 +176,8 @@ PostgreSQL 和 Qdrant 都使用 Compose 项目专属 named volume，不读取源
 uv run uvicorn src.query_api.main:app --host 127.0.0.1 --port 8000
 ```
 
+当前多轮会话 Store 为进程内存，按上述单 worker 方式运行。增加 `--workers` 或多副本后，不同进程无法识别彼此的 `conversation_id`；生产扩容前必须确认会话路由 / 可见性 Contract。该限制不要求现在引入共享存储。
+
 检查：
 
 ```bash
@@ -191,6 +193,8 @@ curl --fail http://127.0.0.1:8000/health
 ```
 
 `/health` 表示应用已通过启动检查并正在运行；启动检查至少验证 `chatbi_control` Schema 版本。它不代表 LLM、业务 PostgreSQL、Qdrant 或真实查询链路可用。
+
+生产探针设计须区分 HTTP liveness 与动态 readiness；当前固定 `/health` 响应不能作为下游恢复或完整就绪证据。启动时 production 来源指纹 / catalog 门禁也不等于运行期间持续监测。
 
 ### 6.2 启动 Streamlit
 
@@ -383,6 +387,34 @@ reports/evaluation/<run_id>.md
 评测结果属于 AI Evaluation（AI 评测），不能与 Software Test（软件测试）或 Business Acceptance（业务验收）混为一类。
 
 评测命令在存在 `FAIL` 或 `INVALID_CASE` 时返回非零退出码；只有所有案例有效且通过时才返回 `0`，可直接作为 CI 门禁。
+
+### 9.2 正式三套基线与稳定性诊断
+
+完成所有代码、Contract 和文档提交后，确认工作区干净，再固定当前 commit 和 RAG 版本。每次验收使用新的目录，正式报告目录只包含该次三套 JSON，诊断放在其他目录：
+
+```bash
+test -z "$(git status --porcelain)" || exit 1
+candidate_sha=$(git rev-parse HEAD)
+rag_version=$(uv run --locked python -c 'import json; print(json.load(open("data/rag/current.json"))["build_id"])')
+evaluation_dir="reports/evaluation/baseline-$(date -u +%Y%m%dT%H%M%SZ)-${candidate_sha:0:7}"
+evaluation_status=0
+for suite in single-turn multi-turn business-analysis; do
+  uv run --locked --env-file .env python -m evaluation \
+    --"$suite" --online-retrieval --output-dir "$evaluation_dir/formal" || evaluation_status=1
+done
+uv run --locked python -m evaluation.common.real_e2e_acceptance \
+  --report-dir "$evaluation_dir/formal" --expected-commit "$candidate_sha" \
+  --expected-rag-version "$rag_version" || evaluation_status=1
+test "$(git rev-parse HEAD)" = "$candidate_sha" || evaluation_status=1
+test -z "$(git status --porcelain)" || evaluation_status=1
+printf 'Formal baseline exit status: %s\n' "$evaluation_status"
+```
+
+脚本保留正式失败报告并继续其他套件；`evaluation_status=0` 才表示本次正式基线通过。自动化调用须以该状态退出。不能重跑后挑选成功报告替换本次正式失败，修复后应形成新候选再重新验收。
+
+额外运行三次完整多轮诊断，将每次报告写入 `$evaluation_dir/diagnostic-1`、`diagnostic-2`、`diagnostic-3`。逐次记录 Runner 退出状态与 FAIL / INVALID_CASE 数量，包括未能出报告的运行；失败时继续保留其他诊断。诊断不改变正式基线结果。`5643432` 历史候选曾两次在 `MT-FAILURE-ISOLATION` 第三轮返回意外澄清，之后完整运行通过；相关[工作记录](../.scratch/engineering-quality-gates/issues/04-current-candidate-evaluation-baseline.md#result)是模型波动证据。
+
+GitHub 手动 Real E2E 按同一原则执行三套正式评测、确定性身份验收及三次多轮诊断；需要配置 LLM Secrets，普通 CI 通过不表示该工作流已运行。报告上传保留 14 天，需要长期追溯时由维护者保存原始文件和运行身份。评测结束后不要修改 tracked 文件来补写“当前通过”，本机实时结果保存在 Git 公共目录。
 
 ## 10. 典型故障处理
 

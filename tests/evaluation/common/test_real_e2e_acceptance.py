@@ -52,12 +52,15 @@ class RealE2EAcceptanceTest(unittest.TestCase):
         self.assertTrue(any("failed" in error for error in errors))
         self.assertTrue(any("invalid_cases" in error for error in errors))
 
-    def test_cli_loads_the_expected_count_from_the_cases_file(self) -> None:
+    def test_cli_rejects_summary_without_report_identity(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
             cases_path = root / "cases.json"
             report_path = root / "report.json"
-            cases_path.write_text(json.dumps([{}, {}, {}]), encoding="utf-8")
+            cases_path.write_text(
+                json.dumps([{"id": "one"}, {"id": "two"}, {"id": "three"}]),
+                encoding="utf-8",
+            )
             report_path.write_text(
                 json.dumps({"summary": self._summary(3)}),
                 encoding="utf-8",
@@ -67,12 +70,20 @@ class RealE2EAcceptanceTest(unittest.TestCase):
 
             with redirect_stdout(stdout), redirect_stderr(stderr):
                 result = main(
-                    ["--cases", str(cases_path), "--report", str(report_path)]
+                    [
+                        "--cases",
+                        str(cases_path),
+                        "--report",
+                        str(report_path),
+                        "--expected-commit",
+                        "a" * 40,
+                        "--expected-rag-version",
+                        "test-rag",
+                    ]
                 )
 
-        self.assertEqual(result, 0)
-        self.assertIn("3/3 passed", stdout.getvalue())
-        self.assertEqual(stderr.getvalue(), "")
+        self.assertEqual(result, 1)
+        self.assertIn("metadata", stderr.getvalue())
 
     @staticmethod
     def _summary(case_count: int) -> dict[str, object]:
