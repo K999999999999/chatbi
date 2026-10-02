@@ -1,6 +1,6 @@
 # 04. 桌面浏览器验收与真实 AI 闭环
 
-Status: open
+Status: in-progress
 Owner: 当前主 Agent
 Canonical Source: ../r1-spec.md、../r1-design.md、../r1-design-review.md、../r1-ticket-readiness.md
 
@@ -37,7 +37,14 @@ Canonical Source: ../r1-spec.md、../r1-design.md、../r1-design-review.md、../
 
 ## Result
 
-尚未实施。
+确定性验收与真实验收入口已建立，当前仍 in-progress；真实 AI 尚未执行。
+
+- Chrome 154.0.8037.92：打包入口 16 项通过，Vite 开发代理 1 项通过；覆盖全部 Spec 桌面矩阵、原任务重试、断网 / 超时 / 畸形响应、换号 / 跨标签 / 迟到响应、CSRF、文本安全与归因展示。
+- npm audit 0 漏洞；类型 / 构建、225 个 Python 文件格式、CI lint、模块边界、Markdown 链接与 diff 检查通过。
+- 真实 harness 使用正式 runtime 与真实专用 analyst 账号，随机密码仅进程环境；停服禁用 / 撤销、保留审计，不修改已有账号或业务数据。独立只读参考查询 + 产品因素对账，禁用网络 Trace / 视频 / 截图，安全 reporter 不输出错误内容。真实报告 ignored，不混入 Commit。
+- 当前上下文 Code Review：PASS（BASE 0800600，范围本切片 frontend 验收 / 身份小修、tests/browser_real_*、CI / Runbook / Design / ignore）。补查发现其他标签身份变更可使初始化留在 checking，已修复 ready 状态，身份矩阵通过。真实配置只在显式 opt-in 下创建隔离账号；不通过静态身份绕过认证。
+- 全部软件回归：`uv run --locked python -m pytest -q` 639 passed、15 skipped、146 subtests（跳过依赖显式 opt-in 的外部集成）；独立业务参考查询成功。直接 pytest 入口曾因 sys.path 收集失败，按仓库 CI 的 python -m pytest 入口通过，无代码修复。
+- 先形成 clean code candidate 后执行真实闭环，结果在后续 Result / Acceptance 回填，尚未允许删除 Streamlit。
 
 ## Comments
 

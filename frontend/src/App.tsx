@@ -25,7 +25,7 @@ export default function App() {
     channel.current = new BroadcastChannel('chatbi-identity');
     channel.current.onmessage = event => {
       if (event.data.kind === 'logout') location.hash = `logout-pending=${event.data.userId}`;
-      clear(); setBusy(false); setError('登录状态已在另一个页面变化，请重新登录。');
+      clear(); setReady(true); setError('登录状态已在另一个页面变化，请重新登录。');
     };
     return () => { epoch.current++; channel.current?.close(); };
   }, []);

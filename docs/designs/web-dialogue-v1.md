@@ -70,7 +70,7 @@
 
 ## 6. 工具与验证
 
-本机已核实 Node `24.21.0` / npm `11.19.0`。npm 元数据核实的实施候选：React / React DOM `19.3.0`、Vite `8.3.2`、TypeScript `7.0.2`、`@vitejs/plugin-react` `6.1.1`、`@playwright/test` `1.63.0`。新依赖在实施时精确锁定，包含 plugin peer dependency 解析；如不兼容不得自动跨大版本升级，先重新审查。当前未安装或验证这些组合。
+本机已核实 Node `24.21.0` / npm `11.19.0`。npm 元数据核实的实施候选：React / React DOM `19.3.0`、Vite `8.3.2`、TypeScript `7.0.2`、`@vitejs/plugin-react` `6.1.1`、`@playwright/test` `1.63.0`。新依赖在实施时精确锁定，包含 plugin peer dependency 解析；如不兼容不得自动跨大版本升级，先重新审查。组合已按 lockfile 安装，类型检查、Vite 构建及桌面 Chrome 确定性用例通过；版本以 frontend/package-lock.json 为准。
 
 - `package-lock.json` + `npm ci` 作为可复现入口；Node 使用 24 系列，CI 固定实际兼容版本。Vite 的 Node 要求已经核对。[Vite 官方文档](https://vite.dev/guide/)。
 - TypeScript 类型检查、Vite 构建、前端状态 / 客户端确定性检查；后端现有 pytest seam 验证 Cookie / Bearer / CSRF / 配置 / 静态入口。

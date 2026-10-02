@@ -31,3 +31,7 @@ backups/
 # 评测生成的临时报告，不纳入仓库；历史已提交报告不受影响。
 reports/evaluation/**/*.json
 reports/evaluation/**/*.md
+
+# 本地浏览器真实业务证据，不包含在源码交付。
+reports/browser-real/
+reports/browser-real-artifacts/

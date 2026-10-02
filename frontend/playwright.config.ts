@@ -1,7 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
-  testDir: './tests', testIgnore: '**/real.spec.ts', workers: 1, retries: 0,
+  testDir: './tests', testIgnore: ['**/real.spec.ts', '**/dev.spec.ts'], workers: 1, retries: 0,
   timeout: 30000,
   use: { baseURL: 'http://127.0.0.1:18001', channel: 'chrome',
     launchOptions: process.env.CHATBI_CHROME_PATH ? { executablePath: process.env.CHATBI_CHROME_PATH } : {},

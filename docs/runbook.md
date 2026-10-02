@@ -471,3 +471,26 @@ Streamlit 的 `CHATBI_API_BASE_URL` 默认是 `http://127.0.0.1:8000`；只有 A
 网页问数：登录后输入完整问题（如“2025年2月人民币净销售额是多少”），成功后可围绕上一成功状态追问。表格明确区分 NULL、零与空字符串；经校验 SQL 可展开查看。受控失败不会覆盖上一成功状态；网络中断、客户端超时或响应无效时，结果未确认，需点击“新建问数对话”并补全问题。前端不会自动重发，刷新会清空当前展示与会话编号。
 
 网页经营分析：手动切换“经营分析”，提供完整的指标与两个时期（如“分析2025年2月相比2025年1月的人民币毛利变化”）。仅支持既有人民币净销售额 / 毛利的产品因素归因，不继承问数条件。报告、归因数值和任务证据按后端返回显示。失联后可点击“重试原分析”，草稿编辑不会改变该任务的原问题 / UUID；明确的过期或语义拒绝不能静默重建任务。等待期间两种模式都禁止再次发送与切换，仍可编辑下一条草稿或退出。
+
+### R1 桌面浏览器验收
+
+```bash
+cd frontend
+npm ci
+npm run build
+npx playwright install --with-deps chrome
+npm test
+npm run test:dev
+```
+
+`npm test` 验证打包入口，`test:dev` 验证 Vite 同源代理；两者使用真实 HTTP / Cookie / Session 和确定性业务服务替身，不调用真实模型。桌面窗口为 1440 × 1000，Chrome channel；可用 `CHATBI_CHROME_PATH` 指定本机 Chrome 可执行文件。所有配置关闭 Trace / 视频 / 自动截图。
+
+真实 AI 验收需本地 `.env` 已具备模型、RAG、业务只读 PostgreSQL、应用库和管理签名配置，服务端能读取现有数据；必须在 clean candidate 上运行：
+
+```bash
+cd frontend
+npm run build
+npm run test:real
+```
+
+此命令生成一个独立 `web-e2e-*` analyst 验收账号，随机密码只在进程环境中传递；服务退出时禁用该账号并撤销会话，保留应用库安全审计 / 分析记录，不修改已有账号或业务数据。实际请求复用正式 runtime、授权、SQL Guard 与数据库执行；独立参考 SQL 使用业务只读账号。报告在 ignored `reports/browser-real/`，含实际提交 / Chrome / 对照结果，不含密码 / Cookie / Session Token；不要公开上传业务原始报告。安全 reporter 不输出断言内容或凭证。真实资源缺失或闭环失败不得将确定性替身通过作为替换验收。
