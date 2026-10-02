@@ -251,3 +251,34 @@ def test_packaged_files_do_not_shadow_api_or_expose_source(tmp_path):
             Mock(),
             browser_settings=BrowserSettings(ORIGIN, False, tmp_path / "missing"),
         )
+
+
+def test_browser_csrf_rejection_preserves_request_and_trace_contract(browser):
+    client, _, _, _ = browser
+    client.post(
+        "/auth/browser/login",
+        json={"username": "analyst", "password": "test-password-123"},
+        headers=HEADERS,
+    )
+    response = client.post(
+        "/api/v1/query",
+        json={"question": "完整问题"},
+        headers={"Origin": ORIGIN, "X-Request-ID": "csrf-correlation"},
+    )
+    assert response.status_code == 403
+    assert response.json()["request_id"] == "csrf-correlation"
+    assert len(response.headers["X-Trace-ID"]) == 32
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://app.invalid:bad",
+        "https://app.invalid:65536",
+        "http://127.0.0.1:0",
+        "https://app .invalid",
+    ],
+)
+def test_browser_origin_rejects_malformed_port_or_whitespace(origin):
+    with pytest.raises(ValueError):
+        BrowserSettings(origin, secure=not origin.startswith("http:"))

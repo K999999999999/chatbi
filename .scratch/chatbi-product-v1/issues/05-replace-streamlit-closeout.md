@@ -37,8 +37,21 @@ Canonical Source: ../r1-spec.md、../r1-design.md、../r1-design-review.md、../
 
 ## Result
 
-尚未实施。
+默认入口切换与旧入口删除已实现，当前进行最终 candidate 验证 / 收尾。
+
+- Streamlit 源码 / 专属测试 / Python 依赖及其独有传递包已移除；SQLAdmin 的 itsdangerous 显式锁定原 2.2.0。Vite 开发与打包网页的 README / Runbook / PowerShell / Dev Container 端口 / CI 同步；没有数据迁移或删除真实数据。
+- 保留请求 / 链路编号展示，Cookie 查询的 CSRF 拒绝仍遵守既有 Trace / request_id Contract；新增 RED 证据为丢失编号，修复后相关 API / 观测 / 模块 30 项通过。非法 Origin 端口 / 空白 4 条 RED 后 GREEN。模块门禁移除旧路径读取并覆盖新增浏览器 Adapter，新增依赖拒绝 RED 后 GREEN。
+- 默认全量软件 `python -m pytest`：617 passed / 15 skipped /139 subtests；移除的旧 Streamlit 测试由真实桌面 Chrome 行为用例与现有 API 测试覆盖，不降低业务校验。
+- Chrome 打包17项、Vite代理1项通过；类型 / build、lock、格式 / CI lint、模块 / links / diff检查通过。最终表格形状补查和真实安全 reporter 清理核验加入后再跑最终浏览器矩阵。
+- npm audit0 / pip-audit无已知漏洞；Bandit src / scripts中高风险0。CI required names保持8项，未Push，远端CI未执行。
+- 隔离临时 PostgreSQL 的 CI profile5项、development profile19项通过；额外从干净数据库 migration → 首个管理员 → 正式 runtime → 打包网页 / Cookie登录 / 首次改密 / 重登 / 退出真实HTTP smoke通过，使用 scripts.smoke_web，与 CI 新入口一致。测试容器标签归属核实后清理；真实开发数据库未修改。
+- Owned files 闭包补充：scripts/smoke_web.py、.devcontainer 5173端口、前端观测编号客户端与验收报告 build Hash / 账号清理核验，以及发现的 Observability / ADR / 多指标文档消费者。均为替换兼容和验证闭包，无新增产品需求。
+- Source of Truth同步 Architecture / Product Scope / Query API / Web Spec / Design / Runbook及适用观测文档；历史 Acceptance / ADR过去决定保留，ADR新增当前入口迁移补记。
+- Code Review将在最终Diff和验证完整后回填，真实候选复验 / R1完成状态尚未回填。
 
 ## Comments
 
 2026-10-03 用户确认五项拆分并授权完整 R1 实施；不包含 Push / PR 发布。
+
+
+最终本地 Code Review：PASS；Scope 为 BASE 1517189 至本切片完整 Diff，结合 d790317 至 R1 全部已提交实现复核。What：新网页默认入口替换与兼容 / 验证闭包；Why：R1 核心验收已通过，不长期维护双入口；Risk：身份、CSRF、单请求状态、旧入口删除、锁解析和运行脚本。Findings：旧 CSRF 拒绝丢失 request_id / Trace、非法 Origin 端口未失败、删除后的硬编码边界检查和签名传递依赖均已处理，相关验证通过。检查正确性 / 可读性 / 一致性 / 测试能力 / 依赖方向 / Secret与安全；没有未解决的实施问题。最终 browser17 + Vite1及 npm audit再次通过。剩余门禁为形成 clean candidate 后真实闭环复验与事实回填；本地发布授权不包含 Push / PR。

@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, readdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { login, send } from './helpers';
 import { queryResult } from '../src/results';
@@ -12,7 +13,11 @@ test('real Chrome login → model/RAG query → followup → two-period analysis
   const dirty = execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim();
   if (dirty) throw new Error('真实验收只接受 clean candidate');
   const reference = JSON.parse(execFileSync('uv', ['run', '--locked', 'python', '-m', 'tests.browser_real_reference'], { cwd: root, encoding: 'utf8' }));
-  const evidence: Record<string, unknown> = { username: process.env.CHATBI_REAL_E2E_USERNAME, commit, at: new Date().toISOString(), chrome: browser.version(), platform: process.platform, reference };
+  const assetDirectory = resolve(root, 'frontend/dist/assets');
+  const build = ['index.html', ...readdirSync(assetDirectory).map(name => `assets/${name}`)].sort().map(name => ({
+    name, sha256: createHash('sha256').update(readFileSync(resolve(root, 'frontend/dist', name))).digest('hex'),
+  }));
+  const evidence: Record<string, unknown> = { username: process.env.CHATBI_REAL_E2E_USERNAME, commit, at: new Date().toISOString(), chrome: browser.version(), platform: process.platform, build, reference };
   const directory = resolve(root, 'reports/browser-real'); mkdirSync(directory, { recursive: true });
   const reportPath = resolve(directory, `${new Date().toISOString().replace(/[:.]/g, '-')}-${commit.slice(0, 7)}.json`);
   try {

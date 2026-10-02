@@ -204,6 +204,19 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Install Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24.21.0"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build default Web entry
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
       - name: Install uv
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
@@ -218,7 +231,7 @@ jobs:
       - name: Prepare runtime environment
         run: uv run --python 3.11 --locked python -c "print('runtime dependencies ready')"
 
-      - name: Start API and Streamlit smoke services
+      - name: Start API and packaged Web smoke service
         shell: bash
         run: |
           set -euo pipefail
@@ -249,6 +262,8 @@ jobs:
           POSTGRES_CONTROL_BOOTSTRAP_DB=postgres
           RAG_ONLINE_RETRIEVAL_ENABLED=false
           CHATBI_ENV=development
+          CHATBI_WEB_ORIGIN=http://127.0.0.1:8000
+          CHATBI_WEB_DIST_DIR=frontend/dist
           CHATBI_RUNTIME_ENV=ci
           CHATBI_TRACE_CONTENT_ENABLED=false
           EOF
@@ -266,47 +281,33 @@ jobs:
             > api.log 2>&1 &
           api_pid=$!
 
-          uv run --python 3.11 --locked --no-sync --env-file .env.ci \
-            streamlit run src/streamlit_app.py \
-            --server.address 127.0.0.1 --server.port 8501 --server.headless true \
-            > streamlit.log 2>&1 &
-          streamlit_pid=$!
-
           cleanup() {
             status=$?
-            kill "$api_pid" "$streamlit_pid" 2>/dev/null || true
+            kill "$api_pid" 2>/dev/null || true
             if [ "$status" -ne 0 ]; then
               echo '=== API LOG ==='
               cat api.log || true
-              echo '=== STREAMLIT LOG ==='
-              cat streamlit.log || true
             fi
             exit "$status"
           }
           trap cleanup EXIT
 
           api_ready=0
-          streamlit_ready=0
           for _ in $(seq 1 30); do
             if [ "$api_ready" -eq 0 ] && curl --fail --silent http://127.0.0.1:8000/health > /dev/null; then
               api_ready=1
             fi
-            if [ "$streamlit_ready" -eq 0 ] && curl --fail --silent http://127.0.0.1:8501/_stcore/health | grep -qx 'ok'; then
-              streamlit_ready=1
-            fi
-            if [ "$api_ready" -eq 1 ] && [ "$streamlit_ready" -eq 1 ]; then
+            if [ "$api_ready" -eq 1 ]; then
               break
             fi
             sleep 1
           done
 
           test "$api_ready" -eq 1
-          test "$streamlit_ready" -eq 1
 
-          query_status=$(curl --silent --show-error --output query.json --write-out '%{http_code}' \
-            --request POST http://127.0.0.1:8000/api/v1/query \
-            --header 'Content-Type: application/json' --data '{}')
-          test "$query_status" = '400'
+          export CHATBI_SMOKE_PASSWORD="$ci_admin_password"
+          uv run --python 3.11 --locked --no-sync --env-file .env.ci \
+            python -m scripts.smoke_web
 
   dependency-audit:
     name: Dependency audit

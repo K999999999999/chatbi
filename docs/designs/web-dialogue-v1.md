@@ -1,6 +1,6 @@
 # R1 实现设计
 
-依据：[已确认 R1 Spec](../specs/web-dialogue-v1.md)。状态：编码前技术设计，非已实现功能；审查见 [Design Review](../../.scratch/chatbi-product-v1/r1-design-review.md)。Owner：当前主 Agent。
+依据：[已确认 R1 Spec](../specs/web-dialogue-v1.md)。状态：已确认设计，核心实现与真实闭环通过，入口替换收尾进行中；审查见 [Design Review](../../.scratch/chatbi-product-v1/r1-design-review.md)。Owner：当前主 Agent。
 
 ## 1. 最小结构与运行入口
 
@@ -93,3 +93,12 @@ Owner 为同一主 Agent。Expand：新增 Cookie 支持和网页，保留 Strea
 - 删除阶段若新入口或兼容测试失败，停止删除 / 交付，修复新入口或恢复仍在迁移中的旧入口；不把带缺陷的替换标记为完成。
 
 Revisit Trigger：真实需求要求跨站部署、多实例、移动端、历史续聊、通用恢复或更高访问规模时重新审查对应设计；不能直接加 worker 或拉长 TTL 代替新 Contract。
+
+
+## 实施收尾核对
+
+- Streamlit 已从活动源码 / 专属测试 / 依赖中移除，开发改用 Vite；打包入口和登录 smoke 已接入 CI，8 个 required check 名称保持不变。
+- SQLAdmin 所需签名依赖 `itsdangerous` 显式声明，保留原 lockfile 的 2.2.0，不依赖 Streamlit 的传递依赖。
+- 请求诊断保存 Header Trace ID 和 JSON request_id 于页面内存，展开显示；Cookie 查询的 CSRF 拒绝在既有 HTTP Trace 中返回，不进入业务链路。
+- 非法 Origin 端口 / 空白启动失败；模块门禁覆盖 browser Adapter，继续禁止直接依赖查询 runtime / 数据库 / Provider。
+- 真实验收每次先重新构建，报告记录构建文件 SHA-256；测试服务使用 SIGTERM，安全 reporter 在关闭后强制核对专用账号已禁用且无活动 Session，缺少清理证据即失败。

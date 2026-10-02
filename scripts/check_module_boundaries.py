@@ -39,13 +39,14 @@ def _matches(module: str, forbidden: tuple[str, ...]) -> bool:
 def violations(relative_path: str, imports: set[str]) -> list[str]:
     path = Path(relative_path).as_posix()
     forbidden: tuple[str, ...] = ()
-    if path == "src/streamlit_app.py":
+    if path == "src/query_api/browser.py":
         forbidden = (
-            "src.query_api",
             "src.online_query",
             "src.business_analysis",
             "psycopg",
             "sqlalchemy",
+            "openai",
+            "langchain",
         )
     elif path == "src/query_api/app.py":
         forbidden = (
@@ -69,7 +70,7 @@ def violations(relative_path: str, imports: set[str]) -> list[str]:
 
 
 def check_repository(root: Path) -> list[str]:
-    targets = [root / "src/streamlit_app.py", root / "src/query_api/app.py"]
+    targets = [root / "src/query_api/browser.py", root / "src/query_api/app.py"]
     rag_offline = root / "src/rag_offline"
     targets.extend(sorted(rag_offline.rglob("*.py")))
     errors: list[str] = []

@@ -21,7 +21,7 @@ export function tableData(value: unknown): TableData {
       && row.length === columns.length && row.every(cell => cell === null || typeof cell === 'string'
         || typeof cell === 'boolean' || (typeof cell === 'number' && Number.isFinite(cell))))
       || !Number.isSafeInteger(p.row_count) || Number(p.row_count) < p.rows.length
-      || typeof p.truncated !== 'boolean') throw new Error('响应表格无效');
+      || typeof p.truncated !== 'boolean' || (Number(p.row_count) !== p.rows.length && !p.truncated)) throw new Error('响应表格无效');
   return { columns, rows: p.rows as Cell[][], row_count: Number(p.row_count), truncated: p.truncated };
 }
 export function queryResult(value: unknown): QueryResult {

@@ -30,9 +30,9 @@ ChatBI 是面向业务数据查询的 Domain AI Engine（领域 AI 引擎），�
 - 会话使用 30 分钟无成功状态更新的 Idle TTL，同一会话同一时刻只允许一个进行中的轮次；
 - 不承担长期历史、Business Analysis、身份事实或业务指标事实。
 
-### Streamlit（当前 MVP / 内部入口）
+### Web Frontend（电脑端用户入口）
 
-负责通过 HTTP 调用 Query API Adapter，完成自然语言查询的输入、结果展示和错误提示。它是当前 MVP 和内部使用入口，不直接连接 LLM 或数据库。独立 Web 前端不是当前必需项；后续可按同一 HTTP API Contract 替换页面。
+`frontend/` 采用 React + TypeScript + Vite，提供登录 / 首次改密、问数 / 多轮追问及独立经营分析模式。仅通过同源 HTTP 调用 FastAPI，不直接连接 LLM 或数据库；开发使用 Vite 代理，打包后由 API 提供静态网页。`src/query_api/browser.py` 负责 Cookie 身份、CSRF 与静态资源 Adapter，身份和权限真相仍属于既有账号 / 授权模块。Streamlit 已移除；不新增 BFF / SSR 或第二条查询链路。
 
 ### Business Analysis（经营分析）
 
@@ -54,7 +54,7 @@ flowchart TB
     ExternalCaller["未来外部应用"] -.-> Gateway
     Gateway["API Gateway（可选外部边界）<br/>网关级流量治理"] -.-> API
     API["API Adapter（当前）"] --> Service
-    Streamlit["Streamlit MVP 页面（当前）"] --> API
+    Web["电脑端 Web 页面（React / Vite）"] --> API
 
     subgraph OnlineQuery["Online Query（在线查询模块）"]
         Service["OnlineQueryService<br/>统一查询入口"] --> Context["加载结构与指标上下文"]
@@ -169,7 +169,7 @@ flowchart TB
         Runtime --> Service
     end
 
-    subgraph StreamlitApp["src/streamlit_app.py：验证页面"]
+    subgraph WebApp["frontend/：电脑端 Web 页面"]
         UIApp["输入问题、调用 API、展示结果和错误"]
     end
 
@@ -249,13 +249,13 @@ flowchart TB
         OnlineTests["tests/online_query<br/>在线查询单元与数据库集成测试"]
         EvaluationTests["tests/evaluation<br/>案例、运行、报告和入口测试"]
         QueryAPITests["tests/query_api<br/>API 请求、错误和组装测试"]
-        StreamlitTests["tests/streamlit<br/>客户端请求和页面数据转换测试"]
+        WebTests["frontend/tests<br/>真实 HTTP / Cookie 的桌面 Chrome 验收"]
     end
 
     OnlineTests -. "验证" .-> Service
     EvaluationTests -. "验证" .-> Runner
     QueryAPITests -. "验证" .-> APIApp
-    StreamlitTests -. "验证" .-> UIApp
+    WebTests -. "验证" .-> UIApp
 ```
 
 箭头表示主要运行顺序和依赖方向，不表示每个文件都直接调用下一个文件。
@@ -366,7 +366,7 @@ Online Retrieval V1 已接入 Online Query：实体类、单指标和多指标�
 - Qdrant：保存版本化 TABLE、COLUMN、METRIC 检索集合，不保存业务真相。
 - 已发布 RAG 资产：当前为 Online Query 默认提供动态结构和指标上下文；静态知识文件只用于显式静态评测/基础模式，不作为在线 RAG 技术故障 fallback。
 - Query API Adapter：当前提供同步 HTTP JSON 接口、身份认证、授权和多轮 Application 边界；安全审计由授权与 Control DB Adapter 协作持久化。当前没有 API 限流。
-- Streamlit：当前作为 MVP / 内部入口，只通过 HTTP 调用 API；后续正式前端可以复用同一 API Contract。
+- Web Frontend：电脑端 React / TypeScript / Vite，仅通过 HTTP 使用既有 API；Cookie / CSRF Adapter 复用现有账号与数据库 Session。
 - API Gateway：如未来部署需要，可放在 ChatBI 外部边界处理网关级流量治理；当前不依赖具体网关产品。
 
 ## 稳定约束
@@ -375,7 +375,7 @@ Online Retrieval V1 已接入 Online Query：实体类、单指标和多指标�
 - Query API Adapter 只能调用现有 Online Query 公开入口，不复制查询逻辑。
 - Multi-Turn Application 边界只能保存受控结构化查询状态，不能把会话状态当作身份、授权或业务真相。
 - Multi-Turn 的每一轮必须经过当前授权入口；只有成功结果可以更新状态，状态失效、越权和并发冲突必须 Fail Closed。
-- Streamlit 只能调用 Query API，不直接访问 LLM、SQL Guard 或数据库。
+- Web Frontend 只能调用 Query API，不直接访问 LLM、SQL Guard 或数据库。
 - Business Analysis 必须通过当前授权的 Online Query 执行计划中的查询；checkpoint 只保存受控工作流状态。
 - Evaluation 必须复用正式 Online Query 链路，不维护另一套 SQL 生成逻辑。
 - RAG Offline Build 只能读取已确认 JSON 事实，不得扫描或修改 PostgreSQL。
@@ -385,10 +385,10 @@ Online Retrieval V1 已接入 Online Query：实体类、单指标和多指标�
 
 ## 当前状态
 
-- Online Query、Query API、内置认证与授权、持久化审计、Streamlit、Multi-Turn Query V1 和 Business Analysis 均已在当前代码中实现，并有对应确定性测试；数据库集成与日期化 Business Acceptance 证据按其运行时间解释。
+- Online Query、Query API、内置认证与授权、持久化审计、电脑端 Web、Multi-Turn Query V1 和 Business Analysis 均已在当前代码中实现，并有对应确定性测试；数据库集成与日期化 Business Acceptance 证据按其运行时间解释。
 - 当前 Semantic Metrics 有 7 个定义；Sales Mart 结构投影包含 7 张表、69 个字段、25 条关系事实，其中 9 条为外键 Join Edge。
 - Golden Set 当前包含单轮 29 个案例、多轮 7 个 Conversation / 15 个轮次、Business Analysis 10 个案例；Query Understanding 6 个案例为辅助证据。
 - RAG Offline Build 和 Online Retrieval V1 已实现。新 manifest 记录输入指纹；production 启动时校验 catalog、Metadata 和当前发布资产，不匹配时拒绝 Ready。
 - PostgreSQL 首次初始化需在基础 init 完成后运行 `src.bootstrap migrate`；它通过 `PostgresSaver.setup()` 安装 checkpoint 表和权限，healthcheck / API 启动检查验证其完整性。
 - 日期化 Acceptance 和 ignored reports 是历史证据，不代表当前候选。Evaluation 基线只有在单轮、多轮和 Business Analysis 三套报告均记录同一最终 clean commit、`git_dirty=false`，且各自满足 `0 FAIL`、`0 INVALID_CASE` 后才成立。commit `31a04549924f622777f106d4fe5a758bd2ca2beb` 与 `564343216e4493f832f07efb345c03b058a04eb5` 上的通过结果是历史基线，后者的多轮波动见[验收工作项](../.scratch/engineering-quality-gates/issues/04-current-candidate-evaluation-baseline.md#result)；后续候选需重新评测。
-- 当前入口是同步 Query API 与 Streamlit。多源、多 Schema、多租户、任意复杂分析和生产部署运行保障不属于已验收的当前 Contract。
+- 当前入口是同步 Query API 与电脑端 Web；历史和流式仍待后续需求。多源、多 Schema、多租户、任意复杂分析和生产部署运行保障不属于已验收的当前 Contract。

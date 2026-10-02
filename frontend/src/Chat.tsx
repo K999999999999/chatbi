@@ -5,7 +5,7 @@ import { analysisResult, AnalysisReport, type AnalysisResult } from './Analysis'
 
 type Mode = 'query' | 'analysis';
 type Entry = { id: number; question: string; runId?: string; result?: QueryResult;
-  analysis?: AnalysisResult; error?: string; uncertain?: boolean; retryable?: boolean };
+  analysis?: AnalysisResult; error?: string; uncertain?: boolean; retryable?: boolean; requestId?: string; traceId?: string };
 const definiteErrors = new Set(['INVALID_REQUEST', 'AUTHORIZATION_DENIED', 'AUTHENTICATION_UNAVAILABLE',
   'CANNOT_ANSWER', 'SQL_REJECTED', 'LLM_ERROR', 'CONTEXT_ERROR', 'DATABASE_ERROR', 'QUERY_TIMEOUT',
   'CONVERSATION_UNAVAILABLE', 'CLARIFICATION_REQUIRED', 'UNSUPPORTED_ANALYSIS', 'CONVERSATION_CONFLICT']);
@@ -44,15 +44,19 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
       setRecords(all => ({ ...all, [target]: [...all[target], { id: entryId, question, runId }] }));
     }
     const timer = window.setTimeout(() => abort.abort(), target === 'query' ? 180000 : 1200000);
+    let traceId = '';
     try {
       const body = target === 'analysis' ? { question, mode: target, analysis_run_id: runId }
         : { question, mode: target, ...(conversation ? { conversation_id: conversation } : {}) };
-      const value = await request('/api/v1/query', body, user.user_id, abort.signal);
+      const value = await request('/api/v1/query', body, user.user_id, abort.signal, value => { traceId = value; });
       if (id !== current.current) return;
       if (target === 'query') {
         const result = queryResult(value); setConversation(result.conversation_id);
-        updateEntry(target, entryId, { result });
-      } else updateEntry(target, entryId, { analysis: analysisResult(value, runId!) });
+        updateEntry(target, entryId, { result, requestId: result.request_id, traceId });
+      } else {
+        const analysis = analysisResult(value, runId!);
+        updateEntry(target, entryId, { analysis, requestId: analysis.request_id, traceId });
+      }
     } catch (err) {
       if (id !== current.current) return;
       if (err instanceof APIError && err.status === 401) { onExpired(); return; }
@@ -60,7 +64,7 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
       if (target === 'query' && (!definite || (err instanceof APIError && err.code === 'CONVERSATION_UNAVAILABLE'))) setBlocked(true);
       const error = definite ? (err as Error).message : target === 'query'
         ? '查询结果未确认，请新建问数对话并补全问题。' : '分析结果未确认，可用原问题和原任务编号手动重试。';
-      updateEntry(target, entryId, { error, uncertain: !definite,
+      updateEntry(target, entryId, { error, uncertain: !definite, traceId, requestId: err instanceof APIError ? err.requestId : undefined,
         retryable: target === 'analysis' && (!definite || (err instanceof APIError && retryableErrors.has(err.code))) });
     } finally {
       window.clearTimeout(timer);
@@ -95,6 +99,9 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
           {item.error && <div className="answer"><p role="alert">{item.error}</p>
             {item.retryable && <button className="secondary" disabled={pending} onClick={() => void send(item)}>重试原分析</button>}
             {mode === 'analysis' && !item.retryable && <p className="result-meta">当前任务不可按此错误恢复；不会自动创建新任务。</p>}</div>}
+          {(item.requestId || item.traceId) && <details className="diagnostics"><summary>查看请求信息</summary>
+            {item.requestId && <p>请求编号：{item.requestId}</p>}{item.traceId && <p>链路编号：{item.traceId}</p>}
+          </details>}
         </article>)}
         {pending && <p className="loading" role="status">{mode === 'query' ? '正在查询…' : '正在分析…'}</p>}<div ref={end}/>
       </div>

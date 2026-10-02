@@ -1,6 +1,9 @@
 """使用业务只读账号读取独立参考值；不调用模型、不输出连接配置。"""
 
 import json
+import hashlib
+from pathlib import Path
+from urllib.parse import urlsplit
 from decimal import Decimal
 
 import psycopg
@@ -69,7 +72,20 @@ def reference():
         AnalysisTimeRange("2025年2月", TimeGranularity.MONTH),
     )
     attribution = calculate_product_attribution(request, tuple(tasks)).to_payload()
-    return {"net_sales": query, "attribution": attribution}
+    manifest = Path(__file__).resolve().parents[1] / "data/rag/current.json"
+    runtime_identity = {
+        "model": os.environ.get("LLM_MODEL"),
+        "provider_host": urlsplit(os.environ.get("LLM_BASE_URL", "")).hostname,
+        "rag_current_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest()
+        if manifest.is_file()
+        else None,
+        "schema": "mart_sales",
+    }
+    return {
+        "net_sales": query,
+        "attribution": attribution,
+        "runtime_identity": runtime_identity,
+    }
 
 
 if __name__ == "__main__":

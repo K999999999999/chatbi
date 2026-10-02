@@ -1,15 +1,18 @@
 export type Identity = { user_id: number; username: string; permissions: string[]; must_change_password: boolean };
 
 export class APIError extends Error {
-  constructor(public status: number, public code: string, message: string) { super(message); }
+  constructor(public status: number, public code: string, message: string, public requestId = '', public traceId = '') { super(message); }
 }
 
-export async function request(path: string, body?: unknown, userId?: number, signal?: AbortSignal): Promise<unknown> {
+export async function request(path: string, body?: unknown, userId?: number, signal?: AbortSignal, onTrace?: (traceId: string) => void): Promise<unknown> {
   const headers: Record<string, string> = {};
   if (body !== undefined) { headers['Content-Type'] = 'application/json'; headers['X-ChatBI-Request'] = 'browser'; }
   if (userId !== undefined) headers['X-ChatBI-User-ID'] = String(userId);
   const response = await fetch(path, { method: body === undefined ? 'GET' : 'POST',
     headers, credentials: 'same-origin', body: body === undefined ? undefined : JSON.stringify(body), signal });
+  const header = response.headers.get('X-Trace-ID') ?? '';
+  const traceId = /^[0-9a-f]{32}$/.test(header) ? header : '';
+  onTrace?.(traceId);
   if (response.status === 204) return null;
   let payload: unknown;
   try { payload = await response.json(); } catch { throw new Error('没有收到有效响应'); }
@@ -18,7 +21,7 @@ export async function request(path: string, body?: unknown, userId?: number, sig
     if (!p || typeof p !== 'object') throw new Error('没有收到有效响应');
     const message = p.error_message ?? p.detail;
     if (typeof message !== 'string') throw new Error('没有收到有效响应');
-    throw new APIError(response.status, typeof p.error_code === 'string' ? p.error_code : 'AUTH_ERROR', message);
+    throw new APIError(response.status, typeof p.error_code === 'string' ? p.error_code : 'AUTH_ERROR', message, typeof p.request_id === 'string' ? p.request_id : '', traceId);
   }
   return payload;
 }

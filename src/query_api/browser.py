@@ -30,6 +30,11 @@ class BrowserSettings:
     def __post_init__(self):
         parsed = urlsplit(self.origin)
         if (
+            any(char.isspace() or ord(char) < 32 for char in self.origin)
+            or parsed.port == 0
+        ):
+            raise ValueError("CHATBI_WEB_ORIGIN 包含非法主机或端口")
+        if (
             parsed.scheme not in {"http", "https"}
             or not parsed.hostname
             or parsed.username

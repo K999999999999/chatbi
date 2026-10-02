@@ -371,8 +371,16 @@ def create_app(
         call_next: Any,
     ) -> JSONResponse:
         path = request.url.path
-        if path.startswith("/auth/browser/") or path == "/api/v1/query":
-            if path == "/api/v1/query" and request.cookies.get(COOKIE_NAME):
+        if path != "/api/v1/query":
+            response = await call_next(request)
+            if path.startswith("/auth/"):
+                response.headers["Cache-Control"] = "no-store"
+            return response
+        request_id = _request_id_from_header(request.headers.get("X-Request-ID"))
+        request.state.request_id = request_id
+        with _http_trace_scope(recorder, request_id) as trace_scope:
+            rejection = None
+            if request.cookies.get(COOKIE_NAME):
                 try:
                     reject_browser_request(request, browser_settings, write=True)
                 except HTTPException as exc:
@@ -381,26 +389,15 @@ def create_app(
                         if exc.status_code == 403
                         else QueryErrorCode.AUTHENTICATION_UNAVAILABLE
                     )
-                    response = JSONResponse(
+                    rejection = JSONResponse(
                         status_code=exc.status_code,
                         content={
-                            "request_id": str(uuid4()),
+                            "request_id": request_id,
                             "error_code": code.value,
                             "error_message": exc.detail,
                         },
                     )
-                    response.headers["Cache-Control"] = "no-store"
-                    return response
-            if path != "/api/v1/query":
-                response = await call_next(request)
-                response.headers["Cache-Control"] = "no-store"
-                return response
-        if path != "/api/v1/query":
-            return await call_next(request)
-        request_id = _request_id_from_header(request.headers.get("X-Request-ID"))
-        request.state.request_id = request_id
-        with _http_trace_scope(recorder, request_id) as trace_scope:
-            response = await call_next(request)
+            response = rejection if rejection is not None else await call_next(request)
             response.headers["X-Trace-ID"] = trace_scope.trace_id
             response.headers["Cache-Control"] = "no-store"
             return response

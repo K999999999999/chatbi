@@ -1,23 +1,23 @@
 from scripts.check_module_boundaries import imported_modules, violations
 
 
-def test_streamlit_allows_standard_library_http_client() -> None:
+def test_browser_adapter_allows_http_and_auth_contract() -> None:
     imports = imported_modules(
         "from urllib.request import Request, urlopen\nimport json\n"
     )
 
-    assert violations("src/streamlit_app.py", imports) == []
+    assert violations("src/query_api/browser.py", imports) == []
 
 
-def test_streamlit_rejects_direct_query_runtime_or_database_dependency() -> None:
+def test_browser_adapter_rejects_direct_query_runtime_or_database_dependency() -> None:
     imports = imported_modules(
         "from src.online_query.service import OnlineQueryService\nimport sqlalchemy\n"
     )
 
-    errors = violations("src/streamlit_app.py", imports)
+    errors = violations("src/query_api/browser.py", imports)
 
     assert len(errors) == 2
-    assert all("src/streamlit_app.py" in error for error in errors)
+    assert all("src/query_api/browser.py" in error for error in errors)
     assert any("src.online_query.service" in error for error in errors)
     assert any("sqlalchemy" in error for error in errors)
 

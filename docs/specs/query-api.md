@@ -2,7 +2,7 @@
 
 ## 目标
 
-使用 FastAPI（Web 框架）把现有 Online Query（在线查询）能力暴露为同步 HTTP JSON 接口，供未来前端、内部应用或 API Gateway（API 网关）调用。
+使用 FastAPI（Web 框架）把现有 Online Query（在线查询）能力暴露为同步 HTTP JSON 接口，供电脑端 Web、内部应用或 API Gateway（API 网关）调用。
 
 API Adapter（接口适配层）只负责 HTTP 与内部类型之间的转换：
 
@@ -195,7 +195,7 @@ API 对请求体解析失败时，也必须返回上述 `QueryFailure` 形状，
 - 一个可执行的 HTTP 查询最多调用一次授权入口；会话不存在、过期、越权或并发冲突时不得调用授权入口，不得维护第二条查询链路。
 - API Adapter 不直接调用 LLM、SQL Guard 或数据库，也不在适配层生成经营分析报告；这些职责属于被注入的 Application Workflow。
 - 会话状态由 Application 边界拥有；API Adapter 不让客户端提交完整状态，也不把会话状态当作授权凭证。
-- API Adapter 不实现认证、授权、租户隔离、限流、审计、重试、熔断或成本控制。
+- API Adapter 提取当前身份并调用既有认证 / 授权 / 审计服务；不自行定义权限、租户隔离、业务真相，不提供限流、隐式重试、熔断或成本控制。
 - 当前仅信任 `X-Request-ID` 作为追踪标识，不把它当作身份或授权信息。
 - 未来 API Gateway 位于 API Adapter 之外，负责验证身份、传入可信的追踪上下文和流量治理；核心 Online Query 不绑定具体网关产品。
 
@@ -203,7 +203,7 @@ API 对请求体解析失败时，也必须返回上述 `QueryFailure` 形状，
 
 - SSE、WebSocket 和流式输出；经营分析报告由 Business Analysis Application Workflow 负责，API 只做响应序列化。
 - Streamlit、Gradio、React 或 Vue 前端页面。
-- 用户登录、`user_id`、`tenant_id`、权限控制和数据行级隔离。
+- 账号 / 权限业务真相由既有账号与授权模块维护；本 Adapter 提供登录 HTTP 边界，不新增 tenant_id 或数据行级隔离。
 - 长期聊天历史、跨服务恢复、复杂分析 Agent、RAG、自动修复和模型重试。
 - 健康检查之外的部署、监控、告警和生产运维。
 
@@ -236,8 +236,8 @@ API 对请求体解析失败时，也必须返回上述 `QueryFailure` 形状，
 - 已使用真实 `.env` 完成一次 HTTP 到 LLM、SQL Guard 和 PostgreSQL 的闭环验证，返回 `200` 和 1 行结果。
 - Multi-Turn Query V1 的公共 Contract 已确认并完成文档同步；Ticket 01～04 已完成会话生命周期、结构化语义修订、Streamlit 当前会话联动和分层验收；真实 AI Evaluation、Real E2E 及本次三轮场景的 Business Acceptance 证据见 `docs/acceptance/multi-turn-query-v1-20260919.md`。
 
-当前 Streamlit POC 页面通过 HTTP 调用本 API；正式前端是否采用 React、Vue 或其他方案，仍属于后续范围。
+当前 React + TypeScript + Vite 电脑端网页通过同源 HTTP 调用本 API；Streamlit 已移除。历史多轮验收仍按对应运行日期与提交解释。
 
 ## R1 浏览器入口
 
-浏览器登录使用 `/auth/browser/login`、`/auth/browser/me`、`/auth/browser/logout`、`/auth/browser/change-password`，旧 `/auth/*` Bearer 路由继续兼容。查询 body / result Contract 不变；Cookie 身份、CSRF 门禁和网页入口见 [Web Spec](web-dialogue-v1.md) 及 [Web Design](../designs/web-dialogue-v1.md)。本文早期“不负责用户登录 / 身份”的描述仅指查询核心不自行定义身份事实，不能用于删除当前内置账号能力。
+浏览器登录使用 `/auth/browser/login`、`/auth/browser/me`、`/auth/browser/logout`、`/auth/browser/change-password`，旧 `/auth/*` Bearer 路由继续兼容。查询 body / result Contract 不变；Cookie 身份、CSRF 门禁和网页入口见 [Web Spec](web-dialogue-v1.md) 及 [Web Design](../designs/web-dialogue-v1.md)。账号与授权事实仍由既有模块维护；浏览器路由不复制核心业务。认证 / 查询响应均 no-store，Cookie 查询即使 CSRF 拒绝也保留 request_id / X-Trace-ID 关联。

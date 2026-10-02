@@ -70,3 +70,16 @@ test('malformed successful response cannot become trusted query context', async 
   await expect(page.getByText('查询结果未确认，请新建问数对话并补全问题。')).toBeVisible();
   await expect(page.getByRole('table')).toHaveCount(0);
 });
+
+test('successful and controlled failed requests retain diagnostic ids', async ({ page }) => {
+  await login(page);
+  await send(page, '完整问题');
+  await expect(page.getByRole('table')).toBeVisible();
+  await page.getByText('查看请求信息').click();
+  await expect(page.getByText(/请求编号：/)).toBeVisible();
+  await expect(page.getByText(/链路编号：[0-9a-f]{32}/)).toBeVisible();
+  await send(page, '触发澄清');
+  await expect(page.getByText('请明确指标口径', { exact: true })).toBeVisible();
+  await page.getByText('查看请求信息').last().click();
+  await expect(page.getByText(/链路编号：[0-9a-f]{32}/)).toHaveCount(2);
+});
