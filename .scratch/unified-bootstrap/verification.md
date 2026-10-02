@@ -2,8 +2,8 @@
 
 Date: 2026-10-02（Asia/Shanghai）
 Baseline: `08c632e01baae62e161f3eec69993d56a3f441c3`
-Candidate: 待本地提交后记录；测试期间为本目标未提交候选，不能描述为 clean commit AI Evaluation。
-Product source SHA-256: `520e7e9063947f529a07958ca769aac695a9c0fc08e1e4bc9c6b6e28bb39ce5c`（按记录的源文件范围，候选提交后复算核对）
+Candidate: `213ed9a4e0d299f77448883c0b3c5d72341d4c67`（实现提交 `1fbdb4487b24fcdcdfc571aa7ba9ea6064430638` 加启动测试隔离修订；后续仅补充本工作项验收记录时，产品代码与 Contract 不变，证据继续适用）。测试在对应内容提交前运行，不构成 clean commit AI Evaluation。
+Product source SHA-256: `f0f43af011a30bd0b82178a444d6e0ffa326a69a3e32d53f8c54e052a6cd25ee`
 Scope: 三项正式 Tickets；已确认 Spec 与 design.md；运行资源、四类命令、旧入口删除、当前消费者迁移和受影响文档。
 
 ## 验证结果
@@ -15,6 +15,7 @@ Scope: 三项正式 Tickets；已确认 Spec 与 design.md；运行资源、四�
 | TDD Red | RAG 命令失败清理 | 原实现 close 异常覆盖构建异常；修改后保留构建原因 |
 | 全量软件 | `uv run --locked --no-sync python -m pytest -q` | 604 PASS、15 SKIP、128 subtests PASS；外部环境集成按原 skip 条件处理 |
 | 最后清理修订回归 | bootstrap、query_api、business_analysis、RAG Runtime、rag_offline、scripts 软件测试 | 240 PASS、14 subtests PASS；覆盖 RAG 意外异常、多个 client 清理与重复启动 |
+| 启动测试隔离复验 | `tests/query_api/test_main.py` 与隔离 development profile | 4 PASS + 19 PASS；显式关闭外部 Trace exporter，生产代码与模型参数未变 |
 | 最后所有权修订回归 | `tests/query_api/test_runtime_binding.py`、`tests/bootstrap/test_runtime.py` | 14 PASS；覆盖混用拒绝及启动 / 失败 / 关闭 |
 | 隔离 development DB | `uv run --locked --no-sync python -m scripts.run_database_tests --profile development` | 19 PASS；最后行为修订后重跑通过；migration / checkpoint / grants、管理员、数据库摘要与完整 API startup smoke |
 | 隔离 CI DB | `uv run --locked --no-sync python -m scripts.run_database_tests --profile ci` | 5 PASS；逐查询连接策略无后续改动，证据可复用 |
@@ -30,7 +31,8 @@ Scope: 三项正式 Tickets；已确认 Spec 与 design.md；运行资源、四�
 ## 边界与适用性
 
 - 数据库验证使用本次 runner 创建的带运行身份标记的临时容器和随机端口；结束后仅清理该容器和数据卷，没有访问或重置日常开发数据库。
-- API startup smoke 使用真实 PostgreSQL / Control DB、checkpoint、SQLAdmin、模型对象与应用装配；LLM 地址为测试地址，不发送模型请求。启动成功后健康接口、管理员匿名重定向及非法查询响应符合 Contract；结束后经营分析线程退出、服务绑定清空。
+- 指纹复算范围：Git 跟踪 / 非 ignored 新增的 src/、evaluation/、scripts/、tests/、docs/specs/、docs/designs/、.github/workflows/ 与 README、Runbook、Architecture、roadmap、pyproject.toml、uv.lock 的现存文件；按路径排序，将路径 UTF-8、NUL、文件内容、NUL 依次加入 SHA-256。工作项记录自身不属于该指纹。提交后复算一致。
+- API startup smoke 使用真实 PostgreSQL / Control DB、checkpoint、SQLAdmin、模型对象与应用装配；LLM 地址为测试地址，不发送模型请求，且显式禁用外部 Trace exporter。启动成功后健康接口、管理员匿名重定向及非法查询响应符合 Contract；结束后经营分析线程退出、服务绑定清空。
 - 模型准备和 RAG 命令使用替身与已有 builder 软件测试，证明参数、固定 revision、退出码、发布规则及失败释放；没有实际下载模型或写入开发 Qdrant。
 - 全量回归后只修改局部清理、CLI 帮助身份、资源 repr 和混用校验；分别执行受影响复验。未受影响全量 / CI DB 证据继续适用，不把更早的结果当作新运行。
 - 未运行：真实 LLM Evaluation、真实 RAG 构建、外部真实查询 Real E2E、远端 CI。理由：本目标不改变 Prompt、Semantic、模型参数或查询业务链，已通过确定性完整装配及数据库验证；外部验证不隐式执行。本报告不声明当前 clean commit Evaluation 基线通过。

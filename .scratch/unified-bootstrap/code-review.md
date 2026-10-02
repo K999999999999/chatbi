@@ -20,8 +20,9 @@ Reviewer: 当前主 Agent，未启动独立 Agent
 - Maintainability: 单一 FastAPI、标准资源 stack 与所属模块实现；无 DI 容器、注册框架、第二条查询链路或额外依赖。Adapter 的服务接口移入 runtime.py，保留原 import 名称。
 - Testing: 软件、隔离数据库和 API startup smoke 分开记录；RAG / 模型命令用替身验证操作分发与失败，不将这些证据表述为真实 AI Evaluation 或生产部署通过。
 
-发现的资源所有权混用、意外构造异常和清理失败中断问题均已在本目标内修复并复验，无待修复项。
+发现的资源所有权混用、意外构造异常和清理失败中断问题均已在本目标内修复并复验，无待修复项。后续启动测试显式禁用外部 Trace exporter，4 项真实入口测试与 19 项隔离数据库复验通过；只强化测试隔离，不改变运行 Contract。
 
+Applicable candidate: `213ed9a4e0d299f77448883c0b3c5d72341d4c67`；后续仅验收记录更新时证据仍适用。
 Evidence: 见 verification.md；全量软件回归后的局部修订有受影响复验，不重复无关检查。
 Documentation: docs/specs/bootstrap.md、Query API / RAG Spec、Query API Design、Architecture、README、Runbook 和 roadmap 均已同步。
 Harness Feedback: runner 的失效路径已通过本目标回归检查修复；未观察到需要扩展当前目标的新增 Harness 缺口。

@@ -33,7 +33,7 @@ Blocked by: 02（复用已建立的统一命令分发）；整体目标收尾还
 
 ## Result
 
-实现、关联文档和验证完成；实现 Review PASS，详细证据见 ../verification.md（待最终候选记录固化）。
+实现、关联文档和验证完成；实现 Review PASS，适用代码候选 `213ed9a4e0d299f77448883c0b3c5d72341d4c67`；详细证据见 ../verification.md。
 
 ## Comments
 
