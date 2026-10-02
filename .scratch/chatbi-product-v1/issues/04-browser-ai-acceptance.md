@@ -37,7 +37,7 @@ Canonical Source: ../r1-spec.md、../r1-design.md、../r1-design-review.md、../
 
 ## Result
 
-确定性验收与真实验收入口已建立，当前仍 in-progress；真实 AI 尚未执行。
+确定性与真实验收入口已完成。以下保留形成候选前的过程，最终真实结论见末尾。
 
 - Chrome 154.0.8037.92：打包入口 16 项通过，Vite 开发代理 1 项通过；覆盖全部 Spec 桌面矩阵、原任务重试、断网 / 超时 / 畸形响应、换号 / 跨标签 / 迟到响应、CSRF、文本安全与归因展示。
 - npm audit 0 漏洞；类型 / 构建、225 个 Python 文件格式、CI lint、模块边界、Markdown 链接与 diff 检查通过。

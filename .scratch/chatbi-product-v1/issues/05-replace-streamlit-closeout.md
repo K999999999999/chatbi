@@ -1,6 +1,6 @@
 # 05. 切换默认入口、移除 Streamlit 与完整 R1 收尾
 
-Status: in-progress
+Status: done
 Owner: 当前主 Agent
 Canonical Source: ../r1-spec.md、../r1-design.md、../r1-design-review.md、../r1-ticket-readiness.md
 
@@ -37,7 +37,7 @@ Canonical Source: ../r1-spec.md、../r1-design.md、../r1-design-review.md、../
 
 ## Result
 
-默认入口切换与旧入口删除已实现，当前进行最终 candidate 验证 / 收尾。
+默认入口切换、旧入口删除与最终本地验收已完成。以下保留形成候选前的过程，完成结论见末尾。
 
 - Streamlit 源码 / 专属测试 / Python 依赖及其独有传递包已移除；SQLAdmin 的 itsdangerous 显式锁定原 2.2.0。Vite 开发与打包网页的 README / Runbook / PowerShell / Dev Container 端口 / CI 同步；没有数据迁移或删除真实数据。
 - 保留请求 / 链路编号展示，Cookie 查询的 CSRF 拒绝仍遵守既有 Trace / request_id Contract；新增 RED 证据为丢失编号，修复后相关 API / 观测 / 模块 30 项通过。非法 Origin 端口 / 空白 4 条 RED 后 GREEN。模块门禁移除旧路径读取并覆盖新增浏览器 Adapter，新增依赖拒绝 RED 后 GREEN。
@@ -55,3 +55,6 @@ Canonical Source: ../r1-spec.md、../r1-design.md、../r1-design-review.md、../
 
 
 最终本地 Code Review：PASS；Scope 为 BASE 1517189 至本切片完整 Diff，结合 d790317 至 R1 全部已提交实现复核。What：新网页默认入口替换与兼容 / 验证闭包；Why：R1 核心验收已通过，不长期维护双入口；Risk：身份、CSRF、单请求状态、旧入口删除、锁解析和运行脚本。Findings：旧 CSRF 拒绝丢失 request_id / Trace、非法 Origin 端口未失败、删除后的硬编码边界检查和签名传递依赖均已处理，相关验证通过。检查正确性 / 可读性 / 一致性 / 测试能力 / 依赖方向 / Secret与安全；没有未解决的实施问题。最终 browser17 + Vite1及 npm audit再次通过。剩余门禁为形成 clean candidate 后真实闭环复验与事实回填；本地发布授权不包含 Push / PR。
+
+
+完成结论：最终clean代码候选 `0e4000b1455c9a67d4daae3f4992da6d79a8ac0b` 的真实Chrome闭环与关闭后账号清理强制核验PASS，构建Hash / 模型与RAG身份 / 对照结果记录于ignored报告；全部软件 / 集成 / browser / startup / 依赖 / 安全验证与Review已具备。最终Acceptance、Web Spec/Design和Roadmap回填完成事实；R1本地Done，只有发布另需授权。Windows脚本与Dev Container运行、本地gitleaks/远端CI未执行，主声明环境为WSL/Linux，适用边界已写明。未改业务语义或虚构新的全量AI基线。

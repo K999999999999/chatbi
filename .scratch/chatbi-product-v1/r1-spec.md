@@ -171,3 +171,6 @@
 覆盖检查：目标 / 用户、成功行为、领域事实、状态 / 失败恢复、范围 / 兼容、架构 / 安全、验收方向均已有事实依据或本轮决定。未决产品方向：None。技术接口细化通过后续 Design 固化，不授权绕过 Spec 改变身份、会话或业务不变量。
 
 下一步：用户整体确认本 Spec → 当前上下文只读 Design Review → Ticket 草案及 Readiness Review → 用户确认拆分和实施范围 → 按依赖连续实施。用户“进入下一步”授权推进 R1 的澄清及后续规划，完整 Spec / Ticket 门禁仍适用；尚未开始实现、测试、Commit、Push 或 PR。
+
+
+2026-10-03 实施回填：本文保留当时确认 / 设计过程；五项正式 Tickets 已完成，正式行为 / 设计以 docs/specs/web-dialogue-v1.md、docs/designs/web-dialogue-v1.md 为准。最终代码0e4000b的本地验收通过，Streamlit已移除；结果见 docs/acceptance/web-dialogue-v1-20261003.md。R2–R7未实施，Push / PR未授权。

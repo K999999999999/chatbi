@@ -93,3 +93,6 @@ Owner 为同一主 Agent。Expand：新增 Cookie 支持和网页，保留 Strea
 - 删除阶段若新入口或兼容测试失败，停止删除 / 交付，修复新入口或恢复仍在迁移中的旧入口；不把带缺陷的替换标记为完成。
 
 Revisit Trigger：真实需求要求跨站部署、多实例、移动端、历史续聊、通用恢复或更高访问规模时重新审查对应设计；不能直接加 worker 或拉长 TTL 代替新 Contract。
+
+
+2026-10-03 实施回填：本文保留当时确认 / 设计过程；五项正式 Tickets 已完成，正式行为 / 设计以 docs/specs/web-dialogue-v1.md、docs/designs/web-dialogue-v1.md 为准。最终代码0e4000b的本地验收通过，Streamlit已移除；结果见 docs/acceptance/web-dialogue-v1-20261003.md。R2–R7未实施，Push / PR未授权。

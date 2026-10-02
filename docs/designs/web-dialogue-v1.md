@@ -1,6 +1,6 @@
 # R1 实现设计
 
-依据：[已确认 R1 Spec](../specs/web-dialogue-v1.md)。状态：已确认设计，核心实现与真实闭环通过，入口替换收尾进行中；审查见 [Design Review](../../.scratch/chatbi-product-v1/r1-design-review.md)。Owner：当前主 Agent。
+依据：[已确认 R1 Spec](../specs/web-dialogue-v1.md)。状态：已确认设计，实现 / 入口替换与最终本地验收已完成（证据见 [Acceptance](../acceptance/web-dialogue-v1-20261003.md)）；审查见 [Design Review](../../.scratch/chatbi-product-v1/r1-design-review.md)。Owner：当前主 Agent。
 
 ## 1. 最小结构与运行入口
 

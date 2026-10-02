@@ -1,6 +1,6 @@
 # R1：电脑端 Web 对话与经营分析入口
 
-状态：用户于 2026-10-03 整体确认；实现已完成，最终候选验证与入口删除收尾进行中；验收证据见 [Acceptance](../acceptance/web-dialogue-v1-20261003.md)。技术细化见 [R1 Design](../designs/web-dialogue-v1.md)。
+状态：用户于 2026-10-03 整体确认；实现、旧入口移除和最终候选本地验收完成；验收证据见 [Acceptance](../acceptance/web-dialogue-v1-20261003.md)。技术细化见 [R1 Design](../designs/web-dialogue-v1.md)。
 
 ## Problem Statement
 
@@ -170,7 +170,7 @@
 
 覆盖检查：目标 / 用户、成功行为、领域事实、状态 / 失败恢复、范围 / 兼容、架构 / 安全、验收方向均已有事实依据或本轮决定。未决产品方向：None。技术接口细化通过后续 Design 固化，不授权绕过 Spec 改变身份、会话或业务不变量。
 
-用户已确认完整 Spec 和五项拆分，并授权整个 R1 实施。核心切片已实现，入口替换收尾进行中；实际验收证据以 Acceptance / 工作记录中的提交与验证范围为准。
+用户已确认完整 Spec 和五项拆分，并授权整个 R1 实施。五项切片已完成，未发布 PR / 公网部署；实际验收证据以 Acceptance / 工作记录中的提交与验证范围为准。
 
 
 运行诊断沿用已有观测 Contract：成功 / 受控失败可展开请求编号与 Header 链路编号，Header 缺失不造成业务失败，不修改公开 JSON。
