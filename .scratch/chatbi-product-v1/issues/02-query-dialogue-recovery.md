@@ -1,6 +1,6 @@
 # 02. 问数、连续追问与查询失败恢复
 
-Status: open
+Status: done
 Owner: 当前主 Agent
 Canonical Source: ../r1-spec.md、../r1-design.md、../r1-design-review.md、../r1-ticket-readiness.md
 
@@ -37,7 +37,12 @@ Canonical Source: ../r1-spec.md、../r1-design.md、../r1-design-review.md、../
 
 ## Result
 
-尚未实施。
+已接入问数时间线、完整问题与追问、成功编号提交、表格 / SQL 展开和新对话；无 SQL / 语义状态直接提交，无浏览器历史持久化。
+
+- RED：新增两条浏览器用例因缺少“问题”输入框失败；实现后通过。
+- GREEN：类型 / 构建通过；Chrome 四条 query 用例通过：成功 / 追问 / 澄清 / 空结果 / 刷新、断网不自动重发、进行中操作限制与草稿保留 / 截断、畸形响应不建立可信状态。登录两项证据继续适用。现有 Query API / 会话 / 多轮回归 38 passed / 14 subtests。
+- Code Review：PASS；BASE af2fa36，范围 frontend 问数组件 / 客户端结果校验 / CSS / tests 与 Runbook。检查成功状态更新、受控失败保留、未知结果阻断、卸载 abort 与编号门禁、权限按钮、安全文本展示。软件证据只验证替身业务结果，真实 AI 留至 04。
+- 正式 Web Spec 已包含对应行为，本次未改变 Contract；Runbook 增加操作 / 恢复步骤。
 
 ## Comments
 
