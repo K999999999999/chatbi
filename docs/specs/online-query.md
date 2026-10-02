@@ -95,7 +95,7 @@ QueryRequest
 
 - 应用可以在没有装配 Retrieval Provider（检索提供者）的显式静态模式下加载 `tables.json`、`columns.json`、`relationships.json` 和 `metrics.json`，用于确定性软件评测；字段典型值位于 `columns.json.value_examples`。在线 RAG 模式不把静态全量 Schema 作为技术故障 fallback。
 - 每次查询默认从同一已发布 `asset_version` 的 TABLE、COLUMN、METRIC 集合和 Relationship Graph（关系图）中按问题检索并组装最小动态上下文，不再默认使用完整结构和完整指标。
-- Online Retrieval 模式先由 Query Understanding 提取业务语义。正常结果沿用严格的六字段候选 Contract；无法唯一确定的业务指标口语必须返回结构化 `{"outcome": "clarification_required"}`，不猜测或替换成某个已登记指标。例如未明确口径的“利润”应在 Retrieval 前澄清，不得自动改成毛利或毛利率。
+- Online Retrieval 模式先由 Query Understanding 提取业务语义。正常结果沿用严格的六字段候选 Contract；Query Understanding 使用 `src/semantic/metrics.json` 中登记的规范名称和别名识别指标，唯一对应时输出规范指标名（例如“毛利”对应“人民币毛利”）；无法唯一确定的业务指标口语必须返回结构化 `{"outcome": "clarification_required"}`，不得猜测。例如未明确口径的“利润”应在 Retrieval 前澄清，不得自动改成毛利或毛利率。
 - `CLARIFICATION_REQUIRED` 是受控业务结果，`failure_stage=query_understanding`；返回后不调用 Retrieval、SQL Generator 或数据库。多轮追问出现同类澄清时也不执行查询、不提交新的会话语义状态。
 - 在线 RAG 的 Qdrant、Embedding、资产版本或关系图技术故障统一返回 `CONTEXT_ERROR`，不进入 SQL Generation；业务资源缺失、关系不可达或关系歧义返回 `CANNOT_ANSWER`。实体类、单指标和多指标均遵循同一条 `metrics=0/1/N` 检索流程。
 - 静态事实文件修改后通过重启应用重新加载，当前不支持静态文件热更新；已发布 RAG 资产按 `current.json` 的新版本在后续请求中加载，不要求重启。
@@ -104,7 +104,7 @@ QueryRequest
 
 ## LLM 行为
 
-- Query Understanding 对无法唯一确定的业务指标返回 `CLARIFICATION_REQUIRED`；当前结构和指标无法支持问题时返回 `CANNOT_ANSWER`，不得编造表、字段或指标，二者不得互相替代。非法 JSON、非法 Contract 和 Provider 调用失败仍返回 `LLM_ERROR`。
+- Query Understanding 对无法唯一确定的业务指标返回 `CLARIFICATION_REQUIRED`；唯一命中已登记名称或别名时以规范指标名输出候选。当前结构和指标无法支持问题时返回 `CANNOT_ANSWER`，不得编造表、字段或指标，二者不得互相替代。非法 JSON、非法 Contract 和 Provider 调用失败仍返回 `LLM_ERROR`。
 - SQL Generator 能回答时只返回一条 PostgreSQL SQL；无法基于检索上下文安全回答时返回 `CANNOT_ANSWER`，不返回解释、Markdown、分析过程或多个候选。
 - 不使用 Few-shot、对话历史、自动修复、第二轮反思或多模型投票。
 - Query Understanding 的 Provider 调用异常或超时最多重试一次；非法 JSON、结构化 Contract 错误、`CLARIFICATION_REQUIRED` 和 `CANNOT_ANSWER` 不重试。SQLGenerator 保持不自动重试。
