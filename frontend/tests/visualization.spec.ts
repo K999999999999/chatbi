@@ -90,3 +90,18 @@ test('无变化、退出产品与缺因素不造归因，不完整证据仍提�
   await expect(page.locator('.attribution .chart-canvas svg')).toHaveCount(1);
   await expect(page.getByRole('heading', { name: '证据不完整' })).toBeVisible();
 });
+
+test('极小非零经营贡献显示舍入提示并保留后端方向和原值', async ({ page }) => {
+  await login(page); await page.getByRole('button', { name: '经营分析', exact: true }).click();
+  await page.route('**/api/v1/query', async route => {
+    const response = await route.fetch(); const body = await response.json();
+    body.report.attribution = { metric_name: '人民币毛利', comparison_period: '2025-01', current_period: '2025-02', comparison_value: '1', current_value: '0.9999', total_change: '-0.0001', direction: 'decrease', reconciliation_passed: true, omitted_product_count: 0,
+      products: [{ product_name: '产品A', classification: 'continuing', change: '-0.0001', effect_on_metric: 'decreases_target_metric', factors: [{ name: '成本因素', amount: '-0.0001', effect_on_metric: 'decreases_target_metric' }] }] };
+    await route.fulfill({ json: body });
+  });
+  await send(page, '分析两期');
+  await expect(page.getByText('微小非零贡献按两位小数显示为0.00；请核对原始值，变化方向仍采用后端结论。', { exact: true })).toBeVisible();
+  await expect(page.getByText('期间变化方向：降低目标指标；对账已通过。')).toBeVisible();
+  await page.locator('.attribution .metric-grid > div').last().getByText('查看原始值').click();
+  await expect(page.locator('.attribution .metric-grid code').last()).toHaveText('-0.0001');
+});

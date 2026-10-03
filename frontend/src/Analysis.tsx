@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { object, strings, tableData, text, ResultView, type TableData } from './results';
 import { DataChart } from './Chart';
 import { plotNumber, type ChartPlan } from './chartPlan';
-import { displayValue, type DisplayColumn } from './numberFormat';
+import { displayValue, roundedToZero, type DisplayColumn } from './numberFormat';
 
 type Task = TableData & { task_id: string; status: string; error: string | null };
 type Product = { product_name: string; change: string; classification: string; effect_on_metric: string; factors: { name: string; amount: string; effect_on_metric: string }[] };
@@ -76,10 +76,13 @@ function AttributionView({ data: a }: { data: Attribution }) {
   const column = useMemo(() => moneyColumn(a.metric_name), [a.metric_name]);
   const products = useMemo(() => contributionPlan('products', '主要产品变化贡献', a.products.map(p => ({ label: p.product_name, amount: p.change })), column), [a, column]);
   const factors = useMemo(() => contributionPlan('factors', `${product?.product_name ?? ''} · 因素贡献`, product?.factors.map(f => ({ label: f.name, amount: f.amount })) ?? [], column), [product, column]);
+  const hasRoundedContribution = [a.comparison_value, a.current_value, a.total_change,
+    ...a.products.flatMap(p => [p.change, ...p.factors.map(f => f.amount)])].some(value => roundedToZero(value, column));
   return <section className="attribution"><h3>{a.metric_name} · 两期归因</h3>
     <div className="metric-grid">{[[a.comparison_period, a.comparison_value], [a.current_period, a.current_value], ['期间变化', a.total_change]].map(([label, value]) =>
       <div key={label}><span>{label}</span><strong>{displayValue(value, column)}</strong><details className="raw-value"><summary>查看原始值</summary><code>{value}</code></details></div>)}</div>
     <p>期间变化方向：{effects[a.direction]}；对账已通过。</p>
+    {hasRoundedContribution && <p className="result-meta">微小非零贡献按两位小数显示为0.00；请核对原始值，变化方向仍采用后端结论。</p>}
     {products && <details open><summary>产品贡献图</summary><DataChart plan={products}/></details>}
     {a.omitted_product_count > 0 && <p>另有 {a.omitted_product_count} 个产品未在主要贡献列表中展示。</p>}
     {a.products.length > 0 && <label>查看产品因素 <select value={selected} onChange={e => setSelected(Number(e.target.value))}>

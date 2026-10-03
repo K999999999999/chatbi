@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { EChartsCoreOption } from 'echarts/core';
 import type { CallbackDataParams } from 'echarts/types/dist/shared';
 import type { ChartPlan } from './chartPlan';
-import { displayValue } from './numberFormat';
+import { displayValue, roundedToZero } from './numberFormat';
 
 export function DataChart({ plan }: { plan: ChartPlan }) {
   const target = useRef<HTMLDivElement>(null);
@@ -28,7 +28,9 @@ export function DataChart({ plan }: { plan: ChartPlan }) {
           const series = plan.series[p.seriesIndex ?? 0];
           const point = series?.points[p.dataIndex];
           if (!series || !point || point.rowIndex < 0) return '缺失时段：无数据';
-          return `${point.label}\n${series.column.semantic_name}：${displayValue(series.rawValues[point.rowIndex], series.column)}\n原始值：${String(series.rawValues[point.rowIndex])}`;
+          const raw = series.rawValues[point.rowIndex];
+          const note = roundedToZero(raw, series.column) ? '（显示值已舍入）' : '';
+          return `${point.label}\n${series.column.semantic_name}：${displayValue(raw, series.column)}${note}\n原始值：${String(raw)}`;
         } },
         xAxis: horizontal ? { type: 'value', name: plan.series[0]?.column.unit?.label } : { type: 'category', data: labels },
         yAxis: horizontal ? { type: 'category', data: labels, inverse: true, axisLabel: { width: 160, overflow: 'truncate' } } : { type: 'value', name: plan.series[0]?.column.unit?.label },
