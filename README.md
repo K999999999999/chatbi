@@ -6,7 +6,25 @@ ChatBI 是一个面向业务数据查询的 Domain AI Engine（领域 AI 引擎�
 
 ## 新 clone：快速开始
 
-当前开发入口为 WSL / Linux 本地环境：ChatBI、RAG 构建和开发命令在 WSL / Linux 中运行，Docker Compose 启动 PostgreSQL 和 Qdrant。Dev Container 配置文件保留在仓库中，但不属于当前开发流程。完整步骤、环境变量说明和故障排查见 [`docs/runbook.md`](docs/runbook.md)。
+推荐开发入口为 WSL / Linux 容器环境：仅需 Git、Bash 和 Docker，使用 `./dev` 管理前后端与基础设施，支持源码热更新。首次显式执行 `build`、`infra`、`migrate`、`create-admin`、`prepare-model`、`build-rag`，随后 `./dev up`；日常使用 `up / down / status / logs`。保留以下宿主调试方式；Dev Container 配置保留，不作为本次验收入口。完整步骤、环境变量说明和故障排查见 [`docs/runbook.md`](docs/runbook.md)。
+
+### 容器开发（推荐）
+
+复制 `.env.example` 为 `.env`，填入本机配置后运行：
+
+```bash
+./dev build
+./dev infra
+./dev migrate
+./dev create-admin --username admin-1
+./dev prepare-model
+./dev build-rag
+./dev up
+```
+
+打开 `http://127.0.0.1:5173`。日常启动 `./dev up`，停止 `./dev down`，查看 `./dev status` / `./dev logs --follow`。
+
+### 宿主调试（可选）
 
 1. 从 [`.env.example`](.env.example) 复制出本地 `.env`，按 Runbook 配置服务地址和本地 Secret。不要提交 `.env`。
 2. 在 WSL / Linux 终端执行 `uv sync --locked`；安装 Node 24，在 `frontend/` 执行 `npm ci`。
@@ -23,7 +41,7 @@ ChatBI 是一个面向业务数据查询的 Domain AI Engine（领域 AI 引擎�
 4. 首次运行时，按 Runbook 显式创建首个管理员，准备固定版本的 BGE-M3 模型并从当前 Schema Metadata / Metrics 构建 RAG 索引。
 5. 按 Runbook 启动 API 和页面，然后运行确定性测试或需要的 Evaluation（评测）。
 
-日常开发只需启动 PostgreSQL 和 Qdrant；PostgreSQL 数据会保留，RAG 索引不会随服务启动自动重建。生产服务启动会验证 PostgreSQL Schema、Structure Metadata、Metrics、Embedding 配置与当前 RAG manifest 的一致性；不匹配时拒绝 Ready。PostgreSQL 重置和 Qdrant 索引重建是分开的显式操作，详见 Runbook。
+容器日常开发使用 `./dev up`；宿主调试另外启动 API 和页面。PostgreSQL 数据会保留，RAG 索引不会随服务启动自动重建。生产服务启动会验证 PostgreSQL Schema、Structure Metadata、Metrics、Embedding 配置与当前 RAG manifest 的一致性；不匹配时拒绝 Ready。PostgreSQL 重置和 Qdrant 索引重建是分开的显式操作，详见 Runbook。
 
 ## 主链路
 
