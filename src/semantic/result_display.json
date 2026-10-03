@@ -1,0 +1,73 @@
+{
+  "metrics": {
+    "人民币净销售额": {
+      "format": "money",
+      "unit": {
+        "key": "CNY",
+        "label": "元"
+      }
+    },
+    "人民币销售成本": {
+      "format": "money",
+      "unit": {
+        "key": "CNY",
+        "label": "元"
+      }
+    },
+    "人民币毛利": {
+      "format": "money",
+      "unit": {
+        "key": "CNY",
+        "label": "元"
+      }
+    },
+    "已完成订单数": {
+      "format": "count",
+      "unit": {
+        "key": "order",
+        "label": "单"
+      }
+    },
+    "已完成订单明细行数": {
+      "format": "count",
+      "unit": {
+        "key": "order_line",
+        "label": "行"
+      }
+    },
+    "毛利率": {
+      "format": "ratio",
+      "unit": {
+        "key": "ratio",
+        "label": "%"
+      }
+    },
+    "已完成销售数量": {
+      "format": "number",
+      "unit": null
+    }
+  },
+  "dimensions": {
+    "销售区域": {
+      "column": "mart_sales.dim_sales_region.sales_region_name"
+    },
+    "客户类型": {
+      "column": "mart_sales.dim_customer.customer_type"
+    },
+    "客户区域": {
+      "column": "mart_sales.dim_customer.customer_region"
+    },
+    "产品": {
+      "column": "mart_sales.dim_product.product_name"
+    },
+    "产品线": {
+      "column": "mart_sales.dim_product.product_line"
+    },
+    "产品类别": {
+      "column": "mart_sales.dim_product.product_category"
+    },
+    "技术路线": {
+      "column": "mart_sales.dim_product.technology_route"
+    }
+  }
+}

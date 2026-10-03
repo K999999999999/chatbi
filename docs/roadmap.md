@@ -6,7 +6,7 @@ ChatBI 的 MVP 核心能力已经形成：自然语言查询、Online Retrieval�
 
 生产准备基线已在 clean commit `6a5e6ccc6504ebc0947a6addb4abb02d87b566d3` 核验：正式单轮 29/29、多轮 7/7（15 个轮次）、Business Analysis 10/10，均 `0 FAIL`、`0 INVALID_CASE`，三次独立多轮诊断各 7/7 通过。原始报告保存在本机 ignored 目录 `reports/evaluation/baseline-20261003T6a5e6cc/{formal,diagnostic-1,diagnostic-2,diagnostic-3}`；它们绑定该提交、案例集和运行资源，后续提交不自动继承通过身份，报告也不保证在新 clone 中存在。
 
-产品 V1 的需求方向和优先顺序已确认。[R1 完整 Spec](../.scratch/chatbi-product-v1/r1-spec.md) 已获用户整体确认，设计审查与 Ticket Readiness 已通过，[五项实施拆分](../.scratch/chatbi-product-v1/r1-tickets-draft.md)和整体实施范围已获确认；R1 电脑端入口、旧入口移除和本地验收已完成（[证据](acceptance/web-dialogue-v1-20261003.md)），发布授权已获，PR 与 required checks 状态以 GitHub 实时信息为准；下一需求为 R2 结果解释与可视化细化；其他需求的具体行为、技术与验收指标仍待细化。生产部署、容量验证和生产运行保障仍未完成。
+产品 V1 的需求方向和优先顺序已确认。[R1 完整 Spec](../.scratch/chatbi-product-v1/r1-spec.md) 已获用户整体确认，设计审查与 Ticket Readiness 已通过，[五项实施拆分](../.scratch/chatbi-product-v1/r1-tickets-draft.md)和整体实施范围已获确认；R1 电脑端入口、旧入口移除和本地验收已完成（[证据](acceptance/web-dialogue-v1-20261003.md)），PR49 已合并（8c506fa）；当前 R2 [完整 Spec](../.scratch/result-visualization-v1/spec.md) 已确认，Design Review PASS，四项草案 Readiness READY，拆分与整体本地实施已确认，实施中；其他需求的具体行为、技术与验收指标仍待细化。生产部署、容量验证和生产运行保障仍未完成。
 
 历史完整 Evaluation 基线包括 commit `31a04549924f622777f106d4fe5a758bd2ca2beb` 和较新的 `564343216e4493f832f07efb345c03b058a04eb5`；后者的三套通过证据及此前多轮失败见[工作项验收记录](../.scratch/engineering-quality-gates/issues/04-current-candidate-evaluation-baseline.md#result)。历史通过结果不代表当前 HEAD 或模型稳定性。当前候选只有在三套正式报告均指向同一最终 clean commit、`git_dirty=false` 且各自 `0 FAIL`、`0 INVALID_CASE` 后才能标记为已核验。
 
@@ -14,7 +14,7 @@ ChatBI 的 MVP 核心能力已经形成：自然语言查询、Online Retrieval�
 
 三套验收入口、报告身份检查及基线核验已经完成。用户于 2026-10-03 确认产品 V1 目标，并在项目审查后授权按建议修订需求与优先级：先明确用户流程与运行约束，再推进对话和分析入口、结果可视化、历史与成果、流式和导出，最后完成部署运行验收及作品交付。部署基础与跨需求状态设计提前准备，验证贯穿各项交付。
 
-用户于 2026-10-03 确认先在 R2 前准备本地容器开发：Compose 统一启动前后端与基础设施、源码挂载和热更新、仅本机访问、CPU Embedding，并保留显式初始化与持久数据。[开发环境 Spec](../.scratch/container-dev-environment/spec.md) 已确认，Design Review PASS，[三项 Ticket 草案](../.scratch/container-dev-environment/tickets-draft.md)通过 Readiness，三项拆分与整体本地实施已授权；三项本地实施与clean candidate验收通过（[证据](acceptance/container-dev-environment-20261003.md)），尚未发布；此项不代表 R6 正式生产镜像、部署或运行验收完成。完成后继续 R2 结果解释与可视化细化。
+用户于 2026-10-03 确认先在 R2 前准备本地容器开发：Compose 统一启动前后端与基础设施、源码挂载和热更新、仅本机访问、CPU Embedding，并保留显式初始化与持久数据。[开发环境 Spec](../.scratch/container-dev-environment/spec.md) 已确认，Design Review PASS，[三项 Ticket 草案](../.scratch/container-dev-environment/tickets-draft.md)通过 Readiness，三项拆分与整体本地实施已授权；三项本地实施与clean candidate验收通过（[证据](acceptance/container-dev-environment-20261003.md)），PR50 已合并（f182cf3）；此项不代表 R6 正式生产镜像、部署或运行验收完成。已进入 R2 结果解释与可视化需求细化。
 
 此优先级是分阶段交付顺序，不要求一次实现全部目标。具体技术选择、容量等指标和 Ticket 直接依赖待相应 Spec / Design 确认；检索优化和额外产品扩展不因旧文档将其列为“后续”而成为已授权目标。
 
@@ -29,7 +29,7 @@ ChatBI 的 MVP 核心能力已经形成：自然语言查询、Online Retrieval�
 | 阶段 | 目标 | 状态 |
 | --- | --- | --- |
 | 1. 目标细化 | 明确用户、核心流程、支持边界和验收标准；提前澄清部署、身份、结果语义、历史与执行状态 | R1 Spec 已确认，设计 / Readiness 通过，五项拆分已确认且 R1 完成；其他需求待细化 |
-| 2. 用户闭环 | 按 R1 → R2 → R3 → R4 → R5 推进；部署基础 R6 在目标环境确定后提前准备 | R1 已本地验收；R2–R5 的 Spec / Design / Tickets 待细化 |
+| 2. 用户闭环 | 按 R1 → R2 → R3 → R4 → R5 推进；部署基础 R6 在目标环境确定后提前准备 | R1 已交付；R2完整Spec已确认，设计PASS / 草案READY，拆分及整体本地实施已确认，实施中；R3–R5待细化 |
 | 3. 生产准备 | 完成 R6 的部署交付验收及 R7 的安全、监控、容量与恢复验收 | 方向已确认，具体运行 Contract 与指标待确认 |
 | 4. 作品交付 | 演示、架构说明及可复现评测和运行证据 | 阶段目标已确认，交付验收待细化 |
 
@@ -64,11 +64,11 @@ flowchart TD
 | ID | 需求 | 交付范围与验收方向 | 当前状态 |
 | --- | --- | --- | --- |
 | R1 | Web 对话与经营分析入口 | 仅电脑端；React + TypeScript + Vite，复用 FastAPI。登录 / 首次改密、问数 / 追问、澄清 / 拒绝及独立分析模式；Cookie 登录兼容 Bearer，验收后移除 Streamlit。刷新暂回到空白对话，历史由 R3 实现 | Spec 已确认，设计 / Readiness 通过，五项 Ticket 已完成；Streamlit 已移除，最终代码候选本地验收通过，发布授权已获；PR 与 required checks 状态以 GitHub 实时信息为准 |
-| R2 | 结果解释与可视化 | 明确列类型、指标、单位、有效时间范围和分组含义；表格 / 图表切换、归因证据及贡献展示；正确处理空值、空结果与截断，不由展示层猜测业务口径 | 待澄清 |
+| R2 | 结果解释与可视化 | 图表与表格默认同显、可分别收起；可信列类型 / 指标 / 单位 / 查询范围、统一数字格式、产品及因素贡献证据；空值 / 截断 / 语义不明安全降级 | 完整Spec已确认，Design Review PASS，四项草案Readiness READY；拆分 / 整体本地实施已确认，实施中 |
 | R3 | 历史与成果管理 | 历史列表、重新打开、保存查询 / 报告和删除；定义结果快照与重新查询、历史重开与继续追问、保留期限；读取历史仍检查当前身份和权限 | 待澄清 |
 | R4 | 执行状态与流式反馈 | 先验收真实执行进度与最终结果，再验收分析文字逐步展示；定义失败、超时、断连、重试、重复提交、取消 / 恢复边界和事件 Contract | 待澄清 |
 | R5 | 成果导出 | 明确当前查询数据、图表或报告的导出格式、数据范围和授权；当前查询最多返回 100 行，完整数据导出需要独立确认资源限制与验收 | 待澄清 |
-| R6 | 部署交付 | 提前确定目标环境、浏览器访问与身份方式、配置和初始化；交付完整应用打包、升级 / 回滚流程，并在目标环境验收 | 正式部署待澄清；R2 前本地容器开发 Spec 已确认，设计 / Readiness 与拆分已确认；本地容器开发已通过clean candidate验收，尚未发布 |
+| R6 | 部署交付 | 提前确定目标环境、浏览器访问与身份方式、配置和初始化；交付完整应用打包、升级 / 回滚流程，并在目标环境验收 | 正式部署待澄清；R2 前本地容器开发 Spec 已确认，设计 / Readiness 与拆分已确认；本地容器开发已通过clean candidate验收，PR50已合并 |
 | R7 | 运行保障 | 动态 readiness、并发与资源限制、监控告警、备份恢复及容量证据；按目标确定延迟、恢复和访问规模要求 | 待澄清 |
 
 ### 跨需求设计与验证要求

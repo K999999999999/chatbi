@@ -50,13 +50,13 @@ test('real Chrome login → model/RAG query → followup → two-period analysis
       current_value: reference.attribution.current_value, total_change: reference.attribution.total_change,
       products: reference.attribution.products.map((p: Record<string, unknown>) => expect.objectContaining({
         product_name: p.product_name, change: p.change, classification: p.classification,
-        factors: (p.factors as Record<string, unknown>[]).map(f => ({ name: f.name, amount: f.amount })) })),
+        factors: (p.factors as Record<string, unknown>[]).map(f => ({ name: f.name, amount: f.amount, effect_on_metric: f.effect_on_metric })) })),
     }));
     expect(analysis.task_results).toHaveLength(4);
     expect(analysis.task_results.every(task => task.status === 'completed' && !task.truncated)).toBe(true);
     await expect(page.locator('.analysis-report h2')).toBeVisible();
     await page.getByText('查看查询任务证据').click();
-    await expect(page.getByRole('table')).toHaveCount(4);
+    await expect(page.getByText('查看查询任务证据').locator('..').getByRole('table')).toHaveCount(4);
     await page.getByRole('button', { name: '退出登录' }).click();
     await expect(page.getByRole('button', { name: '登录', exact: true })).toBeVisible();
     evidence.step = 'complete'; evidence.status = 'passed';

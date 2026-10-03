@@ -241,3 +241,26 @@ API 对请求体解析失败时，也必须返回上述 `QueryFailure` 形状，
 ## R1 浏览器入口
 
 浏览器登录使用 `/auth/browser/login`、`/auth/browser/me`、`/auth/browser/logout`、`/auth/browser/change-password`，旧 `/auth/*` Bearer 路由继续兼容。查询 body / result Contract 不变；Cookie 身份、CSRF 门禁和网页入口见 [Web Spec](web-dialogue-v1.md) 及 [Web Design](../designs/web-dialogue-v1.md)。账号与授权事实仍由既有模块维护；浏览器路由不复制核心业务。认证 / 查询响应均 no-store，Cookie 查询即使 CSRF 拒绝也保留 request_id / X-Trace-ID 关联。
+
+## 结果说明扩展（R2）
+
+成功query响应和已完成分析 `task_results` 可含 `result_metadata`；缺该字段的旧结果仍有效，已有字段不变。API仅序列化Online Query的确定性说明，不自行认证或调用额外模型。完整行为见[R2 Spec](result-visualization-v1.md)。
+
+| 字段 | Contract |
+| --- | --- |
+| `version` | 当前为1；未知版本保留原始表格 |
+| `status` | `complete / partial / unavailable`，说明的认证程度，不是查询状态 |
+| `columns` | 与输出列一一按位置对应；`index / name / data_type / role / semantic_name / definition / unit / format / certified / reason_code` |
+| `data_type` | `number / string / boolean / date / unknown`；单独不能证明业务含义 |
+| `role` | `metric / dimension / identifier / unknown` |
+| `unit` | `{key,label}`或null，null表示单位未确认 |
+| `format` | `money / count / ratio / number / raw`；认证金额为CNY元，比例为ratio百分比；编号保持raw |
+| `scope` | `status / time / time_status / filters / grouping / warnings` |
+| `scope.time` | 实际 `{start,end_exclusive,time_basis}` 半开日期区间，无法证明为null |
+| `time_status` | `confirmed / unbounded / unknown` |
+| `filters` | 实际已确认的 `{label,operator,values}`，值是文本 |
+| `grouping` | 逻辑业务分组 `{semantic_name,kind,column_indices}`；kind为time/category，物理年/月可绑定同一逻辑分组 |
+| `warnings` | 稳定原因码；`GROUPING_UNCONFIRMED`不得显示总体指标卡或猜图 |
+| `time_axis` | `{granularity,keys}`或null；day/week/month/quarter/year，ISO日期键与返回行对齐 |
+
+说明失败只降级显示，不改变查询成功、会话提交、数据授权或SQL Guard。每次请求绑定本轮说明，不能复用上一轮元数据冒充本轮；不存在任何说明时仍保留表格。分析旧Checkpoint未含可选字段时默认为None，新说明不进入报告模型输入。

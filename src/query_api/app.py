@@ -148,6 +148,7 @@ class QuerySuccessResponse(BaseModel):
     row_count: int
     truncated: bool
     conversation_id: str
+    result_metadata: dict[str, Any] | None = None
 
 
 class AnalysisSuccessResponse(BaseModel):
@@ -944,6 +945,8 @@ def _analysis_task_result_payload(result: TaskResult) -> dict[str, object]:
             "code": result.error.code,
             "message": result.error.message,
         }
+    if result.result_metadata is not None:
+        payload["result_metadata"] = result.result_metadata.to_payload()
     return payload
 
 
@@ -976,7 +979,10 @@ def _result_response(
                     row_count=result.row_count,
                     truncated=result.truncated,
                     conversation_id=conversation_id,
-                ).model_dump(mode="json"),
+                    result_metadata=result.result_metadata.to_payload()
+                    if result.result_metadata
+                    else None,
+                ).model_dump(mode="json", exclude_none=True),
             )
         if isinstance(result, QueryFailure):
             return JSONResponse(

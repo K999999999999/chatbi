@@ -96,6 +96,6 @@ test('analysis text stays inert and displays authoritative contribution', async 
   await send(page, '完整分析问题');
   await expect(page.getByRole('heading', { name: '<img src=x onerror="window.hacked=true">' })).toBeVisible();
   await expect(page.locator('.analysis-report img')).toHaveCount(0);
-  await expect(page.getByText('变化贡献：-20', { exact: true })).toBeVisible();
+  await expect(page.getByRole('cell').filter({ hasText: '-20.00 元' })).toBeVisible();
   expect(await page.evaluate(() => 'hacked' in window)).toBe(false);
 });

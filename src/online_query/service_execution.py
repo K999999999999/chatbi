@@ -17,6 +17,7 @@ from .contracts import (
 )
 from .database import DatabaseError, DatabaseQueryTimeout
 from .prompt import build_prompt
+from .result_metadata import build_result_metadata
 from .query_trace import (
     enrich_failure_span as _enrich_failure_span,
     safe_enrich as _safe_enrich,
@@ -160,4 +161,7 @@ def _execute_query(
             row_count=len(data.rows),
             truncated=data.truncated,
             semantic_query=semantic_query,
+            result_metadata=build_result_metadata(
+                validated_sql, data, context, semantic_query
+            ),
         )

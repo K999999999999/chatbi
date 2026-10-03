@@ -18,7 +18,7 @@ test('query table, successful context, failure recovery and refresh', async ({ p
   await login(page);
   await send(page, '2025年2月净销售额');
   await expect(page.getByRole('table')).toBeVisible();
-  await expect(page.getByRole('cell', { name: 'NULL', exact: true })).toBeVisible();
+  await expect(page.getByRole('cell', { name: '无数据', exact: true })).toBeVisible();
   await expect(page.getByRole('cell', { name: '0', exact: true })).toBeVisible();
   await expect(page.getByRole('cell', { name: '空字符串', exact: true })).toBeVisible();
   await page.getByText('查看经校验 SQL', { exact: true }).click();

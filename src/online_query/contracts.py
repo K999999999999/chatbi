@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Mapping, Protocol, TypeAlias
 
+from .result_contracts import ResultMetadata
 from .query_understanding import ValidatedSemanticQuery
 
 
@@ -42,6 +43,7 @@ class QuerySuccess:
     row_count: int
     truncated: bool
     semantic_query: ValidatedSemanticQuery | None = None
+    result_metadata: ResultMetadata | None = None
 
 
 @dataclass(frozen=True, slots=True)
