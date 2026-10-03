@@ -25,7 +25,7 @@ Base：`8c506fab07868c851d2ec8e5f8ed1b0b4fe0c295`。本记录第一轮对应该b
 - Chromium系统依赖一次502，配置apt重试后构建通过；只作用于验收镜像。
 - 首次API缺`scripts/metadata`、独立migration缺SQL目录挂载，补只读挂载后通过；工具profile需显式用于Compose配置解析，已修复并回归。
 - 正式全套AI Evaluation、GPU、Dev Container构建、Windows原生 / macOS、生产部署 / HTTPS / 容量验收未运行，不属于本次承诺。
-- Blueprint与真实运行证据已覆盖当前行为；最后需在本地代码candidate提交后执行正式clean容器链路，回填适用commit与资源身份。原始报告留ignored目录，不把第一轮脏状态或旧Evaluation改称最终候选通过。
+- 第一轮运行报告保留git_dirty=true；最终clean候选证据独立记录如下，不改写第一轮或历史Evaluation身份。
 
 ## 正式事实源
 
@@ -34,3 +34,12 @@ Base：`8c506fab07868c851d2ec8e5f8ed1b0b4fe0c295`。本记录第一轮对应该b
 ## Harness反馈
 
 未观察到符合门槛的Harness缺口。路径身份与遗漏挂载属于本目标已修复的运行实现 / 设计问题；不扩大为持久规则或Plugin修改。
+
+## 最终clean候选
+
+代码candidate：`38602d9c1864add83528ff78de65d1f217907222`。两轮均未设置ALLOW_DIRTY，入口 / 浏览器报告核实`git_dirty=false`，实验改动恢复后执行真实问数。后续仅文档回填，代码 / Contract未变，前述软件 / 浏览器回归证据仍适用。
+
+- `real`：PASS；日志`/tmp/chatbi-final-real.log`，报告`/tmp/chatbi-container-verify.jff6gE/report`。既有资产复用、热更新、登录与同一会话问数 / 追问、停止重启持久性通过。
+- `isolated`：PASS；日志`/tmp/chatbi-final-isolated.log`，报告`/tmp/chatbi-container-verify.b8RhtK/report`。空卷migration / checkpoint、TTY管理员、CPU索引37秒、热更新、两轮问数、持久性通过。独立项目容器 / 网络 / 两个卷按标签清理，清理后查询无剩余本次卷。
+- 两轮专用账号disabled=true / active_sessions=0，凭证文件删除；源码恢复后工作区clean。API没有MIGRATOR环境键，实际模型deepseek-flash / api.deepseek.com，Embedding CPU；镜像IDs和模型config SHA见正式验收记录。
+- 本地代码Review PASS；正式文档回填只更新完成事实、复验身份与下一步，Markdown链接 / Diff检查后提交；无新增Harness缺口，无远端CI或发布。

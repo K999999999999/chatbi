@@ -22,4 +22,6 @@ Correctness / Comprehension / Consistency / Testability / Architecture / Securit
 
 证据见[verification](verification.md)：624 / 15 / 139软件结果、CLI / Compose7、浏览器17+1、隔离空卷 / CPU索引 / 热更新 / 持久性、修订后的真实资产复用、依赖故障与恢复。原始第一轮报告明确标记git_dirty=true，不当作clean候选结果。
 
-Next: 形成本地代码候选，执行最终clean容器验收，再回填事实 / 最终状态；不进行Push / PR。
+最终核验：代码候选38602d9的clean real / isolated均PASS；源码恢复，账号与临时卷清理核实。文档回填审查PASS，仅完成事实及证据身份变化；无代码 / Contract变化，适用回归证据可复用。
+
+Next: 本地交付完成；发布需用户另行明确授权。

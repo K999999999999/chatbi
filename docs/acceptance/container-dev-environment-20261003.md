@@ -1,6 +1,6 @@
 # 本地容器开发验收（2026-10-03）
 
-状态：实现与本地运行诊断通过；最终clean代码候选验收待回填。
+状态：三项本地实施、Code Review和最终clean候选验收通过；未Push / PR。
 
 ## 入口与覆盖
 
@@ -26,7 +26,25 @@ scripts/verify_container_dev.sh real
 - 依赖不可连接时启动返回非零且不报告成功，修复后plain `./dev up`恢复。
 - 专用账号disabled=true、active_sessions=0；独立临时卷清理，现有开发资源保留。
 
-第一轮基于`8c506fa`上的未提交目标Diff，不能作为最终clean候选成绩。最终提交 / 报告身份待后续回填。
+第一轮基于`8c506fa`上的未提交目标Diff，保留为诊断记录。最终clean候选成绩见下节。
+
+## 最终clean代码候选
+
+候选：`38602d9c1864add83528ff78de65d1f217907222`。两种模式均PASS，`git_dirty=false`；热更新实验独立标记`experiment_dirty=true`，恢复源码后真实查询匹配独立SQL参考，追问沿用同一conversation_id。后续提交仅回填文档，代码 / Contract不变，软件624 / 15 / 139及既有浏览器17+1证据继续适用，不将其改称重跑结果。
+
+| 模式 | 原始本机记录 | 结果 |
+| --- | --- | --- |
+| 现有资源real | `/tmp/chatbi-container-verify.jff6gE/report`；`/tmp/chatbi-final-real.log` | 旧模型 / 索引复用，热更新，两轮真实查询，重启持久性通过 |
+| 空卷isolated | `/tmp/chatbi-container-verify.b8RhtK/report`；`/tmp/chatbi-final-isolated.log` | migration / checkpoint、交互管理员、CPU索引37秒、热更新、两轮查询、持久性通过 |
+
+两轮账号清理均disabled=true / active_sessions=0，临时凭证已删除；隔离容器 / 网络 / 两个卷按本次项目标签核实后清理。日常开发卷、原有用户、模型和RAG资产保留。源码恢复后工作区clean。测试报告另存ignored `reports/browser-real/`，临时路径仅为本机证据，不是可移植事实源。
+
+实际LLM：`deepseek-flash`，Provider `api.deepseek.com`；Embedding CPU，模型config SHA256：`26159e7ad065073448460117eb24b7a4572f6f4e78eadff65dc0a11c052449fa`。
+
+- real API镜像：`sha256:c0c09d6b9b6b20ffc4e6fbe3e48ad8348f98a254bdb2e5e2d03abf34df15d245`；Web：`sha256:df3981a9c256d36852a3335db73ab4417f9972e35594e52bf64619562b11951d`。
+- isolated API镜像：`sha256:77c067976a1090059c53012f816ec6d668324cd8325414b4292fe5ab219ae8d3`；Web：`sha256:4d8d52135e217b15c3b272ba491fc792935cf78433a7b6d19caeb7640a316b68`。
+
+本地Code Review PASS；正式Spec / Runbook / README / 环境模板及路线图已同步。无新增Harness缺口，下一需求为R2细化；本次没有远端CI / 发布授权。
 
 ## 限制
 
