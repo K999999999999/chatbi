@@ -26,15 +26,15 @@ frontend Analysis /共享图形 /证据展示、business_analysis现有任务结
 无DB或Checkpoint Schema迁移，新增可忽略字段且可读取旧payload。归因逻辑不变，不删历史checkpoint回滚。适用分析回归 /旧payload兼容 /Chrome、安全Review与正式响应说明完成并形成本地逻辑提交。
 
 
-Status: in-progress
+Status: done
 Canonical Source: ../spec.md、../design.md
 Authorization: 用户已确认四项拆分及全目标本地实现、验证、Review和Commit；未授权发布
 
 ## Result
 
-实现与确定性验证完成，Code Review PASS；待本地代码候选及04实际容器clean验收绑定。
+实现、文档、适用验证及Code Review PASS；已本地提交，最终代码候选64f29a9实际clean容器验收通过，证据见docs/acceptance/result-visualization-v1-20261004.md。
 
-证据：软件641 passed /15 skipped /139 subtests，Chrome32 passed / Vite1 passed；R2公共Contract、Design、Query API、Runbook、README及roadmap已同步。
+证据：软件641 passed /15 skipped /139 subtests，Playwright33 passed（24 Chrome /9纯函数） / Vite1 passed；R2公共Contract、Design、Query API、Runbook、README及roadmap已同步。
 
 ## Comments
 

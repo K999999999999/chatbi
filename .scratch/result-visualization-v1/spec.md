@@ -1,6 +1,6 @@
 # R2 结果解释与可视化 Spec
 
-Status: 用户于2026-10-04确认完整Spec；Design Review PASS，Ticket Readiness READY，四项拆分及整体本地实施已获用户确认，实施中
+Status: 用户于2026-10-04确认完整Spec；Design Review PASS，Ticket Readiness READY，四项拆分及整体本地实施已获用户确认，已完成本地代码/验收，PR未发布
 Owner: 当前主 Agent
 Work item: result-visualization-v1
 Baseline: `f182cf369217e7775c756101f45baff0ec301f44`
@@ -111,7 +111,7 @@ Owner为当前目标维护者；用户决定作为本Spec确认内容，不新�
 
 ### 已核实技术事实
 
-2026-10-04通过npm官方包元数据核实ECharts `6.1.0`，直接依赖 `zrender 6.1.0` / `tslib 2.3.0`。实施锁定精确版本及npm lockfile，并验证现有React / TypeScript / Vite兼容、生产build和供应链检查；版本或依赖来源需改变时说明影响，不静默升级其他框架。当前仅查询元数据，未安装或验收新包。
+2026-10-04通过npm官方包元数据核实ECharts `6.1.0`，直接依赖 `zrender 6.1.0` / `tslib 2.3.0`。实施锁定精确版本及npm lockfile，并验证现有React / TypeScript / Vite兼容、生产build和供应链检查；版本或依赖来源需改变时说明影响，不静默升级其他框架。规划时仅查询元数据；已锁定安装，build/typecheck/npm audit及真实容器验证通过，见Acceptance。
 
 参考：[ECharts按需引入](https://apache.github.io/echarts-handbook/en/basics/import/)、[数据集](https://echarts.apache.org/handbook/zh/concepts/dataset/)、[安全指南](https://echarts.apache.org/handbook/en/best-practices/security/)。dataset只作为显示数据接入方式，业务绑定按确定性Contract明确配置，不用自动猜测替代认证。
 
@@ -121,7 +121,7 @@ Owner为当前目标维护者；用户决定作为本Spec确认内容，不新�
 
 ## Testing Decisions / Acceptance
 
-验证需绑定最终clean代码candidate、实际base、适用范围及运行资源；文档回填可说明复用理由，不把历史成绩改称新候选成绩。当前未执行下列验收。
+验证需绑定最终clean代码candidate、实际base、适用范围及运行资源；文档回填可说明复用理由，不把历史成绩改称新候选成绩。以下为已确认验收要求；实际执行结果见[正式Acceptance](../../docs/acceptance/result-visualization-v1-20261004.md)。
 
 | 场景 | 可观察验收 |
 | --- | --- |

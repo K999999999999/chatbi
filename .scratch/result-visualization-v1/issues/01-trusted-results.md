@@ -27,15 +27,15 @@ Blocked by: None (can start immediately)
 兼容附加字段，无DB迁移 /RAG重建；恢复代码可回旧展示，原用户 /资产保留。适用确定性与API /浏览器验证、当前上下文Code Review、正式Spec/API文档、Diff检查和本地逻辑提交完成。失败保留原结果并修复，不用放宽认证替代通过。
 
 
-Status: in-progress
+Status: done
 Canonical Source: ../spec.md、../design.md
 Authorization: 用户已确认四项拆分及全目标本地实现、验证、Review和Commit；未授权发布
 
 ## Result
 
-实现与确定性验证完成，Code Review PASS；待本地代码候选及04实际容器clean验收绑定。
+实现、文档、适用验证及Code Review PASS；已本地提交，最终代码候选64f29a9实际clean容器验收通过，证据见docs/acceptance/result-visualization-v1-20261004.md。
 
-证据：软件641 passed /15 skipped /139 subtests，Chrome32 passed / Vite1 passed；R2公共Contract、Design、Query API、Runbook、README及roadmap已同步。
+证据：软件641 passed /15 skipped /139 subtests，Playwright33 passed（24 Chrome /9纯函数） / Vite1 passed；R2公共Contract、Design、Query API、Runbook、README及roadmap已同步。
 
 ## Comments
 

@@ -27,15 +27,15 @@ frontend package /lock、图表计划 /React图形边界 /查询展示 /样式 /
 新增Web依赖，无数据库迁移 /平台发布。依赖兼容失败须定位；若需版本 /技术改变则返回设计或用户决定，不私自升级。受影响回归、安全检查、Code Review、正式Contract /设计文档及逻辑本地提交完成；保留数据卷与资产。
 
 
-Status: in-progress
+Status: done
 Canonical Source: ../spec.md、../design.md
 Authorization: 用户已确认四项拆分及全目标本地实现、验证、Review和Commit；未授权发布
 
 ## Result
 
-实现与确定性验证完成，Code Review PASS；待本地代码候选及04实际容器clean验收绑定。
+实现、文档、适用验证及Code Review PASS；已本地提交，最终代码候选64f29a9实际clean容器验收通过，证据见docs/acceptance/result-visualization-v1-20261004.md。
 
-证据：软件641 passed /15 skipped /139 subtests，Chrome32 passed / Vite1 passed；R2公共Contract、Design、Query API、Runbook、README及roadmap已同步。
+证据：软件641 passed /15 skipped /139 subtests，Playwright33 passed（24 Chrome /9纯函数） / Vite1 passed；R2公共Contract、Design、Query API、Runbook、README及roadmap已同步。
 
 ## Comments
 

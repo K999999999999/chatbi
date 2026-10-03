@@ -26,13 +26,13 @@ frontend/tests容器真实用例及必要Playwright配置 /安全reporter、test
 真实资源缺失 /失败保留诊断并修复，不能换假模型宣称通过；不提高成本范围或删除既有资产。代码candidate与文档回填可分本地提交；最终工作区clean且所有Ticket完成。当前只允许本地交付，Push /PR发布独立确认。
 
 
-Status: in-progress
+Status: done
 Canonical Source: ../spec.md、../design.md
 Authorization: 用户已确认四项拆分及全目标本地实现、验证、Review和Commit；未授权发布
 
 ## Result
 
-实际容器验收已扩展：真实问数/追问、时间同/混单位多指标、分类同单位多指标及经营分析，独立SQL与归因参考、安全错误位置与账号清理。dirty诊断的问数/追问/时间/分类及热更新通过，分析待最终clean对照，不将dirty结果视为正式验收。
+实际容器验收已扩展：真实问数/追问、时间同/混单位多指标、分类同单位多指标及经营分析，独立SQL与归因参考、安全错误位置与账号清理。最终代码候选64f29a9的clean真实容器全链通过（脚本退出0）；问数/追问、12月三指标混单位、4产品线同单位两指标、分析4任务与归因参考一致，说明均complete，图/表/贡献有效。账号disabled=true/active_sessions=0，凭证移除；重启持久性PASS。正式Acceptance、roadmap和适用事实源均回填；Code Review PASS。全套Evaluation/Gitleaks未运行并说明原因，未发布PR。
 
 ## Comments
 

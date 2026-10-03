@@ -2,7 +2,7 @@
 
 Scope: 基线f182cf3 → 当前R2 owned Diff；实现、Formal Spec/Design、npm依赖和适用验证。
 Mode: Main Agent；未启动独立Agent。
-Review: PASS（实现与确定性验证）；真实clean候选门禁待04执行。
+Review: PASS（实现与确定性验证）；最终代码候选64f29a9真实clean容器全链及账号清理已通过。
 
 ## What / Why / Risk
 
@@ -31,8 +31,10 @@ Review: PASS（实现与确定性验证）；真实clean候选门禁待04执行�
 
 dirty实际容器诊断：问数/追问、12月三指标两单位图、四产品线同单位两指标图与独立SQL一致，热更新PASS；分析尚未完整通过。新分析对照只去掉前端解析不保留的reconciliation_passed字段，仍要求服务端通过对账及全部权威数值/方向/因素一致；正式clean运行不可省略。
 
-本机无Gitleaks CLI，未运行完整Secret scan；对本Diff人工检查未发现真实Secret。正式全量Evaluation未运行：生成路径/Prompt/检索/Guard/归因不变，小范围真实验收单独绑定候选；不冒称历史Evaluation当前通过。未观察到符合门槛的新增Harness缺口。
+本机无Gitleaks CLI，未运行完整Secret scan；对本Diff人工检查未发现真实Secret。正式全量Evaluation未运行：生成路径/Prompt/检索/Guard/归因不变，小范围真实验收单独绑定候选；不冒称历史Evaluation当前通过。工具缓存缺口和后续建议见正式Acceptance：源码改变触发重复安装浏览器依赖；当前不实施Harness扩展。
 
 ## 极小非零贡献收尾复查
 
 ada51d0实际clean容器全链PASS，报告`git_dirty=false`；后续复查补强分析和Tooltip极小非零舍入提示。新增Chrome用例先因提示缺失失败，再通过；默认Chrome33 passed，build/typecheck PASS。直接复用既有roundedToZero，不重算后端方向或数值，原值入口保留。Review PASS / Clean Code PASS；后端未变化，复用641项软件证据；新代码候选另做clean容器全链，不用ada51d0冒充新候选。
+
+最终Review：PASS。64f29a9运行门禁已通过；本次收尾仅Acceptance/roadmap/工作记录事实回填，未改代码/Contract/资源，复用适用证据。Diff无无关改动及Secret。

@@ -1,11 +1,11 @@
-# R2 实施状态
+# R2 本地交付状态
 
 工作项：result-visualization-v1；基线f182cf3，branch feat/result-visualization-v1，本仓库唯一工作区。
 
-用户已确认完整Spec、四项拆分及全部本地实施、适用验证、Review和Commit。Design Review PASS / Ticket Readiness READY；发布未授权。真实模型费用限本目标小范围验收，不代表全套Evaluation。
+完整Spec/Design PASS/Readiness READY、四项拆分及全部本地实现/适用验证/Review/Commit已获授权；四项完成。发布未授权，未Push/PR。R3尚未开始实施。
 
-01–03代码已接入：实际SQL认证结果说明，兼容query/分析任务元数据，十进制格式、ECharts图表同显、贡献选择与任务证据；正在完成04运行验收和最终Review，尚未Commit。
+代码：ada51d0核心实现，64f29a9补强微小非零提示；最终代码候选64f29a99a9c0187a767e28e8f8cf72cd3988375e。软件641 passed/15 skipped/139 subtests；Playwright33 passed（24 Chrome/9纯函数），Vite1 passed；最终真实Compose脚本退出0，报告git_dirty=false/status与suite_status passed，清理disabled=true/active_sessions=0、临时凭证已移除，重启持久性PASS。
 
-当前软件636 passed /15 skipped /139 subtests；Chrome29 passed。真实容器诊断在执行；历史或dirty诊断不能替代最终clean candidate证据。本机实时状态在Git公共目录harness/work-items/result-visualization-v1/status.md。
+[正式Acceptance](../../docs/acceptance/result-visualization-v1-20261004.md)绑定最终代码候选及资源，记录覆盖、历史诊断、未运行全套Evaluation/Gitleaks和工具缓存建议；收尾仅文档，不重标报告。适用R2 Spec/Design/Query API/Web Spec、Product Scope、README/Runbook和roadmap已同步。
 
-正式事实源：[行为](../../docs/specs/result-visualization-v1.md)、[设计](../../docs/designs/result-visualization-v1.md)、Query API / Web Spec与Runbook；roadmap记录R2实施中。原业务数据、账号、RAG与卷保留。
+本机实时记录在Git公共目录harness/work-items/result-visualization-v1/status.md。下一步若用户授权，按Git/PR流程发布本R2候选；不自动扩大到R3。原业务数据、原账号、RAG、模型和卷保留，日常四服务恢复运行。
