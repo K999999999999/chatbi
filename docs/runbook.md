@@ -4,14 +4,14 @@
 
 本文档说明 WSL / Linux 本地开发环境的新 clone 首次准备、日常开发、数据库和索引重建、测试与评测。命令从仓库根目录执行；流程不依赖固定电脑路径，也不使用旧项目的数据目录。
 
-当前开发流程只使用 WSL / Linux 运行 Python、ChatBI 和 RAG 构建，并使用 Docker Compose 运行 PostgreSQL 与 Qdrant。仓库中的 Dev Container 配置文件保留，但不属于当前支持或验收的开发入口。
+推荐使用 WSL / Linux 的容器开发入口：Compose 管理四个常驻服务及一次性初始化工具，不要求宿主安装 Python、uv 或 Node。宿主调试入口仍保留；Dev Container 配置保留，不作为本次支持或验收入口。
 
 ChatBI 当前处于 MVP 向生产演进阶段。本 Runbook 覆盖本地开发 / 内部验证流程，不代表已经完成生产部署。自动测试使用隔离 PostgreSQL 和 CI Fixture；黄金评测复用开发库 `chatbi_mvp`；生产数据库不属于本文档范围。
 
 按目标选择流程：
 
-- **新 clone 首次初始化：** §3 选择入口 → §4.1–4.3 配置并初始化 PostgreSQL、显式创建首个管理员 → §5 启动 Qdrant → §7 准备模型并构建索引 → §6 启动 ChatBI → §8 确定性验证；真实 LLM 评测见 §9。空 PostgreSQL volume 会自动创建数据库、Schema、固定 RBAC 和 Seed；空 Qdrant 需单独构建索引。
-- **日常开发：** §5 启动服务 → §6 启动 ChatBI。PostgreSQL 数据和已发布 Qdrant 索引都会保留；不重播 Seed，也不自动重建索引。
+- **新 clone 首次初始化：** 推荐按 §3 容器命令完成；宿主方式按 §3 选择入口 → §4.1–4.3 配置并初始化 PostgreSQL、显式创建首个管理员 → §5 启动 Qdrant → §7 准备模型并构建索引 → §6 启动 ChatBI → §8 确定性验证；真实 LLM 评测见 §9。空 PostgreSQL volume 会自动创建数据库、Schema、固定 RBAC 和 Seed；空 Qdrant 需单独构建索引。
+- **日常开发：** 推荐执行 `./dev up`；宿主方式按 §5 启动服务 → §6 启动 ChatBI。PostgreSQL 数据和已发布 Qdrant 索引都会保留；不重播 Seed，也不自动重建索引。
 - **重置开发数据库：** 执行 §4.4，只删除当前 Compose 项目的 PostgreSQL volume；账号也会清空，需重新创建管理员。
 - **重建 Qdrant 索引：** 按 §7 操作，只处理当前 Compose 项目的 Qdrant volume，不清除 PostgreSQL。
 
@@ -27,14 +27,56 @@ PostgreSQL（Compose 服务 postgres:5432；宿主机回环端口 5433）
 Qdrant（Compose 服务 qdrant:6333；宿主机回环端口 6333）
     └─ TABLE / COLUMN / METRIC 版本化集合
 
-FastAPI（WSL / Linux 内监听 127.0.0.1:8000）
+FastAPI（开发容器 / 宿主调试；宿主回环端口 8000）
     └─ Online Query + SQL Guard + PostgreSQL
 
-Vite Web（WSL / Linux 开发监听 127.0.0.1:5173；打包后由 FastAPI 同源提供）
+Vite Web（开发容器 / 宿主调试；宿主回环端口 5173；打包后由 FastAPI 同源提供）
     └─ HTTP 调用 FastAPI
 ```
 
 ## 3. 新 clone 与开发入口
+
+### 推荐：容器开发
+
+前提为 WSL / Linux、Git、Bash、Docker Engine / Compose。已有开发配置和数据可以直接复用；新 clone 复制 `.env.example` 为 `.env`，填写数据库密码、随机管理员签名 Key 与 LLM 配置，随后显式执行：
+
+```bash
+./dev build
+./dev infra
+./dev migrate
+./dev create-admin --username admin-1
+./dev prepare-model
+./dev build-rag
+./dev up
+```
+
+打开 `http://127.0.0.1:5173`。日常只需 `./dev up`；`./dev down` 停止四个服务并保留全部数据，`./dev status` 查看状态，`./dev logs --follow` 跟踪日志。前后端手动启动后后台运行，电脑 / Docker 重启后不自动启动；数据库与 Qdrant 保留现有策略。
+
+后端源码变更自动重载，前端 Vite 热更新。后端重载 / 重启会清空进程内多轮会话，需新开对话；刷新网页仍按 R1 清空临时展示。依赖锁文件和新增根配置变化后执行 `./dev build` 再 `./dev up`。容器依赖不使用本机 `.venv` / `node_modules`。
+
+`.env` 的宿主回环地址保持原值，容器配置覆盖为内部服务地址，不修改现有文件。API不挂载`.env`，没有迁移身份。模型主机目录在容器内保持解析后的相同绝对路径，兼容现有manifest的模型身份校验；RAG输出挂入固定路径。已有模型和索引复用，工具写入保持宿主UID / GID。默认CPU / FP32；首次构建可能较慢。
+
+服务启动不自动迁移、创建用户或重建索引。PostgreSQL 首次健康检查依赖 checkpoint，必须先显式 `migrate`；配置缺失、端口占用、依赖失败时返回非零。`up` 的基础依赖 / HTTP 检查不等于真实问数已通过，动态 readiness 仍属于 R7。端口只发布至本机，不开放局域网。
+
+`CHATBI_DEV_ENV_FILE` 可选择本地配置文件；`CHATBI_DEV_API_PORT` / `CHATBI_DEV_WEB_PORT` 可调整应用宿主端口，网页 Origin 随 Web 端口更新。`CHATBI_DEV_COMPOSE_OVERRIDE` 用于隔离验收的附加 Compose 文件。默认不更改基础项目名称，避免误用另一套数据卷。
+
+构建镜像使用明确版本 / digest。受网络限制时，可通过 `CHATBI_DEV_PYTHON_BASE` / `CHATBI_DEV_NODE_BASE` 指向可信镜像地址，保持相同版本 / digest；不关闭 TLS 校验或修改系统证书。原生依赖随 `uv.lock` 安装，CPU执行不意味着镜像中不含锁定的CUDA包。
+
+运行语义见[开发环境 Contract](specs/container-dev-environment.md)。正式生产镜像、HTTPS、升级 / 回滚和容量验收由 R6 / R7 完成。
+
+容器运行验收使用以下入口，要求干净候选提交和可用的真实 LLM 配置，会产生少量模型调用费用。隔离模式需 Compose ≥2.24.4：
+
+```bash
+scripts/verify_container_dev.sh isolated
+scripts/verify_container_dev.sh real
+```
+
+两种模式顺序执行：热更新检查会临时修改源码并恢复。`isolated` 验证空卷首次初始化并清理经项目标签核实的临时卷；`real` 复用现有开发资产。专用账号在结束后禁用并撤销会话，现有用户和数据保留。证据身份及限制见[容器验收记录](acceptance/container-dev-environment-20261003.md)。
+
+### 保留：宿主调试
+
+以下 §4–§9 的 `uv run` / `npm` 命令是宿主调试和既有评测入口，需本机 Python / uv / Node。日常容器开发不需要执行这些宿主命令。
+
 
 WSL / Linux 是当前唯一支持的本地开发入口。ChatBI 和 RAG 构建命令在 WSL / Linux 进程中运行，PostgreSQL 和 Qdrant 由 Docker Compose 启动。`.env.example` 的 `POSTGRES_HOST=127.0.0.1`、`POSTGRES_PORT=5433` 和 `RAG_QDRANT_URL=http://127.0.0.1:6333` 是该入口使用的连接默认值；Compose 发布端口由 `POSTGRES_PUBLISHED_PORT` 控制，与应用连接端口分开。
 

@@ -1,0 +1,184 @@
+x-python: &python
+  image: chatbi-python-dev:local
+  build:
+    context: .
+    dockerfile: docker/python-dev.Dockerfile
+    args:
+      PYTHON_BASE: ${CHATBI_DEV_PYTHON_BASE:-mcr.microsoft.com/devcontainers/python:3-3.11-bookworm@sha256:dc2e5619a3741fe39a9d989ef8aa3ef4727e0c3cc8a6a39dc8d45822b16a0868}
+  working_dir: /workspace
+  user: "${CHATBI_DEV_UID:-1000}:${CHATBI_DEV_GID:-1000}"
+  init: true
+  restart: "no"
+
+x-common-env: &common-env
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+  POSTGRES_APP_USER: ${POSTGRES_APP_USER:-chatbi_app}
+  POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?POSTGRES_APP_PASSWORD is required}
+  POSTGRES_CONTROL_DB: ${POSTGRES_CONTROL_DB:-chatbi_control}
+  POSTGRES_CONTROL_APP_USER: ${POSTGRES_CONTROL_APP_USER:-chatbi_control_user}
+  POSTGRES_CONTROL_APP_PASSWORD: ${POSTGRES_CONTROL_APP_PASSWORD:?POSTGRES_CONTROL_APP_PASSWORD is required}
+  RAG_QDRANT_URL: http://qdrant:6333
+  RAG_QDRANT_PATH: ""
+  QDRANT_API_KEY: ${QDRANT_API_KEY:?QDRANT_API_KEY is required}
+  RAG_QDRANT_API_KEY: ${RAG_QDRANT_API_KEY:-${QDRANT_API_KEY}}
+  RAG_OUTPUT_DIR: /workspace/data/rag
+  RAG_MODEL_DIR: ${CHATBI_DEV_MODEL_DIR:-/workspace/.model-cache/model}
+  RAG_COLLECTION_PREFIX: ${RAG_COLLECTION_PREFIX:-chatbi}
+  RAG_QDRANT_TIMEOUT_SECONDS: ${RAG_QDRANT_TIMEOUT_SECONDS:-30}
+  RAG_EMBEDDING_DEVICE: cpu
+  RAG_EMBEDDING_USE_FP16: "false"
+  RAG_EMBEDDING_DIMENSION: ${RAG_EMBEDDING_DIMENSION:-1024}
+  RAG_EMBEDDING_BATCH_SIZE: ${RAG_EMBEDDING_BATCH_SIZE:-8}
+
+x-source: &source
+  type: bind
+  source: ${LOCAL_WORKSPACE_FOLDER:-.}/src
+  target: /workspace/src
+  read_only: true
+  bind:
+    create_host_path: false
+
+x-scripts: &scripts
+  type: bind
+  source: ${LOCAL_WORKSPACE_FOLDER:-.}/scripts
+  target: /workspace/scripts
+  read_only: true
+  bind:
+    create_host_path: false
+
+services:
+  api:
+    <<: *python
+    environment:
+      <<: *common-env
+      CHATBI_ENV: development
+      CHATBI_ADMIN_SECRET_KEY: ${CHATBI_ADMIN_SECRET_KEY:?CHATBI_ADMIN_SECRET_KEY is required}
+      CHATBI_WEB_ORIGIN: http://127.0.0.1:${CHATBI_DEV_WEB_PORT:-5173}
+      CHATBI_WEB_DIST_DIR: ""
+      LLM_API_KEY: ${LLM_API_KEY:?LLM_API_KEY is required}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-flash}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.1}
+      LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-4096}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-30}
+      CHATBI_OBSERVABILITY_ENABLED: ${CHATBI_OBSERVABILITY_ENABLED:-false}
+      CHATBI_TRACE_CONTENT_ENABLED: ${CHATBI_TRACE_CONTENT_ENABLED:-false}
+      CHATBI_RUNTIME_ENV: ${CHATBI_RUNTIME_ENV:-}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-chatbi-engine}
+      OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-deployment.environment.name=local}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+      CHATBI_OTLP_TIMEOUT_SECONDS: ${CHATBI_OTLP_TIMEOUT_SECONDS:-5}
+    ports:
+      - "127.0.0.1:${CHATBI_DEV_API_PORT:-8000}:8000"
+    volumes:
+      - *source
+      - *scripts
+      - type: bind
+        source: ${RAG_MODEL_DIR:-.model-cache/bge-m3-5617a9f61b02}
+        target: ${CHATBI_DEV_MODEL_DIR:-/workspace/.model-cache/model}
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${RAG_OUTPUT_DIR:-data/rag}
+        target: /workspace/data/rag
+        read_only: true
+        bind: {create_host_path: false}
+    depends_on:
+      postgres: {condition: service_healthy}
+      qdrant: {condition: service_started}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+    stop_grace_period: 30s
+  tools:
+    <<: *python
+    profiles: [tools]
+    entrypoint: ["python", "-m", "src.bootstrap"]
+    command: ["--help"]
+    environment: *common-env
+    volumes:
+      - *source
+      - *scripts
+      - type: bind
+        source: ${RAG_MODEL_DIR:-.model-cache/bge-m3-5617a9f61b02}
+        target: ${CHATBI_DEV_MODEL_DIR:-/workspace/.model-cache/model}
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${RAG_OUTPUT_DIR:-data/rag}
+        target: /workspace/data/rag
+        bind: {create_host_path: false}
+  migrator:
+    <<: *python
+    profiles: [tools]
+    entrypoint: ["python", "-m", "src.bootstrap"]
+    command: ["migrate"]
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-chatbi_app}
+      POSTGRES_CONTROL_DB: ${POSTGRES_CONTROL_DB:-chatbi_control}
+      POSTGRES_CONTROL_APP_USER: ${POSTGRES_CONTROL_APP_USER:-chatbi_control_user}
+      POSTGRES_CONTROL_APP_PASSWORD: ${POSTGRES_CONTROL_APP_PASSWORD}
+      POSTGRES_MIGRATOR_USER: ${POSTGRES_MIGRATOR_USER}
+      POSTGRES_MIGRATOR_PASSWORD: ${POSTGRES_MIGRATOR_PASSWORD}
+      POSTGRES_CONTROL_MIGRATOR_USER: ${POSTGRES_CONTROL_MIGRATOR_USER:-${POSTGRES_MIGRATOR_USER}}
+      POSTGRES_CONTROL_BOOTSTRAP_DB: ${POSTGRES_CONTROL_BOOTSTRAP_DB:-postgres}
+    volumes:
+      - *source
+      - *scripts
+      - type: bind
+        source: ${LOCAL_WORKSPACE_FOLDER:-.}/database
+        target: /workspace/database
+        read_only: true
+        bind: {create_host_path: false}
+  web:
+    image: chatbi-node-dev:local
+    build:
+      context: .
+      dockerfile: docker/node-dev.Dockerfile
+      target: dev
+      args:
+        NODE_BASE: ${CHATBI_DEV_NODE_BASE:-node:24.21.0-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6}
+    user: "${CHATBI_DEV_UID:-1000}:${CHATBI_DEV_GID:-1000}"
+    init: true
+    restart: "no"
+    environment:
+      CHATBI_DEV_API_TARGET: http://api:8000
+      CHATBI_DEV_WEB_PORT: ${CHATBI_DEV_WEB_PORT:-5173}
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--configLoader", "runner", "--port", "${CHATBI_DEV_WEB_PORT:-5173}"]
+    ports:
+      - "127.0.0.1:${CHATBI_DEV_WEB_PORT:-5173}:${CHATBI_DEV_WEB_PORT:-5173}"
+    volumes:
+      - type: bind
+        source: ${LOCAL_WORKSPACE_FOLDER:-.}/frontend/src
+        target: /workspace/frontend/src
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${LOCAL_WORKSPACE_FOLDER:-.}/frontend/index.html
+        target: /workspace/frontend/index.html
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${LOCAL_WORKSPACE_FOLDER:-.}/frontend/vite.config.ts
+        target: /workspace/frontend/vite.config.ts
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${LOCAL_WORKSPACE_FOLDER:-.}/frontend/tsconfig.json
+        target: /workspace/frontend/tsconfig.json
+        read_only: true
+        bind: {create_host_path: false}
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+process.env.CHATBI_DEV_WEB_PORT).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 3s
+      timeout: 5s
+      retries: 40

@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+command=${1:-help}
+if (($#)); then shift; fi
+usage() {
+    echo '用法: ./dev {build|infra|migrate|create-admin|prepare-model|build-rag|up|down|status|logs} [参数]'
+}
+case "$command" in
+    help|-h|--help) usage; exit 0 ;;
+    build|infra|migrate|create-admin|prepare-model|build-rag|up|down|status|logs) ;;
+    *) usage >&2; exit 2 ;;
+esac
+env_file=${CHATBI_DEV_ENV_FILE:-$root/.env}
+if [[ ! -f "$env_file" ]]; then
+    echo '缺少本地配置；复制 .env.example 并填写配置后重试。' >&2
+    exit 2
+fi
+export CHATBI_DEV_UID=${CHATBI_DEV_UID:-$(id -u)}
+export CHATBI_DEV_GID=${CHATBI_DEV_GID:-$(id -g)}
+compose=(docker compose --project-directory "$root" --env-file "$env_file"
+    -f "$root/docker-compose.yml" -f "$root/docker-compose.dev.yml")
+if [[ -n "${CHATBI_DEV_COMPOSE_OVERRIDE:-}" ]]; then
+    compose+=(-f "$CHATBI_DEV_COMPOSE_OVERRIDE")
+fi
+trap 'result=$?; echo "开发环境操作失败（退出码 $result）；使用 ./dev status / logs 定位，不会重置数据。" >&2; exit "$result"' ERR
+
+# 只从 Compose 的内存流中提取资产路径，完整配置及 Secret 不输出、不落盘。
+prepare_directories() {
+    local directories
+    directories=$("${compose[@]}" --profile tools config --format json | docker run --rm -i --network none \
+        --entrypoint /opt/venv/bin/python chatbi-python-dev:local -c \
+        'import json,sys; s=json.load(sys.stdin)["services"]["tools"]; print("\n".join(next(v["source"] for v in s["volumes"] if v["target"]==s["environment"][key]) for key in ("RAG_MODEL_DIR","RAG_OUTPUT_DIR")))')
+    while IFS= read -r directory; do
+        [[ -n "$directory" ]] && mkdir -p -- "$directory"
+    done <<< "$directories"
+    # 既有manifest保存主机绝对路径；模型在容器内保持相同路径身份。
+    export CHATBI_DEV_MODEL_DIR="${directories%%$'\n'*}"
+}
+
+case "$command" in
+    build) "${compose[@]}" build api web ;;
+    infra) "${compose[@]}" up -d postgres qdrant ;;
+    migrate)
+        "${compose[@]}" up -d postgres
+        "${compose[@]}" exec -T postgres sh /workspace/database/init/wait_for_base_initialization.sh
+        "${compose[@]}" run --rm --no-deps migrator migrate "$@"
+        "${compose[@]}" up -d --wait --wait-timeout 120 postgres ;;
+    create-admin|prepare-model|build-rag)
+        tty_args=(-T)
+        if [[ "$command" == create-admin ]]; then
+            if [[ ! -t 0 ]]; then
+                echo '创建管理员需要交互终端，密码不会作为参数传递。' >&2
+                exit 2
+            fi
+            tty_args=()
+        fi
+        prepare_directories
+        "${compose[@]}" run --rm --no-deps "${tty_args[@]}" tools "$command" "$@" ;;
+    up)
+        if ! docker image inspect chatbi-python-dev:local chatbi-node-dev:local >/dev/null 2>&1; then
+            "${compose[@]}" build api web
+        fi
+        prepare_directories
+        if ! "${compose[@]}" up -d --wait --wait-timeout 120 postgres qdrant api web; then
+            echo '服务未全部就绪；首次环境先执行 ./dev migrate，随后显式准备管理员、模型与索引。' >&2
+            exit 1
+        fi
+        "${compose[@]}" exec -T api python -c \
+            'import os,urllib.request; u=os.environ["RAG_QDRANT_URL"]+"/healthz"; r=urllib.request.Request(u,headers={"api-key":os.environ["QDRANT_API_KEY"]}); urllib.request.urlopen(r,timeout=5)'
+        web_port=$("${compose[@]}" exec -T web node -p 'process.env.CHATBI_DEV_WEB_PORT')
+        echo "开发环境已启动：http://127.0.0.1:$web_port（仅本机）。" ;;
+    down) "${compose[@]}" stop api web postgres qdrant ;;
+    status) "${compose[@]}" ps --all ;;
+    logs) "${compose[@]}" logs --tail=100 "$@" api web postgres qdrant ;;
+esac
