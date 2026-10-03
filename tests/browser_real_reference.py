@@ -66,6 +66,21 @@ def reference():
                         len(rows),
                     )
                 )
+            cursor.execute(
+                "SELECT d.year, d.month, SUM(f.net_sales_amount_cny), SUM(f.net_sales_amount_cny-f.sales_cost_amount_cny), SUM(f.net_sales_amount_cny-f.sales_cost_amount_cny)/NULLIF(SUM(f.net_sales_amount_cny),0) FROM mart_sales.fct_sales_order_line f JOIN mart_sales.dim_date d ON d.date_key=f.completion_date_key WHERE f.order_status='completed' AND d.year=2025 GROUP BY d.year,d.month ORDER BY d.year,d.month"
+            )
+            monthly = {
+                f"{year:04d}-{month:02d}-01": [
+                    str(value) if value is not None else None for value in values
+                ]
+                for year, month, *values in cursor.fetchall()
+            }
+            cursor.execute(
+                "SELECT p.product_line, SUM(f.net_sales_amount_cny), SUM(f.sales_cost_amount_cny) FROM mart_sales.fct_sales_order_line f JOIN mart_sales.dim_product p ON p.product_key=f.product_key JOIN mart_sales.dim_date d ON d.date_key=f.completion_date_key WHERE f.order_status='completed' AND d.year=2025 GROUP BY p.product_line ORDER BY p.product_line"
+            )
+            categories = {
+                label: [str(net), str(cost)] for label, net, cost in cursor.fetchall()
+            }
     request = AnalysisRequest(
         "人民币毛利",
         AnalysisTimeRange("2025年3月", TimeGranularity.MONTH),
@@ -83,6 +98,8 @@ def reference():
     }
     return {
         "net_sales": query,
+        "monthly": monthly,
+        "categories": categories,
         "attribution": attribution,
         "runtime_identity": runtime_identity,
     }

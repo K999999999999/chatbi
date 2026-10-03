@@ -12,6 +12,7 @@
     "test:dev": "playwright test --config playwright.dev.config.ts"
   },
   "dependencies": {
+    "echarts": "6.1.0",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },

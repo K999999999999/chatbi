@@ -15,7 +15,7 @@ test('manual modes retain separate drafts and query context', async ({ page }) =
   await send(page, '分析2025年2月相比2025年1月的毛利变化');
   await expect(page.getByRole('heading', { name: '两期经营分析报告' })).toBeVisible();
   await page.getByText('查看查询任务证据').click();
-  await expect(page.getByRole('table')).toBeVisible();
+  await expect(page.getByText('查看查询任务证据').locator('..').getByRole('table')).toBeVisible();
   await page.getByRole('button', { name: '问数', exact: true }).click();
   await expect(page.getByLabel('问题')).toHaveValue('问数草稿');
   await send(page, '改成3月');

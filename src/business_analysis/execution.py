@@ -20,6 +20,7 @@ from src.online_query.query_understanding import (
     ValidatedSemanticQuery,
     validate_candidate,
 )
+from src.online_query.result_contracts import ResultMetadata
 
 from .contracts import (
     AnalysisFilter,
@@ -59,6 +60,7 @@ class TaskResult:
     row_count: int = 0
     truncated: bool = False
     error: TaskError | None = None
+    result_metadata: ResultMetadata | None = None
 
 
 class BoundQueryService(Protocol):
@@ -228,6 +230,7 @@ class TaskExecutor:
                 rows=tuple(tuple(row) for row in result.rows),
                 row_count=result.row_count,
                 truncated=result.truncated,
+                result_metadata=result.result_metadata,
             )
         if isinstance(result, QueryFailure):
             return TaskResult(

@@ -66,3 +66,7 @@ ChatBI 是面向业务数据分析的 Domain AI Engine（领域 AI 引擎）。�
 - RAG 来源指纹、PostgreSQL catalog 对比和 production Ready fail-closed 门禁已实现。
 - clean bootstrap 会安装 Control DB migration、LangGraph checkpoint 表和运行权限；healthcheck 验证这些对象。
 - 当前 HEAD 的完整 AI Evaluation 基线仍须在最终 clean commit 上按评测 Contract 重新运行；本文件不预填尚未得到的成绩。
+
+## R2 结果展示
+
+电脑端新增可信结果说明、图表与表格默认同显、统一数值格式及既有经营归因贡献图；边界见[R2 Spec](specs/result-visualization-v1.md)。不增加查询、分析业务范围、长期历史或全量导出。展示事实由确定性后端认证，前端不从列名猜业务定义。

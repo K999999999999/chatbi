@@ -13,6 +13,7 @@ from langchain_openai import ChatOpenAI
 
 from src.online_query.contracts import QueryErrorCode, QueryFailure
 from src.online_query.query_understanding import FilterOperator, TimeGranularity
+from src.online_query.result_contracts import ResultMetadata
 
 from .attribution import (
     BusinessAnalysisAttribution,
@@ -61,6 +62,7 @@ def _checkpoint_allowed_types() -> list[tuple[str, str]]:
         AnalysisTimeRange,
         TaskError,
         TaskResult,
+        ResultMetadata,
         TaskStatus,
         QueryErrorCode,
         QueryFailure,

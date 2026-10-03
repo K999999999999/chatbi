@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { APIError, request, type Identity } from './api';
-import { queryResult, ResultTable, type QueryResult } from './results';
+import { queryResult, ResultView, type QueryResult } from './results';
 import { analysisResult, AnalysisReport, type AnalysisResult } from './Analysis';
 
 type Mode = 'query' | 'analysis';
@@ -93,7 +93,7 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
           <p>{mode === 'query' ? '结果可继续追问，SQL 可展开查看。' : '请提供完整问题；当前支持产品因素归因。'}</p></section>}
         {entries.map(item => <article className="turn" key={item.id}>
           <div className="question"><span>你</span><p>{item.question}</p></div>
-          {item.result && <div className="answer"><span className="answer-label">ChatBI</span><ResultTable data={item.result}/>
+          {item.result && <div className="answer"><span className="answer-label">ChatBI</span><ResultView data={item.result}/>
             <details><summary>查看经校验 SQL</summary><pre>{item.result.sql}</pre></details></div>}
           {item.analysis && <div className="answer"><span className="answer-label">ChatBI</span><AnalysisReport result={item.analysis}/></div>}
           {item.error && <div className="answer"><p role="alert">{item.error}</p>

@@ -110,3 +110,7 @@ uv run --python 3.11 --locked python -m pytest -q
 ## 电脑端 Web 入口
 
 当前默认入口为 React + TypeScript + Vite 网页。开发 / 打包入口见 [Runbook](docs/runbook.md#web-开发与打包)，行为见 [Web Spec](docs/specs/web-dialogue-v1.md)，证据见 [R1 验收](docs/acceptance/web-dialogue-v1-20261003.md)。Streamlit 已移除。刷新保留有效登录但清空当前对话；图表、长期历史和流式按后续路线推进。
+
+### 结果图表与表格（R2）
+
+问数同时展示可信结果图表和表格，支持指标卡、时间趋势、分类对比、单位拆图、千分位金额和百分比；原始返回值可核对。经营分析展示后端已对账的产品与因素贡献。图表绘制及切换不重新查询；未知语义或图表故障保留原始表格。详见[R2行为](docs/specs/result-visualization-v1.md)、[设计](docs/designs/result-visualization-v1.md)和[运行说明](docs/runbook.md#r2-图表与数字展示)。
