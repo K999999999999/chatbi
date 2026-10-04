@@ -40,6 +40,7 @@ from .query_trace import (
 )
 from .query_understanding import (
     QueryUnderstandingClarificationRequired,
+    SemanticQueryCandidate,
     SemanticQueryCannotAnswer,
     SemanticQueryStructureError,
     ValidatedSemanticQuery,
@@ -173,6 +174,7 @@ class OnlineQueryService:
             semantic_query, understanding_error = self._understand_query(
                 request.question.strip(),
                 request_id,
+                require_restorable=request.require_restorable,
             )
             if understanding_error is not None:
                 return understanding_error
@@ -201,6 +203,7 @@ class OnlineQueryService:
             context=context,
             failure_factory=_failure,
             validation_session_factory=_new_validation_session,
+            require_restorable=request.require_restorable,
         )
 
     def _resolve_context(
@@ -331,10 +334,12 @@ class OnlineQueryService:
         self,
         question: str,
         request_id: str,
+        *,
+        require_restorable: bool = False,
     ) -> tuple[ValidatedSemanticQuery | None, QueryFailure | None]:
         """在线模式下先完成 Query Understanding，再允许进入 Retrieval。"""
 
-        if self._retrieval_provider is None:
+        if self._retrieval_provider is None and not require_restorable:
             return None, None
 
         with _safe_trace_scope(self._trace_recorder, name="query.understanding"):
@@ -358,7 +363,14 @@ class OnlineQueryService:
                 return None, result
 
             try:
-                candidate = self._query_understanding.understand(question)
+                understand = (
+                    getattr(self._query_understanding, "understand_history", None)
+                    if require_restorable
+                    else self._query_understanding.understand
+                )
+                if not callable(understand):
+                    raise ValueError("历史语义理解未配置")
+                candidate = understand(question)
             except Exception as exc:
                 result = _failure(
                     request_id,
@@ -384,11 +396,26 @@ class OnlineQueryService:
                 )
                 return None, result
 
+            if require_restorable and isinstance(candidate, SemanticQueryCandidate):
+                conditions = candidate.restoration_conditions
+                if (
+                    conditions is not None
+                    and conditions.row_limit is not None
+                    and not conditions.order_by
+                ):
+                    candidate = QueryUnderstandingClarificationRequired(
+                        reason="RANKING_ORDER_REQUIRED"
+                    )
+
             if isinstance(candidate, QueryUnderstandingClarificationRequired):
                 result = _failure(
                     request_id,
                     QueryErrorCode.CLARIFICATION_REQUIRED,
-                    message=_ERROR_MESSAGES[QueryErrorCode.CLARIFICATION_REQUIRED],
+                    message=(
+                        "请明确排名依据"
+                        if candidate.reason == "RANKING_ORDER_REQUIRED"
+                        else _ERROR_MESSAGES[QueryErrorCode.CLARIFICATION_REQUIRED]
+                    ),
                     stage="query_understanding",
                     internal_reason=candidate.reason,
                 )
@@ -480,6 +507,28 @@ class OnlineQueryService:
                 outcome=TraceOutcome.SUCCESS,
             )
             return validated, None
+
+    def certify_history_query(self, semantic: ValidatedSemanticQuery) -> dict:
+        """当前发布事实认证；不理解自然语言，也不生成或执行SQL。"""
+        from .semantic_state import (
+            prepare_restoration_state,
+            SemanticCertificationError,
+        )
+
+        context, error, _ = self._resolve_context(
+            semantic.original_question, str(uuid4()), semantic
+        )
+        if error is not None or context is None:
+            raise RuntimeError("当前认证上下文暂时不可用")
+        try:
+            _, state = prepare_restoration_state(semantic, context)
+        except (ValueError, KeyError, TypeError) as exc:
+            _LOGGER.warning(
+                "History compatibility certification failed: error_type=%s",
+                type(exc).__name__,
+            )
+            raise SemanticCertificationError("当前业务定义无法认证历史条件") from exc
+        return state
 
     def _retrieval_failure_or_error(
         self,

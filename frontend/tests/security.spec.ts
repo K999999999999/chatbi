@@ -21,7 +21,7 @@ test('expired query session clears records and stale data cannot reappear', asyn
   await login(page);
   await send(page, '私有查询问题');
   await expect(page.getByRole('table')).toBeVisible();
-  await page.route('**/api/v1/query', route => route.fulfill({ status: 401,
+  await page.route('**/api/v1/histories/*/turns', route => route.fulfill({ status: 401,
     json: { request_id: 'test', error_code: 'AUTHENTICATION_REQUIRED', error_message: '会话已失效' } }));
   await send(page, '追问');
   await expect(page.getByRole('button', { name: '登录', exact: true })).toBeVisible();
@@ -48,7 +48,7 @@ test('pending response cannot restore data after logout', async ({ page }) => {
   const held = new Promise<void>(resolve => { release = resolve; });
   let arrived!: () => void;
   const received = new Promise<void>(resolve => { arrived = resolve; });
-  await page.route('**/api/v1/query', async route => {
+  await page.route('**/api/v1/histories/*/turns', async route => {
     const response = await route.fetch(); arrived(); await held;
     await route.fulfill({ response }).catch(() => {});
   });
@@ -66,11 +66,12 @@ test('client deadline is uncertain and never resends query', async ({ page }) =>
   await login(page);
   await page.clock.install();
   let calls = 0;
-  await page.route('**/api/v1/query', () => { calls++; });
+  await page.route('**/api/v1/histories/*/turns', () => { calls++; });
   await send(page, '完整问题');
   await expect(page.getByRole('status')).toBeVisible();
+  await expect.poll(() => calls).toBe(1);
   await page.clock.fastForward(180001);
-  await expect(page.getByText('查询结果未确认，请新建问数对话并补全问题。')).toBeVisible();
+  await expect(page.getByText('结果未确认，请刷新历史；本请求不会自动重试。')).toBeVisible();
   expect(calls).toBe(1);
 });
 
@@ -88,10 +89,10 @@ test('browser CSRF and expected account reject before query', async ({ page }) =
 test('analysis text stays inert and displays authoritative contribution', async ({ page }) => {
   await login(page);
   await page.getByRole('button', { name: '经营分析', exact: true }).click();
-  await page.route('**/api/v1/query', async route => {
-    const response = await route.fetch(); const body = await response.json();
+  await page.route('**/api/v1/histories/*/resume', async route => {
+    const response = await route.fetch(); const envelope = await response.json(); const body = envelope.turn.snapshot;
     body.report.title = '<img src=x onerror="window.hacked=true">';
-    await route.fulfill({ response, json: body });
+    await route.fulfill({ response, json: envelope });
   });
   await send(page, '完整分析问题');
   await expect(page.getByRole('heading', { name: '<img src=x onerror="window.hacked=true">' })).toBeVisible();

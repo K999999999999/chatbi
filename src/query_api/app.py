@@ -38,7 +38,6 @@ from src.authorization.query_entry import (
     AuthorizedQueryService,
 )
 from src.business_analysis.application import BusinessAnalysisSuccess
-from src.business_analysis.execution import TaskResult
 from src.chatbi_control.admin import mount_admin
 from src.observability.contracts import QuerySource, TraceRecorder
 from src.observability.tracing import create_trace_recorder
@@ -50,6 +49,17 @@ from src.online_query.contracts import (
     QuerySuccess,
 )
 
+from .query_response import HTTP_STATUS_BY_ERROR as _HTTP_STATUS_BY_ERROR
+from .query_response import (
+    AnalysisSuccessResponse,
+    analysis_payload,
+    QueryResultPayload,
+    query_payload,
+)
+from src.business_analysis.run_execution import (
+    AnalysisExecutionGuard,
+    AnalysisExecutionBusy,
+)
 from .browser import (
     COOKIE_NAME,
     BrowserIdentityProvider,
@@ -75,24 +85,6 @@ from .semantic_revision import SemanticRevisionError, revise_semantic_query
 
 _TRACE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _LOGGER = logging.getLogger(__name__)
-
-
-_HTTP_STATUS_BY_ERROR = {
-    QueryErrorCode.INVALID_REQUEST: 400,
-    QueryErrorCode.AUTHENTICATION_REQUIRED: 401,
-    QueryErrorCode.AUTHORIZATION_DENIED: 403,
-    QueryErrorCode.AUTHENTICATION_UNAVAILABLE: 503,
-    QueryErrorCode.CANNOT_ANSWER: 422,
-    QueryErrorCode.SQL_REJECTED: 422,
-    QueryErrorCode.LLM_ERROR: 502,
-    QueryErrorCode.CONTEXT_ERROR: 503,
-    QueryErrorCode.DATABASE_ERROR: 503,
-    QueryErrorCode.QUERY_TIMEOUT: 504,
-    QueryErrorCode.CONVERSATION_UNAVAILABLE: 404,
-    QueryErrorCode.CLARIFICATION_REQUIRED: 422,
-    QueryErrorCode.UNSUPPORTED_ANALYSIS: 422,
-    QueryErrorCode.CONVERSATION_CONFLICT: 409,
-}
 
 
 class QueryMode(StrEnum):
@@ -138,27 +130,10 @@ class LoginResponse(BaseModel):
     must_change_password: bool
 
 
-class QuerySuccessResponse(BaseModel):
-    """HTTP 查询成功响应。"""
+class QuerySuccessResponse(QueryResultPayload):
+    """旧HTTP接口保留短期会话编号。"""
 
-    request_id: str
-    sql: str
-    columns: list[str]
-    rows: list[list[Any]]
-    row_count: int
-    truncated: bool
     conversation_id: str
-    result_metadata: dict[str, Any] | None = None
-
-
-class AnalysisSuccessResponse(BaseModel):
-    """HTTP 经营分析成功响应。"""
-
-    request_id: str
-    analysis_run_id: str
-    mode: str = "analysis"
-    report: dict[str, Any]
-    task_results: list[dict[str, Any]]
 
 
 class QueryFailureResponse(BaseModel):
@@ -211,6 +186,8 @@ def create_app(
     query_understanding: object | None = None,
     analysis_service: AnalysisService | None = None,
     analysis_service_factory: AnalysisServiceFactory | None = None,
+    history_store=None,
+    history_runtime=None,
     runtime_factory: Callable[
         [],
         AbstractContextManager[RuntimeDependencies]
@@ -237,6 +214,8 @@ def create_app(
             analysis_service,
             analysis_service_factory,
             browser_settings,
+            history_store,
+            history_runtime,
         )
     ):
         raise ValueError("runtime_factory 和直接资源注入不能混用")
@@ -266,7 +245,26 @@ def create_app(
         except Exception:
             recorder = None
 
+    analysis_guard = AnalysisExecutionGuard()
+
     def publish_bindings(app: FastAPI) -> None:
+        from .history import HistoryApplication
+
+        app.state.history_application = (
+            HistoryApplication(
+                history_store,
+                history_runtime,
+                authorized_service,
+                query_understanding=query_understanding,
+                certifier=getattr(service, "certify_history_query", None),
+                analysis_service=active_analysis_service,
+                analysis_guard=analysis_guard,
+            )
+            if history_store is not None
+            and history_runtime is not None
+            and authorized_service is not None
+            else None
+        )
         app.state.query_service = authorized_service
         app.state.identity_provider = provider
         app.state.authorization_policy_store = authorization_store
@@ -282,11 +280,19 @@ def create_app(
     async def lifespan(app: FastAPI):
         nonlocal provider, authorization_store, authorized_service
         nonlocal auth_service, audit_sink, recorder, query_understanding
-        nonlocal active_analysis_service, browser_settings
+        nonlocal \
+            active_analysis_service, \
+            browser_settings, \
+            history_store, \
+            history_runtime
+        nonlocal service, analysis_guard
+        analysis_guard = AnalysisExecutionGuard()
         if runtime_factory is None:
+            publish_bindings(app)
             try:
                 yield
             finally:
+                analysis_guard.drain()
                 try:
                     close = getattr(active_analysis_service, "close", None)
                     if callable(close):
@@ -314,8 +320,11 @@ def create_app(
                 if auth_service is not None:
                     provider = BrowserIdentityProvider(auth_service, provider)
                 mount_web_files(app, browser_settings)
+                history_store = dependencies.history_store
+                history_runtime = dependencies.history_runtime
                 recorder = dependencies.trace_recorder
                 query_understanding = dependencies.query_understanding
+                service = dependencies.service
                 authorized_service = AuthorizedQueryService(
                     dependencies.service, authorization_store, audit_sink=audit_sink
                 )
@@ -340,6 +349,7 @@ def create_app(
                 yield
             finally:
                 # 删除本轮挂载与引用，下一轮 lifespan 不复用已关闭资源。
+                analysis_guard.drain()
                 app.router.routes[:] = list(original_routes)
                 for attribute in ("sqladmin", "sqladmin_engine"):
                     if hasattr(app.state, attribute):
@@ -347,8 +357,10 @@ def create_app(
                 provider = _MissingIdentityProvider()
                 authorization_store = _UnavailablePolicyStore()
                 authorized_service = None
+                service = None
                 auth_service = audit_sink = recorder = query_understanding = None
                 active_analysis_service = None
+                history_store = history_runtime = None
                 browser_settings = None
                 publish_bindings(app)
 
@@ -372,7 +384,9 @@ def create_app(
         call_next: Any,
     ) -> JSONResponse:
         path = request.url.path
-        if path != "/api/v1/query":
+        if path != "/api/v1/query" and not path.startswith(
+            ("/api/v1/histories", "/api/v1/saved-results")
+        ):
             response = await call_next(request)
             if path.startswith("/auth/"):
                 response.headers["Cache-Control"] = "no-store"
@@ -383,7 +397,11 @@ def create_app(
             rejection = None
             if request.cookies.get(COOKIE_NAME):
                 try:
-                    reject_browser_request(request, browser_settings, write=True)
+                    reject_browser_request(
+                        request,
+                        browser_settings,
+                        write=request.method not in {"GET", "HEAD"},
+                    )
                 except HTTPException as exc:
                     code = (
                         QueryErrorCode.AUTHORIZATION_DENIED
@@ -538,6 +556,8 @@ def create_app(
                 identity_provider=provider,
                 query_service=authorized_service,
                 analysis_service=active_analysis_service,
+                analysis_guard=analysis_guard,
+                history_runtime=history_runtime,
             )
             return _analysis_result_response(
                 analysis_result,
@@ -571,6 +591,9 @@ def create_app(
             trace_recorder=recorder,
         )
 
+    from .history_api import mount_history_api
+
+    mount_history_api(app)
     mount_browser_auth(app)
     if runtime_factory is None:
         mount_web_files(app, browser_settings)
@@ -777,6 +800,8 @@ def _authorized_analysis(
     identity_provider: IdentityProviderAdapter,
     query_service: AuthorizedQueryService,
     analysis_service: AnalysisService | None,
+    analysis_guard: AnalysisExecutionGuard | None = None,
+    history_runtime=None,
 ) -> BusinessAnalysisSuccess | QueryFailure:
     request_id = _request_id_from_state(request)
     try:
@@ -823,11 +848,26 @@ def _authorized_analysis(
             internal_reason="ANALYSIS_SERVICE_MISSING",
         )
     try:
-        result = analysis_service.analyze(
-            question,
-            request_id=request_id,
-            auth_context=auth_context,
-            analysis_run_id=analysis_run_id,
+        from contextlib import nullcontext
+
+        if history_runtime is not None:
+            history_runtime.check()
+        with (
+            analysis_guard.executing(auth_context, analysis_run_id)
+            if analysis_guard
+            else nullcontext()
+        ):
+            result = analysis_service.analyze(
+                question,
+                request_id=request_id,
+                auth_context=auth_context,
+                analysis_run_id=analysis_run_id,
+            )
+    except AnalysisExecutionBusy:
+        return QueryFailure(
+            request_id,
+            QueryErrorCode.CONVERSATION_CONFLICT,
+            "该分析运行仍在执行，请稍后刷新",
         )
     except Exception as exc:  # noqa: BLE001 - adapter must not leak internals
         _LOGGER.warning(
@@ -916,38 +956,8 @@ def _analysis_result_response(
     with _safe_span(trace_recorder, "response.serialize"):
         return JSONResponse(
             status_code=200,
-            content=AnalysisSuccessResponse(
-                request_id=result.request_id,
-                analysis_run_id=analysis_run_id,
-                mode="analysis",
-                report=result.report.to_payload(),
-                task_results=[
-                    _analysis_task_result_payload(task_result)
-                    for task_result in result.task_results
-                ],
-            ).model_dump(mode="json"),
+            content=analysis_payload(result, analysis_run_id),
         )
-
-
-def _analysis_task_result_payload(result: TaskResult) -> dict[str, object]:
-    rows = [list(row) for row in result.rows[:100]]
-    payload: dict[str, object] = {
-        "task_id": result.task_id,
-        "status": result.status.value,
-        "columns": list(result.columns),
-        "rows": rows,
-        "row_count": result.row_count,
-        "truncated": result.truncated or len(result.rows) > len(rows),
-        "error": None,
-    }
-    if result.error is not None:
-        payload["error"] = {
-            "code": result.error.code,
-            "message": result.error.message,
-        }
-    if result.result_metadata is not None:
-        payload["result_metadata"] = result.result_metadata.to_payload()
-    return payload
 
 
 def _provider_name(identity_provider: IdentityProviderAdapter) -> str:
@@ -971,18 +981,7 @@ def _result_response(
                 raise RuntimeError("成功查询缺少会话编号")
             return JSONResponse(
                 status_code=200,
-                content=QuerySuccessResponse(
-                    request_id=result.request_id,
-                    sql=result.sql,
-                    columns=list(result.columns),
-                    rows=[list(row) for row in result.rows],
-                    row_count=result.row_count,
-                    truncated=result.truncated,
-                    conversation_id=conversation_id,
-                    result_metadata=result.result_metadata.to_payload()
-                    if result.result_metadata
-                    else None,
-                ).model_dump(mode="json", exclude_none=True),
+                content={**query_payload(result), "conversation_id": conversation_id},
             )
         if isinstance(result, QueryFailure):
             return JSONResponse(

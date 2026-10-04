@@ -199,6 +199,97 @@ def _merge_and_validate(
     return validated
 
 
+def revise_history_semantic_query(previous, question, *, query_understanding):
+    """历史profile使用完整条件delta，基础语义沿用既有确定性合并。"""
+
+    def clarification(message):
+        return SemanticRevisionError(
+            message,
+            error_code=QueryErrorCode.CLARIFICATION_REQUIRED,
+            reason="HISTORY_DELTA_AMBIGUOUS",
+        )
+
+    if _contains_unsupported_analysis(question):
+        raise SemanticRevisionError(
+            "当前问题超出单条查询修订范围",
+            error_code=QueryErrorCode.UNSUPPORTED_ANALYSIS,
+            reason="UNSUPPORTED_ANALYSIS_SCOPE",
+        )
+    dimension_operation = _dimension_operation(question)
+    if dimension_operation == "clarify":
+        raise clarification("请明确增加还是替换分组维度")
+    try:
+        response = query_understanding.understand_history_revision(previous, question)
+    except Exception as exc:  # noqa: BLE001 - model候选故障映射为公开错误
+        raise SemanticRevisionError(
+            "暂时无法理解追问",
+            error_code=QueryErrorCode.LLM_ERROR,
+            reason="HISTORY_REVISION_FAILED",
+        ) from exc
+    if isinstance(response, QueryUnderstandingClarificationRequired):
+        raise clarification("请明确要修改的业务条件")
+    candidate, operations = response
+    if not _has_semantic_delta(candidate) and all(
+        operation == "keep" for operation, _ in operations.values()
+    ):
+        raise clarification("请明确需要新增或修改的查询条件")
+    if dimension_operation == "replace" and not candidate.dimensions:
+        raise clarification("请明确新的分组维度")
+    try:
+        merged = _merge_and_validate(
+            previous,
+            candidate,
+            question,
+            replace_dimensions=dimension_operation == "replace",
+        )
+    except (SemanticQueryCannotAnswer, SemanticQueryStructureError) as exc:
+        raise clarification("当前条件无法确定唯一查询") from exc
+    conditions = previous.restoration_conditions
+    if conditions is None:
+        raise clarification("历史缺少完整查询条件")
+    values = {}
+    for name, (operation, value) in operations.items():
+        values[name] = (
+            getattr(conditions, name)
+            if operation == "keep"
+            else value
+            if operation == "set"
+            else (() if name in {"order_by", "aggregate_filters"} else None)
+        )
+    if values["row_limit"] is not None and not values["order_by"]:
+        raise clarification("排名需要明确排序依据；取消排序时请同时取消排名数量")
+    if operations["order_by"][0] == "keep" and merged.metrics != previous.metrics:
+        missing = {
+            item.target
+            for item in values["order_by"]
+            if item.target_kind == "metric" and item.target not in merged.metrics
+        }
+        if missing:
+            if (
+                len(previous.metrics) != 1
+                or len(merged.metrics) != 1
+                or len(missing) != 1
+            ):
+                raise clarification("请明确新指标对应的排序")
+            values["order_by"] = tuple(
+                replace(item, target=merged.metrics[0])
+                if item.target_kind == "metric"
+                else item
+                for item in values["order_by"]
+            )
+    if any(item.metric not in merged.metrics for item in values["aggregate_filters"]):
+        raise clarification("请明确旧指标聚合筛选是否取消或改成新条件")
+    output = set(merged.dimensions)
+    if values["selection"] is not None:
+        output.update(values["selection"].fields)
+    if any(
+        item.target_kind != "metric" and item.target not in output
+        for item in values["order_by"]
+    ):
+        raise clarification("分组或选择已改变，请明确新的排序条件")
+    return replace(merged, restoration_conditions=replace(conditions, **values))
+
+
 def _merge_filters(
     previous: tuple[ValidatedFilter, ...],
     current: tuple[FilterCandidate, ...],

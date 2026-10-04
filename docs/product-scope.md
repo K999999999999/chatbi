@@ -24,7 +24,7 @@ ChatBI 是面向业务数据分析的 Domain AI Engine（领域 AI 引擎）。�
 
 - 指定账号使用，无公众注册；浏览器 HttpOnly Cookie，同源网页 / API 与 CSRF 校验，线上要求 HTTPS；旧 Bearer / SQLAdmin 兼容。
 - 30 分钟无活动 / 8 小时绝对登录期限；无记住我与周期保活。查询权限账号共享同一套业务数据，无部门 / 区域行列隔离。
-- R1 不保存长期聊天，刷新清空临时展示 / 查询编号；query / analysis 草稿与记录分开。失联后问数需新对话，分析可手动使用原问题 / UUID 恢复。
+- 网页已接入 R3 私人历史与独立成果；刷新按 URL 读取已保存快照，不执行查询；重新登录从新对话开始，可重开历史。问数恢复最后成功完整条件，分析按原问题 / run 和 24 小时 checkpoint 手动恢复。当前实现验收进度见 [R3 Acceptance](acceptance/history-results-v1.md)。query / analysis 草稿与记录分开，失联不自动重发。
 - 详细行为见 [Web Spec](specs/web-dialogue-v1.md)，实际候选证据见 [R1 Acceptance](acceptance/web-dialogue-v1-20261003.md)。
 
 ### 经营分析
@@ -58,7 +58,7 @@ ChatBI 是面向业务数据分析的 Domain AI Engine（领域 AI 引擎）。�
 - 任意 PostgreSQL 数据库、多个 Schema 或多租户支持。
 - 超出当前 Semantic Contract 的指标、维度、跨事实表 Join、多跳 Join 或超过 5 个指标的组合。
 - 任意复杂分析 Agent、SQL 自动修复、多模型投票或开放式任务编排。
-- 手机适配、SSE / WebSocket、长期聊天历史和导出；当前网页使用同步 HTTP，已支持的图表范围见下方 R2 结果展示及对应 Spec。
+- 手机适配、SSE / WebSocket 和导出；当前网页使用同步 HTTP，已支持的图表范围见下方 R2 结果展示及对应 Spec。
 - 生产环境部署方案、容量 / 可用性承诺、生产数据迁移和流量发布流程；这些不由 MVP 本地运行证据自动满足。
 
 ## 生产演进中的当前基线工作
@@ -70,3 +70,8 @@ ChatBI 是面向业务数据分析的 Domain AI Engine（领域 AI 引擎）。�
 ## R2 结果展示
 
 电脑端新增可信结果说明、图表与表格默认同显、统一数值格式及既有经营归因贡献图；边界见[R2 Spec](specs/result-visualization-v1.md)。不增加查询、分析业务范围、长期历史或全量导出。展示事实由确定性后端认证，前端不从列名猜业务定义。
+
+
+## R3 历史与成果
+
+已接入网页自动历史、列表 / 搜索 / 重命名 / 删除、固定成果副本、完整条件续聊与显式重查。Control DB 管理长期状态，旧 Bearer 短期会话不强制保存。完整边界见 [R3 Spec](specs/history-results-v1.md)；候选验收进度见本机实时工作状态，本地验收不构成生产运行就绪或发布。

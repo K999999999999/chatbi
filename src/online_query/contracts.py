@@ -32,6 +32,7 @@ class QueryRequest:
     question: str
     request_id: str | None = None
     semantic_query: ValidatedSemanticQuery | None = None
+    require_restorable: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +45,7 @@ class QuerySuccess:
     truncated: bool
     semantic_query: ValidatedSemanticQuery | None = None
     result_metadata: ResultMetadata | None = None
+    restoration_state: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -252,6 +254,7 @@ class QueryContext:
     request_shape: RequestShape = RequestShape.BASELINE
     metric_constraints: tuple[MetricConstraint, ...] = ()
     join_constraints: tuple[JoinConstraint, ...] = ()
+    semantic_facts: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)

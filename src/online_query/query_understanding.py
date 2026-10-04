@@ -9,6 +9,12 @@ from enum import StrEnum
 from typing import Final
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from .restoration_conditions import (
+    RestorationConditionError,
+    RestorationConditions,
+    conditions_from_payload,
+)
+
 DEFAULT_QUERY_TIMEZONE: Final = "Asia/Shanghai"
 MAX_REQUEST_METRICS: Final = 5
 
@@ -97,6 +103,7 @@ class SemanticQueryCandidate:
     dimensions: tuple[str, ...]
     time: TimeCandidate | None
     filters: tuple[FilterCandidate, ...]
+    restoration_conditions: RestorationConditions | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,17 +143,23 @@ class ValidatedSemanticQuery:
     time: ValidatedTime | None
     filters: tuple[ValidatedFilter, ...]
     original_question: str
+    restoration_conditions: RestorationConditions | None = None
 
 
-def candidate_from_payload(payload: Mapping[str, object]) -> SemanticQueryCandidate:
+def candidate_from_payload(
+    payload: Mapping[str, object], *, require_restorable: bool = False
+) -> SemanticQueryCandidate:
     """将一个结构化对象转换为严格的 Candidate Contract。"""
 
     if not isinstance(payload, Mapping):
         raise _structure("结构化查询必须是 JSON 对象", "CANDIDATE_NOT_OBJECT")
 
     fields = set(payload)
-    missing = _CANDIDATE_FIELDS - fields
-    extra = fields - _CANDIDATE_FIELDS
+    required = (
+        _CANDIDATE_FIELDS | {"conditions"} if require_restorable else _CANDIDATE_FIELDS
+    )
+    missing = required - fields
+    extra = fields - required
     if missing:
         missing_text = "、".join(sorted(str(field) for field in missing))
         raise _structure(
@@ -166,6 +179,12 @@ def candidate_from_payload(payload: Mapping[str, object]) -> SemanticQueryCandid
     dimensions = _string_list(payload["dimensions"], "dimensions")
     time_candidate = _time_candidate(payload["time"])
     filters = _filter_candidates(payload["filters"])
+    conditions = None
+    if require_restorable:
+        try:
+            conditions = conditions_from_payload(payload["conditions"])
+        except RestorationConditionError as exc:
+            raise _structure(str(exc), "RESTORATION_CONDITIONS_INVALID") from exc
     return SemanticQueryCandidate(
         query_type=query_type,
         subjects=subjects,
@@ -173,6 +192,7 @@ def candidate_from_payload(payload: Mapping[str, object]) -> SemanticQueryCandid
         dimensions=dimensions,
         time=time_candidate,
         filters=filters,
+        restoration_conditions=conditions,
     )
 
 
@@ -241,6 +261,7 @@ def validate_candidate(
         time=validated_time,
         filters=validated_filters,
         original_question=original_question.strip(),
+        restoration_conditions=candidate.restoration_conditions,
     )
 
 

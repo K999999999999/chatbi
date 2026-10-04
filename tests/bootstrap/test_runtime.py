@@ -42,6 +42,7 @@ def runtime_resources(monkeypatch):
     analysis_application = Mock()
     monkeypatch.setattr(runtime, "create_trace_recorder", lambda: recorder)
     monkeypatch.setattr(runtime, "create_control_engine", lambda _: engine)
+    monkeypatch.setattr(runtime, "HistoryRuntime", lambda *_: Mock())
     monkeypatch.setattr(runtime.RagRuntime, "from_environment", lambda: rag)
     monkeypatch.setattr(
         runtime, "build_analysis_application", lambda *_, **__: analysis_application

@@ -56,6 +56,36 @@ class QueryUnderstandingLLMTest(unittest.TestCase):
         self.assertIn("query_type", prompt)
         self.assertIn("2025 年按客户类型统计销售额", prompt)
 
+    def test_history_prompt_separates_year_filter_from_month_grouping(self) -> None:
+        payload = {
+            **_payload(),
+            "subjects": [],
+            "metrics": ["人民币净销售额"],
+            "dimensions": ["月份"],
+            "filters": [],
+            "conditions": {
+                "order_by": [],
+                "row_limit": None,
+                "aggregate_filters": [],
+                "selection": None,
+            },
+        }
+        model = Mock()
+        model.invoke.return_value = SimpleNamespace(
+            content=json.dumps(payload, ensure_ascii=False)
+        )
+        adapter = LangChainQueryUnderstanding(model)
+
+        result = adapter.understand_history("按月份列出2025年销售额")
+
+        assert isinstance(result, SemanticQueryCandidate)
+        self.assertEqual(result.dimensions, ("月份",))
+        assert result.time is not None
+        self.assertEqual(result.time.granularity.value, "year")
+        prompt = model.invoke.call_args.args[0]
+        self.assertIn("time表示筛选范围，dimensions表示分组粒度", prompt)
+        self.assertIn('time={"text":"2025年","granularity":"year"}', prompt)
+
     def test_adapter_exposes_query_understanding_protocol(self) -> None:
         model = Mock()
         model.invoke.return_value = SimpleNamespace(

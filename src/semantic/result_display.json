@@ -46,28 +46,5 @@
       "format": "number",
       "unit": null
     }
-  },
-  "dimensions": {
-    "销售区域": {
-      "column": "mart_sales.dim_sales_region.sales_region_name"
-    },
-    "客户类型": {
-      "column": "mart_sales.dim_customer.customer_type"
-    },
-    "客户区域": {
-      "column": "mart_sales.dim_customer.customer_region"
-    },
-    "产品": {
-      "column": "mart_sales.dim_product.product_name"
-    },
-    "产品线": {
-      "column": "mart_sales.dim_product.product_line"
-    },
-    "产品类别": {
-      "column": "mart_sales.dim_product.product_category"
-    },
-    "技术路线": {
-      "column": "mart_sales.dim_product.technology_route"
-    }
   }
 }

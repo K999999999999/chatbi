@@ -1,5 +1,6 @@
 # Query API Adapter Spec
 
+当前 Web 长期状态以 [R3 History Spec](history-results-v1.md) 为准：显式 `/api/v1/histories` 与 `/api/v1/saved-results` 保存私人快照，刷新只读，续聊恢复完整条件；旧 `/api/v1/query` 继续原短期 Contract。本文的 R1 / R2 阶段状态描述保留历史边界，不能用来否定 R3。
 ## 目标
 
 使用 FastAPI（Web 框架）把现有 Online Query（在线查询）能力暴露为同步 HTTP JSON 接口，供电脑端 Web、内部应用或 API Gateway（API 网关）调用。

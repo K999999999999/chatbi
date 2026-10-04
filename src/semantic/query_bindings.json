@@ -1,0 +1,56 @@
+{
+  "dimensions": {
+    "销售区域": {
+      "column": "mart_sales.dim_sales_region.sales_region_name"
+    },
+    "客户类型": {
+      "column": "mart_sales.dim_customer.customer_type"
+    },
+    "客户区域": {
+      "column": "mart_sales.dim_customer.customer_region"
+    },
+    "产品": {
+      "column": "mart_sales.dim_product.product_name"
+    },
+    "产品线": {
+      "column": "mart_sales.dim_product.product_line"
+    },
+    "产品类别": {
+      "column": "mart_sales.dim_product.product_category"
+    },
+    "技术路线": {
+      "column": "mart_sales.dim_product.technology_route"
+    }
+  },
+  "entity_fields": {
+    "客户名称": {
+      "column": "mart_sales.dim_customer.customer_name",
+      "subject": "客户"
+    },
+    "客户编码": {
+      "column": "mart_sales.dim_customer.customer_code",
+      "subject": "客户"
+    },
+    "产品名称": {
+      "column": "mart_sales.dim_product.product_name",
+      "subject": "产品"
+    },
+    "产品编码": {
+      "column": "mart_sales.dim_product.product_code",
+      "subject": "产品"
+    },
+    "订单编号": {
+      "column": "mart_sales.fct_sales_order_line.order_id",
+      "subject": "销售订单"
+    }
+  },
+  "filters": {
+    "订单状态": {
+      "column": "mart_sales.fct_sales_order_line.order_status",
+      "value_aliases": {
+        "已完成": "completed",
+        "已完成订单": "completed"
+      }
+    }
+  }
+}

@@ -8,7 +8,8 @@ export { object } from './parse';
 
 export type Cell = string | number | boolean | null;
 export type TableData = { columns: string[]; rows: Cell[][]; row_count: number; truncated: boolean; result_metadata?: ResultMetadata };
-export type QueryResult = TableData & { request_id: string; conversation_id: string; sql: string };
+export type QuerySnapshot = TableData & { request_id: string; sql: string };
+export type QueryResult = QuerySnapshot & { conversation_id: string };
 
 export function text(value: unknown): string {
   if (typeof value !== 'string' || !value.trim()) throw new Error('响应文字无效');
@@ -30,10 +31,13 @@ export function tableData(value: unknown): TableData {
     result_metadata: decodeMetadata(p.result_metadata, columns, p.rows.length) };
 }
 export function queryResult(value: unknown): QueryResult {
+  return { ...querySnapshot(value), conversation_id: text(object(value).conversation_id) };
+}
+export function querySnapshot(value: unknown): QuerySnapshot {
   const p = object(value);
   if (p.row_count !== (p.rows as unknown[])?.length) throw new Error('响应行数无效');
   if (p.mode !== undefined && p.mode !== 'query') throw new Error('响应模式无效');
-  return { ...tableData(p), request_id: text(p.request_id), conversation_id: text(p.conversation_id), sql: text(p.sql) };
+  return { ...tableData(p), request_id: text(p.request_id), sql: text(p.sql) };
 }
 
 export function ResultTable({ data }: { data: TableData }) {

@@ -328,7 +328,11 @@ class PostgresDevelopmentEnvironmentTest(unittest.TestCase):
             cursor.execute("SELECT version FROM schema_migrations")
             self.assertEqual(
                 set(cursor.fetchall()),
-                {("chatbi-control-v1",), ("chatbi-control-v2",)},
+                {
+                    ("chatbi-control-v1",),
+                    ("chatbi-control-v2",),
+                    ("chatbi-control-v3",),
+                },
             )
             cursor.execute(
                 """
