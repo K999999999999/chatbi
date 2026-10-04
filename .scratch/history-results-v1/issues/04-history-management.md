@@ -27,9 +27,12 @@ history API /Application /contracts /PG Adapter /必要约束、Business Analysi
 Evidence: 严格API、真实PG两连接竞争 /同事务回滚、桌面Chrome；无随机sleep作为竞争正确证据。
 Migration / Rollback: 沿用01Schema，必要约束只增加。用户主动删除内容不可还原，保留原有独立数据 /业务卷；代码回滚不能复活tombstone。不通过批量删除开发数据验证。
 Done When: 正常 /失败 /安全证据、Code Review /Diff、本地提交、正式Contract /隐私边界 /Runbook及roadmap适用事实同步完成。
-Result: 未实施。
+Result:
+- Candidate A `d6041af45bf4f69bb7b60053e0a404d754dc23fc` 上，Python 全量、隔离 PostgreSQL、桌面 Playwright 分别为 685 passed / 29 skipped / 139 subtests、33 passed、36 passed；代码 Review PASS。
+- Compose 真实报告 `reports/browser-real/container-1791144563-real.json` 验证刷新 / 重登录、URL 历史管理、成果与来源独立删除；`delete_saved_keeps_history=true`、新登录空白页及其他 R3 检查通过。临时账号已禁用、活跃 Session 为 0。
+- 三套正式 Evaluation 与统一身份验收在 Candidate A 通过；候选 B 的最终 clean commit 复验由 Ticket 06 负责，结果写入 Git 公共目录实时状态。
 Comments: 删除历史与删除analysis checkpoint不是同一行为，checkpoint仅沿用既有期限清理。
 
-Status: open
+Status: done
 Canonical Source: ../spec.md、../design.md、../restoration-semantics.md
 Authorization: 用户本轮确认六项拆分及整体本地实施（编码、适用真实验收、Review、本地Commit）；未授权Push /PR

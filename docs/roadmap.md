@@ -63,7 +63,7 @@ flowchart TD
 
 | ID | 需求 | 交付范围与验收方向 | 当前状态 |
 | --- | --- | --- | --- |
-| R1 | Web 对话与经营分析入口 | 仅电脑端；React + TypeScript + Vite，复用 FastAPI。登录 / 首次改密、问数 / 追问、澄清 / 拒绝及独立分析模式；Cookie 登录兼容 Bearer，验收后移除 Streamlit。刷新暂回到空白对话，历史由 R3 实现 | Spec 已确认，设计 / Readiness 通过，五项 Ticket 已完成；Streamlit 已移除，最终代码候选本地验收通过；PR49 已合并（8c506fa） |
+| R1 | Web 对话与经营分析入口 | 仅电脑端；React + TypeScript + Vite，复用 FastAPI。登录 / 首次改密、问数 / 追问、澄清 / 拒绝及独立分析模式；Cookie 登录兼容 Bearer，验收后移除 Streamlit。R1 阶段刷新回到空白新对话；长期历史与快照恢复由 R3 提供 | Spec 已确认，设计 / Readiness 通过，五项 Ticket 已完成；Streamlit 已移除，最终代码候选本地验收通过；PR49 已合并（8c506fa） |
 | R2 | 结果解释与可视化 | 图表与表格默认同显、可分别收起；可信列类型 / 指标 / 单位 / 查询范围、统一数字格式、产品及因素贡献证据；空值 / 截断 / 语义不明安全降级 | 完整Spec已确认，Design Review PASS，四项草案Readiness READY；四项本地实施与clean验收完成（[证据](acceptance/result-visualization-v1-20261004.md)），PR51 已合并（1f57c9b），交付记录见 [PR51](https://github.com/K999999999999/chatbi/pull/51) |
 | R3 | 历史与成果管理 | 历史列表、重新打开、保存查询 / 报告和删除；定义结果快照与重新查询、历史重开与继续追问、保留期限；读取历史仍检查当前身份和权限 | 完整 Spec、恢复语义与实施设计已确认，Design Review PASS，六项 Ticket Readiness READY；六项本地实现 / 检查已完成，当前候选真实验收与 Evaluation 状态见本机实时工作状态 |
 | R4 | 执行状态与流式反馈 | 先验收真实执行进度与最终结果，再验收分析文字逐步展示；定义失败、超时、断连、重试、重复提交、取消 / 恢复边界和事件 Contract | 待澄清 |
@@ -103,7 +103,7 @@ flowchart TD
 - 单一 PostgreSQL `mart_sales` 数据源；没有多 Schema、多租户或多数据源 Contract。
 - 在线多指标查询最多支持 5 个指标，Join 只使用可认证的直接 FK→PK 关系。
 - Business Analysis 受当前已登记的指标和分析范围约束。
-- 当前入口为同步 API 与电脑端 React / TypeScript / Vite 网页；已支持 R2 可信结果说明、问数图表与经营分析贡献图，具体边界见 [R2 Spec](specs/result-visualization-v1.md)。SSE、长期历史与导出仍属后续需求。
+- 当前入口为同步 API 与电脑端 React / TypeScript / Vite 网页；已支持 R2 可信结果说明、问数图表与经营分析贡献图，以及 R3 私人历史、快照恢复和独立成果，具体边界见 [R2 Spec](specs/result-visualization-v1.md) 与 [R3 Spec](specs/history-results-v1.md)。R4 SSE 流式反馈和 R5 导出仍属后续需求。
 
 ## 后续生产工作
 

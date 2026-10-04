@@ -28,9 +28,12 @@ Out of Scope: Push /PR /Merge /生产部署、R4流式 /R5导出 /R6–R7容量�
 Evidence /候选流程: 先完成实现、Contract、Review及适用事实文档 /确定性证据提交，再固定clean候选运行真实验收。若预验收后回填tracked Acceptance /Ticket结果形成新提交，必须再次固定最终clean HEAD并运行最终三套正式Evaluation /统一acceptance和R3真实闭环，让最终报告严格绑定该HEAD；原预验收仅保留自己的身份，不冒称新HEAD成绩。生成报告使用既有.gitignore下reports/evaluation与reports/browser-real位置；最终验收后不再修改tracked文件补写“当前通过”，实时结果原子记录于Git公共目录。若代码 /Contract /基线改变则修复、Review并形成新候选后重跑受影响检查。最终commit不因只加证据而绕过正式报告expected-commit核对。
 Migration / Rollback: 使用隔离fresh /升级测试库和原有明确入口，保留开发卷 /账号 /RAG；旧版兼容演练停止API后切换版本、保留v3数据，恢复当前候选。无实际生产Rollout /feature flag门禁；一旦需要真实用户部署返回发布授权与R6边界。
 Done When: 全部01–05与上述适用门禁 /真实验收通过，正式证据身份 /维护位置完整、所有Ticket结果与当前候选可追溯、Code Review /Diff /本地Commit完成，形成唯一clean本地candidate。报告发布目标 /风险 /验证 /实际Auto-merge规则后才能请求PR发布授权；本Ticket完成不授权发布。
-Result: 未实施 /未运行验收。
+Result:
+- Candidate A `d6041af45bf4f69bb7b60053e0a404d754dc23fc` 的 R3 Compose 真实链路通过：`reports/browser-real/container-1791144563-real.json`，`git_dirty=false`，两阶段均通过，独立业务参考一致，临时账号已禁用且活跃 Session 为 0。
+- Candidate A 正式报告在 `reports/evaluation/baseline-20261005T041046Z-d6041af/formal/`：single-turn 29/29、multi-turn 7/7（15/15 轮）、business-analysis 10/10，均 0 FAIL / 0 INVALID_CASE；`real_e2e_acceptance` 确认三套报告同一 clean commit 与 RAG 身份。三次独立 multi-turn 诊断均 7/7（15/15 轮），退出码均 0，报告分别位于 `diagnostic-1/`、`diagnostic-2/`、`diagnostic-3/`。
+- 本 Result、其他 Ticket Result 与路线图同步将形成 Candidate B，因此 Candidate A 是预验收证据而非最终身份。Candidate B 必须再运行 R3 Compose 真实闭环、三套正式 Evaluation、统一身份验收和三次诊断；最终身份、退出状态与结果由 Git 公共目录实时状态记录，随后不再改 tracked 文件回填“当前通过”。
 Comments: 真实API凭证与.env只在本地，报告不得泄露Secret；失败必须保留并修复，不通过回退验收门槛完成。
 
-Status: open
+Status: in-progress
 Canonical Source: ../spec.md、../design.md、../restoration-semantics.md
 Authorization: 用户本轮确认六项拆分及整体本地实施（编码、适用真实验收、Review、本地Commit）；未授权Push /PR

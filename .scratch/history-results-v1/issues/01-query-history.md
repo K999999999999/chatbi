@@ -32,9 +32,12 @@ Evidence: 纯seam与httpx测试、真实PG事务 /初始化报告、确定性桌
 
 增加型005保留v2标记与数据，不修改用户 /RBAC /业务 /RAG内容，不从旧内存造历史。旧版回滚停止新API、保留v3表 /字节，重新升级仍读。无生产发布 /feature flag承诺；兼容或Schema验证失败停止该切片。
 Done When: 上述可观察闭环与适用软件 /PG /Chrome通过；当前上下文Code Review /Diff检查通过；同步正式R3 /Query API /Web及恢复语义说明、Design和Runbook初始化 /单进程恢复规则、roadmap进度或不适用理由；本地逻辑Commit及Ticket Result记载完成，整体R3仍未验收完成。
-Result: 未实施。
+Result:
+- Candidate A `d6041af45bf4f69bb7b60053e0a404d754dc23fc` 已完成首轮实现与候选验证。Python 全量为 685 passed / 29 skipped / 139 subtests，隔离 PostgreSQL 33 passed，桌面 Playwright 36 passed；代码 Review PASS。
+- Compose 真实报告 `reports/browser-real/container-1791144563-real.json` 绑定该 clean commit，首次问数 / 追问、快照重开及新登录边界通过；报告 `status=passed`、`suite_status=passed`，临时账号已禁用、活跃 Session 为 0。
+- Ticket Result 与路线图同步会形成新的候选 B；本切片实现状态完成，候选 B 的最终身份验收由 Ticket 06 重新执行并记录在 Git 公共目录实时状态。
 Comments: 首个切片较大是因为网页成功必须同时满足执行 /认证 /持久化 /恢复，不能横向拆出无完整成功条件的交付。
 
-Status: in-progress
+Status: done
 Canonical Source: ../spec.md、../design.md、../restoration-semantics.md
 Authorization: 用户本轮确认六项拆分及整体本地实施（编码、适用真实验收、Review、本地Commit）；未授权Push /PR

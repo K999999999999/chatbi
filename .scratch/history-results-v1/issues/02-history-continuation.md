@@ -28,9 +28,12 @@ Out of Scope: 跨查询比较 /经营分析路由、成果来源重查（05）�
 Evidence: 纯delta /认证、API invoke计数、PG竞争与operation /sourcecopy事务、Chrome两页面 /恢复用例；真实当前数据对照在06。
 Migration / Rollback: 使用01新增对象，无破坏迁移；失败保持原context，回滚保留快照 /state版本，未知版本不能执行。不改变旧接口生命周期。
 Done When: 所有适用检查 /Code Review /Diff通过；同步正式恢复条件 /续聊 /requery Contract和Acceptance证据 /roadmap事实；本地Commit完成，Result记录候选与未验证范围。
-Result: 未实施。
+Result:
+- Candidate A `d6041af45bf4f69bb7b60053e0a404d754dc23fc` 上，Python 全量、隔离 PostgreSQL、桌面 Playwright 分别为 685 passed / 29 skipped / 139 subtests、33 passed、36 passed；代码 Review PASS。
+- Compose 真实报告 `reports/browser-real/container-1791144563-real.json` 验证完整条件追问、API 重启后的快照读取 / 续聊和显式重查新建历史，独立参考一致；`status=passed`、`suite_status=passed`，绑定 clean commit。
+- 正式 single-turn / multi-turn / business-analysis 在此候选分别 29/29、7/7（15/15 轮）、10/10，均 0 FAIL / 0 INVALID_CASE；统一身份验收通过。候选 B 的最终身份重验由 Ticket 06 执行并记录在 Git 公共目录实时状态。
 Comments: 当前数据重查是明确的新执行，原记录始终只读历史事实。
 
-Status: open
+Status: done
 Canonical Source: ../spec.md、../design.md、../restoration-semantics.md
 Authorization: 用户本轮确认六项拆分及整体本地实施（编码、适用真实验收、Review、本地Commit）；未授权Push /PR

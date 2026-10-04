@@ -28,9 +28,12 @@ history Application /analysis snapshot codec /API /Store /runtime、`src/busines
 Evidence: 原completed branch调用计数、时钟 /归属 /互斥测试、PG run /checkpoint集成、Chrome；软件替身不得宣称真实模型报告通过。
 Migration / Rollback: 复用01新表、原analysis run /checkpointSchema不破坏；runtime关闭先停执行。旧API默认不产history，旧版回滚保留长期报告且不延长原run期限。
 Done When: 适用验证 /Review /Diff、本地提交、正式分析 /历史恢复Contract /Design /Runbook同步与候选证据记录完成。
-Result: 未实施。
+Result:
+- Candidate A `d6041af45bf4f69bb7b60053e0a404d754dc23fc` 上，Python 全量、隔离 PostgreSQL、桌面 Playwright 分别为 685 passed / 29 skipped / 139 subtests、33 passed、36 passed；代码 Review PASS。
+- Compose 真实报告 `reports/browser-real/container-1791144563-real.json` 的 Analysis 参考对账通过，报告中已提交分析结果在 checkpoint 过期后仍可读；PG / Application 测试覆盖原 run 归属、状态恢复与故障边界。Compose `status=passed`、`suite_status=passed`，绑定 clean commit。
+- 三套正式 Evaluation 及统一身份验收在 Candidate A 通过；候选 B 的最终 clean commit 复验由 Ticket 06 负责，结果写入 Git 公共目录实时状态。
 Comments: 恢复analysis与重新问数是不同Use Case；两个ID生命周期不混用。
 
-Status: open
+Status: done
 Canonical Source: ../spec.md、../design.md、../restoration-semantics.md
 Authorization: 用户本轮确认六项拆分及整体本地实施（编码、适用真实验收、Review、本地Commit）；未授权Push /PR

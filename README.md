@@ -109,7 +109,7 @@ uv run --python 3.11 --locked python -m pytest -q
 
 ## 电脑端 Web 入口
 
-当前默认入口为 React + TypeScript + Vite 网页。开发 / 打包入口见 [Runbook](docs/runbook.md#web-开发与打包)，行为见 [Web Spec](docs/specs/web-dialogue-v1.md)，证据见 [R1 验收](docs/acceptance/web-dialogue-v1-20261003.md)。Streamlit 已移除。刷新保留有效登录但清空当前对话；图表、长期历史和流式按后续路线推进。
+当前默认入口为 React + TypeScript + Vite 网页。开发 / 打包入口见 [Runbook](docs/runbook.md#web-开发与打包)，行为见 [Web Spec](docs/specs/web-dialogue-v1.md)，证据见 [R1 验收](docs/acceptance/web-dialogue-v1-20261003.md)。Streamlit 已移除。有效登录下刷新可按 URL 只读恢复已保存快照；重新登录默认空白，通过私人列表重开历史。R2 图表与结果表已交付；R4 流式反馈和 R5 导出仍按后续路线推进。
 
 ### 结果图表与表格（R2）
 

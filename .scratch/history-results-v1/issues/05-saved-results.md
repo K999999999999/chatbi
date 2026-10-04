@@ -28,9 +28,12 @@ history与saved-results Application /API /contracts /snapshot codec /PG Adapter�
 Evidence: 快照字节 /语义相等、API调用边界、PG copy /delete /dedup竞争、Chrome流程；当前模型 /业务数据验收在06。
 Migration / Rollback: 使用01saved_results独立副本Schema，无来源级联FK；回滚保留表 /字节，用户主动删成果不可还原。外部分享 /公开scope变更需重新确认。
 Done When: 全部适用检查 /Review /Diff、本地逻辑Commit及正式成果 /历史 /API /Web文档、证据 /roadmap事实同步完成。
-Result: 未实施。
+Result:
+- Candidate A `d6041af45bf4f69bb7b60053e0a404d754dc23fc` 上，Python 全量、隔离 PostgreSQL、桌面 Playwright 分别为 685 passed / 29 skipped / 139 subtests、33 passed、36 passed；代码 Review PASS。
+- Compose 真实报告 `reports/browser-real/container-1791144563-real.json` 验证另存为独立副本、来源删除后的成果保留、从成果显式重查新建历史，以及删除成果不删除来源历史；`status=passed`、`suite_status=passed`，绑定 clean commit。
+- 三套正式 Evaluation 与统一身份验收在 Candidate A 通过；候选 B 的最终 clean commit 复验由 Ticket 06 负责，结果写入 Git 公共目录实时状态。
 Comments: 来源标识只作说明，删除来源不使成果变为失效引用。
 
-Status: open
+Status: done
 Canonical Source: ../spec.md、../design.md、../restoration-semantics.md
 Authorization: 用户本轮确认六项拆分及整体本地实施（编码、适用真实验收、Review、本地Commit）；未授权Push /PR

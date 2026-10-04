@@ -15,4 +15,4 @@
 
 未发现剩余的 Spec / Contract 偏差或阻止本地 candidate 的代码问题。最近提交前验证：`pytest -q` 685 passed / 29 skipped / 139 subtests；隔离 PG 33 passed；Playwright 36 passed；`npm run build` 与 TypeScript、Ruff、`uv lock --check`、模块边界、Markdown 本地链接、`compileall`、`git diff --check` 通过。Vite 的 ECharts chunk >500 kB 是现有打包尺寸提示，不影响构建通过。
 
-最终 R3 Compose 真实闭环、三套正式 AI Evaluation、统一身份验收及三次多轮诊断不是此代码 Review 的替代项；结果与候选 SHA 记录在 Git 公共目录本机实时工作状态。
+代码 Review 与候选运行验收是不同门禁；R3 Compose 真实闭环、三套正式 AI Evaluation、统一身份验收及三次多轮诊断的运行结果与候选 SHA 记录在 Git 公共目录本机实时工作状态。
