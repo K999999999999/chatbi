@@ -130,7 +130,7 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
         updateExecutionEntry(kind, identity.turnId, previous => ({ ...result, traceId: result.traceId ?? previous.traceId }));
         setSelected(all => all[kind]?.id === nextHeader.id ? { ...all, [kind]: nextHeader } : all);
         setUncertainExecution(current => current?.historyId === nextHeader.id ? null : current);
-        if (kind === 'query' && terminal.status === 'unconfirmed') setBlocked(true);
+        if (kind === 'query') setBlocked(terminal.status === 'unconfirmed');
         setRefresh(value => value + 1);
         if (activeExecution.current === identity.executionId) setActiveExecution(null);
       } catch (error) {

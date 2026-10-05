@@ -293,6 +293,9 @@ test('问数取消终态保留上一成功上下文并允许用户新建下一�
   await expect(page.getByText('12.50', { exact: true })).toBeVisible();
   await send(page, '取消中的追问');
   await expect(page.getByRole('status')).toContainText('生成查询');
+  await page.reload();
+  await expect(page.getByText('12.50', { exact: true })).toBeVisible();
+  await expect(page.getByRole('status')).toContainText('生成查询');
   await page.getByRole('button', { name: '取消执行', exact: true }).click();
   await expect(page.getByText('执行已取消', { exact: true })).toBeVisible();
   await send(page, '取消后新建追问');
