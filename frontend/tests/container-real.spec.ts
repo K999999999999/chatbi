@@ -19,69 +19,92 @@ type ExecutionStreamEvidence = {
   event_count: number;
 };
 
-function summarizeSse(body: Buffer, executionId: string, httpStatus: number): ExecutionStreamEvidence {
-  const evidence: ExecutionStreamEvidence = {
-    execution_id: executionId, http_statuses: [httpStatus], event_types: [], stages: [], terminal_statuses: [], event_count: 0,
-  };
-  for (const frame of body.toString('utf8').split(/\r?\n\r?\n/)) {
-    let eventType = 'message';
-    const data: string[] = [];
-    for (const line of frame.split(/\r?\n/)) {
-      if (line.startsWith('event:')) eventType = line.slice(6).trim();
-      else if (line.startsWith('data:')) data.push(line.slice(5).trimStart());
-    }
-    if (!data.length) continue;
-    let event: Record<string, unknown>;
-    try { event = JSON.parse(data.join('\n')) as Record<string, unknown>; }
-    catch { continue; }
-    if (event.execution_id !== executionId) continue;
-    evidence.event_count += 1;
-    if (!evidence.event_types.includes(eventType)) evidence.event_types.push(eventType);
-    const payload = event.payload && typeof event.payload === 'object' ? event.payload as Record<string, unknown> : {};
-    if (typeof payload.stage === 'string' && executionStages.has(payload.stage) && !evidence.stages.includes(payload.stage)) {
-      evidence.stages.push(payload.stage);
-    }
-    if (eventType === 'terminal' && typeof payload.status === 'string' && !evidence.terminal_statuses.includes(payload.status)) {
-      evidence.terminal_statuses.push(payload.status);
-    }
+declare global {
+  interface Window {
+    __chatbiExecutionEvidence?: Record<string, ExecutionStreamEvidence>;
+    __chatbiCaptureExecutionStreams?: boolean;
   }
-  return evidence;
 }
 
-function captureExecutionStreams(page: Page) {
-  const streams = new Map<string, Array<Promise<ExecutionStreamEvidence>>>();
+async function captureExecutionStreams(page: Page) {
+  const connections = new Map<string, number>();
   const submissions: string[] = [];
+  await page.addInitScript((allowedStages: string[]) => {
+    const target = window as Window & { __chatbiExecutionEvidence?: Record<string, ExecutionStreamEvidence> };
+    const allowed = new Set(allowedStages);
+    const terminal = new Set(['succeeded', 'failed', 'cancelled', 'timed_out', 'unconfirmed']);
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const response = await originalFetch(input, init);
+      const requestUrl = input instanceof Request ? input.url : String(input);
+      const match = new URL(requestUrl, location.href).pathname.match(/^\/api\/v1\/executions\/([0-9a-f-]{36})\/events$/);
+      if (!match || response.status >= 400 || !response.body || !target.__chatbiCaptureExecutionStreams) return response;
+      const executionId = match[1];
+      const evidence = target.__chatbiExecutionEvidence ??= {};
+      const summary = evidence[executionId] ??= {
+        execution_id: executionId, http_statuses: [], event_types: [], stages: [], terminal_statuses: [], event_count: 0,
+      };
+      if (!summary.http_statuses.includes(response.status)) summary.http_statuses.push(response.status);
+      const reader = response.clone().body?.getReader();
+      if (reader) void (async () => {
+        const decoder = new TextDecoder();
+        let buffered = '';
+        const consume = (frame: string) => {
+          let eventType = 'message';
+          const data: string[] = [];
+          for (const line of frame.split(/\r?\n/)) {
+            if (line.startsWith('event:')) eventType = line.slice(6).trim();
+            else if (line.startsWith('data:')) data.push(line.slice(5).trimStart());
+          }
+          if (!data.length) return;
+          let event: Record<string, unknown>;
+          try { event = JSON.parse(data.join('\n')) as Record<string, unknown>; }
+          catch { return; }
+          if (event.execution_id !== executionId) return;
+          summary.event_count += 1;
+          if (!summary.event_types.includes(eventType)) summary.event_types.push(eventType);
+          const payload = event.payload && typeof event.payload === 'object' ? event.payload as Record<string, unknown> : {};
+          if (typeof payload.stage === 'string' && allowed.has(payload.stage) && !summary.stages.includes(payload.stage)) {
+            summary.stages.push(payload.stage);
+          }
+          if (typeof payload.status === 'string' && terminal.has(payload.status) && !summary.terminal_statuses.includes(payload.status)) {
+            summary.terminal_statuses.push(payload.status);
+          }
+        };
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            buffered += decoder.decode(value, { stream: !done });
+            const frames = buffered.split(/\r?\n\r?\n/);
+            buffered = frames.pop() ?? '';
+            frames.forEach(consume);
+            if (done) {
+              if (buffered.trim()) consume(buffered);
+              return;
+            }
+          }
+        } finally { reader.releaseLock(); }
+      })().catch(() => undefined);
+      return response;
+    };
+  }, [...executionStages]);
   page.on('request', request => {
-    if (request.method() !== 'POST') return;
     const path = new URL(request.url()).pathname;
-    if (/^\/api\/v1\/histories\/[0-9a-f-]{36}\/executions$/.test(path)) submissions.push(path);
-  });
-  page.on('response', response => {
-    const match = new URL(response.url()).pathname.match(/^\/api\/v1\/executions\/([0-9a-f-]{36})\/events$/);
-    if (!match) return;
-    const executionId = match[1];
-    const capture = response.body()
-      .then(body => summarizeSse(body, executionId, response.status()))
-      .catch(() => ({
-        execution_id: executionId, http_statuses: [response.status()], event_types: [], stages: [], terminal_statuses: [], event_count: 0,
-      }));
-    streams.set(executionId, [...(streams.get(executionId) ?? []), capture]);
+    const eventMatch = path.match(/^\/api\/v1\/executions\/([0-9a-f-]{36})\/events$/);
+    if (request.method() === 'GET' && eventMatch) {
+      const executionId = eventMatch[1];
+      connections.set(executionId, (connections.get(executionId) ?? 0) + 1);
+    }
+    if (request.method() === 'POST' && /^\/api\/v1\/histories\/[0-9a-f-]{36}\/executions$/.test(path)) submissions.push(path);
   });
   return {
     submissions,
-    connectionCount(executionId: string): number { return streams.get(executionId)?.length ?? 0; },
+    connectionCount(executionId: string): number { return connections.get(executionId) ?? 0; },
     async forExecution(executionId: string): Promise<ExecutionStreamEvidence> {
-      await expect.poll(() => streams.get(executionId)?.length ?? 0, { timeout: 30000 }).toBeGreaterThan(0);
-      const captures = await Promise.all(streams.get(executionId) ?? []);
-      const merged: ExecutionStreamEvidence = {
-        execution_id: executionId,
-        http_statuses: [...new Set(captures.flatMap(item => item.http_statuses))],
-        event_types: [...new Set(captures.flatMap(item => item.event_types))],
-        stages: [...new Set(captures.flatMap(item => item.stages))],
-        terminal_statuses: [...new Set(captures.flatMap(item => item.terminal_statuses))],
-        event_count: captures.reduce((count, item) => count + item.event_count, 0),
-      };
-      return merged;
+      await expect.poll(() => page.evaluate(id =>
+        window.__chatbiExecutionEvidence?.[id]?.terminal_statuses.includes('succeeded') ?? false, executionId),
+      { timeout: 30000 }).toBe(true);
+      return await page.evaluate(id => window.__chatbiExecutionEvidence?.[id]!, executionId);
     },
   };
 }
@@ -154,10 +177,11 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     username: process.env.CHATBI_REAL_E2E_USERNAME, reference,
     at: new Date().toISOString(), browser: browser.version(), target: 'compose-vite-api',
   };
-  const streams = captureExecutionStreams(page);
+  const streams = await captureExecutionStreams(page);
   const account = JSON.parse(readFileSync('/reports/account.json', 'utf8')) as { id: number };
   try {
     await login(page, process.env.CHATBI_REAL_E2E_USERNAME!, process.env.CHATBI_REAL_E2E_PASSWORD!);
+    await page.evaluate(() => { window.__chatbiCaptureExecutionStreams = true; });
     const firstResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
     await send(page, '2025年2月已完成订单的人民币净销售额是多少？');
     const firstHttp = await firstResponse;
@@ -167,6 +191,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     const first = querySnapshot(firstPayload.turn.snapshot);
     expect(first.rows.length).toBe(1);
     expect(Number(first.rows[0][0])).toBe(Number(reference.net_sales['2']));
+    evidence.step = 'query-sse-capture';
     const firstStream = await streams.forExecution(firstPayload.execution.id);
     evidence.step = 'query-stage-evidence';
     evidence.query_execution_stream = firstStream;
@@ -310,6 +335,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     evidence.r3_before_restart = { saved_independent: true, refresh_analysis: true, top_n_reference: true };
 
     evidence.step = 'multi-page-disconnect-and-cancel';
+    await page.evaluate(() => { window.__chatbiCaptureExecutionStreams = false; });
     const submissionsBeforeRecovery = streams.submissions.length;
     const cancelableResponse = page.waitForResponse(isExecutionSubmission, { timeout: 30000 });
     await send(page, '只看前2个产品');
@@ -320,7 +346,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     expect(cancelableHistoryId).toBe(rankedPayload.history.id);
 
     const secondPage = await page.context().newPage();
-    const secondStreams = captureExecutionStreams(secondPage);
+    const secondStreams = await captureExecutionStreams(secondPage);
     const isEventResponse = (response: { url(): string; request(): { method(): string } }) =>
       response.request().method() === 'GET'
         && new URL(response.url()).pathname === `/api/v1/executions/${cancelableExecutionId}/events`;
