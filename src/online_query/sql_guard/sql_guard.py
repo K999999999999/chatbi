@@ -52,9 +52,16 @@ _FORBIDDEN_NODE_TYPES = (
 class _ValidationSession:
     """保存一次 SQL 校验调用内可复用的 AST 和范围校验事实。"""
 
-    def __init__(self, candidate: str, context: QueryContext) -> None:
+    def __init__(
+        self,
+        candidate: str,
+        context: QueryContext,
+        *,
+        allow_expression_dimensions: bool = False,
+    ) -> None:
         self._candidate = candidate.strip()
         self._context = context
+        self._allow_expression_dimensions = allow_expression_dimensions
         self._expression: exp.Select | None = None
         self._scope_validated = False
 
@@ -78,7 +85,11 @@ class _ValidationSession:
         if not self._scope_validated:
             self._validate_scope(expression)
         if len(self._context.metric_constraints) >= 2:
-            validate_multi_metric_expression(expression, self._context)
+            validate_multi_metric_expression(
+                expression,
+                self._context,
+                allow_expression_dimensions=self._allow_expression_dimensions,
+            )
         elif expression.args.get("joins"):
             validate_join_constraints(expression, self._context)
 
@@ -105,10 +116,16 @@ class _ValidationSession:
 def _new_validation_session(
     candidate: str,
     context: QueryContext,
+    *,
+    allow_expression_dimensions: bool = False,
 ) -> _ValidationSession:
     """创建只供当前 Online Query 调用使用的内部校验会话。"""
 
-    return _ValidationSession(candidate, context)
+    return _ValidationSession(
+        candidate,
+        context,
+        allow_expression_dimensions=allow_expression_dimensions,
+    )
 
 
 def validate_candidate_scope(candidate: str, context: QueryContext) -> None:

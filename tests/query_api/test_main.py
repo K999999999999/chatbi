@@ -126,6 +126,7 @@ with (
     patch.object(runtime, 'create_control_engine', return_value=engine),
     patch.object(runtime.RagRuntime, 'from_environment', return_value=rag),
     patch.object(runtime, 'build_analysis_application', return_value=Mock()),
+    patch.object(runtime, 'HistoryRuntime', return_value=Mock()),
 ):
     with TestClient(app) as client:
         assert client.get('/health').status_code == 200

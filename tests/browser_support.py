@@ -30,9 +30,14 @@ from src.online_query.query_understanding import QueryType, ValidatedSemanticQue
 from src.query_api.app import create_app
 from src.query_api.browser import BrowserSettings
 from tests.query_api.support import _DefaultRevisionAdapter
+from tests.query_api.history_fixtures import query_state
+from tests.history_support import BrowserHistoryStore, BrowserHistoryRuntime
 
 
 class BrowserQueryFixture:
+    def certify_history_query(self, semantic):
+        return query_state()
+
     def execute(self, request):
         if request.question == "触发澄清":
             return QueryFailure(
@@ -58,6 +63,7 @@ class BrowserQueryFixture:
             len(rows),
             request.question == "截断结果",
             state,
+            restoration_state=query_state() if request.require_restorable else None,
         )
 
 
@@ -112,6 +118,14 @@ class BrowserAnalysisFixture:
         )
 
 
+class BrowserRevisionAdapter(_DefaultRevisionAdapter):
+    def understand_history_revision(self, previous, question):
+        return self.understand_revision(previous, question), {
+            field: ("keep", None)
+            for field in ("order_by", "row_limit", "aggregate_filters", "selection")
+        }
+
+
 def create_browser_app():
     engine = create_engine(
         "sqlite+pysqlite:///:memory:",
@@ -139,6 +153,7 @@ def create_browser_app():
         session.commit()
     auth = AuthService(sessions)
     directory = Path(__file__).resolve().parents[1] / "frontend/dist"
+    history_store = BrowserHistoryStore()
     return create_app(
         BrowserQueryFixture(),
         analysis_service=BrowserAnalysisFixture(),
@@ -146,7 +161,9 @@ def create_browser_app():
         audit_sink=InMemoryAuditSink(),
         identity_provider=LocalSessionIdentityProvider(auth),
         policy_store=RoleAuthorizationPolicyStore(),
-        query_understanding=_DefaultRevisionAdapter(),
+        query_understanding=BrowserRevisionAdapter(),
+        history_store=history_store,
+        history_runtime=BrowserHistoryRuntime(history_store),
         browser_settings=BrowserSettings(
             os.getenv("CHATBI_BROWSER_TEST_ORIGIN", "http://127.0.0.1:18001"),
             False,

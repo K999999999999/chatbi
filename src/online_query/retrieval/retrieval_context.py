@@ -1,9 +1,9 @@
 """最终资源闭包和 QueryContext（查询上下文）组装。"""
 
+import json
 from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
-import json
 from types import MappingProxyType
 from typing import Any
 
@@ -40,6 +40,7 @@ def assemble_context(
     request_shape: RequestShape = RequestShape.BASELINE,
     metric_constraints: tuple[MetricConstraint, ...] = (),
     join_constraints: tuple[JoinConstraint, ...] = (),
+    semantic_metrics: tuple[MetricHit, ...] | None = None,
 ) -> ContextAssembly:
     """完成最终资源闭包、提示上下文和 SQL 白名单组装。"""
 
@@ -62,6 +63,17 @@ def assemble_context(
         request_shape=request_shape,
         metric_constraints=metric_constraints,
         join_constraints=join_constraints,
+        semantic_facts={
+            "metrics": [
+                dict(hit.metadata)
+                for hit in (
+                    semantic_metrics
+                    if semantic_metrics is not None
+                    else (metrics or ((metric,) if metric else ()))
+                )
+            ],
+            "columns": [dict(hit.metadata) for hit in final_fields],
+        },
     )
     return ContextAssembly(
         final_tables=final_tables,

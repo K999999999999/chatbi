@@ -84,8 +84,8 @@ finish() {
 trap finish EXIT
 "$root/dev" build
 "$root/dev" infra
+"$root/dev" migrate
 if [[ "$mode" == isolated ]]; then
-    "$root/dev" migrate
     "${compose[@]}" run --rm --no-deps -T -e CHATBI_CONTAINER_ISOLATED=1 \
         --entrypoint python tools -m tests.container_dev_support admin
     start=$SECONDS
@@ -101,9 +101,11 @@ docker build --target browser -f docker/node-dev.Dockerfile \
     --build-arg "NODE_BASE=${CHATBI_DEV_NODE_BASE:-node:24.21.0-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6}" \
     -t chatbi-browser-dev:local .
 web_id=$("${compose[@]}" ps -q web)
+run_browser() {
 docker run --rm --network "container:$web_id" --user "$(id -u):$(id -g)" \
     --env-file "$work/report/credentials.env" \
     -e CHATBI_CONTAINER_REAL_E2E=1 \
+    -e "CHATBI_CONTAINER_RESTART_PHASE=${CHATBI_CONTAINER_RESTART_PHASE:-0}" \
     -e "CHATBI_CONTAINER_BASE_URL=http://127.0.0.1:${CHATBI_DEV_WEB_PORT:-5173}" \
     -e "CHATBI_CONTAINER_COMMIT=$(git rev-parse HEAD)" \
     -e "CHATBI_CONTAINER_GIT_DIRTY=$dirty" \
@@ -114,9 +116,14 @@ docker run --rm --network "container:$web_id" --user "$(id -u):$(id -g)" \
     -v "$root/frontend/playwright.container.config.ts:/workspace/frontend/playwright.container.config.ts:ro" \
     -v "$root/frontend/playwright.container-reporter.ts:/workspace/frontend/playwright.container-reporter.ts:ro" \
     chatbi-browser-dev:local npx playwright test --config playwright.container.config.ts
+}
+run_browser
 "${compose[@]}" exec -T api python -c \
     'import os; assert not any("MIGRATOR" in k for k in os.environ); print("API迁移身份隔离通过。")'
 "$root/dev" down
 "$root/dev" up
 "$root/dev" status
+tools expire-analysis
+web_id=$("${compose[@]}" ps -q web)
+CHATBI_CONTAINER_RESTART_PHASE=1 run_browser
 tools persistence

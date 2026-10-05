@@ -1,4 +1,9 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Page, type Route } from '@playwright/test';
+export async function queryResponse(route: Route, snapshot: unknown) {
+  const response = await route.fetch(); const body = await response.json();
+  body.turn.snapshot = snapshot;
+  await route.fulfill({ response, json: body });
+}
 export async function login(page: Page, username = 'analyst', password = 'test-password-123') {
   await page.goto('/');
   await page.getByLabel('账号', { exact: true }).fill(username);

@@ -10,6 +10,13 @@ def load_display_facts() -> tuple[list[dict], dict, list[dict]]:
     root = Path(__file__).resolve().parent
     metrics = json.loads((root / "metrics.json").read_text())
     traits = json.loads((root / "result_display.json").read_text())
+    try:
+        traits["dimensions"] = json.loads((root / "query_bindings.json").read_text())[
+            "dimensions"
+        ]
+    except (OSError, ValueError, KeyError, TypeError):
+        # 维度映射缺失只禁用维度说明，不影响独立的指标显示属性。
+        traits["dimensions"] = {}
     columns = json.loads((root.parent / "structure/generated/columns.json").read_text())
     names = {metric["name"] for metric in metrics}
     dimensions = {

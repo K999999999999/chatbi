@@ -2,7 +2,7 @@
 
 ChatBI 是一个面向业务数据查询的 Domain AI Engine（领域 AI 引擎），当前处于 MVP 向生产演进阶段，采用 Modular Monolith（模块化单体）。它把自然语言问题转换为业务语义、受控 SQL 和数据库结果，并通过确定性程序校验模型候选。
 
-当前 MVP 已包含电脑端 Web 登录 / 对话与经营分析入口、自然语言查询、在线 RAG、登录与 RBAC、多轮查询和经营分析。生产部署、运行保障和当前候选的 AI Evaluation 基线仍在核验中；历史基线只适用于其报告记录的 commit。本地 Runbook 不代表已完成生产部署。包版本号来源于 [`pyproject.toml`](pyproject.toml)，精确代码状态以 Git commit 为准。
+当前 MVP 已包含电脑端 Web 登录 / 对话与经营分析入口、自然语言查询、在线 RAG、登录与 RBAC、多轮查询、经营分析、私人历史与独立固定成果。生产部署与运行保障尚未完成；当前候选的 AI Evaluation 状态以候选身份对应的报告为准，历史基线只适用于其报告记录的 commit。本地 Runbook 不代表已完成生产部署。包版本号来源于 [`pyproject.toml`](pyproject.toml)，精确代码状态以 Git commit 为准。
 
 ## 新 clone：快速开始
 
@@ -109,8 +109,10 @@ uv run --python 3.11 --locked python -m pytest -q
 
 ## 电脑端 Web 入口
 
-当前默认入口为 React + TypeScript + Vite 网页。开发 / 打包入口见 [Runbook](docs/runbook.md#web-开发与打包)，行为见 [Web Spec](docs/specs/web-dialogue-v1.md)，证据见 [R1 验收](docs/acceptance/web-dialogue-v1-20261003.md)。Streamlit 已移除。刷新保留有效登录但清空当前对话；图表、长期历史和流式按后续路线推进。
+当前默认入口为 React + TypeScript + Vite 网页。开发 / 打包入口见 [Runbook](docs/runbook.md#web-开发与打包)，行为见 [Web Spec](docs/specs/web-dialogue-v1.md)，证据见 [R1 验收](docs/acceptance/web-dialogue-v1-20261003.md)。Streamlit 已移除。有效登录下刷新可按 URL 只读恢复已保存快照；重新登录默认空白，通过私人列表重开历史。R2 图表与结果表已交付；R4 流式反馈和 R5 导出仍按后续路线推进。
 
 ### 结果图表与表格（R2）
 
 问数同时展示可信结果图表和表格，支持指标卡、时间趋势、分类对比、单位拆图、千分位金额和百分比；原始返回值可核对。经营分析展示后端已对账的产品与因素贡献。图表绘制及切换不重新查询；未知语义或图表故障保留原始表格。详见[R2行为](docs/specs/result-visualization-v1.md)、[设计](docs/designs/result-visualization-v1.md)和[运行说明](docs/runbook.md#r2-图表与数字展示)。
+
+R3 的刷新重开、完整条件恢复与成果生命周期见 [History Spec](docs/specs/history-results-v1.md)，当前本地验收入口见 [Acceptance](docs/acceptance/history-results-v1.md)。

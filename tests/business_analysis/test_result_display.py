@@ -12,7 +12,9 @@ from src.business_analysis.execution import (
 from src.business_analysis.runtime import _checkpoint_allowed_types
 from src.online_query.contracts import QuerySuccess
 from src.online_query.result_contracts import ResultMetadata
-from src.query_api.app import _analysis_task_result_payload
+from src.query_api.query_response import (
+    analysis_task_result_payload as _analysis_task_result_payload,
+)
 from tests.business_analysis.test_execution import _task
 
 

@@ -13,6 +13,8 @@ from src.authorization import (
     PersistentAuditSink,
     RoleAuthorizationPolicyStore,
 )
+from src.chatbi_control.history import PostgresHistoryStore
+from src.query_api.history_runtime import HistoryRuntime
 from src.chatbi_control.database import ControlDatabaseConfig, create_control_engine
 from src.observability.tracing import create_trace_recorder
 from src.online_query.database import PsycopgQueryExecutor
@@ -89,6 +91,10 @@ async def create_runtime() -> AsyncIterator[RuntimeDependencies]:
             query_executor=executor,
         )
 
+        history_store = PostgresHistoryStore(engine)
+        history_runtime = HistoryRuntime(engine, config.app_connection_kwargs())
+        register_cleanup(resources, "history", history_runtime.close)
+
         def analysis_factory(authorized_service):
             analysis = build_analysis_application(
                 authorized_service,
@@ -96,10 +102,13 @@ async def create_runtime() -> AsyncIterator[RuntimeDependencies]:
                 http_async_client=http_async_client,
             )
             register_cleanup(resources, "business_analysis", analysis.close)
+            register_cleanup(resources, "history_drain", history_runtime.drain)
             return analysis
 
         yield RuntimeDependencies(
             service=service,
+            history_store=history_store,
+            history_runtime=history_runtime,
             browser_settings=BrowserSettings.from_environment(os.environ),
             audit_sink=audit,
             auth_service=auth,

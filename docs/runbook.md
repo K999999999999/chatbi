@@ -52,7 +52,7 @@ Vite Web（开发容器 / 宿主调试；宿主回环端口 5173；打包后由 
 
 打开 `http://127.0.0.1:5173`。日常只需 `./dev up`；`./dev down` 停止四个服务并保留全部数据，`./dev status` 查看状态，`./dev logs --follow` 跟踪日志。前后端手动启动后后台运行，电脑 / Docker 重启后不自动启动；数据库与 Qdrant 保留现有策略。
 
-后端源码变更自动重载，前端 Vite 热更新。后端重载 / 重启会清空进程内多轮会话，需新开对话；刷新网页仍按 R1 清空临时展示。依赖锁文件和新增根配置变化后执行 `./dev build` 再 `./dev up`。容器依赖不使用本机 `.venv` / `node_modules`。
+后端源码变更自动重载，前端 Vite 热更新。后端重载 / 重启会清空旧 API 的进程内多轮会话；网页使用 R3 持久历史，刷新只读保存结果，续聊重新认证当前业务定义。停止旧 API 进程后再启动新进程，不能并行运行两个 history runtime。依赖锁文件和新增根配置变化后执行 `./dev build` 再 `./dev up`。容器依赖不使用本机 `.venv` / `node_modules`。
 
 `.env` 的宿主回环地址保持原值，容器配置覆盖为内部服务地址，不修改现有文件。API不挂载`.env`，没有迁移身份。模型主机目录在容器内保持解析后的相同绝对路径，兼容现有manifest的模型身份校验；RAG输出挂入固定路径。已有模型和索引复用，工具写入保持宿主UID / GID。默认CPU / FP32；首次构建可能较慢。
 
@@ -148,7 +148,7 @@ uv run --env-file .env python -m src.bootstrap migrate
 uv run --env-file .env python -m src.bootstrap create-admin --username admin-1
 ```
 
-管理员密码不放入 `.env.example`、Compose 或 Seed。首次启动和初始化不创建任何用户。API 运行进程只使用 `POSTGRES_CONTROL_APP_PASSWORD`，不使用迁移密码。启动 API 时会用 `chatbi_control_user` 检查 `schema_migrations` 中的 `chatbi-control-v2`，并验证 checkpoint 表、版本记录及运行权限；Schema 未完整迁移时，认证、SQLAdmin 和查询入口不会启动。
+管理员密码不放入 `.env.example`、Compose 或 Seed。首次启动和初始化不创建任何用户。API 运行进程只使用 `POSTGRES_CONTROL_APP_PASSWORD`，不使用迁移密码。启动 API 时会用 `chatbi_control_user` 检查 `schema_migrations` 中的 `chatbi-control-v3`，并验证 checkpoint /历史 /成果对象、约束、索引、版本记录及运行权限（保留 v2 标记供旧版本回滚）；Schema 未完整迁移时，认证、SQLAdmin 和查询入口不会启动。
 
 ### 4.4 重置 PostgreSQL 开发环境
 
@@ -506,9 +506,9 @@ curl --fail http://127.0.0.1:8000/health
 
 打包使用 `npm run build`。以 FastAPI 同源提供打包网页时，设置 `CHATBI_WEB_DIST_DIR=frontend/dist`，并将 `CHATBI_WEB_ORIGIN` 设置为实际网页地址（本地如 `http://127.0.0.1:8000`）。API-only 运行可同时留空这两个配置。线上 Origin 必须为 HTTPS；完整生产部署验收仍属于 R6。
 
-浏览器使用独立 Cookie 登录接口，旧 Bearer 和管理后台继续兼容。当前仅电脑端；刷新保持登录但不恢复临时聊天，长期历史在 R3 实现。
+浏览器使用独立 Cookie 登录接口，旧 Bearer 和管理后台继续兼容。当前仅电脑端；刷新保持登录并按 URL 只读 R3 已保存快照；重新登录默认新对话，通过私人列表重开历史。
 
-网页问数：登录后输入完整问题（如“2025年2月人民币净销售额是多少”），成功后可围绕上一成功状态追问。表格明确区分 NULL、零与空字符串；经校验 SQL 可展开查看。受控失败不会覆盖上一成功状态；网络中断、客户端超时或响应无效时，结果未确认，需点击“新建问数对话”并补全问题。前端不会自动重发，刷新会清空当前展示与会话编号。
+网页问数：登录后输入完整问题（如“2025年2月人民币净销售额是多少”），成功后可围绕上一成功状态追问。表格明确区分 NULL、零与空字符串；经校验 SQL 可展开查看。受控失败不会覆盖上一成功状态；网络中断、客户端超时或响应无效时，结果未确认，需手动刷新历史核对已提交状态，或点击“新建问数对话”并补全问题。前端不会自动重发；刷新只读当前历史，未确认轮次不推进续聊状态。
 
 网页经营分析：手动切换“经营分析”，提供完整的指标与两个时期（如“分析2025年2月相比2025年1月的人民币毛利变化”）。仅支持既有人民币净销售额 / 毛利的产品因素归因，不继承问数条件。报告、归因数值和任务证据按后端返回显示。失联后可点击“重试原分析”，草稿编辑不会改变该任务的原问题 / UUID；明确的过期或语义拒绝不能静默重建任务。等待期间两种模式都禁止再次发送与切换，仍可编辑下一条草稿或退出。
 
@@ -542,3 +542,16 @@ npm run test:real
 经营分析显示两期金额、产品贡献和所选产品的已有因素，数值方向由后端裁决；省略产品只声明数量。图形失败不影响报告和表格。行为详见[R2 Spec](specs/result-visualization-v1.md)。ECharts随本地应用打包，不依赖CDN；npm锁文件变化需 `./dev build` 后 `./dev up`，源码仍通过挂载热更新。
 
 R2默认Chrome用例通过 `cd frontend && npm test` 运行，不调用真实模型。实际容器运行 `scripts/verify_container_dev.sh real`，显式使用真实LLM、现有业务只读数据与RAG，覆盖问数/追问、时间及分类多指标和两期分析；正式验收需clean candidate。专用验收账号结束自动禁用、撤销Session、移除临时凭证，原用户和持久卷保留。全量AI Evaluation仍是单独入口，不能把小范围浏览器验收冒称全套通过。
+
+
+## 13. 历史与成果运行
+
+新增 `database/control/005_history_results.sql` 由现有 `./dev migrate` / `src.bootstrap migrate` 显式安装；请求路径不执行 DDL。历史、轮次、固定成果在独立 Control DB 保存，业务库仍只读。初始化 / 升级 / 重复迁移均保留原账号、Session、RBAC、checkpoint 与业务数据；旧内存记录无法补回。
+
+只运行一个 API 应用进程，禁止多 worker。启动持有独立 PG advisory lock 并更新 epoch：遗留 accepted 轮次标为结果未确认，保留上一成功状态。旧进程退出等待在执行请求完成，再释放 guard 与资源；失去 guard 后禁止执行和回收，已提交快照仍可按权限读取。重启不自动重发请求。
+
+升级前停止旧 API，显式迁移，再启动新版本。回滚先停止新 API 再启动兼容的旧版本，保留 v3 表和数据，不反向执行 DROP、不删除开发卷；旧版本仍识别保留的 v2 marker。再次升级后已保存历史 /成果可读。本地兼容测试不构成 R6 生产回滚承诺。
+
+`#history=<UUID>` / `#saved=<UUID>` 定位当前私人记录；新登录保持空白，旧账号私有数据不写浏览器持久存储。历史只读打开；失败分析有效期内手动恢复原 run，过期仅能显式新建分析。完成报告不依赖 checkpoint 存活。删除原历史保留成果，删除成果保留历史。
+
+验收入口与候选身份见 [R3 Acceptance](acceptance/history-results-v1.md)。

@@ -4,15 +4,15 @@ import argparse
 import json
 import os
 import pty
-import select as io_select
 import secrets
+import select as io_select
 import subprocess
 import sys
 import time
 from pathlib import Path
 from uuid import uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.authorization import hash_password
@@ -153,6 +153,31 @@ def initialize_admin():
     print("隔离环境交互管理员创建通过。")
 
 
+def expire_analysis():
+    account = json.loads((REPORT / "account.json").read_text())
+    evidence = json.loads((REPORT / "browser.json").read_text())
+    engine = create_control_engine(
+        ControlDatabaseConfig.from_environment(require_migrator=False)
+    )
+    try:
+        with engine.begin() as connection:
+            changed = connection.execute(
+                text(
+                    "UPDATE business_analysis_runs SET expires_at=CURRENT_TIMESTAMP-INTERVAL '1 second' WHERE analysis_run_id=:run AND owner_subject=:owner"
+                ),
+                {
+                    "run": evidence["restart_inputs"]["analysis_run_id"],
+                    "owner": "local:" + account["username"],
+                },
+            )
+            # 身份subject沿用LocalSessionIdentityProvider；先核实唯一归属再推进时间。
+            if changed.rowcount != 1:
+                raise RuntimeError("验收分析身份不一致，未完成TTL检查")
+    finally:
+        engine.dispose()
+    print("专用验收分析检查点已过期，完成历史快照保留。")
+
+
 def verify_persistence():
     evidence = json.loads((REPORT / "browser.json").read_text())
     current = reference()
@@ -165,7 +190,8 @@ def verify_persistence():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "action", choices=["prepare", "cleanup", "admin", "persistence"]
+        "action",
+        choices=["prepare", "cleanup", "admin", "persistence", "expire-analysis"],
     )
     args = parser.parse_args()
     if args.action == "prepare":
@@ -174,5 +200,7 @@ if __name__ == "__main__":
         cleanup()
     elif args.action == "admin":
         initialize_admin()
+    elif args.action == "expire-analysis":
+        expire_analysis()
     else:
         verify_persistence()

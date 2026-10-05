@@ -32,6 +32,24 @@ def build_prompt(
 </semantic_query>
 """
         requested_metric_count = len(semantic_query.metrics)
+        if semantic_query.restoration_conditions is not None:
+            structured_context += """
+历史查询的conditions是程序认证的完整业务要求，必须逐项保持。
+order_by按数组顺序表达用户指定的排序优先级，显式NULLS FIRST/LAST。
+row_limit非null时严格为业务LIMIT；为null时不添加LIMIT，程序另有最多100行公开结果限制。
+selection表示实体字段和distinct；aggregate_filters只放HAVING，不能转为WHERE。
+年份/季度/月份分组输出完整时期身份，例如EXTRACT(YEAR)+EXTRACT(MONTH)，或DATE_TRUNC。
+不要增加未选输出字段，也不要用用户原问题重新解释认证条件。
+"""
+            conditions = semantic_query.restoration_conditions
+            if conditions.row_limit is None and not conditions.order_by:
+                structured_context += """
+未指定业务排序且没有排名限制时，按输出维度或所选实体身份字段升序、NULLS LAST排列，仅作为稳定展示顺序。
+"""
+            elif conditions.row_limit is not None:
+                structured_context += """
+排名时，先按order_by严格保持用户指定的排名优先级，再按尚未排序的输出维度或实体身份字段升序、NULLS LAST确定平局结果。
+"""
     else:
         question = semantic_query
         requested_metric_count = len(context.metric_constraints)
@@ -99,4 +117,6 @@ def _semantic_query_json(query: ValidatedSemanticQuery) -> str:
             "start": query.time.start.isoformat(),
             "end": query.time.end.isoformat(),
         }
+    if query.restoration_conditions is not None:
+        payload["conditions"] = query.restoration_conditions.to_payload()
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))

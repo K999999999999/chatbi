@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +23,7 @@ class ControlDatabaseMigrationError(RuntimeError):
     """应用库迁移失败。"""
 
 
-CONTROL_SCHEMA_VERSION = "chatbi-control-v2"
+CONTROL_SCHEMA_VERSION = "chatbi-control-v3"
 
 
 @dataclass(frozen=True)
@@ -34,9 +34,9 @@ class ControlDatabaseConfig:
     port: int
     database: str
     app_user: str
-    app_password: str
+    app_password: str = field(repr=False)
     migrator_user: str
-    migrator_password: str
+    migrator_password: str = field(repr=False)
     bootstrap_database: str = "postgres"
 
     @classmethod
@@ -199,6 +199,159 @@ def verify_control_schema(engine: Engine) -> None:
         raise ControlDatabaseMigrationError(
             "经营分析 checkpoint Schema 或运行权限未安装，请先运行 migration"
         )
+    _verify_history_schema(engine)
+
+
+def _verify_history_schema(engine: Engine) -> None:
+    required = {
+        "history_records": {
+            "id",
+            "owner_user_id",
+            "kind",
+            "creation_operation_id",
+            "context_revision",
+            "record_revision",
+            "active_turn_id",
+            "last_success_turn_id",
+            "execution_generation",
+            "deleted_at",
+            "title",
+            "first_question",
+            "creation_operation_hash",
+            "created_at",
+            "updated_at",
+            "next_ordinal",
+            "analysis_run_id",
+        },
+        "history_turns": {
+            "id",
+            "history_id",
+            "operation_id",
+            "status",
+            "snapshot",
+            "runtime_epoch",
+            "execution_generation",
+            "ordinal",
+            "operation_hash",
+            "question",
+            "request_id",
+            "created_at",
+            "completed_at",
+            "public_error",
+            "attempt_input",
+            "snapshot_version",
+        },
+        "saved_results": {
+            "id",
+            "owner_user_id",
+            "snapshot",
+            "snapshot_version",
+            "record_revision",
+            "kind",
+            "title",
+            "created_at",
+            "updated_at",
+            "source_history_id",
+            "source_turn_id",
+        },
+        "history_runtime": {"singleton", "runtime_epoch"},
+    }
+    try:
+        with engine.connect() as connection:
+            inspector = inspect(connection)
+            tables = set(inspector.get_table_names())
+            if not set(required).issubset(tables):
+                raise ValueError("历史对象缺失")
+            for table, columns in required.items():
+                if not columns.issubset(
+                    {c["name"] for c in inspector.get_columns(table)}
+                ):
+                    raise ValueError("历史字段缺失")
+            if connection.dialect.name == "postgresql":
+                constraints = inspector.get_foreign_keys("history_records")
+                if not {"history_active_turn_fk", "history_success_turn_fk"}.issubset(
+                    {c["name"] for c in constraints}
+                ):
+                    raise ValueError("历史引用约束缺失")
+                unique = {
+                    tuple(c["column_names"])
+                    for c in inspector.get_unique_constraints("history_records")
+                }
+                if ("owner_user_id", "creation_operation_id") not in unique:
+                    raise ValueError("历史受理唯一约束缺失")
+                turn_unique = {
+                    tuple(c["column_names"])
+                    for c in inspector.get_unique_constraints("history_turns")
+                }
+                if not {
+                    ("history_id", "ordinal"),
+                    ("history_id", "operation_id"),
+                    ("history_id", "id"),
+                }.issubset(turn_unique):
+                    raise ValueError("历史轮次唯一约束缺失")
+                if ("analysis_run_id",) not in unique:
+                    raise ValueError("分析运行唯一约束缺失")
+                for table, name in (
+                    ("history_records", "history_records_owner_updated_idx"),
+                    ("saved_results", "saved_results_owner_updated_idx"),
+                ):
+                    if name not in {
+                        index["name"] for index in inspector.get_indexes(table)
+                    }:
+                        raise ValueError("历史列表索引缺失")
+                checks = {
+                    "history_records": {
+                        "history_record_kind",
+                        "history_context_revision",
+                        "history_record_revision",
+                        "history_next_ordinal",
+                        "history_generation",
+                        "history_analysis_identity",
+                    },
+                    "history_turns": {
+                        "history_turn_ordinal",
+                        "history_turn_status",
+                        "history_turn_success_snapshot",
+                        "history_turn_snapshot_version",
+                    },
+                    "saved_results": {
+                        "saved_kind",
+                        "saved_revision",
+                        "saved_snapshot_version",
+                    },
+                    "history_runtime": {"history_singleton"},
+                }
+                for table, names in checks.items():
+                    if not names.issubset(
+                        {c["name"] for c in inspector.get_check_constraints(table)}
+                    ):
+                        raise ValueError("历史状态约束缺失")
+                for table in ("history_records", "saved_results"):
+                    if not any(
+                        c["constrained_columns"] == ["owner_user_id"]
+                        and c["referred_table"] == "users"
+                        and c["referred_columns"] == ["id"]
+                        for c in inspector.get_foreign_keys(table)
+                    ):
+                        raise ValueError("历史归属约束缺失")
+                for table in required:
+                    privileges = (
+                        ("SELECT", "INSERT", "UPDATE")
+                        if table == "history_runtime"
+                        else ("SELECT", "INSERT", "UPDATE", "DELETE")
+                    )
+                    for privilege in privileges:
+                        if not connection.execute(
+                            text(
+                                "SELECT has_table_privilege(current_user, :table, :privilege)"
+                            ),
+                            {"table": table, "privilege": privilege},
+                        ).scalar_one():
+                            raise ValueError("历史权限缺失")
+    except Exception as exc:
+        raise ControlDatabaseMigrationError(
+            "历史Schema或权限不完整，请先运行migration"
+        ) from exc
 
 
 def initialize_control_database(

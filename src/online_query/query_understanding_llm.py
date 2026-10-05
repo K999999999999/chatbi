@@ -15,6 +15,10 @@ from ..semantic.metric_vocabulary import (
     load_metric_vocabulary,
 )
 from .llm import LLMError
+from .restoration_conditions import (
+    revision_operations_from_payload,
+    RestorationConditionError,
+)
 from .query_trace import safe_enrich, safe_trace_scope
 from .query_understanding import (
     QueryUnderstandingClarificationRequired,
@@ -137,7 +141,52 @@ class LangChainQueryUnderstanding:
             build_query_revision_prompt(previous, question),
         )
 
-    def _understand_prompt(self, prompt: str) -> QueryUnderstandingResult:
+    def understand_history(self, question: str) -> QueryUnderstandingResult:
+        """解析完整历史profile候选，保持旧六字段入口不变。"""
+        prompt = build_query_understanding_prompt(question)
+        from .semantic_state import load_query_bindings
+
+        approved_filters = "、".join(sorted(load_query_bindings()["filters"]))
+        prompt += f"""
+历史filters.field_text只能使用程序已有认证映射。允许的非分组筛选字段：{approved_filters}；值必须保留用户表达，不转成物理列或SQL。
+"""
+        prompt += """
+历史查询格式：上面的基础六字段保留，额外必须给conditions对象，结构严格为：
+{"order_by":[{"target_kind":"metric","target":"规范指标名","direction":"desc","nulls":"first"}],"row_limit":10,"aggregate_filters":[],"selection":null}
+order_by无指定排序时空数组；target_kind仅metric/dimension/entity_field/time，业务名称不得用物理列；asc默认nulls=last、desc默认first。
+row_limit仅用户明确的排名数量，无数量为null，不能默认为100；缺数量或无法确定排名指标则只输出{\"outcome\":\"clarification_required\"}。
+aggregate_filters为聚合后业务条件，每项{\"metric\":\"规范指标名\",\"operator\":\"gt\",\"values\":[\"100\"]}，数值用十进制字符串。
+实体查询selection必须为{\"fields\":[\"业务字段名\"],\"distinct\":true或false}，指标分析selection为null。
+时间筛选和日历分组是两个独立条件：time表示筛选范围，dimensions表示分组粒度。比如“按月份列出2025年销售额”应使用dimensions=["月份"]、time={"text":"2025年","granularity":"year"}；不能因为按月份分组而把time粒度改成month。
+严格输出完整conditions，不从数据库实现细节发明业务条件。
+实体字段仅客户名称、客户编码、产品名称、产品编码、订单编号；列出客户名称和订单编号默认distinct=true。
+"""
+        return self._understand_prompt(prompt, require_restorable=True)
+
+    def understand_history_revision(self, previous, question):
+        from .prompt import _semantic_query_json
+
+        prompt = build_query_revision_prompt(previous, question)
+        prompt += """
+历史delta除基础六字段外必须增加order_operation、limit_operation、aggregate_filter_operation、selection_operation。
+每项严格为{"operation":"keep"}或{"operation":"clear"}或{"operation":"set","value":完整新值}。
+未明确修改的槽位keep；明确取消clear；set的value分别为完整order_by数组、正整数row_limit、完整aggregate_filters数组、selection对象。
+order_by每项target_kind(metric/dimension/entity_field/time)、target(业务名)、direction(asc/desc)、nulls(first/last)。
+aggregate_filters每项metric、operator(equals/in/gt/gte/lt/lte)、values(十进制字符串数组)。selection为fields业务字段数组和distinct布尔值。
+只改变指标时排序keep，唯一指标排序由程序确定性替换；改变指标且原聚合筛选指向旧指标时须澄清。
+只看前20项仅limit_operation=set,value=20，其他槽位keep。取消排名限制使用limit_operation=clear。
+模型只提出用户明确表达的变化，不能夹带旧条件作为delta。实体字段仅客户名称、客户编码、产品名称、产品编码、订单编号。
+完整上一轮条件（其中绝对时间不重新解释）：
+""" + _semantic_query_json(previous)
+        return self._understand_prompt(prompt, history_revision=True)
+
+    def _understand_prompt(
+        self,
+        prompt: str,
+        *,
+        require_restorable: bool = False,
+        history_revision: bool = False,
+    ) -> QueryUnderstandingResult:
         with self._stage_trace():
             response = self._invoke_with_retry(prompt)
 
@@ -174,11 +223,29 @@ class LangChainQueryUnderstanding:
                     reason="OUTCOME_UNSUPPORTED",
                 )
             try:
-                return candidate_from_payload(payload)
-            except SemanticQueryStructureError as exc:
+                if history_revision:
+                    names = {
+                        "order_operation",
+                        "limit_operation",
+                        "aggregate_filter_operation",
+                        "selection_operation",
+                    }
+                    if not names.issubset(payload):
+                        raise RestorationConditionError("历史delta操作缺失")
+                    operations = revision_operations_from_payload(
+                        {n: payload[n] for n in names}
+                    )
+                    semantic = candidate_from_payload(
+                        {k: v for k, v in payload.items() if k not in names}
+                    )
+                    return semantic, operations
+                return candidate_from_payload(
+                    payload, require_restorable=require_restorable
+                )
+            except (SemanticQueryStructureError, RestorationConditionError) as exc:
                 raise LLMError(
                     "Query Understanding 结构化输出无效",
-                    reason=exc.reason,
+                    reason=getattr(exc, "reason", "HISTORY_REVISION_INVALID"),
                 ) from exc
 
     def _invoke_with_retry(self, prompt: str) -> object:

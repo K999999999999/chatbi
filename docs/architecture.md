@@ -391,4 +391,9 @@ Online Retrieval V1 已接入 Online Query：实体类、单指标和多指标�
 - RAG Offline Build 和 Online Retrieval V1 已实现。新 manifest 记录输入指纹；production 启动时校验 catalog、Metadata 和当前发布资产，不匹配时拒绝 Ready。
 - PostgreSQL 首次初始化需在基础 init 完成后运行 `src.bootstrap migrate`；它通过 `PostgresSaver.setup()` 安装 checkpoint 表和权限，healthcheck / API 启动检查验证其完整性。
 - 日期化 Acceptance 和 ignored reports 是历史证据，不代表当前候选。Evaluation 基线只有在单轮、多轮和 Business Analysis 三套报告均记录同一最终 clean commit、`git_dirty=false`，且各自满足 `0 FAIL`、`0 INVALID_CASE` 后才成立。commit `31a04549924f622777f106d4fe5a758bd2ca2beb` 与 `564343216e4493f832f07efb345c03b058a04eb5` 上的通过结果是历史基线，后者的多轮波动见[验收工作项](../.scratch/engineering-quality-gates/issues/04-current-candidate-evaluation-baseline.md#result)；后续候选需重新评测。
-- 当前入口是同步 Query API 与电脑端 Web；历史和流式仍待后续需求。多源、多 Schema、多租户、任意复杂分析和生产部署运行保障不属于已验收的当前 Contract。
+- 当前入口是同步 Query API 与电脑端 Web；R3 已提供私人长期历史、快照恢复与独立成果，R4 流式反馈和 R5 导出仍待各自需求与验收。多源、多 Schema、多租户、任意复杂分析和生产部署运行保障不属于已验收的当前 Contract。
+
+
+## 长期历史与结果边界
+
+History Application 位于现有 query_api Application 边界，通过 HistoryStore Port 使用 Control DB Adapter；HTTP 层处理身份与 DTO，Online Query 负责完整业务条件认证、当前映射、SQL Guard 和执行。历史快照不是业务真相。R2 维度展示与 R3 恢复共享 `src/semantic/query_bindings.json` 的批准映射，当前发布资源仍必须认证该引用。单 API 进程以独立 PG advisory lock 与 epoch 保证恢复和迟到提交隔离，未扩展多副本 / 故障切换。详细行为与设计见 [R3 Spec](specs/history-results-v1.md) 和 [Design](designs/history-results-v1.md)。

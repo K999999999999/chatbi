@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync, readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { login, send } from './helpers';
-import { queryResult } from '../src/results';
+import { querySnapshot } from '../src/results';
 import { analysisResult } from '../src/Analysis';
 
 test('real Chrome login → model/RAG query → followup → two-period analysis', async ({ page, browser }) => {
@@ -17,34 +17,34 @@ test('real Chrome login → model/RAG query → followup → two-period analysis
   const build = ['index.html', ...readdirSync(assetDirectory).map(name => `assets/${name}`)].sort().map(name => ({
     name, sha256: createHash('sha256').update(readFileSync(resolve(root, 'frontend/dist', name))).digest('hex'),
   }));
-  const evidence: Record<string, unknown> = { username: process.env.CHATBI_REAL_E2E_USERNAME, commit, at: new Date().toISOString(), chrome: browser.version(), platform: process.platform, build, reference };
+  const evidence: Record<string, unknown> = { username: process.env.CHATBI_REAL_E2E_USERNAME, commit, git_dirty: false, at: new Date().toISOString(), chrome: browser.version(), platform: process.platform, build, reference };
   const directory = resolve(root, 'reports/browser-real'); mkdirSync(directory, { recursive: true });
   const reportPath = resolve(directory, `${new Date().toISOString().replace(/[:.]/g, '-')}-${commit.slice(0, 7)}.json`);
   try {
     evidence.step = "login";
     await login(page, process.env.CHATBI_REAL_E2E_USERNAME!, process.env.CHATBI_REAL_E2E_PASSWORD!);
     evidence.step = "query";
-    const firstResponse = page.waitForResponse(response => response.url().endsWith('/api/v1/query'), { timeout: 200000 });
+    const firstResponse = page.waitForResponse(response => response.request().method() === 'POST' && /\/(turns|resume)$/.test(new URL(response.url()).pathname), { timeout: 200000 });
     await send(page, '2025年2月已完成订单的人民币净销售额是多少？');
     evidence.query_response = await (await firstResponse).json();
-    const first = queryResult(evidence.query_response); evidence.query = first;
+    const first = querySnapshot((evidence.query_response as any).turn.snapshot); evidence.query = first;
     expect(Number(first.rows[0][0])).toBe(Number(reference.net_sales['2']));
     await expect(page.getByRole('table')).toHaveCount(1);
     evidence.step = "followup";
-    const followupResponse = page.waitForResponse(response => response.url().endsWith('/api/v1/query'), { timeout: 200000 });
+    const followupResponse = page.waitForResponse(response => response.request().method() === 'POST' && /\/(turns|resume)$/.test(new URL(response.url()).pathname), { timeout: 200000 });
     await send(page, '改成2025年3月');
     evidence.followup_response = await (await followupResponse).json();
-    const followup = queryResult(evidence.followup_response); evidence.followup = followup;
-    expect(followup.conversation_id).toBe(first.conversation_id);
+    const followup = querySnapshot((evidence.followup_response as any).turn.snapshot); evidence.followup = followup;
+    expect((evidence.followup_response as any).history.id).toBe((evidence.query_response as any).history.id);
     expect(Number(followup.rows[0][0])).toBe(Number(reference.net_sales['3']));
     await expect(page.getByRole('table')).toHaveCount(2);
     evidence.step = 'analysis';
     await page.getByRole('button', { name: '经营分析', exact: true }).click();
-    const responsePromise = page.waitForResponse(response => response.url().endsWith('/api/v1/query'), { timeout: 1250000 });
+    const responsePromise = page.waitForResponse(response => response.request().method() === 'POST' && /\/(turns|resume)$/.test(new URL(response.url()).pathname), { timeout: 1250000 });
     await send(page, '分析2025年3月相比2025年2月的人民币毛利变化及产品因素贡献。');
     const response = await responsePromise; const body = await response.json(); evidence.analysis_response = body;
-    const id = response.request().postDataJSON().analysis_run_id;
-    const analysis = analysisResult(body, id); evidence.analysis = analysis;
+    const id = body.history.analysis_run_id;
+    const analysis = analysisResult(body.turn.snapshot, id); evidence.analysis = analysis;
     expect(analysis.report.attribution).toEqual(expect.objectContaining({
       metric_name: reference.attribution.metric_name, comparison_value: reference.attribution.comparison_value,
       current_value: reference.attribution.current_value, total_change: reference.attribution.total_change,

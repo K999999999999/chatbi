@@ -1,10 +1,10 @@
 """使用业务只读账号读取独立参考值；不调用模型、不输出连接配置。"""
 
-import json
 import hashlib
+import json
+from decimal import Decimal
 from pathlib import Path
 from urllib.parse import urlsplit
-from decimal import Decimal
 
 import psycopg
 
@@ -81,6 +81,10 @@ def reference():
             categories = {
                 label: [str(net), str(cost)] for label, net, cost in cursor.fetchall()
             }
+            cursor.execute(
+                "SELECT p.product_name, SUM(f.net_sales_amount_cny) FROM mart_sales.fct_sales_order_line f JOIN mart_sales.dim_product p ON p.product_key=f.product_key JOIN mart_sales.dim_date d ON d.date_key=f.completion_date_key WHERE f.order_status='completed' AND d.year=2025 AND d.month=3 GROUP BY p.product_name ORDER BY SUM(f.net_sales_amount_cny) DESC NULLS FIRST,p.product_name ASC NULLS LAST LIMIT 3"
+            )
+            top_products = [[name, str(amount)] for name, amount in cursor.fetchall()]
     request = AnalysisRequest(
         "人民币毛利",
         AnalysisTimeRange("2025年3月", TimeGranularity.MONTH),
@@ -100,6 +104,7 @@ def reference():
         "net_sales": query,
         "monthly": monthly,
         "categories": categories,
+        "top_products": top_products,
         "attribution": attribution,
         "runtime_identity": runtime_identity,
     }

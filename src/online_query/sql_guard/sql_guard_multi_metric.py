@@ -18,6 +18,8 @@ from .sql_guard_scope import (
 def validate_multi_metric_expression(
     expression: exp.Select,
     context: QueryContext,
+    *,
+    allow_expression_dimensions: bool = False,
 ) -> None:
     constraints = context.metric_constraints
     metric_table = _multi_metric_table(constraints)
@@ -26,7 +28,13 @@ def validate_multi_metric_expression(
     _validate_multi_metric_from(expression, context, metric_table)
     _validate_multi_metric_joins(expression, context, bindings, metric_table)
     _validate_multi_metric_filters(expression, context, bindings, metric_table)
-    _validate_multi_metric_output(expression, context, bindings, metric_table)
+    _validate_multi_metric_output(
+        expression,
+        context,
+        bindings,
+        metric_table,
+        allow_expression_dimensions=allow_expression_dimensions,
+    )
 
 
 def _reject_multi_metric_structure(expression: exp.Select) -> None:
@@ -195,6 +203,8 @@ def _validate_multi_metric_output(
     context: QueryContext,
     bindings: dict[str, set[str]],
     metric_table: str,
+    *,
+    allow_expression_dimensions: bool,
 ) -> None:
     projections = tuple(expression.expressions)
     if not projections:
@@ -214,7 +224,7 @@ def _validate_multi_metric_output(
             metric_projections.append(value)
             metric_aggregate_ids.update(id(node) for node in aggregates)
         else:
-            if not isinstance(value, exp.Column):
+            if not allow_expression_dimensions and not isinstance(value, exp.Column):
                 raise SQLRejectedError("多指标 SQL 的非聚合输出必须是分组字段")
             dimension_projections.append(value)
 

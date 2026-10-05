@@ -170,7 +170,7 @@ class ControlBootstrapTest(TestCase):
                 "CREATE TABLE schema_migrations (version TEXT PRIMARY KEY)"
             )
             connection.exec_driver_sql(
-                "INSERT INTO schema_migrations(version) VALUES ('chatbi-control-v2')"
+                "INSERT INTO schema_migrations(version) VALUES ('chatbi-control-v3')"
             )
         with self.assertRaisesRegex(ControlDatabaseMigrationError, "checkpoint"):
             verify_control_schema(self.engine)
@@ -189,7 +189,8 @@ class ControlBootstrapTest(TestCase):
                 "INSERT INTO checkpoint_migrations(v) VALUES (0)"
             )
 
-        verify_control_schema(self.engine)
+        with self.assertRaisesRegex(ControlDatabaseMigrationError, "历史Schema"):
+            verify_control_schema(self.engine)
 
     def test_chatbi_control_cli_imports_without_circular_dependency(self) -> None:
         root = Path(__file__).resolve().parents[2]
