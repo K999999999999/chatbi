@@ -332,6 +332,8 @@ class PostgresDevelopmentEnvironmentTest(unittest.TestCase):
                     ("chatbi-control-v1",),
                     ("chatbi-control-v2",),
                     ("chatbi-control-v3",),
+                    ("chatbi-control-v4",),
+                    ("chatbi-control-v5",),
                 },
             )
             cursor.execute(

@@ -108,6 +108,7 @@ cp .env.example .env
 - ChatBI 应用库：`POSTGRES_CONTROL_DB`、`POSTGRES_CONTROL_APP_USER`、`POSTGRES_CONTROL_APP_PASSWORD`、`CHATBI_ADMIN_SECRET_KEY`。`chatbi_control_user` 只访问应用库，保存账号、Session、固定 RBAC 和审计事件。
 - 一次性迁移账号：`POSTGRES_MIGRATOR_USER`、`POSTGRES_MIGRATOR_PASSWORD`、`POSTGRES_CONTROL_MIGRATOR_USER`。迁移账号不进入 API 运行进程。
 - 运行模式：`CHATBI_ENV`。真实入口使用应用库内置账号，不再配置 `CHATBI_IDENTITY_PROVIDER`、`CHATBI_IDENTITY_SUBJECT_ID` 或 `CHATBI_AUTH_POLICY_FILE`。
+- R4 后台执行额度：`CHATBI_EXECUTION_MAX_PER_USER` 默认 `1`，`CHATBI_EXECUTION_MAX_TOTAL` 默认 `4`；问数和经营分析共用单进程额度，不构成容量验收结果。必须为正整数，且账号额度不能高于进程额度。
 - LLM：`LLM_API_KEY`、`LLM_MODEL`，必要时填写 `LLM_BASE_URL`
 - Qdrant：`QDRANT_API_KEY` 默认是仅供回环绑定本地开发的公开值，不要用于共享或生产环境。
 - RAG：保持 `RAG_MODEL_DIR=.model-cache/bge-m3-5617a9f61b02` 和 `RAG_EMBEDDING_DEVICE=auto`。
@@ -148,7 +149,7 @@ uv run --env-file .env python -m src.bootstrap migrate
 uv run --env-file .env python -m src.bootstrap create-admin --username admin-1
 ```
 
-管理员密码不放入 `.env.example`、Compose 或 Seed。首次启动和初始化不创建任何用户。API 运行进程只使用 `POSTGRES_CONTROL_APP_PASSWORD`，不使用迁移密码。启动 API 时会用 `chatbi_control_user` 检查 `schema_migrations` 中的 `chatbi-control-v3`，并验证 checkpoint /历史 /成果对象、约束、索引、版本记录及运行权限（保留 v2 标记供旧版本回滚）；Schema 未完整迁移时，认证、SQLAdmin 和查询入口不会启动。
+管理员密码不放入 `.env.example`、Compose 或 Seed。首次启动和初始化不创建任何用户。API 运行进程只使用 `POSTGRES_CONTROL_APP_PASSWORD`，不使用迁移密码。启动 API 时会用 `chatbi_control_user` 检查 `schema_migrations` 中的 `chatbi-control-v5`，并验证 checkpoint /历史 /成果/执行对象、约束、索引、版本记录及运行权限（保留 v2–v4 标记供旧版本识别）；Schema 未完整迁移时，认证、SQLAdmin 和查询入口不会启动。
 
 ### 4.4 重置 PostgreSQL 开发环境
 
@@ -544,14 +545,18 @@ npm run test:real
 R2默认Chrome用例通过 `cd frontend && npm test` 运行，不调用真实模型。实际容器运行 `scripts/verify_container_dev.sh real`，显式使用真实LLM、现有业务只读数据与RAG，覆盖问数/追问、时间及分类多指标和两期分析；正式验收需clean candidate。专用验收账号结束自动禁用、撤销Session、移除临时凭证，原用户和持久卷保留。全量AI Evaluation仍是单独入口，不能把小范围浏览器验收冒称全套通过。
 
 
-## 13. 历史与成果运行
+## 13. 历史、执行状态与流式反馈运行
 
-新增 `database/control/005_history_results.sql` 由现有 `./dev migrate` / `src.bootstrap migrate` 显式安装；请求路径不执行 DDL。历史、轮次、固定成果在独立 Control DB 保存，业务库仍只读。初始化 / 升级 / 重复迁移均保留原账号、Session、RBAC、checkpoint 与业务数据；旧内存记录无法补回。
+历史、轮次、固定成果和后台执行身份存放于独立 Control DB，业务库仍只读。`database/control/005_history_results.sql` 与 `006_execution_streaming.sql` 由现有 `./dev migrate` / `src.bootstrap migrate` 显式安装；请求路径不执行 DDL。初始化 / 升级 / 重复迁移均保留原账号、Session、RBAC、checkpoint 与业务数据；旧内存记录无法补回。R4 执行与事件 Contract 见 [Spec](specs/execution-streaming-v1.md)，模块和运行生命周期设计见 [Design](designs/execution-streaming-v1.md)。
 
-只运行一个 API 应用进程，禁止多 worker。启动持有独立 PG advisory lock 并更新 epoch：遗留 accepted 轮次标为结果未确认，保留上一成功状态。旧进程退出等待在执行请求完成，再释放 guard 与资源；失去 guard 后禁止执行和回收，已提交快照仍可按权限读取。重启不自动重发请求。
+只运行一个 API 应用进程，禁止多 worker。启动持有独立 PG advisory lock 并更新 epoch：遗留 accepted / running 执行和轮次标为结果未确认，保留上一成功状态。正常关闭先停止新受理并等待后台 worker 结束，再释放 guard 与业务资源；进程意外退出后，重启不自动重发未确认请求。
 
 升级前停止旧 API，显式迁移，再启动新版本。回滚先停止新 API 再启动兼容的旧版本，保留 v3 表和数据，不反向执行 DROP、不删除开发卷；旧版本仍识别保留的 v2 marker。再次升级后已保存历史 /成果可读。本地兼容测试不构成 R6 生产回滚承诺。
 
+R4 最终真实浏览器 / 模型 / RAG / PostgreSQL 闭环使用 clean candidate 执行 `scripts/verify_container_dev.sh isolated`。该入口创建独立 Compose project 和空数据库卷，运行桌面 Chromium 真实登录、SSE、重连 / 刷新、多页、取消、分析报告与模型链路，并在退出时清理该 project 的卷与临时账号；它不会停止或清除日常开发 Compose project。真实运行报告位于 ignored `reports/browser-real/`，候选 SHA、报告指纹、清理结果和最终状态保存在本机 Git 公共目录的 R4 实时工作状态中。该浏览器闭环与三套正式 AI Evaluation 分开执行，不能相互替代。
+
+`real` 模式会复用指定的现有开发容器 / 数据，并在验收尾段重启当前开发 API；只在明确要对该开发 profile 做重启恢复检查时运行。该步骤保留 PostgreSQL / Qdrant named volume，结束仍会禁用专用账号、撤销 Session 并移除临时凭证。R4 clean 最终验收采用上述 `isolated` profile。
+
 `#history=<UUID>` / `#saved=<UUID>` 定位当前私人记录；新登录保持空白，旧账号私有数据不写浏览器持久存储。历史只读打开；失败分析有效期内手动恢复原 run，过期仅能显式新建分析。完成报告不依赖 checkpoint 存活。删除原历史保留成果，删除成果保留历史。
 
-验收入口与候选身份见 [R3 Acceptance](acceptance/history-results-v1.md)。
+验收入口与候选身份见 [R3 Acceptance](acceptance/history-results-v1.md) 与 [R4 Acceptance](acceptance/execution-streaming-v1.md)。

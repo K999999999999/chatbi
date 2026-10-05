@@ -12,7 +12,14 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 
 from src.authorization.contracts import AuthContext
-from src.online_query.contracts import QueryErrorCode, QueryFailure
+from src.online_query.contracts import (
+    ExecutionControl,
+    ExecutionProgressObserver,
+    ExecutionStage,
+    ExecutionStopped,
+    QueryErrorCode,
+    QueryFailure,
+)
 
 from .attribution import (
     AttributionError,
@@ -33,7 +40,11 @@ from .contracts import (
 from .decomposer import AnalysisRequestExtractor
 from .execution import TaskExecutor, TaskResult, TaskSemanticAdapter, TaskStatus
 from .planning import build_comparison_plan
-from .reporting import AnalysisReportError, BusinessAnalysisReport
+from .reporting import (
+    AnalysisReportError,
+    BusinessAnalysisReport,
+    ReportDraftObserver,
+)
 from .run_store import (
     AnalysisRunConflict,
     AnalysisRunStatus,
@@ -46,6 +57,9 @@ class AnalysisRunContext(TypedDict):
 
     request_id: str
     auth_context: AuthContext
+    progress_observer: ExecutionProgressObserver | None
+    execution_control: ExecutionControl | None
+    report_observer: ReportDraftObserver | None
 
 
 class AnalysisRunState(TypedDict, total=False):
@@ -171,18 +185,29 @@ class BusinessAnalysisApplication:
         request_id: str,
         auth_context: AuthContext,
         analysis_run_id: str | None = None,
+        progress_observer: ExecutionProgressObserver | None = None,
+        execution_control: ExecutionControl | None = None,
+        report_observer: ReportDraftObserver | None = None,
     ) -> AnalysisResult:
+        if execution_control is not None:
+            execution_control.checkpoint()
         run_id = _analysis_run_uuid(analysis_run_id, request_id=request_id)
         if isinstance(run_id, QueryFailure):
             return run_id
         if self._run_store is not None:
             try:
+                if execution_control is not None:
+                    execution_control.checkpoint()
                 self._run_store.cleanup_expired()
                 run = self._run_store.claim(
                     run_id,
                     owner_subject=_owner_subject(auth_context),
                     question=question,
                 )
+                if execution_control is not None:
+                    execution_control.checkpoint()
+            except ExecutionStopped:
+                raise
             except AnalysisRunConflict as exc:
                 return _failure(
                     request_id,
@@ -205,9 +230,19 @@ class BusinessAnalysisApplication:
         try:
             state = self._graph.invoke(
                 {"question": question},
-                context={"request_id": request_id, "auth_context": auth_context},
+                context={
+                    "request_id": request_id,
+                    "auth_context": auth_context,
+                    "progress_observer": progress_observer,
+                    "execution_control": execution_control,
+                    "report_observer": report_observer,
+                },
                 config=config,
             )
+            if execution_control is not None:
+                execution_control.checkpoint()
+        except ExecutionStopped:
+            raise
         except Exception:
             return _failure(
                 request_id,
@@ -221,6 +256,8 @@ class BusinessAnalysisApplication:
                 failure,
                 state.get("task_results", ()),
             ):
+                if execution_control is not None:
+                    execution_control.checkpoint()
                 self._run_store.mark_completed(run_id)
             return failure
         plan = state.get("plan")
@@ -239,7 +276,11 @@ class BusinessAnalysisApplication:
             )
         if self._run_store is not None:
             try:
+                if execution_control is not None:
+                    execution_control.checkpoint()
                 self._run_store.mark_completed(run_id)
+            except ExecutionStopped:
+                raise
             except Exception:
                 return _failure(
                     request_id,
@@ -332,13 +373,25 @@ class BusinessAnalysisApplication:
             state.get("plan"), AnalysisPlan
         ):
             return {"failure": None}
+        if runtime.context["execution_control"] is not None:
+            runtime.context["execution_control"].checkpoint()
         question = state.get("question", "")
+        if runtime.context["progress_observer"] is not None:
+            runtime.context["progress_observer"].set_stage(
+                ExecutionStage.ANALYSIS_UNDERSTANDING
+            )
         try:
+            if runtime.context["execution_control"] is not None:
+                runtime.context["execution_control"].checkpoint()
             context = self._context_provider()
+            if runtime.context["execution_control"] is not None:
+                runtime.context["execution_control"].checkpoint()
             catalog = AnalysisSemanticCatalog.from_records(
                 context.metric_records,
                 context.dimensions,
             )
+        except ExecutionStopped:
+            raise
         except Exception:
             return {
                 "failure": _failure(
@@ -349,7 +402,17 @@ class BusinessAnalysisApplication:
             }
 
         try:
-            candidate = self._decomposer.decompose(question, context)
+            control = runtime.context["execution_control"]
+            decomposer = getattr(self._decomposer, "decompose_with_control", None)
+            candidate = (
+                decomposer(question, context, control)
+                if control is not None and callable(decomposer)
+                else self._decomposer.decompose(question, context)
+            )
+            if control is not None:
+                control.checkpoint()
+        except ExecutionStopped:
+            raise
         except AnalysisRequestExtractionError as exc:
             return {
                 "failure": _failure(
@@ -383,12 +446,22 @@ class BusinessAnalysisApplication:
             state.get("plan"), AnalysisPlan
         ):
             return {"failure": None}
+        if runtime.context["execution_control"] is not None:
+            runtime.context["execution_control"].checkpoint()
+        if runtime.context["progress_observer"] is not None:
+            runtime.context["progress_observer"].set_stage(
+                ExecutionStage.ANALYSIS_PLAN_VALIDATION
+            )
         try:
             request, plan = build_comparison_plan(
                 state["candidate"],
                 state["catalog"],
                 question=state["question"],
             )
+            if runtime.context["execution_control"] is not None:
+                runtime.context["execution_control"].checkpoint()
+        except ExecutionStopped:
+            raise
         except AnalysisPlanClarificationRequired as exc:
             return {
                 "failure": _failure(
@@ -446,6 +519,9 @@ class BusinessAnalysisApplication:
             }
 
         previous = {result.task_id: result for result in state.get("task_results", ())}
+        control = runtime.context["execution_control"]
+        if control is not None:
+            control.checkpoint()
         task = next(
             (
                 item
@@ -463,21 +539,46 @@ class BusinessAnalysisApplication:
                 )
             }
 
+        if runtime.context["progress_observer"] is not None:
+            completed = sum(
+                result.status is TaskStatus.COMPLETED and not result.truncated
+                for result in previous.values()
+            )
+            total = len(state["plan"].tasks)
+            runtime.context["progress_observer"].set_stage(
+                ExecutionStage.ANALYSIS_QUERY_TASKS
+            )
+            runtime.context["progress_observer"].set_task_progress(completed, total)
+
         result = executor.execute_one(
             task,
             request_id=runtime.context["request_id"],
+            execution_control=control,
         )
         if result.status is TaskStatus.FAILED and _retryable_task_result(result):
+            if control is not None:
+                control.checkpoint()
             result = executor.execute_one(
                 task,
                 request_id=runtime.context["request_id"],
+                execution_control=control,
             )
+        if control is not None:
+            control.checkpoint()
         previous[task.task_id] = result
         task_results = tuple(
             previous[item.task_id]
             for item in state["plan"].tasks
             if item.task_id in previous
         )
+        if runtime.context["progress_observer"] is not None:
+            completed = sum(
+                item.status is TaskStatus.COMPLETED and not item.truncated
+                for item in task_results
+            )
+            runtime.context["progress_observer"].set_task_progress(
+                completed, len(state["plan"].tasks)
+            )
         if result.status is not TaskStatus.COMPLETED or result.truncated:
             return {
                 "task_results": task_results,
@@ -499,11 +600,47 @@ class BusinessAnalysisApplication:
         runtime: Runtime[AnalysisRunContext],
     ) -> dict[str, object]:
         try:
-            report = self._summarizer.summarize(
-                state["question"],
-                state["task_results"],
-                state["attribution"],
-            )
+            control = runtime.context["execution_control"]
+            if control is not None:
+                control.checkpoint()
+            if runtime.context["progress_observer"] is not None:
+                runtime.context["progress_observer"].set_stage(
+                    ExecutionStage.ANALYSIS_REPORT_GENERATION
+                )
+            controlled = getattr(self._summarizer, "summarize_with_control", None)
+            report_observer = runtime.context["report_observer"]
+            if report_observer is not None and not callable(controlled):
+                raise AnalysisReportError(
+                    "Summary LLM 不支持报告流式输出",
+                    code="LLM_ERROR",
+                    reason="PROVIDER_STREAM_UNAVAILABLE",
+                )
+            if report_observer is not None:
+                assert callable(controlled)
+                report = controlled(
+                    state["question"],
+                    state["task_results"],
+                    state["attribution"],
+                    control,
+                    report_observer,
+                )
+            elif control is not None and callable(controlled):
+                report = controlled(
+                    state["question"],
+                    state["task_results"],
+                    state["attribution"],
+                    control,
+                )
+            else:
+                report = self._summarizer.summarize(
+                    state["question"],
+                    state["task_results"],
+                    state["attribution"],
+                )
+            if control is not None:
+                control.checkpoint()
+        except ExecutionStopped:
+            raise
         except AnalysisReportError as exc:
             return {
                 "failure": _failure(
@@ -528,10 +665,21 @@ class BusinessAnalysisApplication:
         runtime: Runtime[AnalysisRunContext],
     ) -> dict[str, object]:
         try:
+            control = runtime.context["execution_control"]
+            if control is not None:
+                control.checkpoint()
+            if runtime.context["progress_observer"] is not None:
+                runtime.context["progress_observer"].set_stage(
+                    ExecutionStage.ANALYSIS_ATTRIBUTION
+                )
             attribution = calculate_product_attribution(
                 state["analysis_request"],
                 state["task_results"],
             )
+            if control is not None:
+                control.checkpoint()
+        except ExecutionStopped:
+            raise
         except AttributionError as exc:
             return {
                 "failure": _failure(

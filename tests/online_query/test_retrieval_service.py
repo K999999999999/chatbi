@@ -1,10 +1,11 @@
 """Online Retrieval 与 OnlineQueryService（在线查询服务）集成测试。"""
 
-from unittest.mock import Mock
 import unittest
+from unittest.mock import Mock
 
 from src.online_query.context import ContextLoadError
 from src.online_query.contracts import (
+    ExecutionStage,
     FallbackPolicy,
     JoinConstraint,
     MetricConstraint,
@@ -18,8 +19,8 @@ from src.online_query.contracts import (
     RequestShape,
     RetrievalStatus,
 )
-from src.online_query.service import OnlineQueryService
 from src.online_query.query_understanding import candidate_from_payload
+from src.online_query.service import OnlineQueryService
 
 
 class RetrievalServiceTest(unittest.TestCase):
@@ -65,6 +66,32 @@ class RetrievalServiceTest(unittest.TestCase):
         prompt = self.generator.generate.call_args.args[0]
         self.assertIn("DYNAMIC CONTEXT", prompt)
         self.assertNotIn("STATIC CONTEXT", prompt)
+
+    def test_progress_reports_query_understanding_retrieval_and_execution_stages(
+        self,
+    ) -> None:
+        provider = Mock()
+        provider.retrieve.return_value = OnlineRetrievalResult(
+            status=RetrievalStatus.SUCCESS,
+            query_context=self.dynamic_context,
+        )
+        observer = Mock()
+
+        result = self._service(provider).execute(
+            QueryRequest(question="查询客户", progress_observer=observer)
+        )
+
+        self.assertIsInstance(result, QuerySuccess)
+        self.assertEqual(
+            [call.args[0] for call in observer.set_stage.call_args_list],
+            [
+                ExecutionStage.QUERY_UNDERSTANDING,
+                ExecutionStage.RETRIEVAL,
+                ExecutionStage.SQL_GENERATION,
+                ExecutionStage.SQL_VALIDATION,
+                ExecutionStage.QUERY_EXECUTION,
+            ],
+        )
 
     def test_business_retrieval_failure_returns_cannot_answer_before_llm(self) -> None:
         provider = Mock()

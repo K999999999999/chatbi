@@ -3,6 +3,8 @@
 import json
 from typing import Protocol
 
+from src.online_query.contracts import ExecutionControl, ExecutionStopped
+
 from .contracts import (
     AnalysisDecompositionContext,
     AnalysisRequestCandidate,
@@ -90,8 +92,16 @@ class LangChainAnalysisRequestExtractor:
         question: str,
         context: AnalysisDecompositionContext,
     ) -> AnalysisRequestCandidate:
+        return self.decompose_with_control(question, context, None)
+
+    def decompose_with_control(
+        self,
+        question: str,
+        context: AnalysisDecompositionContext,
+        execution_control: ExecutionControl | None,
+    ) -> AnalysisRequestCandidate:
         prompt = build_analysis_request_prompt(question, context)
-        response = self._invoke_with_retry(prompt)
+        response = self._invoke_with_retry(prompt, execution_control)
         content = getattr(response, "content", None)
         if not isinstance(content, str) or not content.strip():
             raise AnalysisRequestExtractionError(
@@ -114,10 +124,19 @@ class LangChainAnalysisRequestExtractor:
                 reason=reason,
             ) from exc
 
-    def _invoke_with_retry(self, prompt: str) -> object:
+    def _invoke_with_retry(
+        self, prompt: str, execution_control: ExecutionControl | None = None
+    ) -> object:
         for attempt in range(2):
             try:
-                return self._model.invoke(prompt)
+                if execution_control is not None:
+                    execution_control.checkpoint()
+                response = self._model.invoke(prompt)
+                if execution_control is not None:
+                    execution_control.checkpoint()
+                return response
+            except ExecutionStopped:
+                raise
             except Exception as exc:
                 if attempt == 1:
                     raise AnalysisRequestExtractionError(

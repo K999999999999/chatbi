@@ -2,10 +2,10 @@
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Mapping, Protocol, TypeAlias
+from typing import Any, Callable, ContextManager, Mapping, Protocol, TypeAlias
 
-from .result_contracts import ResultMetadata
 from .query_understanding import ValidatedSemanticQuery
+from .result_contracts import ResultMetadata
 
 
 class QueryErrorCode(StrEnum):
@@ -27,12 +27,65 @@ class QueryErrorCode(StrEnum):
     CONVERSATION_CONFLICT = "CONVERSATION_CONFLICT"
 
 
+class ExecutionStage(StrEnum):
+    """R4 网页可见的确定性执行阶段编号。"""
+
+    QUERY_UNDERSTANDING = "query_understanding"
+    RETRIEVAL = "retrieval"
+    SQL_GENERATION = "sql_generation"
+    SQL_VALIDATION = "sql_validation"
+    QUERY_EXECUTION = "query_execution"
+    ANALYSIS_UNDERSTANDING = "analysis_understanding"
+    ANALYSIS_PLAN_VALIDATION = "analysis_plan_validation"
+    ANALYSIS_QUERY_TASKS = "analysis_query_tasks"
+    ANALYSIS_ATTRIBUTION = "analysis_attribution"
+    ANALYSIS_REPORT_GENERATION = "analysis_report_generation"
+    RESULT_SAVING = "result_saving"
+
+
+class ExecutionProgressObserver(Protocol):
+    """业务链可选的阶段 / 实际任务计数反馈 Port。"""
+
+    def set_stage(self, stage: ExecutionStage) -> None: ...
+
+    def set_task_progress(self, completed: int, total: int) -> None: ...
+
+
+class ExecutionStopReason(StrEnum):
+    """受控后台执行可以进入的持久停止原因。"""
+
+    USER_CANCELLED = "user_cancelled"
+    DEADLINE_EXCEEDED = "deadline_exceeded"
+    AUTHORIZATION_REVOKED = "authorization_revoked"
+    AUTHORIZATION_UNAVAILABLE = "authorization_unavailable"
+
+
+class ExecutionStopped(RuntimeError):
+    """执行在业务边界发现服务端停止裁决后退出。"""
+
+    def __init__(self, reason: ExecutionStopReason | str) -> None:
+        super().__init__(str(reason))
+        self.reason = ExecutionStopReason(reason)
+
+
+class ExecutionControl(Protocol):
+    """由后台 Runtime 持有的短期停止与下游中断 Port。"""
+
+    def checkpoint(self) -> None: ...
+
+    def register_database_cancel(
+        self, callback: Callable[[], None]
+    ) -> ContextManager[None]: ...
+
+
 @dataclass(frozen=True, slots=True)
 class QueryRequest:
     question: str
     request_id: str | None = None
     semantic_query: ValidatedSemanticQuery | None = None
     require_restorable: bool = False
+    progress_observer: ExecutionProgressObserver | None = None
+    execution_control: ExecutionControl | None = None
 
 
 @dataclass(frozen=True, slots=True)

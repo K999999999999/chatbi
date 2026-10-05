@@ -2,9 +2,10 @@
 
 from contextlib import contextmanager
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+from src.query_api.execution_contracts import ExecutionAcceptance, ExecutionRecord
 from src.query_api.history_contracts import (
     AcceptedAttempt,
     ExecutionToken,
@@ -37,6 +38,23 @@ class BrowserHistoryRuntime:
         finally:
             self.running.remove(id)
 
+    def reserve(self, id):
+        if id in self.running:
+            raise busy()
+        self.running.add(id)
+        runtime = self
+
+        class Lease:
+            released = False
+
+            def release(self):
+                if self.released:
+                    return
+                self.released = True
+                runtime.running.discard(id)
+
+        return Lease()
+
     def reconcile(self, id):
         if id not in self.running:
             owner, h = self.store.headers[id]
@@ -54,6 +72,7 @@ class BrowserHistoryRuntime:
 class BrowserHistoryStore:
     def __init__(self):
         self.headers, self.turn_data, self.results = {}, {}, {}
+        self.executions, self.operations, self.operation_hashes = {}, {}, {}
 
     def create(self, owner, kind, question, operation_id, *, id=None, title=None):
         now = datetime.now(UTC)
@@ -129,6 +148,178 @@ class BrowserHistoryStore:
             request_id,
             epoch,
         )
+
+    def begin_execution_attempt(
+        self,
+        *,
+        owner,
+        history_id,
+        question,
+        operation_id,
+        request_hash,
+        revision,
+        request_id,
+        epoch,
+        mode,
+        operation_kind,
+        deadline_seconds,
+        expected_record_revision,
+    ):
+        existing = self.execution_by_operation(owner, operation_id, request_hash)
+        if existing is not None:
+            return ExecutionAcceptance(existing, None, False)
+        if mode == "query":
+            attempt = self.begin_attempt(
+                owner, history_id, question, operation_id, revision, request_id, epoch
+            )
+        else:
+            if expected_record_revision is None:
+                raise HistoryError("INVALID_REQUEST", "分析恢复版本缺失", 400)
+            attempt = self.begin_analysis_attempt(
+                owner,
+                history_id,
+                operation_id,
+                expected_record_revision,
+                request_id,
+                epoch,
+            )
+        execution = self._create_execution(
+            owner,
+            history_id,
+            attempt.turn.id,
+            operation_id,
+            request_hash,
+            mode,
+            operation_kind,
+            deadline_seconds,
+        )
+        self.turn_data[attempt.turn.id] = replace(
+            attempt.turn, execution_id=execution.id
+        )
+        return ExecutionAcceptance(
+            execution, replace(attempt, turn=self.turn_data[attempt.turn.id]), True
+        )
+
+    def begin_execution_requery(
+        self,
+        *,
+        owner,
+        source_kind,
+        source_id,
+        source_turn_id,
+        operation_id,
+        request_id,
+        epoch,
+        new_id,
+        request_hash,
+        operation_kind,
+        deadline_seconds,
+        analysis_run_id=None,
+    ):
+        existing = self.execution_by_operation(owner, operation_id, request_hash)
+        if existing is not None:
+            history = self.header(owner, existing.history_id)
+            turn = self.turn(owner, existing.history_id, existing.turn_id)
+            return history, AcceptedAttempt(None, turn, None), existing, False
+        history, attempt = self.begin_requery(
+            owner,
+            source_kind,
+            source_id,
+            source_turn_id,
+            operation_id,
+            request_id,
+            epoch,
+            new_id,
+        )
+        if analysis_run_id is not None:
+            history = replace(history, analysis_run_id=analysis_run_id)
+            self.headers[history.id] = (owner, history)
+        execution = self._create_execution(
+            owner,
+            history.id,
+            attempt.turn.id,
+            operation_id,
+            request_hash,
+            history.kind,
+            operation_kind,
+            deadline_seconds,
+        )
+        turn = replace(self.turn_data[attempt.turn.id], execution_id=execution.id)
+        self.turn_data[turn.id] = turn
+        return history, replace(attempt, turn=turn), execution, True
+
+    def _create_execution(
+        self,
+        owner,
+        history_id,
+        turn_id,
+        operation_id,
+        request_hash,
+        mode,
+        operation_kind,
+        deadline_seconds,
+    ):
+        now = datetime.now(UTC)
+        execution = ExecutionRecord(
+            str(uuid4()),
+            history_id,
+            turn_id,
+            operation_id,
+            mode,
+            operation_kind,
+            "accepted",
+            None,
+            now,
+            None,
+            now + timedelta(seconds=deadline_seconds),
+            None,
+            None,
+            None,
+        )
+        self.executions[execution.id] = (owner, request_hash, execution)
+        self.operations[(owner, operation_id)] = execution.id
+        self.operation_hashes[(owner, operation_id)] = request_hash
+        return execution
+
+    def execution(self, owner, execution_id):
+        row = self.executions.get(execution_id)
+        if row is None or row[0] != owner:
+            raise unavailable()
+        return row[2]
+
+    def execution_by_operation(self, owner, operation_id, request_hash=None):
+        execution_id = self.operations.get((owner, operation_id))
+        if execution_id is None:
+            return None
+        if (
+            request_hash is not None
+            and self.operation_hashes[(owner, operation_id)] != request_hash
+        ):
+            raise HistoryError(
+                "HISTORY_OPERATION_CONFLICT", "操作编号与原请求不匹配", 409
+            )
+        return self.execution(owner, execution_id)
+
+    def mark_execution_running(self, owner, execution_id):
+        execution = self.execution(owner, execution_id)
+        if execution.status == "accepted":
+            updated = replace(execution, status="running", started_at=datetime.now(UTC))
+            row = self.executions[execution_id]
+            self.executions[execution_id] = (row[0], row[1], updated)
+
+    def finish_execution_attempt(self, owner, token, snapshot, error, execution_id):
+        turn = self.finish_attempt(owner, token, snapshot, error)
+        execution = self.execution(owner, execution_id)
+        updated = replace(
+            execution,
+            status="succeeded" if snapshot is not None else "failed",
+            public_error=error,
+            finished_at=datetime.now(UTC),
+        )
+        row = self.executions[execution_id]
+        self.executions[execution_id] = (row[0], row[1], updated)
+        self.turn_data[turn.id] = replace(turn, execution_id=execution_id)
+        return self.turn_data[turn.id]
 
     def finish_attempt(self, owner, token, snapshot, error):
         h = self.header(owner, token.history_id)

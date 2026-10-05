@@ -39,6 +39,11 @@ class HistoryRuntime:
                     completed_at=CURRENT_TIMESTAMP WHERE status='accepted'""")
                 )
                 connection.execute(
+                    text("""UPDATE history_executions SET status='unconfirmed',
+                    finished_at=CURRENT_TIMESTAMP
+                    WHERE status IN ('accepted','running','stopping')""")
+                )
+                connection.execute(
                     text("""UPDATE history_records SET active_turn_id=NULL,
                     execution_generation=execution_generation+1,record_revision=record_revision+1,
                     updated_at=CURRENT_TIMESTAMP WHERE active_turn_id IS NOT NULL""")
@@ -60,6 +65,15 @@ class HistoryRuntime:
 
     @contextmanager
     def executing(self, history_id):
+        lease = self.reserve(history_id)
+        try:
+            yield
+        finally:
+            lease.release()
+
+    def reserve(self, history_id):
+        """把 history 的运行占用从 HTTP 受理交接给后台 worker。"""
+
         self.check()
         with self._condition:
             if not self._valid or not self._accepting:
@@ -67,12 +81,14 @@ class HistoryRuntime:
             if history_id in self._running:
                 raise busy()
             self._running.add(history_id)
-        try:
-            yield
-        finally:
-            with self._condition:
-                self._running.remove(history_id)
-                self._condition.notify_all()
+        return _HistoryLease(self, history_id)
+
+    def _release(self, history_id):
+        with self._condition:
+            if history_id not in self._running:
+                return
+            self._running.remove(history_id)
+            self._condition.notify_all()
 
     def reconcile(self, history_id):
         try:
@@ -105,6 +121,13 @@ class HistoryRuntime:
                 if changed.rowcount != 1:
                     raise storage_unavailable()
                 connection.execute(
+                    text("""UPDATE history_executions SET status='unconfirmed',
+                    finished_at=CURRENT_TIMESTAMP
+                    WHERE history_id=:id AND turn_id=:turn AND runtime_epoch=:epoch
+                      AND status IN ('accepted','running','stopping')"""),
+                    {"id": history_id, "turn": row[0], "epoch": self.epoch},
+                )
+                connection.execute(
                     text("""UPDATE history_records SET active_turn_id=NULL,
                     execution_generation=execution_generation+1,record_revision=record_revision+1,
                     updated_at=CURRENT_TIMESTAMP WHERE id=:id"""),
@@ -128,3 +151,18 @@ class HistoryRuntime:
                     )
             finally:
                 self._guard.close()
+
+
+class _HistoryLease:
+    def __init__(self, runtime, history_id):
+        self._runtime = runtime
+        self._history_id = history_id
+        self._lock = Lock()
+        self._released = False
+
+    def release(self):
+        with self._lock:
+            if self._released:
+                return
+            self._released = True
+        self._runtime._release(self._history_id)

@@ -2,6 +2,7 @@
 
 import os
 from collections.abc import Callable, Mapping
+from contextlib import nullcontext
 from typing import Any
 
 import psycopg
@@ -13,7 +14,7 @@ from src.structure.runtime_schema import (
     verify_catalog_matches_metadata,
 )
 
-from .contracts import QueryData, ValidatedSQL
+from .contracts import ExecutionStopped, QueryData, ValidatedSQL
 
 
 class DatabaseError(RuntimeError):
@@ -74,19 +75,39 @@ class PsycopgQueryExecutor:
         )
 
     def execute(self, sql: ValidatedSQL) -> QueryData:
+        return self.execute_with_control(sql, None)
+
+    def execute_with_control(self, sql: ValidatedSQL, execution_control) -> QueryData:
         try:
+            if execution_control is not None:
+                execution_control.checkpoint()
             with self._connect(**self._connect_kwargs) as connection:
                 connection.read_only = True
                 with connection.transaction():
-                    with connection.cursor() as cursor:
+                    cancel_scope = (
+                        execution_control.register_database_cancel(
+                            lambda: connection.cancel_safe(timeout=1.0)
+                        )
+                        if execution_control is not None
+                        else nullcontext()
+                    )
+                    with cancel_scope, connection.cursor() as cursor:
+                        if execution_control is not None:
+                            execution_control.checkpoint()
                         cursor.execute("SET LOCAL statement_timeout = '10s'")
                         cursor.execute(sql.sql)
                         if cursor.description is None:
                             raise DatabaseError("查询未返回结果集")
                         columns = tuple(column.name for column in cursor.description)
                         fetched = cursor.fetchmany(101)
+                        if execution_control is not None:
+                            execution_control.checkpoint()
         except QueryCanceled as exc:
+            if execution_control is not None:
+                execution_control.checkpoint()
             raise DatabaseQueryTimeout("数据库查询超时") from exc
+        except ExecutionStopped:
+            raise
         except DatabaseError:
             raise
         except Exception as exc:

@@ -15,7 +15,12 @@ from src.business_analysis.execution import (
     TaskSemanticAdapterError,
     TaskStatus,
 )
-from src.online_query.contracts import QueryErrorCode, QueryFailure, QuerySuccess
+from src.online_query.contracts import (
+    ExecutionStopped,
+    QueryErrorCode,
+    QueryFailure,
+    QuerySuccess,
+)
 from src.online_query.query_understanding import QueryType, TimeGranularity
 
 NOW = datetime(2026, 9, 21, 12, 0)
@@ -151,6 +156,26 @@ class TaskExecutionTest(unittest.TestCase):
             results[0].error.internal_reason,
             "DATABASE_CONNECTION_LOST",
         )
+
+    def test_execution_stop_propagates_instead_of_becoming_task_failure(self) -> None:
+        class StoppingService:
+            def __init__(self):
+                self.requests = []
+
+            def query(self, request):
+                self.requests.append(request)
+                raise ExecutionStopped("deadline_exceeded")
+
+        service = StoppingService()
+        plan = AnalysisPlan(tasks=(_task("first"), _task("second")))
+
+        with self.assertRaises(ExecutionStopped) as stopped:
+            TaskExecutor(service, TaskSemanticAdapter()).execute(
+                plan, request_id="analysis", now=NOW
+            )
+
+        self.assertEqual(stopped.exception.reason.value, "deadline_exceeded")
+        self.assertEqual(len(service.requests), 1)
 
     def test_empty_result_is_completed_and_does_not_skip_ready_task(self) -> None:
         service = _BoundQueryService(

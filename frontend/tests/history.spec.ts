@@ -27,7 +27,7 @@ test('刷新按URL读取已保存快照，不触发执行', async ({ page }) => 
 test('另存副本、独立重命名、删除来源与成果、显式重查创建新历史', async ({ page }) => {
   const { login, send } = await import('./helpers');
   let executions = 0;
-  page.on('request', req => { if (req.method() === 'POST' && (req.url().endsWith('/turns') || req.url().endsWith('/requery'))) executions++; });
+  page.on('request', req => { if (req.method() === 'POST' && (req.url().endsWith('/executions') || req.url().endsWith('/requery-executions'))) executions++; });
   await login(page);
   await send(page, '历史管理测试销售额');
   await expect(page.getByRole('table')).toBeVisible();
@@ -69,7 +69,7 @@ test('执行下一轮时可另存旧成功结果，且不丢失下一轮交付',
   await expect(page.getByRole('table')).toBeVisible();
   let release!: () => void;
   const held = new Promise<void>(resolve => { release = resolve; });
-  await page.route('**/api/v1/histories/*/turns', async route => { await held; await route.continue(); });
+  await page.route('**/api/v1/histories/*/executions', async route => { await held; await route.continue(); });
   await send(page, '改成毛利');
   await expect(page.getByRole('status')).toBeVisible();
   await page.getByRole('button', { name: '另存成果', exact: true }).click();

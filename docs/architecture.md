@@ -14,7 +14,7 @@ ChatBI 是面向业务数据查询的 Domain AI Engine（领域 AI 引擎），�
 
 ### Query API Adapter（查询接口适配层）
 
-负责 HTTP Contract、认证、授权、查询调用和响应转换；持久化账号、Session、RBAC 与安全审计由 `src/chatbi_control/`、`src/authorization/` 和 Admin Adapter 协作完成。它不重复 Prompt、LLM、SQL Guard 或数据库执行逻辑，也不提供限流。Multi-Turn Query V1 的短期会话状态由 API Application 边界负责，不由 Online Query 或客户端拥有。
+负责 HTTP Contract、认证、授权、查询调用和响应转换；网页执行由同一 API Application 边界中的 R4 Execution Application / Runtime 受理、停止并提供状态观察，SSE Adapter 只读取已有执行快照与事件。持久化账号、Session、RBAC、安全审计和 execution 元数据由 `src/chatbi_control/`、`src/authorization/` 与相应 Adapter 协作完成。它不重复 Prompt、LLM、SQL Guard 或数据库执行逻辑，也不提供限流。Multi-Turn Query V1 的短期会话状态由 API Application 边界负责，不由 Online Query 或客户端拥有。
 
 ### ChatBI Account & Admin（账号与管理）
 
@@ -32,7 +32,7 @@ ChatBI 是面向业务数据查询的 Domain AI Engine（领域 AI 引擎），�
 
 ### Web Frontend（电脑端用户入口）
 
-`frontend/` 采用 React + TypeScript + Vite，提供登录 / 首次改密、问数 / 多轮追问及独立经营分析模式。仅通过同源 HTTP 调用 FastAPI，不直接连接 LLM 或数据库；开发使用 Vite 代理，打包后由 API 提供静态网页。`src/query_api/browser.py` 负责 Cookie 身份、CSRF 与静态资源 Adapter，身份和权限真相仍属于既有账号 / 授权模块。Streamlit 已移除；不新增 BFF / SSR 或第二条查询链路。
+`frontend/` 采用 React + TypeScript + Vite，提供登录 / 首次改密、问数 / 多轮追问及独立经营分析模式。仅通过同源 HTTP（含 SSE 只读流）调用 FastAPI，不直接连接 LLM 或数据库；开发使用 Vite 代理，打包后由 API 提供静态网页。`src/query_api/browser.py` 负责 Cookie 身份、CSRF 与静态资源 Adapter，身份和权限真相仍属于既有账号 / 授权模块。Streamlit 已移除；不新增 BFF / SSR 或第二条查询链路。
 
 ### Business Analysis（经营分析）
 
@@ -154,10 +154,17 @@ flowchart TB
         APIInit["__init__.py<br/>公开 create_app"]
         APIApp["app.py<br/>HTTP/Pydantic 模型、路由、结果转换"]
         APIMain["main.py<br/>无资源副作用的 API 入口"]
+        ExecHTTP["execution_api.py / execution_events.py<br/>受理、状态与 SSE Adapter"]
+        ExecApp["execution.py<br/>后台执行 Application"]
+        ExecRuntime["execution_runtime.py<br/>单进程额度、worker 与活动快照"]
 
         APIInit --> APIApp
         APIMain --> APIApp
-        APIApp -->|"调用现有入口"| Service
+        APIApp -->|"同步兼容入口"| Service
+        APIApp --> ExecHTTP
+        ExecHTTP --> ExecApp
+        ExecApp --> ExecRuntime
+        ExecApp -->|"复用业务用例"| Service
     end
 
     subgraph Bootstrap["src/bootstrap：应用装配边界"]
@@ -167,6 +174,7 @@ flowchart TB
         APIMain --> Runtime
         Runtime --> Ready
         Runtime --> Service
+        Runtime --> ExecRuntime
     end
 
     subgraph WebApp["frontend/：电脑端 Web 页面"]
@@ -365,7 +373,7 @@ Online Retrieval V1 已接入 Online Query：实体类、单指标和多指标�
 - BGE-M3：只对离线检索文档正文和检索评测问题生成向量，不决定业务事实。
 - Qdrant：保存版本化 TABLE、COLUMN、METRIC 检索集合，不保存业务真相。
 - 已发布 RAG 资产：当前为 Online Query 默认提供动态结构和指标上下文；静态知识文件只用于显式静态评测/基础模式，不作为在线 RAG 技术故障 fallback。
-- Query API Adapter：当前提供同步 HTTP JSON 接口、身份认证、授权和多轮 Application 边界；安全审计由授权与 Control DB Adapter 协作持久化。当前没有 API 限流。
+- Query API Adapter：保留同步 HTTP JSON 兼容接口，并通过同一 Application 边界提供 R4 后台执行受理 / 停止 / 状态查询与 SSE 观察；业务执行仍复用既有 Online Query / Business Analysis 链路。安全审计和 execution 状态分别由授权 / Control DB Adapter 持久化；当前没有 API 限流。
 - Web Frontend：电脑端 React / TypeScript / Vite，仅通过 HTTP 使用既有 API；Cookie / CSRF Adapter 复用现有账号与数据库 Session。
 - API Gateway：如未来部署需要，可放在 ChatBI 外部边界处理网关级流量治理；当前不依赖具体网关产品。
 
@@ -391,7 +399,7 @@ Online Retrieval V1 已接入 Online Query：实体类、单指标和多指标�
 - RAG Offline Build 和 Online Retrieval V1 已实现。新 manifest 记录输入指纹；production 启动时校验 catalog、Metadata 和当前发布资产，不匹配时拒绝 Ready。
 - PostgreSQL 首次初始化需在基础 init 完成后运行 `src.bootstrap migrate`；它通过 `PostgresSaver.setup()` 安装 checkpoint 表和权限，healthcheck / API 启动检查验证其完整性。
 - 日期化 Acceptance 和 ignored reports 是历史证据，不代表当前候选。Evaluation 基线只有在单轮、多轮和 Business Analysis 三套报告均记录同一最终 clean commit、`git_dirty=false`，且各自满足 `0 FAIL`、`0 INVALID_CASE` 后才成立。commit `31a04549924f622777f106d4fe5a758bd2ca2beb` 与 `564343216e4493f832f07efb345c03b058a04eb5` 上的通过结果是历史基线，后者的多轮波动见[验收工作项](../.scratch/engineering-quality-gates/issues/04-current-candidate-evaluation-baseline.md#result)；后续候选需重新评测。
-- 当前入口是同步 Query API 与电脑端 Web；R3 已提供私人长期历史、快照恢复与独立成果，R4 流式反馈和 R5 导出仍待各自需求与验收。多源、多 Schema、多租户、任意复杂分析和生产部署运行保障不属于已验收的当前 Contract。
+- 旧同步 Query API 保留兼容，电脑端 Web 的网页执行路径通过 R4 后台 execution、SSE 状态观察、取消 / 恢复与未校验报告草稿完成异步反馈；R3 私人历史、快照恢复和独立成果继续复用。R4 的行为与模块设计见 [Spec](specs/execution-streaming-v1.md) 和 [Design](designs/execution-streaming-v1.md)，最终候选验证状态见 [Acceptance](acceptance/execution-streaming-v1.md) 与本机实时工作状态。R5 导出及生产部署运行保障仍不属于当前 Contract。
 
 
 ## 长期历史与结果边界

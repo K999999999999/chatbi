@@ -2,11 +2,28 @@
 
 import json
 from collections.abc import Iterable, Mapping
+from contextlib import suppress
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, runtime_checkable
+
+from src.online_query.contracts import ExecutionControl, ExecutionStopped
 
 from .attribution import BusinessAnalysisAttribution
 from .execution import TaskResult, TaskStatus
+from .report_stream import IncrementalReportJSONDecoder, ReportTextDelta
+
+MAX_REPORT_JSON_BYTES = 5 * 1024 * 1024
+
+
+@runtime_checkable
+class ReportDraftObserver(Protocol):
+    """仅供 R4 执行观察通道使用的受限报告草稿 Port。"""
+
+    def text_delta(
+        self, field: str, index: int | None, offset: int, text: str
+    ) -> None: ...
+
+    def reset(self, reason: str) -> None: ...
 
 
 class AnalysisReportError(ValueError):
@@ -74,6 +91,18 @@ class LangChainAnalysisSummarizer:
         task_results: Iterable[TaskResult],
         attribution: BusinessAnalysisAttribution | None = None,
     ) -> BusinessAnalysisReport:
+        return self.summarize_with_control(question, task_results, attribution, None)
+
+    def summarize_with_control(
+        self,
+        question: str,
+        task_results: Iterable[TaskResult],
+        attribution: BusinessAnalysisAttribution | None,
+        execution_control: ExecutionControl | None,
+        report_observer: ReportDraftObserver | None = None,
+    ) -> BusinessAnalysisReport:
+        if execution_control is not None:
+            execution_control.checkpoint()
         if not isinstance(question, str) or not question.strip():
             raise AnalysisReportError(
                 "经营分析问题不能为空",
@@ -100,7 +129,11 @@ class LangChainAnalysisSummarizer:
             incomplete_tasks,
             attribution=attribution,
         )
-        payload = self._invoke_json(prompt)
+        payload = (
+            self._stream_json(prompt, execution_control, report_observer)
+            if report_observer is not None
+            else self._invoke_json(prompt, execution_control)
+        )
         candidate = _report_candidate(payload)
         _validate_candidate_references(
             candidate,
@@ -119,26 +152,130 @@ class LangChainAnalysisSummarizer:
             attribution=attribution,
         )
 
-    def _invoke_json(self, prompt: str) -> Mapping[str, object]:
-        response = self._invoke_with_retry(prompt)
+    def _invoke_json(
+        self, prompt: str, execution_control: ExecutionControl | None = None
+    ) -> Mapping[str, object]:
+        response = self._invoke_with_retry(prompt, execution_control)
         content = getattr(response, "content", None)
         if not isinstance(content, str) or not content.strip():
             raise _llm_error("RESPONSE_NOT_TEXT", "Summary LLM 未返回文本")
         try:
-            payload = json.loads(content.strip())
-        except json.JSONDecodeError as exc:
-            raise _llm_error(
-                "RESPONSE_NOT_JSON",
-                "Summary LLM 返回的不是合法 JSON",
-            ) from exc
-        if not isinstance(payload, Mapping):
-            raise _llm_error("REPORT_NOT_OBJECT", "Summary LLM 报告不是对象")
-        return payload
+            content_bytes = len(content.encode("utf-8"))
+        except UnicodeEncodeError as exc:
+            raise _llm_error("RESPONSE_NOT_TEXT", "Summary LLM 文本编码无效") from exc
+        if content_bytes > MAX_REPORT_JSON_BYTES:
+            raise _llm_error("RESPONSE_TOO_LARGE", "Summary LLM 报告超过大小上限")
+        return _parse_report_json(content.strip())
 
-    def _invoke_with_retry(self, prompt: str) -> object:
+    def _stream_json(
+        self,
+        prompt: str,
+        execution_control: ExecutionControl | None,
+        observer: ReportDraftObserver,
+    ) -> Mapping[str, object]:
+        stream = getattr(self._model, "stream", None)
+        if not callable(stream):
+            raise _llm_error(
+                "PROVIDER_STREAM_UNAVAILABLE",
+                "Summary LLM 不支持报告流式输出",
+            )
+
+        for attempt in range(2):
+            if execution_control is not None:
+                execution_control.checkpoint()
+            decoder = IncrementalReportJSONDecoder()
+            raw_parts: list[str] = []
+            raw_bytes = 0
+            provider_error: Exception | None = None
+            try:
+                iterator = iter(stream(prompt))
+            except ExecutionStopped:
+                raise
+            except Exception as exc:  # noqa: BLE001 - SDK failures are retryable provider errors.
+                iterator = iter(())
+                provider_error = exc
+
+            try:
+                if provider_error is None:
+                    while True:
+                        if execution_control is not None:
+                            execution_control.checkpoint()
+                        try:
+                            chunk = next(iterator)
+                        except StopIteration:
+                            break
+                        except ExecutionStopped:
+                            raise
+                        except Exception as exc:  # noqa: BLE001 - stream iteration is an SDK boundary.
+                            provider_error = exc
+                            break
+                        if execution_control is not None:
+                            execution_control.checkpoint()
+                        content = getattr(chunk, "content", None)
+                        if not isinstance(content, str):
+                            raise _llm_error(
+                                "RESPONSE_NOT_TEXT", "Summary LLM 未返回文本"
+                            )
+                        try:
+                            chunk_bytes = len(content.encode("utf-8"))
+                        except UnicodeEncodeError as exc:
+                            raise _llm_error(
+                                "RESPONSE_NOT_TEXT", "Summary LLM 文本编码无效"
+                            ) from exc
+                        raw_bytes += chunk_bytes
+                        if raw_bytes > MAX_REPORT_JSON_BYTES:
+                            raise _llm_error(
+                                "RESPONSE_TOO_LARGE", "Summary LLM 报告超过大小上限"
+                            )
+                        raw_parts.append(content)
+                        try:
+                            deltas = decoder.feed(content)
+                        except ValueError as exc:
+                            raise _llm_error(
+                                "RESPONSE_NOT_JSON", "Summary LLM 返回的不是合法 JSON"
+                            ) from exc
+                        for delta in deltas:
+                            _publish_delta(observer, delta)
+                        if execution_control is not None:
+                            execution_control.checkpoint()
+            finally:
+                close = getattr(iterator, "close", None)
+                if callable(close):
+                    with suppress(Exception):
+                        close()
+
+            if provider_error is not None:
+                if attempt == 1:
+                    raise _llm_error(
+                        "PROVIDER_CALL_FAILED", "Summary LLM 调用失败"
+                    ) from provider_error
+                observer.reset("model_retry")
+                continue
+
+            try:
+                decoder.finish()
+            except ValueError as exc:
+                raise _llm_error(
+                    "RESPONSE_NOT_JSON", "Summary LLM 返回的不是合法 JSON"
+                ) from exc
+            if execution_control is not None:
+                execution_control.checkpoint()
+            return _parse_report_json("".join(raw_parts).strip())
+        raise RuntimeError("Summary LLM 流式调用次数配置无效")
+
+    def _invoke_with_retry(
+        self, prompt: str, execution_control: ExecutionControl | None = None
+    ) -> object:
         for attempt in range(2):
             try:
-                return self._model.invoke(prompt)
+                if execution_control is not None:
+                    execution_control.checkpoint()
+                response = self._model.invoke(prompt)
+                if execution_control is not None:
+                    execution_control.checkpoint()
+                return response
+            except ExecutionStopped:
+                raise
             except Exception as exc:
                 if attempt == 1:
                     raise _llm_error(
@@ -239,6 +376,53 @@ def _report_candidate(payload: Mapping[str, object]) -> dict[str, object]:
             raise _llm_error("REPORT_LIST_DUPLICATE", f"报告字段 {field} 不能重复")
         result[field] = values
     return result
+
+
+def _publish_delta(observer: ReportDraftObserver, delta: ReportTextDelta) -> None:
+    observer.text_delta(delta.field, delta.index, delta.offset, delta.text)
+
+
+def _parse_report_json(content: str) -> Mapping[str, object]:
+    try:
+        payload = json.loads(
+            content,
+            object_pairs_hook=_unique_object,
+            parse_constant=_reject_json_constant,
+        )
+        _ensure_unicode_scalars(payload)
+    except (json.JSONDecodeError, ValueError, RecursionError) as exc:
+        raise _llm_error(
+            "RESPONSE_NOT_JSON",
+            "Summary LLM 返回的不是合法 JSON",
+        ) from exc
+    if not isinstance(payload, Mapping):
+        raise _llm_error("REPORT_NOT_OBJECT", "Summary LLM 报告不是对象")
+    return payload
+
+
+def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("JSON 对象包含重复 key")
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"JSON 常量 {value} 无效")
+
+
+def _ensure_unicode_scalars(value: object) -> None:
+    if isinstance(value, str):
+        value.encode("utf-8")
+    elif isinstance(value, Mapping):
+        for key, nested in value.items():
+            key.encode("utf-8")
+            _ensure_unicode_scalars(nested)
+    elif isinstance(value, list):
+        for nested in value:
+            _ensure_unicode_scalars(nested)
 
 
 def _validate_candidate_references(

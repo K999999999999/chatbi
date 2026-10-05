@@ -1,12 +1,21 @@
 """历史Use Case：持久受理先于执行，成功快照与状态一起提交。"""
 
-from contextlib import nullcontext
 import logging
+from contextlib import nullcontext
 
 from src.authorization.query_entry import AuthorizedQueryService
 from src.business_analysis.application import BusinessAnalysisSuccess
+from src.business_analysis.reporting import ReportDraftObserver
 from src.business_analysis.run_execution import AnalysisExecutionBusy
-from src.online_query.contracts import QueryFailure, QueryRequest, QuerySuccess
+from src.online_query.contracts import (
+    ExecutionControl,
+    ExecutionProgressObserver,
+    ExecutionStage,
+    ExecutionStopped,
+    QueryFailure,
+    QueryRequest,
+    QuerySuccess,
+)
 from src.online_query.semantic_state import SemanticCertificationError
 
 from .history_codec import decode_query_state, encode_snapshot, public_snapshot
@@ -64,11 +73,16 @@ class HistoryApplication:
             )
         return semantic
 
-    def authorize(self, auth, request_id):
+    def authorize(self, auth, request_id, *, audit=True):
         if auth.user_id is None:
             raise HistoryError("AUTHENTICATION_REQUIRED", "需要本地有效账号", 401)
-        rejection = self.query_service.authorize(
-            QueryRequest("历史管理", request_id=request_id), auth_context=auth
+        request = QueryRequest("历史管理", request_id=request_id)
+        rejection = (
+            self.query_service.authorize(request, auth_context=auth)
+            if audit
+            else self.query_service.authorize(
+                request, auth_context=auth, write_audit=False
+            )
         )
         if rejection is not None:
             code = rejection.error_code.value
@@ -80,6 +94,13 @@ class HistoryApplication:
                 else 403
             )
             raise HistoryError(code, rejection.error_message, status)
+
+    def _finish_attempt(self, owner, token, snapshot, error, execution_id=None):
+        if execution_id is not None:
+            return self.store.finish_execution_attempt(
+                owner, token, snapshot, error, execution_id
+            )
+        return self.store.finish_attempt(owner, token, snapshot, error)
 
     def create(self, auth, request_id, kind, question, operation_id):
         self.authorize(auth, request_id)
@@ -245,13 +266,19 @@ class HistoryApplication:
         requery=False,
         kind="query",
         analysis_run_id=None,
+        execution_id=None,
+        guard_preowned=False,
+        progress_observer: ExecutionProgressObserver | None = None,
+        execution_control: ExecutionControl | None = None,
     ):
         if accepted.token is None:
             return accepted.turn
         try:
             guard = (
                 self.analysis_guard.executing(auth, analysis_run_id)
-                if kind == "analysis" and self.analysis_guard is not None
+                if kind == "analysis"
+                and self.analysis_guard is not None
+                and not guard_preowned
                 else nullcontext()
             )
             with guard:
@@ -265,9 +292,14 @@ class HistoryApplication:
                     requery=requery,
                     kind=kind,
                     analysis_run_id=analysis_run_id,
+                    execution_id=execution_id,
+                    progress_observer=progress_observer,
+                    execution_control=execution_control,
                 )
+        except ExecutionStopped:
+            raise
         except AnalysisExecutionBusy:
-            self.store.finish_attempt(
+            self._finish_attempt(
                 auth.user_id,
                 accepted.token,
                 None,
@@ -276,6 +308,7 @@ class HistoryApplication:
                     "error_code": "HISTORY_BUSY",
                     "error_message": "原分析运行仍在执行，请稍后刷新",
                 },
+                execution_id,
             )
             raise HistoryError(
                 "HISTORY_BUSY",
@@ -297,10 +330,15 @@ class HistoryApplication:
         requery,
         kind,
         analysis_run_id,
+        execution_id=None,
+        progress_observer: ExecutionProgressObserver | None = None,
+        execution_control: ExecutionControl | None = None,
     ):
         token = accepted.token
         finishing = False
         try:
+            if execution_control is not None:
+                execution_control.checkpoint()
             if requery and kind == "query":
                 public_snapshot(accepted.source_snapshot)
                 if accepted.base_state is None:
@@ -311,6 +349,10 @@ class HistoryApplication:
                     )
             semantic = None
             if accepted.base_state is not None:
+                if execution_control is not None:
+                    execution_control.checkpoint()
+                if not requery and progress_observer is not None:
+                    progress_observer.set_stage(ExecutionStage.QUERY_UNDERSTANDING)
                 previous = self.restore(accepted.base_state)
                 try:
                     semantic = (
@@ -320,18 +362,29 @@ class HistoryApplication:
                             previous,
                             question,
                             query_understanding=self.query_understanding,
+                            execution_control=execution_control,
                         )
                     )
+                    if execution_control is not None:
+                        execution_control.checkpoint()
                 except SemanticRevisionError as exc:
                     raise HistoryError(exc.error_code.value, str(exc), 422) from None
             if kind == "analysis":
                 if self.analysis_service is None:
                     raise HistoryError("CONTEXT_ERROR", "分析服务暂时不可用", 503)
+                analysis_options: dict[str, object] = {}
+                if execution_control is not None:
+                    analysis_options["execution_control"] = execution_control
+                if progress_observer is not None:
+                    analysis_options["progress_observer"] = progress_observer
+                if isinstance(progress_observer, ReportDraftObserver):
+                    analysis_options["report_observer"] = progress_observer
                 result = self.analysis_service.analyze(
                     question,
                     request_id=request_id,
                     auth_context=auth,
                     analysis_run_id=analysis_run_id,
+                    **analysis_options,
                 )
             else:
                 result = self.query_service.execute_authorized(
@@ -340,9 +393,13 @@ class HistoryApplication:
                         request_id=request_id,
                         semantic_query=semantic,
                         require_restorable=True,
+                        progress_observer=progress_observer,
+                        execution_control=execution_control,
                     ),
                     auth_context=auth,
                 )
+            if execution_control is not None:
+                execution_control.checkpoint()
             current_auth = reauthenticate()
             if current_auth.user_id != auth.user_id:
                 raise HistoryError(
@@ -352,7 +409,11 @@ class HistoryApplication:
             self.runtime.check()
             if isinstance(result, QueryFailure):
                 finishing = True
-                return self.store.finish_attempt(
+                if execution_control is not None:
+                    execution_control.checkpoint()
+                if progress_observer is not None:
+                    progress_observer.set_stage(ExecutionStage.RESULT_SAVING)
+                return self._finish_attempt(
                     auth.user_id,
                     token,
                     None,
@@ -361,6 +422,7 @@ class HistoryApplication:
                         "error_code": result.error_code.value,
                         "error_message": result.error_message,
                     },
+                    execution_id,
                 )
             if kind == "analysis" and isinstance(result, BusinessAnalysisSuccess):
                 snapshot = encode_snapshot(
@@ -380,7 +442,15 @@ class HistoryApplication:
                     "HISTORY_SNAPSHOT_UNAVAILABLE", "查询结果不可保存", 422
                 )
             finishing = True
-            return self.store.finish_attempt(auth.user_id, token, snapshot, None)
+            if execution_control is not None:
+                execution_control.checkpoint()
+            if progress_observer is not None:
+                progress_observer.set_stage(ExecutionStage.RESULT_SAVING)
+            return self._finish_attempt(
+                auth.user_id, token, snapshot, None, execution_id
+            )
+        except ExecutionStopped:
+            raise
         except HistoryError as exc:
             exc.history_id, exc.turn_id = history_id, token.turn_id
             if finishing:
@@ -396,7 +466,7 @@ class HistoryApplication:
                 "HISTORY_SAVE_UNCONFIRMED",
             }:
                 try:
-                    self.store.finish_attempt(
+                    self._finish_attempt(
                         auth.user_id,
                         token,
                         None,
@@ -405,6 +475,7 @@ class HistoryApplication:
                             "error_code": exc.code,
                             "error_message": exc.message,
                         },
+                        execution_id,
                     )
                 except HistoryError:
                     raise HistoryError(

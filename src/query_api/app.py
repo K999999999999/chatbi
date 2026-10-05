@@ -38,6 +38,10 @@ from src.authorization.query_entry import (
     AuthorizedQueryService,
 )
 from src.business_analysis.application import BusinessAnalysisSuccess
+from src.business_analysis.run_execution import (
+    AnalysisExecutionBusy,
+    AnalysisExecutionGuard,
+)
 from src.chatbi_control.admin import mount_admin
 from src.observability.contracts import QuerySource, TraceRecorder
 from src.observability.tracing import create_trace_recorder
@@ -49,17 +53,6 @@ from src.online_query.contracts import (
     QuerySuccess,
 )
 
-from .query_response import HTTP_STATUS_BY_ERROR as _HTTP_STATUS_BY_ERROR
-from .query_response import (
-    AnalysisSuccessResponse,
-    analysis_payload,
-    QueryResultPayload,
-    query_payload,
-)
-from src.business_analysis.run_execution import (
-    AnalysisExecutionGuard,
-    AnalysisExecutionBusy,
-)
 from .browser import (
     COOKIE_NAME,
     BrowserIdentityProvider,
@@ -74,6 +67,15 @@ from .conversation import (
     ConversationStore,
     ConversationUnavailableError,
     InMemoryConversationStore,
+)
+from .execution import ExecutionApplication
+from .execution_runtime import ExecutionRuntime
+from .query_response import HTTP_STATUS_BY_ERROR as _HTTP_STATUS_BY_ERROR
+from .query_response import (
+    AnalysisSuccessResponse,
+    QueryResultPayload,
+    analysis_payload,
+    query_payload,
 )
 from .runtime import (
     AnalysisService,
@@ -246,6 +248,7 @@ def create_app(
             recorder = None
 
     analysis_guard = AnalysisExecutionGuard()
+    active_execution_runtime = None
 
     def publish_bindings(app: FastAPI) -> None:
         from .history import HistoryApplication
@@ -263,6 +266,16 @@ def create_app(
             if history_store is not None
             and history_runtime is not None
             and authorized_service is not None
+            else None
+        )
+        app.state.execution_runtime = active_execution_runtime
+        app.state.execution_application = (
+            ExecutionApplication(
+                app.state.history_application,
+                active_execution_runtime,
+            )
+            if app.state.history_application is not None
+            and active_execution_runtime is not None
             else None
         )
         app.state.query_service = authorized_service
@@ -286,20 +299,32 @@ def create_app(
             history_store, \
             history_runtime
         nonlocal service, analysis_guard
+        nonlocal active_execution_runtime
         analysis_guard = AnalysisExecutionGuard()
         if runtime_factory is None:
-            publish_bindings(app)
             try:
+                if history_store is not None and history_runtime is not None:
+                    active_execution_runtime = ExecutionRuntime.from_environment(
+                        history_runtime, analysis_guard
+                    )
+                publish_bindings(app)
                 yield
             finally:
-                analysis_guard.drain()
                 try:
-                    close = getattr(active_analysis_service, "close", None)
-                    if callable(close):
-                        close()
+                    if active_execution_runtime is not None:
+                        active_execution_runtime.close()
                 finally:
-                    if owned_recorder is not None:
-                        owned_recorder.shutdown()
+                    active_execution_runtime = None
+                    try:
+                        analysis_guard.drain()
+                    finally:
+                        try:
+                            close = getattr(active_analysis_service, "close", None)
+                            if callable(close):
+                                close()
+                        finally:
+                            if owned_recorder is not None:
+                                owned_recorder.shutdown()
             return
 
         async with AsyncExitStack() as scope:
@@ -332,6 +357,10 @@ def create_app(
                     active_analysis_service = dependencies.analysis_service_factory(
                         authorized_service
                     )
+                if history_store is not None and history_runtime is not None:
+                    active_execution_runtime = ExecutionRuntime.from_environment(
+                        history_runtime, analysis_guard
+                    )
                 if dependencies.admin_engine is not None:
                     if auth_service is None or not dependencies.admin_secret_key:
                         raise ValueError(
@@ -349,20 +378,29 @@ def create_app(
                 yield
             finally:
                 # 删除本轮挂载与引用，下一轮 lifespan 不复用已关闭资源。
-                analysis_guard.drain()
-                app.router.routes[:] = list(original_routes)
-                for attribute in ("sqladmin", "sqladmin_engine"):
-                    if hasattr(app.state, attribute):
-                        delattr(app.state, attribute)
-                provider = _MissingIdentityProvider()
-                authorization_store = _UnavailablePolicyStore()
-                authorized_service = None
-                service = None
-                auth_service = audit_sink = recorder = query_understanding = None
-                active_analysis_service = None
-                history_store = history_runtime = None
-                browser_settings = None
-                publish_bindings(app)
+                try:
+                    if active_execution_runtime is not None:
+                        active_execution_runtime.close()
+                finally:
+                    active_execution_runtime = None
+                    try:
+                        analysis_guard.drain()
+                    finally:
+                        app.router.routes[:] = list(original_routes)
+                        for attribute in ("sqladmin", "sqladmin_engine"):
+                            if hasattr(app.state, attribute):
+                                delattr(app.state, attribute)
+                        provider = _MissingIdentityProvider()
+                        authorization_store = _UnavailablePolicyStore()
+                        authorized_service = None
+                        service = None
+                        auth_service = audit_sink = recorder = query_understanding = (
+                            None
+                        )
+                        active_analysis_service = None
+                        history_store = history_runtime = None
+                        browser_settings = None
+                        publish_bindings(app)
 
     app = FastAPI(title="ChatBI Query API", version="0.1.0", lifespan=lifespan)
     publish_bindings(app)
@@ -385,7 +423,11 @@ def create_app(
     ) -> JSONResponse:
         path = request.url.path
         if path != "/api/v1/query" and not path.startswith(
-            ("/api/v1/histories", "/api/v1/saved-results")
+            (
+                "/api/v1/histories",
+                "/api/v1/saved-results",
+                "/api/v1/executions",
+            )
         ):
             response = await call_next(request)
             if path.startswith("/auth/"):
@@ -594,6 +636,9 @@ def create_app(
     from .history_api import mount_history_api
 
     mount_history_api(app)
+    from .execution_api import mount_execution_api
+
+    mount_execution_api(app)
     mount_browser_auth(app)
     if runtime_factory is None:
         mount_web_files(app, browser_settings)

@@ -1,7 +1,7 @@
 """通过真实 HTTP Adapter 验证延迟绑定与重复生命周期。"""
 
 from contextlib import contextmanager
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -86,12 +86,31 @@ def test_binding_failure_releases_runtime_and_clears_state():
             released.append(True)
 
     app = create_app(runtime_factory=factory)
-    with pytest.raises(RuntimeError, match="analysis assembly failed"):
-        with TestClient(app):
-            pass
+    with pytest.raises(RuntimeError, match="analysis assembly failed"), TestClient(app):
+        pass
     assert released == [True]
     assert app.state.query_service is None
     assert app.state.analysis_service is None
+
+
+def test_invalid_execution_runtime_config_closes_direct_analysis_service():
+    analysis_service = Mock()
+    app = create_app(
+        service=Mock(),
+        trace_recorder=Mock(),
+        history_store=Mock(),
+        history_runtime=Mock(),
+        analysis_service=analysis_service,
+    )
+
+    with (
+        patch.dict("os.environ", {"CHATBI_EXECUTION_MAX_TOTAL": "0"}),
+        pytest.raises(ValueError, match="正整数"),
+        TestClient(app),
+    ):
+        pass
+
+    analysis_service.close.assert_called_once_with()
 
 
 def test_sqladmin_mount_uses_new_engine_after_repeated_lifespan():

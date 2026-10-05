@@ -1,6 +1,6 @@
 # Query API Adapter Spec
 
-当前 Web 长期状态以 [R3 History Spec](history-results-v1.md) 为准：显式 `/api/v1/histories` 与 `/api/v1/saved-results` 保存私人快照，刷新只读，续聊恢复完整条件；旧 `/api/v1/query` 继续原短期 Contract。本文的 R1 / R2 阶段状态描述保留历史边界，不能用来否定 R3。
+当前 Web 长期状态以 [R3 History Spec](history-results-v1.md) 为准：显式 `/api/v1/histories` 与 `/api/v1/saved-results` 保存私人快照，刷新只读，续聊恢复完整条件；旧 `/api/v1/query` 继续原短期 Contract。网页执行使用 R4 后台执行受理、正式结果读取和 SSE 状态观察；完整行为见 [R4 Spec](execution-streaming-v1.md)，实现设计见 [R4 Design](../designs/execution-streaming-v1.md)。本文的 R1 / R2 阶段状态描述保留历史边界，不能用来否定 R3 / R4。
 ## 目标
 
 使用 FastAPI（Web 框架）把现有 Online Query（在线查询）能力暴露为同步 HTTP JSON 接口，供电脑端 Web、内部应用或 API Gateway（API 网关）调用。
@@ -20,13 +20,29 @@ HTTP 请求
 
 ## 运行方式
 
-- 同步、每次请求/响应；每次下游执行仍然只处理一条有效查询。
-- 当前使用 JSON，不使用 SSE（流式推送）或 WebSocket（双向实时连接）。
+- 本文定义的 `/api/v1/query` 与分析查询接口仍是同步 JSON、每次请求/响应；每次下游执行仍然只处理一条有效查询。
+- R4 网页执行接口采用异步受理与 GET/SSE 观察；SSE 观察已受理执行状态，也可以携带标明尚未校验的报告文字候选，不改变下游查询规则。当前不使用 WebSocket（双向实时连接）。
 - `mode=query` 通过 `AuthorizedQueryService.authorize()` 完成身份与数据授权；已有会话在授权通过后完成语义修订，再由 `execute_authorized()` 调用下游 `OnlineQueryService.execute()`。
 - `mode=analysis` 只调用被注入的 Business Analysis Application Workflow；Task 的授权、执行和报告生成不下沉到 API Adapter。
 - API 不改变 Online Query 的业务规则、超时和结果行数上限；短期会话边界使用本 Spec 定义的 Application 错误码。
 
 ## 接口
+
+### R4 网页执行路由（增量接口）
+
+R4 保留上面的同步接口，并为网页历史增加独立执行路由：
+
+```text
+POST /api/v1/histories/{history_id}/executions
+POST /api/v1/histories/{history_id}/requery-executions
+POST /api/v1/saved-results/{result_id}/requery-executions
+GET  /api/v1/executions/by-operation/{operation_id}
+GET  /api/v1/executions/{execution_id}
+GET  /api/v1/executions/{execution_id}/events
+POST /api/v1/executions/{execution_id}/cancel
+```
+
+执行创建路由返回 `202` 受理身份；取消路由接受空 JSON body，返回 `202 stopping` 或 `200` 已有终态，重复请求幂等且不会改写成功终态。读取路由以只读身份检查现有 Session 和当前权限。`events` 使用版本化 SSE `snapshot` / `progress` / `text_delta` / `draft_reset` / `terminal` 帧与心跳，响应设为 `no-store`，身份失效时以不含私有字段的 `auth_lost` 帧关闭。分析报告生成期间仅发布六个白名单文字字段，并在快照中携带当前 generation 的完整未校验草稿；正式报告仍须经过原结构、证据引用与业务校验，并成功保存后才交付。网页重连只重新 GET，不重放业务 POST。完整阶段名称、缓冲上限、停止与草稿行为以正式 R4 Spec 为准；本文说明同步 API 兼容边界与新增网页路由。
 
 ### 查询
 
@@ -202,7 +218,7 @@ API 对请求体解析失败时，也必须返回上述 `QueryFailure` 形状，
 
 ## 不负责
 
-- SSE、WebSocket 和流式输出；经营分析报告由 Business Analysis Application Workflow 负责，API 只做响应序列化。
+- WebSocket 与同步 `/api/v1/query` 的执行状态流；R4 SSE 由独立执行路由提供，经营分析仍由 Business Analysis Application Workflow 负责。
 - Streamlit、Gradio、React 或 Vue 前端页面。
 - 账号 / 权限业务真相由既有账号与授权模块维护；本 Adapter 提供登录 HTTP 边界，不新增 tenant_id 或数据行级隔离。
 - 长期聊天历史、跨服务恢复、复杂分析 Agent、RAG、自动修复和模型重试。

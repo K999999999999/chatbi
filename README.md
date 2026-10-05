@@ -109,10 +109,10 @@ uv run --python 3.11 --locked python -m pytest -q
 
 ## 电脑端 Web 入口
 
-当前默认入口为 React + TypeScript + Vite 网页。开发 / 打包入口见 [Runbook](docs/runbook.md#web-开发与打包)，行为见 [Web Spec](docs/specs/web-dialogue-v1.md)，证据见 [R1 验收](docs/acceptance/web-dialogue-v1-20261003.md)。Streamlit 已移除。有效登录下刷新可按 URL 只读恢复已保存快照；重新登录默认空白，通过私人列表重开历史。R2 图表与结果表已交付；R4 流式反馈和 R5 导出仍按后续路线推进。
+当前默认入口为 React + TypeScript + Vite 网页。开发 / 打包入口见 [Runbook](docs/runbook.md#web-开发与打包)，行为见 [Web Spec](docs/specs/web-dialogue-v1.md) 和 [R4 Spec](docs/specs/execution-streaming-v1.md)，R4 最终候选记录见 [Acceptance](docs/acceptance/execution-streaming-v1.md)。Streamlit 已移除。有效登录下刷新可按 URL 只读恢复已保存快照；重新登录默认空白，通过私人列表重开历史。R2 图表与结果表已交付；R4 网页执行可观察真实阶段与分析报告生成中的未校验文字草稿，成功后读取正式结果；R5 导出仍按后续路线推进。
 
 ### 结果图表与表格（R2）
 
 问数同时展示可信结果图表和表格，支持指标卡、时间趋势、分类对比、单位拆图、千分位金额和百分比；原始返回值可核对。经营分析展示后端已对账的产品与因素贡献。图表绘制及切换不重新查询；未知语义或图表故障保留原始表格。详见[R2行为](docs/specs/result-visualization-v1.md)、[设计](docs/designs/result-visualization-v1.md)和[运行说明](docs/runbook.md#r2-图表与数字展示)。
 
-R3 的刷新重开、完整条件恢复与成果生命周期见 [History Spec](docs/specs/history-results-v1.md)，当前本地验收入口见 [Acceptance](docs/acceptance/history-results-v1.md)。
+R3 的刷新重开、完整条件恢复与成果生命周期见 [History Spec](docs/specs/history-results-v1.md)，R4 的执行受理、取消、SSE 重连与报告草稿边界见 [R4 Spec](docs/specs/execution-streaming-v1.md)；本地验收入口分别见 [R3 Acceptance](docs/acceptance/history-results-v1.md) 与 [R4 Acceptance](docs/acceptance/execution-streaming-v1.md)。

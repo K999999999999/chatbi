@@ -20,13 +20,70 @@ from src.business_analysis.execution import TaskStatus
 from src.business_analysis.reporting import BusinessAnalysisReport
 from src.business_analysis.run_store import AnalysisRun, AnalysisRunStatus
 from src.business_analysis.runtime import _checkpoint_allowed_types
-from src.online_query.contracts import QueryErrorCode, QueryFailure, QuerySuccess
+from src.online_query.contracts import (
+    ExecutionStage,
+    QueryErrorCode,
+    QueryFailure,
+    QuerySuccess,
+)
 from src.online_query.query_understanding import TimeGranularity
 
 _DEFAULT_PERIOD = AnalysisTimeRange("2025年2月", TimeGranularity.MONTH)
 
 
 class BusinessAnalysisApplicationTest(unittest.TestCase):
+    def test_report_observer_reaches_only_the_controlled_summary_path(self) -> None:
+        observer = _ReportDraftObserver()
+        summarizer = _ObservedSummarizer()
+        application = _application(
+            _AuthorizedService(_BoundService()),
+            _Decomposer(_candidate()),
+            summarizer,
+        )
+
+        result = application.analyze(
+            "2025年3月毛利为什么比2月下降？",
+            request_id="analysis-report-observer",
+            auth_context="auth-context",
+            report_observer=observer,
+        )
+
+        self.assertIsInstance(result, BusinessAnalysisSuccess)
+        self.assertIs(summarizer.report_observer, observer)
+        self.assertEqual(len(summarizer.controlled_calls), 1)
+
+    def test_progress_observer_reports_stages_and_actual_task_count(self) -> None:
+        observer = _ProgressObserver()
+        bound = _BoundService()
+        application = _application(
+            _AuthorizedService(bound), _Decomposer(_candidate()), _Summarizer()
+        )
+
+        result = application.analyze(
+            "2025年3月毛利为什么比2月下降？",
+            request_id="analysis-progress",
+            auth_context="auth-context",
+            progress_observer=observer,
+        )
+
+        self.assertIsInstance(result, BusinessAnalysisSuccess)
+        self.assertEqual(
+            observer.stages,
+            [
+                ExecutionStage.ANALYSIS_UNDERSTANDING,
+                ExecutionStage.ANALYSIS_PLAN_VALIDATION,
+                *([ExecutionStage.ANALYSIS_QUERY_TASKS] * 4),
+                ExecutionStage.ANALYSIS_ATTRIBUTION,
+                ExecutionStage.ANALYSIS_REPORT_GENERATION,
+            ],
+        )
+        self.assertEqual(observer.task_progress[0], (0, 4))
+        self.assertEqual(observer.task_progress[-1], (4, 4))
+        self.assertEqual(
+            [completed for completed, _total in observer.task_progress],
+            sorted(completed for completed, _total in observer.task_progress),
+        )
+
     def test_graph_builds_fixed_tasks_and_executes_each_through_authorized_query(
         self,
     ) -> None:
@@ -253,6 +310,18 @@ class _Decomposer:
         return self.candidate
 
 
+class _ProgressObserver:
+    def __init__(self) -> None:
+        self.stages = []
+        self.task_progress = []
+
+    def set_stage(self, stage) -> None:
+        self.stages.append(stage)
+
+    def set_task_progress(self, completed, total) -> None:
+        self.task_progress.append((completed, total))
+
+
 class _Summarizer:
     def __init__(self) -> None:
         self.inputs = []
@@ -270,6 +339,28 @@ class _Summarizer:
             incomplete_tasks=(),
             attribution=attribution,
         )
+
+
+class _ObservedSummarizer(_Summarizer):
+    def __init__(self) -> None:
+        super().__init__()
+        self.report_observer = None
+        self.controlled_calls = []
+
+    def summarize_with_control(
+        self, question, task_results, attribution, execution_control, report_observer
+    ):
+        self.controlled_calls.append(execution_control)
+        self.report_observer = report_observer
+        return self.summarize(question, task_results, attribution)
+
+
+class _ReportDraftObserver:
+    def text_delta(self, field, index, offset, text):
+        pass
+
+    def reset(self, reason):
+        pass
 
 
 class _AuthorizedService:

@@ -1,6 +1,8 @@
 """Business Analysis 报告和 Summary LLM 测试。"""
 
+import json
 import unittest
+from unittest.mock import patch
 
 from src.business_analysis.attribution import calculate_product_attribution
 from src.business_analysis.contracts import AnalysisRequest, AnalysisTimeRange
@@ -10,10 +12,138 @@ from src.business_analysis.reporting import (
     BusinessAnalysisReport,
     LangChainAnalysisSummarizer,
 )
+from src.online_query.contracts import ExecutionStopped
 from src.online_query.query_understanding import TimeGranularity
 
 
 class ReportingTest(unittest.TestCase):
+    def test_streaming_observer_receives_real_text_before_final_report(self) -> None:
+        content = json.dumps(_payload(), ensure_ascii=False, separators=(",", ":"))
+        model = _StreamingFakeModel([[content[:22], content[22:48], content[48:]]])
+        observer = _ReportObserver()
+
+        report = LangChainAnalysisSummarizer(model).summarize_with_control(
+            "分析销售额", (_result("good", rows=((1,),)),), None, None, observer
+        )
+
+        self.assertEqual(report.title, "销售额分析")
+        self.assertEqual(len(model.stream_prompts), 1)
+        self.assertEqual(model.invoke_calls, 0)
+        self.assertTrue(observer.text)
+        self.assertIn(("title", None), observer.text)
+
+    def test_provider_failure_resets_draft_and_retries_once(self) -> None:
+        content = json.dumps(_payload(), ensure_ascii=False, separators=(",", ":"))
+        model = _StreamingFakeModel(
+            [['{"title":"旧草稿', RuntimeError("provider disconnected")], [content]]
+        )
+        observer = _ReportObserver()
+
+        report = LangChainAnalysisSummarizer(model).summarize_with_control(
+            "分析销售额", (_result("good", rows=((1,),)),), None, None, observer
+        )
+
+        self.assertEqual(report.title, "销售额分析")
+        self.assertEqual(len(model.stream_prompts), 2)
+        self.assertEqual(model.stream_prompts[0], model.stream_prompts[1])
+        self.assertEqual(observer.resets, ["model_retry"])
+        self.assertEqual(observer.current_text.get(("title", None)), "销售额分析")
+
+    def test_duplicate_key_is_validation_failure_without_retry_or_invoke_fallback(
+        self,
+    ) -> None:
+        model = _StreamingFakeModel([['{"title":"预览",', '"title":"歧义"}']])
+        observer = _ReportObserver()
+
+        with self.assertRaises(AnalysisReportError) as raised:
+            LangChainAnalysisSummarizer(model).summarize_with_control(
+                "分析销售额", (_result("good", rows=((1,),)),), None, None, observer
+            )
+
+        self.assertEqual(raised.exception.code, "LLM_ERROR")
+        self.assertEqual(raised.exception.reason, "RESPONSE_NOT_JSON")
+        self.assertEqual(len(model.stream_prompts), 1)
+        self.assertEqual(model.invoke_calls, 0)
+        self.assertTrue(observer.current_text.get(("title", None)))
+
+    def test_execution_stop_from_stream_is_not_retried(self) -> None:
+        model = _StreamingFakeModel(
+            [['{"title":"部分', ExecutionStopped("user_cancelled")]]
+        )
+        observer = _ReportObserver()
+
+        with self.assertRaises(ExecutionStopped):
+            LangChainAnalysisSummarizer(model).summarize_with_control(
+                "分析销售额",
+                (_result("good", rows=((1,),)),),
+                None,
+                _NoopControl(),
+                observer,
+            )
+
+        self.assertEqual(len(model.stream_prompts), 1)
+        self.assertEqual(observer.resets, [])
+
+    def test_second_provider_failure_is_the_only_other_retry(self) -> None:
+        model = _StreamingFakeModel(
+            [[RuntimeError("first failure")], [RuntimeError("second failure")]]
+        )
+        observer = _ReportObserver()
+
+        with self.assertRaises(AnalysisReportError) as raised:
+            LangChainAnalysisSummarizer(model).summarize_with_control(
+                "分析销售额", (_result("good", rows=((1,),)),), None, None, observer
+            )
+
+        self.assertEqual(raised.exception.reason, "PROVIDER_CALL_FAILED")
+        self.assertEqual(len(model.stream_prompts), 2)
+        self.assertEqual(observer.resets, ["model_retry"])
+
+    def test_streaming_json_size_limit_is_controlled_and_does_not_retry(self) -> None:
+        content = json.dumps(_payload(), ensure_ascii=False, separators=(",", ":"))
+        model = _StreamingFakeModel([[content]])
+        observer = _ReportObserver()
+
+        with (
+            patch("src.business_analysis.reporting.MAX_REPORT_JSON_BYTES", 12),
+            self.assertRaises(AnalysisReportError) as raised,
+        ):
+            LangChainAnalysisSummarizer(model).summarize_with_control(
+                "分析销售额", (_result("good", rows=((1,),)),), None, None, observer
+            )
+
+        self.assertEqual(raised.exception.reason, "RESPONSE_TOO_LARGE")
+        self.assertEqual(len(model.stream_prompts), 1)
+        self.assertEqual(observer.resets, [])
+
+    def test_invoke_json_size_limit_is_controlled(self) -> None:
+        model = _FakeModel(_payload())
+
+        with (
+            patch("src.business_analysis.reporting.MAX_REPORT_JSON_BYTES", 12),
+            self.assertRaises(AnalysisReportError) as raised,
+        ):
+            LangChainAnalysisSummarizer(model).summarize(
+                "分析销售额", (_result("good", rows=((1,),)),)
+            )
+
+        self.assertEqual(raised.exception.reason, "RESPONSE_TOO_LARGE")
+        self.assertEqual(model.calls, 1)
+
+    def test_missing_stream_provider_is_controlled_without_invoke_fallback(
+        self,
+    ) -> None:
+        model = _FakeModel(_payload())
+        observer = _ReportObserver()
+
+        with self.assertRaises(AnalysisReportError) as raised:
+            LangChainAnalysisSummarizer(model).summarize_with_control(
+                "分析销售额", (_result("good", rows=((1,),)),), None, None, observer
+            )
+
+        self.assertEqual(raised.exception.reason, "PROVIDER_STREAM_UNAVAILABLE")
+        self.assertEqual(model.calls, 0)
+
     def test_summary_receives_and_returns_program_attribution(self) -> None:
         attribution = calculate_product_attribution(
             AnalysisRequest(
@@ -180,6 +310,51 @@ class _FakeModel:
         self.calls += 1
         self.prompt = prompt
         return type("Response", (), {"content": _content(self.content)})()
+
+
+class _StreamingFakeModel:
+    def __init__(self, attempts: list[list[object]]) -> None:
+        self.attempts = attempts
+        self.stream_prompts: list[str] = []
+        self.invoke_calls = 0
+
+    def stream(self, prompt: str):
+        self.stream_prompts.append(prompt)
+        attempt = self.attempts.pop(0)
+
+        def chunks():
+            for item in attempt:
+                if isinstance(item, BaseException):
+                    raise item
+                yield type("MessageChunk", (), {"content": item})()
+
+        return chunks()
+
+    def invoke(self, prompt: str):
+        self.invoke_calls += 1
+        raise AssertionError("流式路径不能回放 invoke")
+
+
+class _ReportObserver:
+    def __init__(self) -> None:
+        self.text: list[tuple[str, int | None]] = []
+        self.current_text: dict[tuple[str, int | None], str] = {}
+        self.resets: list[str] = []
+
+    def text_delta(self, field: str, index: int | None, offset: int, text: str) -> None:
+        key = (field, index)
+        assert len(self.current_text.get(key, "")) == offset
+        self.current_text[key] = self.current_text.get(key, "") + text
+        self.text.append(key)
+
+    def reset(self, reason: str) -> None:
+        self.resets.append(reason)
+        self.current_text.clear()
+
+
+class _NoopControl:
+    def checkpoint(self) -> None:
+        return None
 
 
 def _content(value: object) -> str:

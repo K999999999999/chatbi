@@ -1,6 +1,6 @@
 # Query API Adapter Implementation Design
 
-> 本文只描述已经实现的单轮 Query API Adapter baseline。Multi-Turn Query V1 的会话状态、并发和 `conversation_id` 行为以对应 Feature Spec / Query API Spec 为准，尚未形成新的 Implementation Design；不得把本文的单轮请求模型当作该 Feature 的实现授权。
+> 本文记录同步 Query API Adapter 与 R3 History Adapter 的既有设计。R4 在其上增加独立的后台执行 Application / Runtime 和 SSE Adapter；完整 Contract 与实现设计分别见 [R4 Spec](execution-streaming-v1.md) 和 [R4 Design](execution-streaming-v1.md)。本文的同步路由行为不代表网页执行路由也同步运行。
 
 ## 结论
 
@@ -128,7 +128,7 @@ GET  /health
 POST /api/v1/query
 ```
 
-查询路由使用同步函数，先调用同步 `AuthorizedQueryService`，再由授权入口调用 `OnlineQueryService.execute()`；不使用 `async`、SSE 或 WebSocket。
+`GET /health` 与 `POST /api/v1/query` 保持既有同步 JSON 行为。R4 的网页执行路由独立安装于 `execution_api.py`：执行 POST 返回受理视图；取消 POST 持久记录停止请求；GET 执行资源返回正式历史轮次；GET `events` 使用 FastAPI `StreamingResponse` 输出版本化 SSE。运行阶段由可选进度 Port 发布，经 Runtime 有界共享通道 fan-out。经营分析另由可选报告草稿 Port 触发 Summary Model 的真实 `stream`，增量 JSON 解码器只映射六个白名单文字字段；无观察者时保留现有 `invoke` 路径，最终报告继续使用同一校验与持久化门槛。不增加 WebSocket 或独立 SSE 依赖。授权、容量、持久化与业务执行分别留在既有授权、History、Execution Application / Runtime 和 Domain / Application 边界内。
 
 ## `main.py` 设计
 
@@ -146,7 +146,7 @@ POST /api/v1/query
 fastapi[standard-no-fastapi-cloud-cli]
 ```
 
-它提供 FastAPI、Uvicorn 和 TestClient 所需的基础依赖。具体版本由 `uv.lock` 锁定。当前不新增 SSE、WebSocket、ORM、连接池或配置管理库。
+它提供 FastAPI、Uvicorn 和 TestClient 所需的基础依赖。具体版本由 `uv.lock` 锁定。SSE 使用 FastAPI / Starlette 内建响应能力；不增加 WebSocket、ORM、连接池或配置管理库。
 
 ## 错误映射
 

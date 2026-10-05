@@ -9,6 +9,9 @@ from uuid import uuid4
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.chatbi_control.execution import PostgresExecutionStore
+from src.online_query.contracts import ExecutionStopped, ExecutionStopReason
+from src.query_api.execution_contracts import ExecutionAcceptance
 from src.query_api.history_contracts import (
     AcceptedAttempt,
     ExecutionToken,
@@ -17,6 +20,7 @@ from src.query_api.history_contracts import (
     HistoryTurn,
     SavedResultHeader,
     busy,
+    operation_hash,
     stale,
     storage_unavailable,
     unavailable,
@@ -34,14 +38,6 @@ def _database_errors(method):
             raise storage_unavailable() from None
 
     return call
-
-
-def operation_hash(value) -> str:
-    return sha256(
-        json.dumps(
-            value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-        ).encode()
-    ).hexdigest()
 
 
 def _header(row):
@@ -97,6 +93,273 @@ def _owned_saved(connection, owner, result_id, *, lock=False):
 class PostgresHistoryStore:
     def __init__(self, engine):
         self.engine = engine
+        self.executions = PostgresExecutionStore(engine)
+
+    @_database_errors
+    def execution(self, owner, execution_id):
+        return self.executions.get(owner, execution_id)
+
+    @_database_errors
+    def execution_by_operation(self, owner, operation_id, request_hash=None):
+        return self.executions.by_operation(owner, operation_id, request_hash)
+
+    @_database_errors
+    def mark_execution_running(self, owner, execution_id):
+        with self.engine.begin() as connection:
+            self.executions.mark_running_in_transaction(connection, owner, execution_id)
+
+    @_database_errors
+    def request_execution_stop(
+        self,
+        owner,
+        execution_id,
+        reason,
+        *,
+        analysis_owner_subject=None,
+    ):
+        reason = ExecutionStopReason(reason)
+        with self.engine.begin() as connection:
+            identity = (
+                connection.execute(
+                    text("""SELECT history_id FROM history_executions
+                        WHERE id=:id AND owner_user_id=:owner"""),
+                    {"id": execution_id, "owner": owner},
+                )
+                .mappings()
+                .first()
+            )
+            if identity is None:
+                raise unavailable()
+            history = _owned(
+                connection, owner, identity["history_id"], lock=True, wait=True
+            )
+            execution = self.executions.locked_in_transaction(
+                connection, owner, execution_id
+            )
+            if execution["status"] == "stopping":
+                return self.executions.record_from_row(execution)
+            if execution["status"] not in {"accepted", "running"}:
+                return self.executions.record_from_row(execution)
+            current_epoch = connection.execute(
+                text("SELECT runtime_epoch FROM history_runtime WHERE singleton")
+            ).scalar_one_or_none()
+            if (
+                str(history["active_turn_id"]) != str(execution["turn_id"])
+                or history["execution_generation"] != execution["execution_generation"]
+                or str(current_epoch) != str(execution["runtime_epoch"])
+            ):
+                raise HistoryError(
+                    "HISTORY_SAVE_UNCONFIRMED", "执行已改变，请刷新历史", 503
+                )
+            if (
+                reason is ExecutionStopReason.USER_CANCELLED
+                and execution["mode"] == "analysis"
+            ):
+                self._expire_cancelled_analysis_run(
+                    connection,
+                    history,
+                    analysis_owner_subject=analysis_owner_subject,
+                )
+            return self.executions.request_stop_in_transaction(
+                connection, execution, reason.value
+            )
+
+    def _expire_cancelled_analysis_run(
+        self, connection, history, *, analysis_owner_subject
+    ):
+        run_id = history["analysis_run_id"]
+        if run_id is None or not analysis_owner_subject:
+            raise HistoryError("HISTORY_SAVE_UNCONFIRMED", "分析任务身份不可确认", 503)
+        question_hash = sha256(
+            history["first_question"].strip().encode("utf-8")
+        ).hexdigest()
+        row = (
+            connection.execute(
+                text("""SELECT owner_subject,question_sha256 FROM business_analysis_runs
+                    WHERE analysis_run_id=:run FOR UPDATE"""),
+                {"run": run_id},
+            )
+            .mappings()
+            .first()
+        )
+        if row is None:
+            connection.execute(
+                text("""INSERT INTO business_analysis_runs(
+                    analysis_run_id,owner_subject,question_sha256,status,expires_at
+                ) VALUES (:run,:owner,:question_hash,'expired',:created_at + INTERVAL '24 hours')"""),
+                {
+                    "run": run_id,
+                    "owner": analysis_owner_subject,
+                    "question_hash": question_hash,
+                    "created_at": history["created_at"],
+                },
+            )
+            return
+        if (
+            row["owner_subject"] != analysis_owner_subject
+            or row["question_sha256"] != question_hash
+        ):
+            raise HistoryError("HISTORY_SAVE_UNCONFIRMED", "分析任务归属不可确认", 503)
+        connection.execute(
+            text("""UPDATE business_analysis_runs SET status='expired',
+                updated_at=CURRENT_TIMESTAMP WHERE analysis_run_id=:run"""),
+            {"run": run_id},
+        )
+
+    @_database_errors
+    def finish_execution_stopped(self, owner, token, execution_id, status, error):
+        with self.engine.begin() as connection:
+            history = _owned(connection, owner, token.history_id, lock=True, wait=True)
+            epoch = connection.execute(
+                text("SELECT runtime_epoch FROM history_runtime WHERE singleton")
+            ).scalar_one_or_none()
+            if (
+                str(history["active_turn_id"]) != token.turn_id
+                or history["execution_generation"] != token.generation
+                or str(epoch) != token.epoch
+            ):
+                raise HistoryError(
+                    "HISTORY_SAVE_UNCONFIRMED", "停止结果未确认，请刷新历史", 503
+                )
+            execution = self.executions.locked_in_transaction(
+                connection, owner, execution_id
+            )
+            if (
+                str(execution["history_id"]) != token.history_id
+                or str(execution["turn_id"]) != token.turn_id
+                or execution["execution_generation"] != token.generation
+                or execution["status"] != "stopping"
+            ):
+                raise HistoryError(
+                    "HISTORY_SAVE_UNCONFIRMED", "停止状态已改变，请刷新历史", 503
+                )
+            row = (
+                connection.execute(
+                    text("""UPDATE history_turns SET status='failed',snapshot=NULL,
+                        snapshot_version=NULL,public_error=CAST(:error AS jsonb),
+                        completed_at=CURRENT_TIMESTAMP
+                        WHERE id=:turn AND history_id=:id AND status='accepted'
+                          AND runtime_epoch=:epoch AND execution_generation=:generation
+                        RETURNING *"""),
+                    {
+                        "error": json.dumps(error, ensure_ascii=False),
+                        "turn": token.turn_id,
+                        "id": token.history_id,
+                        "epoch": token.epoch,
+                        "generation": token.generation,
+                    },
+                )
+                .mappings()
+                .first()
+            )
+            if row is None:
+                raise HistoryError(
+                    "HISTORY_SAVE_UNCONFIRMED", "停止轮次已改变，请刷新历史", 503
+                )
+            cleared = connection.execute(
+                text("""UPDATE history_records SET active_turn_id=NULL,
+                    record_revision=record_revision+1,updated_at=CURRENT_TIMESTAMP
+                    WHERE id=:id AND active_turn_id=:turn
+                      AND execution_generation=:generation"""),
+                {
+                    "id": token.history_id,
+                    "turn": token.turn_id,
+                    "generation": token.generation,
+                },
+            )
+            if cleared.rowcount != 1:
+                raise HistoryError(
+                    "HISTORY_SAVE_UNCONFIRMED", "停止轮次未能释放，请刷新历史", 503
+                )
+            self.executions.finish_stop_in_transaction(
+                connection, owner, execution_id, status, error
+            )
+            return _turn(row)
+
+    @_database_errors
+    def begin_execution_attempt(
+        self,
+        *,
+        owner,
+        history_id,
+        question,
+        operation_id,
+        request_hash,
+        revision,
+        request_id,
+        epoch,
+        mode,
+        operation_kind,
+        deadline_seconds,
+        expected_record_revision=None,
+    ):
+        with self.engine.begin() as connection:
+            self.executions.lock_operation_in_transaction(
+                connection, owner, operation_id
+            )
+            existing = self.executions.find_in_transaction(
+                connection, owner, operation_id, request_hash
+            )
+            if existing is not None:
+                return ExecutionAcceptance(existing, None, False)
+
+            header = _owned(connection, owner, history_id, lock=True)
+            if header["kind"] != mode:
+                raise HistoryError("INVALID_REQUEST", "执行模式与历史类型不匹配", 400)
+            if mode == "analysis":
+                if expected_record_revision is None:
+                    raise HistoryError("INVALID_REQUEST", "分析恢复版本缺失", 400)
+                if header["record_revision"] != expected_record_revision:
+                    raise stale()
+                digest = operation_hash(
+                    {"action": "resume", "record_revision": expected_record_revision}
+                )
+                accepted = self._begin(
+                    connection,
+                    owner,
+                    history_id,
+                    header["first_question"],
+                    operation_id,
+                    header["context_revision"],
+                    request_id,
+                    epoch,
+                    digest,
+                )
+            else:
+                if revision is None:
+                    raise HistoryError("INVALID_REQUEST", "查询版本缺失", 400)
+                accepted = self._begin(
+                    connection,
+                    owner,
+                    history_id,
+                    question,
+                    operation_id,
+                    revision,
+                    request_id,
+                    epoch,
+                    operation_hash(
+                        {"question": question, "context_revision": revision}
+                    ),
+                )
+            if accepted.token is None:
+                raise HistoryError(
+                    "HISTORY_OPERATION_CONFLICT", "操作编号已用于其他执行", 409
+                )
+            execution = self.executions.insert_in_transaction(
+                connection,
+                execution_id=str(uuid4()),
+                owner=owner,
+                history_id=history_id,
+                turn_id=accepted.turn.id,
+                operation_id=operation_id,
+                request_hash=request_hash,
+                mode=mode,
+                operation_kind=operation_kind,
+                epoch=epoch,
+                generation=accepted.token.generation,
+                deadline_seconds=deadline_seconds,
+            )
+            return ExecutionAcceptance(execution, accepted, True)
 
     @_database_errors
     def begin_requery(
@@ -109,6 +372,8 @@ class PostgresHistoryStore:
         request_id,
         epoch,
         new_id,
+        *,
+        execution_data=None,
     ):
         digest = operation_hash(
             {
@@ -119,6 +384,37 @@ class PostgresHistoryStore:
             }
         )
         with self.engine.begin() as connection:
+            if execution_data is not None:
+                self.executions.lock_operation_in_transaction(
+                    connection, owner, operation_id
+                )
+                execution = self.executions.find_in_transaction(
+                    connection,
+                    owner,
+                    operation_id,
+                    execution_data["request_hash"],
+                )
+                if execution is not None:
+                    header = _header(_owned(connection, owner, execution.history_id))
+                    turn = (
+                        connection.execute(
+                            text(
+                                "SELECT * FROM history_turns WHERE id=:turn AND history_id=:history"
+                            ),
+                            {
+                                "turn": execution.turn_id,
+                                "history": execution.history_id,
+                            },
+                        )
+                        .mappings()
+                        .one()
+                    )
+                    return (
+                        header,
+                        AcceptedAttempt(None, _turn(turn), None),
+                        execution,
+                        False,
+                    )
             existing = (
                 connection.execute(
                     text(
@@ -130,6 +426,10 @@ class PostgresHistoryStore:
                 .first()
             )
             if existing is not None:
+                if execution_data is not None:
+                    raise HistoryError(
+                        "HISTORY_OPERATION_CONFLICT", "操作编号已用于其他执行", 409
+                    )
                 if existing["creation_operation_hash"] != digest:
                     raise HistoryError(
                         "HISTORY_OPERATION_CONFLICT", "操作标识与原请求不符", 409
@@ -216,7 +516,13 @@ class PostgresHistoryStore:
                     "question": question,
                     "op": operation_id,
                     "hash": digest,
-                    "run": str(uuid4()) if kind == "analysis" else None,
+                    "run": (
+                        execution_data.get("analysis_run_id") or str(uuid4())
+                        if kind == "analysis" and execution_data is not None
+                        else str(uuid4())
+                        if kind == "analysis"
+                        else None
+                    ),
                 },
             )
             if inserted.scalar_one_or_none() is None:
@@ -251,10 +557,63 @@ class PostgresHistoryStore:
                     "input": json.dumps(snapshot, ensure_ascii=False, allow_nan=False),
                 },
             )
+            execution = None
+            if execution_data is not None:
+                execution = self.executions.insert_in_transaction(
+                    connection,
+                    execution_id=str(uuid4()),
+                    owner=owner,
+                    history_id=new_id,
+                    turn_id=accepted.turn.id,
+                    operation_id=operation_id,
+                    request_hash=execution_data["request_hash"],
+                    mode=kind,
+                    operation_kind=execution_data["operation_kind"],
+                    epoch=epoch,
+                    generation=accepted.token.generation,
+                    deadline_seconds=execution_data["deadline_seconds"],
+                )
             header = _header(_owned(connection, owner, new_id))
-            return header, AcceptedAttempt(
+            attempt = AcceptedAttempt(
                 accepted.token, accepted.turn, snapshot.get("query_state"), snapshot
             )
+            if execution_data is not None:
+                return header, attempt, execution, True
+            return header, attempt
+
+    @_database_errors
+    def begin_execution_requery(
+        self,
+        *,
+        owner,
+        source_kind,
+        source_id,
+        source_turn_id,
+        operation_id,
+        request_id,
+        epoch,
+        new_id,
+        request_hash,
+        operation_kind,
+        deadline_seconds,
+        analysis_run_id=None,
+    ):
+        return self.begin_requery(
+            owner,
+            source_kind,
+            source_id,
+            source_turn_id,
+            operation_id,
+            request_id,
+            epoch,
+            new_id,
+            execution_data={
+                "request_hash": request_hash,
+                "operation_kind": operation_kind,
+                "deadline_seconds": deadline_seconds,
+                "analysis_run_id": analysis_run_id,
+            },
+        )
 
     @_database_errors
     def create(self, owner, kind, question, operation_id):
@@ -489,12 +848,26 @@ class PostgresHistoryStore:
         )
 
     @_database_errors
-    def finish_attempt(self, owner, token, snapshot, error):
+    def finish_attempt(self, owner, token, snapshot, error, *, execution_id=None):
         with self.engine.begin() as connection:
             # Completion must survive a short metadata/copy/delete transaction that
             # observed the still-active turn. Returning NOWAIT here can strand a
             # completed business request as unconfirmed.
             header = _owned(connection, owner, token.history_id, lock=True, wait=True)
+            execution = (
+                self.executions.locked_in_transaction(connection, owner, execution_id)
+                if execution_id is not None
+                else None
+            )
+            if execution is not None and execution["status"] == "stopping":
+                raise ExecutionStopped(execution["stop_reason"])
+            if execution is not None and execution["status"] not in {
+                "accepted",
+                "running",
+            }:
+                raise HistoryError(
+                    "HISTORY_SAVE_UNCONFIRMED", "执行状态已改变，请刷新历史", 503
+                )
             epoch = connection.execute(
                 text("SELECT runtime_epoch FROM history_runtime WHERE singleton")
             ).scalar_one_or_none()
@@ -551,7 +924,21 @@ class PostgresHistoryStore:
                     "id": token.history_id,
                 },
             )
+            if execution_id is not None:
+                self.executions.finish_in_transaction(
+                    connection,
+                    owner,
+                    execution_id,
+                    "succeeded" if snapshot is not None else "failed",
+                    error,
+                )
             return _turn(row)
+
+    @_database_errors
+    def finish_execution_attempt(self, owner, token, snapshot, error, execution_id):
+        return self.finish_attempt(
+            owner, token, snapshot, error, execution_id=execution_id
+        )
 
     @_database_errors
     def turn(self, owner, history_id, turn_id):
@@ -560,7 +947,12 @@ class PostgresHistoryStore:
             row = (
                 connection.execute(
                     text(
-                        "SELECT * FROM history_turns WHERE id=:turn AND history_id=:id"
+                        """SELECT turn.*, execution.id AS execution_id
+                        FROM history_turns AS turn
+                        LEFT JOIN history_executions AS execution
+                          ON execution.history_id=turn.history_id
+                         AND execution.turn_id=turn.id
+                        WHERE turn.id=:turn AND turn.history_id=:id"""
                     ),
                     {"turn": turn_id, "id": history_id},
                 )
@@ -785,7 +1177,15 @@ class PostgresHistoryStore:
             rows = (
                 connection.execute(
                     text(
-                        "SELECT id,history_id,ordinal,question,status,request_id,created_at,public_error FROM history_turns WHERE history_id=:id AND ordinal>:cursor ORDER BY ordinal LIMIT :limit"
+                        """SELECT turn.id,turn.history_id,turn.ordinal,turn.question,
+                        turn.status,turn.request_id,turn.created_at,turn.public_error,
+                        execution.id AS execution_id
+                        FROM history_turns AS turn
+                        LEFT JOIN history_executions AS execution
+                          ON execution.history_id=turn.history_id
+                         AND execution.turn_id=turn.id
+                        WHERE turn.history_id=:id AND turn.ordinal>:cursor
+                        ORDER BY turn.ordinal LIMIT :limit"""
                     ),
                     {"id": history_id, "cursor": cursor, "limit": limit + 1},
                 )

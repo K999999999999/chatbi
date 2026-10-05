@@ -14,8 +14,15 @@ from src.authorization.contracts import (
 )
 from src.authorization.query_entry import AuthorizedQueryService
 from src.business_analysis.application import BusinessAnalysisSuccess
+from src.business_analysis.reporting import ReportDraftObserver
 from src.observability.contracts import TraceRecorder
-from src.online_query.contracts import QueryFailure, QueryRequest, QueryResult
+from src.online_query.contracts import (
+    ExecutionControl,
+    ExecutionProgressObserver,
+    QueryFailure,
+    QueryRequest,
+    QueryResult,
+)
 
 from .browser import BrowserSettings
 
@@ -35,6 +42,9 @@ class AnalysisService(Protocol):
         request_id: str,
         auth_context: AuthContext,
         analysis_run_id: str,
+        progress_observer: ExecutionProgressObserver | None = None,
+        execution_control: ExecutionControl | None = None,
+        report_observer: ReportDraftObserver | None = None,
     ) -> BusinessAnalysisSuccess | QueryFailure:
         """执行不读取普通会话的单轮经营分析。"""
 

@@ -9,6 +9,7 @@ from typing import Protocol
 from langchain_openai import ChatOpenAI
 
 from ..observability.contracts import TraceRecorder
+from .contracts import ExecutionControl, ExecutionStopped
 
 
 class LLMError(RuntimeError):
@@ -94,8 +95,19 @@ class LangChainSQLGenerator:
         )
 
     def generate(self, prompt: str) -> str:
+        return self.generate_with_control(prompt, None)
+
+    def generate_with_control(
+        self, prompt: str, execution_control: ExecutionControl | None
+    ) -> str:
         try:
+            if execution_control is not None:
+                execution_control.checkpoint()
             response = self._model.invoke(prompt)
+            if execution_control is not None:
+                execution_control.checkpoint()
+        except ExecutionStopped:
+            raise
         except Exception as exc:
             raise LLMError("LLM 调用失败") from exc
 

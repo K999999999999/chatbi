@@ -1,11 +1,13 @@
 """Business Analysis Task Semantic Adapter 与 Executor。"""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
 from typing import Protocol
 
 from src.online_query.contracts import (
+    ExecutionControl,
+    ExecutionStopped,
     QueryFailure,
     QueryRequest,
     QueryResult,
@@ -75,6 +77,7 @@ class TaskSemanticAdapter:
         *,
         request_id: str | None = None,
         now: datetime | None = None,
+        execution_control: ExecutionControl | None = None,
     ) -> QueryRequest:
         if not isinstance(task, AnalysisTask):
             raise TaskSemanticAdapterError(
@@ -126,9 +129,12 @@ class TaskExecutor:
         *,
         request_id: str | None = None,
         now: datetime | None = None,
+        execution_control: ExecutionControl | None = None,
     ) -> tuple[TaskResult, ...]:
         if not isinstance(plan, AnalysisPlan):
             raise ValueError("分析计划类型无效")
+        if execution_control is not None:
+            execution_control.checkpoint()
 
         pending = list(plan.tasks)
         results: dict[str, TaskResult] = {}
@@ -136,6 +142,8 @@ class TaskExecutor:
             progressed = False
             next_pending: list[AnalysisTask] = []
             for task in pending:
+                if execution_control is not None:
+                    execution_control.checkpoint()
                 if any(dependency not in results for dependency in task.depends_on):
                     next_pending.append(task)
                     continue
@@ -159,6 +167,7 @@ class TaskExecutor:
                         task,
                         request_id=request_id,
                         now=now,
+                        execution_control=execution_control,
                     )
                 results[task.task_id] = result
 
@@ -174,10 +183,16 @@ class TaskExecutor:
         *,
         request_id: str | None = None,
         now: datetime | None = None,
+        execution_control: ExecutionControl | None = None,
     ) -> TaskResult:
         """执行一个已由程序生成的查询 Task，供可 checkpoint 的图节点调用。"""
 
-        return self._execute_task(task, request_id=request_id, now=now)
+        return self._execute_task(
+            task,
+            request_id=request_id,
+            now=now,
+            execution_control=execution_control,
+        )
 
     def _execute_task(
         self,
@@ -185,13 +200,21 @@ class TaskExecutor:
         *,
         request_id: str | None,
         now: datetime | None,
+        execution_control: ExecutionControl | None,
     ) -> TaskResult:
         try:
+            if execution_control is not None:
+                execution_control.checkpoint()
             request = self._adapter.to_query_request(
                 task,
                 request_id=_task_request_id(request_id, task.task_id),
                 now=now,
             )
+            if execution_control is not None:
+                execution_control.checkpoint()
+                request = replace(request, execution_control=execution_control)
+        except ExecutionStopped:
+            raise
         except TaskSemanticAdapterError:
             return TaskResult(
                 task_id=task.task_id,
@@ -212,7 +235,13 @@ class TaskExecutor:
             )
 
         try:
+            if execution_control is not None:
+                execution_control.checkpoint()
             result = self._query_service.query(request)
+            if execution_control is not None:
+                execution_control.checkpoint()
+        except ExecutionStopped:
+            raise
         except Exception:
             return TaskResult(
                 task_id=task.task_id,

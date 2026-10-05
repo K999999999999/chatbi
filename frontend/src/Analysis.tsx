@@ -3,6 +3,7 @@ import { object, strings, tableData, text, ResultView, type TableData } from './
 import { DataChart } from './Chart';
 import { plotNumber, type ChartPlan } from './chartPlan';
 import { displayValue, roundedToZero, type DisplayColumn } from './numberFormat';
+import type { ReportDraft } from './execution';
 
 type Task = TableData & { task_id: string; status: string; error: string | null };
 type Product = { product_name: string; change: string; classification: string; effect_on_metric: string; factors: { name: string; amount: string; effect_on_metric: string }[] };
@@ -106,5 +107,21 @@ export function AnalysisReport({ result }: { result: AnalysisResult }) {
       {result.task_results.map(task => <section key={task.task_id}><h3>{task.task_id} · {statuses[task.status]}</h3>
         {task.error && <p role="alert">{task.error}</p>}{task.status === 'completed' && <ResultView data={task}/>}</section>)}
     </details>
+  </div>;
+}
+
+export function AnalysisDraft({ draft, interrupted }: { draft: ReportDraft; interrupted: boolean }) {
+  const hasText = Object.values(draft).some(value =>
+    typeof value === 'string' ? value.length > 0 : Array.isArray(value) && value.some(line => line.length > 0));
+  if (!hasText) return null;
+  return <div className="analysis-draft" aria-live="polite">
+    <p className="draft-status" role="status">分析报告草稿生成中 · 尚未校验</p>
+    {interrupted && <p role="status">连接中断，已保留当前草稿；重新连接后会同步服务端进度。</p>}
+    {draft.title && <h2>{draft.title}</h2>}
+    {draft.executive_summary && <p>{draft.executive_summary}</p>}
+    {draft.key_findings && <Lines title="关键发现" lines={draft.key_findings}/>}
+    {draft.trend_judgment && <><h3>趋势判断</h3><p>{draft.trend_judgment}</p></>}
+    {draft.root_causes && <Lines title="原因分析" lines={draft.root_causes}/>}
+    {draft.action_suggestions && <Lines title="行动建议" lines={draft.action_suggestions}/>}
   </div>;
 }

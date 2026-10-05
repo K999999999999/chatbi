@@ -113,6 +113,26 @@ class BrowserIdentityProvider:
         verify_expected_user(request, context)
         return context
 
+    def authenticate_readonly(self, request):
+        """Worker 专用身份检查，不滑动 Cookie 或 Bearer Session 的 TTL。"""
+
+        token = request.cookies.get(COOKIE_NAME)
+        if not token:
+            readonly = getattr(self.bearer_provider, "authenticate_readonly", None)
+            if callable(readonly):
+                return readonly(request)
+            return self.bearer_provider.authenticate(request)
+        if "authorization" in request.headers:
+            raise AuthenticationRequired("不能混用登录凭证")
+        try:
+            context = self.auth_service.authenticate_session_readonly(token)
+        except SessionExpired as exc:
+            raise AuthenticationRequired("登录已过期，请重新登录") from exc
+        except Exception as exc:
+            raise IdentityProviderUnavailable("身份认证服务暂时不可用") from exc
+        verify_expected_user(request, context)
+        return context
+
 
 class BrowserLoginBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -144,7 +164,7 @@ def _auth_call(operation):
         raise HTTPException(401, str(exc)) from None
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from None
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - identity must fail closed
         _LOGGER.warning(
             "Browser authentication failure: error_type=%s", type(exc).__name__
         )

@@ -23,7 +23,7 @@ class ControlDatabaseMigrationError(RuntimeError):
     """应用库迁移失败。"""
 
 
-CONTROL_SCHEMA_VERSION = "chatbi-control-v3"
+CONTROL_SCHEMA_VERSION = "chatbi-control-v5"
 
 
 @dataclass(frozen=True)
@@ -255,6 +255,26 @@ def _verify_history_schema(engine: Engine) -> None:
             "source_turn_id",
         },
         "history_runtime": {"singleton", "runtime_epoch"},
+        "history_executions": {
+            "id",
+            "owner_user_id",
+            "history_id",
+            "turn_id",
+            "operation_id",
+            "request_hash",
+            "mode",
+            "operation_kind",
+            "status",
+            "stop_reason",
+            "runtime_epoch",
+            "execution_generation",
+            "created_at",
+            "started_at",
+            "deadline_at",
+            "stop_requested_at",
+            "finished_at",
+            "public_error",
+        },
     }
     try:
         with engine.connect() as connection:
@@ -291,9 +311,33 @@ def _verify_history_schema(engine: Engine) -> None:
                     raise ValueError("历史轮次唯一约束缺失")
                 if ("analysis_run_id",) not in unique:
                     raise ValueError("分析运行唯一约束缺失")
+                execution_unique = {
+                    tuple(c["column_names"])
+                    for c in inspector.get_unique_constraints("history_executions")
+                }
+                if not {
+                    ("owner_user_id", "operation_id"),
+                    ("history_id", "turn_id"),
+                }.issubset(execution_unique):
+                    raise ValueError("执行身份唯一约束缺失")
+                execution_fks = inspector.get_foreign_keys("history_executions")
+                execution_fks_by_name = {item["name"]: item for item in execution_fks}
+                execution_fk_names = {
+                    "history_execution_owner_history_fk",
+                    "history_execution_history_turn_fk",
+                }
+                if not execution_fk_names.issubset(execution_fks_by_name):
+                    raise ValueError("执行归属 / 轮次约束缺失")
+                if any(
+                    execution_fks_by_name[name].get("options", {}).get("ondelete")
+                    != "CASCADE"
+                    for name in execution_fk_names
+                ):
+                    raise ValueError("执行元数据级联删除约束缺失")
                 for table, name in (
                     ("history_records", "history_records_owner_updated_idx"),
                     ("saved_results", "saved_results_owner_updated_idx"),
+                    ("history_executions", "history_executions_owner_created_idx"),
                 ):
                     if name not in {
                         index["name"] for index in inspector.get_indexes(table)
@@ -320,6 +364,12 @@ def _verify_history_schema(engine: Engine) -> None:
                         "saved_snapshot_version",
                     },
                     "history_runtime": {"history_singleton"},
+                    "history_executions": {
+                        "history_execution_mode",
+                        "history_execution_operation_kind",
+                        "history_execution_status",
+                        "history_execution_generation",
+                    },
                 }
                 for table, names in checks.items():
                     if not names.issubset(
