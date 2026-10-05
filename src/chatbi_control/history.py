@@ -624,11 +624,12 @@ class PostgresHistoryStore:
             if table == "history_records"
             else ",".join(SavedResultHeader.__dataclass_fields__)
         )
+        # SQL identifiers / predicate fragments are internal constants; user values stay bound.
         with self.engine.connect() as connection:
             rows = (
                 connection.execute(
                     text(
-                        "SELECT "
+                        "SELECT "  # nosec B608
                         + fields
                         + " FROM "
                         + table
