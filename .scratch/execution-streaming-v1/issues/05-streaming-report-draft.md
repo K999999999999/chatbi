@@ -1,7 +1,7 @@
 # Ticket 05：分析文字真实流式、草稿重置与最终校验
 
 ID: execution-streaming-v1/05
-Status: open
+Status: in-progress
 Authorization: 用户于 2026-10-05 确认六项拆分及连续完成整个 R4 的本地实施，包含编码、适用测试与真实验收、Review 和本地 Commit；不含远端发布。
 
 Change Profile: 持续维护 /中偏大 /高风险模型不可信输出 /纯decoder+软件+浏览器 /本地candidate。

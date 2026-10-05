@@ -1,7 +1,7 @@
 # Ticket 04：状态与最终结果阶段真实链路验收
 
 ID: execution-streaming-v1/04
-Status: in-progress
+Status: complete
 Authorization: 用户于 2026-10-05 确认六项拆分及连续完成整个 R4 的本地实施，包含编码、适用测试与真实验收、Review 和本地 Commit；不含远端发布。
 
 Change Profile: 收敛型阶段验收 /中 /高风险证据 /真实Compose+浏览器+PG /本地状态阶段candidate。
@@ -28,5 +28,5 @@ Owned files: `scripts/verify_container_dev.sh` /既有helpers /真实验收入�
 验证：Runbook中既有真实验收方式、独立SQL /归因参考、真实PG进程 /migration回滚检查；文档identity /links /Diff核对。原报告保留身份。
 Migration / Rollback: 验收只使用已确认隔离资源和本地开发实例；回滚明确停止worker，不DROP业务数据，不做生产rollout。
 Done When: 1–4通过、Code Review /证据核对PASS；固定clean阶段候选并在Git公共目录记录报告，tracked入口不预写“新HEAD通过”；才能启动05。
-Result: 已扩展真实 Profile，覆盖问数 / 分析 SSE 阶段与终态、多页重连 / 刷新 / 取消，以及 API 进程强制停止后的真实 PostgreSQL 未确认恢复检查；旧版本 Schema verifier 迁移用例已修正并在开发 PostgreSQL 通过。前端 build / typecheck 通过；默认 Playwright 因宿主机缺少 Chrome 未能启动浏览器用例。正式 clean candidate 的真实调用与重启验收待运行。
+Result: clean candidate `d6478da957b7515ebb3f1387f123de8752c34192` 的 `scripts/verify_container_dev.sh real` 通过，`git_dirty=false`。真实问数与分析各以 HTTP 200 完成；SSE 均包含 snapshot / progress / terminal 和实际六阶段，最终为 succeeded，并与独立业务参考一致。刷新、第二页重连至同一执行且业务提交仅一次；取消按 running → stopping → cancelled 收敛、保留上一成功轮次，取消后新操作引用正确。强制停止 API 容器并重启后，遗留 execution / turn 均为 unconfirmed，活动指针清除、未确认快照缺失、上一成功轮次保留，Control Schema v1–v5 标记完整；重启后的历史读取 / 重登录 / 续聊 / 显式重查与数据 / RAG 身份核对通过。专用账号已禁用、活跃 Session 为0、临时凭证已清理。报告为本机 ignored 文件 `reports/browser-real/container-1791209719-real.json`，SHA256 `e22ce2e91b0140ff5041e33924eb5d6ea4308c22b4560bef733c7e5dfb37603a`；公开安全摘要见 [R4 Acceptance](../../../docs/acceptance/execution-streaming-v1.md#ticket-04-状态与结果真实验收)。同候选 `uv run --locked python scripts/run_database_tests.py --profile development` 42 passed；`npm run build` 与刷新活动历史后取消并继续提交的定向 Chromium 回归 1 passed；`git diff --check` 通过。实现与证据 Review PASS。宿主 Chrome 缺失导致的默认宿主浏览器启动限制已通过隔离 Docker Chromium 回归及正式 Compose 浏览器验收覆盖。
 Comments: 若tracked证据回填产生新阶段提交，受影响真实证据按新clean身份复验，不改原report SHA。

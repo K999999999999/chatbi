@@ -6,7 +6,7 @@ ChatBI 的 MVP 核心能力已经形成：自然语言查询、Online Retrieval�
 
 生产准备基线已在 clean commit `6a5e6ccc6504ebc0947a6addb4abb02d87b566d3` 核验：正式单轮 29/29、多轮 7/7（15 个轮次）、Business Analysis 10/10，均 `0 FAIL`、`0 INVALID_CASE`，三次独立多轮诊断各 7/7 通过。原始报告保存在本机 ignored 目录 `reports/evaluation/baseline-20261003T6a5e6cc/{formal,diagnostic-1,diagnostic-2,diagnostic-3}`；它们绑定该提交、案例集和运行资源，后续提交不自动继承通过身份，报告也不保证在新 clone 中存在。
 
-产品 V1 的需求方向和优先顺序已确认。[R1 完整 Spec](../.scratch/chatbi-product-v1/r1-spec.md) 已获用户整体确认，设计审查与 Ticket Readiness 已通过，[五项实施拆分](../.scratch/chatbi-product-v1/r1-tickets-draft.md)和整体实施范围已获确认；R1 电脑端入口、旧入口移除和本地验收已完成（[证据](acceptance/web-dialogue-v1-20261003.md)），PR49 已合并（8c506fa）；R2 [完整 Spec](../.scratch/result-visualization-v1/spec.md) 已确认，Design Review PASS，四项草案 Readiness READY，四项本地实施与最终clean代码候选验收已完成（[证据](acceptance/result-visualization-v1-20261004.md)），PR51 已合并（1f57c9b），交付记录见 [PR51](https://github.com/K999999999999/chatbi/pull/51)；R3 历史与成果管理的完整 Spec、恢复方向、最终 Design Review、六项 Readiness 和整体本地实施授权均已确认，六项实现与本地检查已完成。R3 当前候选、真实验收与 Evaluation 的身份和结果记录在 Git 公共目录的本机实时工作状态；见 [R3 Contract](specs/history-results-v1.md) 和 [验收入口](acceptance/history-results-v1.md)。R4 完整 Spec 已确认、Design Review PASS、六项 Ticket Readiness READY，拆分与整体本地实施已获确认；Ticket 01 后台受理、幂等、执行存储与生命周期已提交（`bc74929`），Ticket 02 阶段观察、SSE 与网页恢复实现及适用验证已提交（`d3674af`），Ticket 03 主动取消、总时限与授权失效停止现已完成本地实施及软件 / 真实 PostgreSQL / 浏览器验证；下一步为 Ticket 04 状态与结果的真实验收，R4 整体验收尚未完成。R5–R7 的具体行为、技术与验收指标仍待细化。生产部署、容量验证和生产运行保障仍未完成。
+产品 V1 的需求方向和优先顺序已确认。[R1 完整 Spec](../.scratch/chatbi-product-v1/r1-spec.md) 已获用户整体确认，设计审查与 Ticket Readiness 已通过，[五项实施拆分](../.scratch/chatbi-product-v1/r1-tickets-draft.md)和整体实施范围已获确认；R1 电脑端入口、旧入口移除和本地验收已完成（[证据](acceptance/web-dialogue-v1-20261003.md)），PR49 已合并（8c506fa）；R2 [完整 Spec](../.scratch/result-visualization-v1/spec.md) 已确认，Design Review PASS，四项草案 Readiness READY，四项本地实施与最终clean代码候选验收已完成（[证据](acceptance/result-visualization-v1-20261004.md)），PR51 已合并（1f57c9b），交付记录见 [PR51](https://github.com/K999999999999/chatbi/pull/51)；R3 历史与成果管理的完整 Spec、恢复方向、最终 Design Review、六项 Readiness 和整体本地实施授权均已确认，六项实现与本地检查已完成。R3 当前候选、真实验收与 Evaluation 的身份和结果记录在 Git 公共目录的本机实时工作状态；见 [R3 Contract](specs/history-results-v1.md) 和 [验收入口](acceptance/history-results-v1.md)。R4 完整 Spec 已确认、Design Review PASS、六项 Ticket Readiness READY，拆分与整体本地实施已获确认；Ticket 01 后台受理、幂等、执行存储与生命周期已提交（`bc74929`），Ticket 02 阶段观察、SSE 与网页恢复实现及适用验证已提交（`d3674af`），Ticket 03 主动取消、总时限与授权失效停止现已完成本地实施及软件 / 真实 PostgreSQL / 浏览器验证；Ticket 04 状态与结果的真实链路验收已通过（[验收记录](acceptance/execution-streaming-v1.md#ticket-04-状态与结果真实验收)）；下一步连续实施 Ticket 05 分析报告真实文字流式与 Ticket 06 最终回归 / Evaluation，R4 整体验收尚未完成，远端发布未授权。R5–R7 的具体行为、技术与验收指标仍待细化。生产部署、容量验证和生产运行保障仍未完成。
 
 历史完整 Evaluation 基线包括 commit `31a04549924f622777f106d4fe5a758bd2ca2beb` 和较新的 `564343216e4493f832f07efb345c03b058a04eb5`；后者的三套通过证据及此前多轮失败见[工作项验收记录](../.scratch/engineering-quality-gates/issues/04-current-candidate-evaluation-baseline.md#result)。历史通过结果不代表当前 HEAD 或模型稳定性。当前候选只有在三套正式报告均指向同一最终 clean commit、`git_dirty=false` 且各自 `0 FAIL`、`0 INVALID_CASE` 后才能标记为已核验。
 
@@ -14,7 +14,7 @@ ChatBI 的 MVP 核心能力已经形成：自然语言查询、Online Retrieval�
 
 三套验收入口、报告身份检查及基线核验已经完成。用户于 2026-10-03 确认产品 V1 目标，并在项目审查后授权按建议修订需求与优先级：先明确用户流程与运行约束，再推进对话和分析入口、结果可视化、历史与成果、流式和导出，最后完成部署运行验收及作品交付。部署基础与跨需求状态设计提前准备，验证贯穿各项交付。
 
-用户于 2026-10-03 确认先在 R2 前准备本地容器开发：Compose 统一启动前后端与基础设施、源码挂载和热更新、仅本机访问、CPU Embedding，并保留显式初始化与持久数据。[开发环境 Spec](../.scratch/container-dev-environment/spec.md) 已确认，Design Review PASS，[三项 Ticket 草案](../.scratch/container-dev-environment/tickets-draft.md)通过 Readiness，三项拆分与整体本地实施已授权；三项本地实施与clean candidate验收通过（[证据](acceptance/container-dev-environment-20261003.md)），PR50 已合并（f182cf3）；此项不代表 R6 正式生产镜像、部署或运行验收完成。R2结果解释与可视化四项本地实施及clean候选验收已完成，PR51 已合并（1f57c9b），交付记录见 [PR51](https://github.com/K999999999999/chatbi/pull/51)；R3 完整 Spec、设计与恢复语义、最终 Design Review、六项 Ticket Readiness 及整体本地实施授权已完成；六项实现和适用本地检查已完成，当前候选身份与验收结果见本机实时工作状态。R4 完整 Spec、Design Review 与 Readiness 已通过，六项拆分和整体本地实施已确认；Ticket 01、02 已提交，Ticket 03 取消、时限和授权失效停止已完成本地验证；下一步开展 Ticket 04 状态与结果真实验收，R4 整体验收尚未完成。
+用户于 2026-10-03 确认先在 R2 前准备本地容器开发：Compose 统一启动前后端与基础设施、源码挂载和热更新、仅本机访问、CPU Embedding，并保留显式初始化与持久数据。[开发环境 Spec](../.scratch/container-dev-environment/spec.md) 已确认，Design Review PASS，[三项 Ticket 草案](../.scratch/container-dev-environment/tickets-draft.md)通过 Readiness，三项拆分与整体本地实施已授权；三项本地实施与clean candidate验收通过（[证据](acceptance/container-dev-environment-20261003.md)），PR50 已合并（f182cf3）；此项不代表 R6 正式生产镜像、部署或运行验收完成。R2结果解释与可视化四项本地实施及clean候选验收已完成，PR51 已合并（1f57c9b），交付记录见 [PR51](https://github.com/K999999999999/chatbi/pull/51)；R3 完整 Spec、设计与恢复语义、最终 Design Review、六项 Ticket Readiness 及整体本地实施授权已完成；六项实现和适用本地检查已完成，当前候选身份与验收结果见本机实时工作状态。R4 完整 Spec、Design Review 与 Readiness 已通过，六项拆分和整体本地实施已确认；Ticket 01、02 已提交，Ticket 03 取消、时限和授权失效停止已完成本地验证；Ticket 04 状态与结果真实验收通过（[验收记录](acceptance/execution-streaming-v1.md#ticket-04-状态与结果真实验收)）；下一步为 Ticket 05 分析报告文字流式，随后进行 Ticket 06 最终验收，R4 整体验收尚未完成。
 
 此优先级是分阶段交付顺序，不要求一次实现全部目标。具体技术选择、容量等指标和 Ticket 直接依赖待相应 Spec / Design 确认；检索优化和额外产品扩展不因旧文档将其列为“后续”而成为已授权目标。
 
@@ -28,8 +28,8 @@ ChatBI 的 MVP 核心能力已经形成：自然语言查询、Online Retrieval�
 
 | 阶段 | 目标 | 状态 |
 | --- | --- | --- |
-| 1. 目标细化 | 明确用户、核心流程、支持边界和验收标准；提前澄清部署、身份、结果语义、历史与执行状态 | R1 / R2 已交付；R3完整 Spec / 恢复语义、设计审查与六项 Readiness 已完成，六项实现 / 本地验证已完成；候选验收状态见本机实时工作状态；R4 Spec / Design / Readiness 已完成，Ticket 01–03 已完成本地实施与适用验证；Ticket 04–06 待执行；R5–R7 待细化 |
-| 2. 用户闭环 | 按 R1 → R2 → R3 → R4 → R5 推进；部署基础 R6 在目标环境确定后提前准备 | R1 / R2 已交付（PR49 / PR51）；R3 六项实现已完成，最终候选与验收身份见本机实时工作状态；R4 本地实施中，Ticket 01–03 已完成本地验证，下一步为 Ticket 04 状态与结果真实验收；R5 待细化 |
+| 1. 目标细化 | 明确用户、核心流程、支持边界和验收标准；提前澄清部署、身份、结果语义、历史与执行状态 | R1 / R2 已交付；R3完整 Spec / 恢复语义、设计审查与六项 Readiness 已完成，六项实现 / 本地验证已完成；候选验收状态见本机实时工作状态；R4 Spec / Design / Readiness 已完成，Ticket 01–04 已完成本地实施与适用验证，Ticket 04 真实状态 / 结果验收通过；Ticket 05–06 待执行；R5–R7 待细化 |
+| 2. 用户闭环 | 按 R1 → R2 → R3 → R4 → R5 推进；部署基础 R6 在目标环境确定后提前准备 | R1 / R2 已交付（PR49 / PR51）；R3 六项实现已完成，最终候选与验收身份见本机实时工作状态；R4 本地实施中，Ticket 01–04 已完成适用验证，Ticket 04 真实状态 / 结果验收通过；下一步为 Ticket 05 真实报告文字流式，随后 Ticket 06 最终回归；R5 待细化 |
 | 3. 生产准备 | 完成 R6 的部署交付验收及 R7 的安全、监控、容量与恢复验收 | 方向已确认，具体运行 Contract 与指标待确认 |
 | 4. 作品交付 | 演示、架构说明及可复现评测和运行证据 | 阶段目标已确认，交付验收待细化 |
 
@@ -66,7 +66,7 @@ flowchart TD
 | R1 | Web 对话与经营分析入口 | 仅电脑端；React + TypeScript + Vite，复用 FastAPI。登录 / 首次改密、问数 / 追问、澄清 / 拒绝及独立分析模式；Cookie 登录兼容 Bearer，验收后移除 Streamlit。R1 阶段刷新回到空白新对话；长期历史与快照恢复由 R3 提供 | Spec 已确认，设计 / Readiness 通过，五项 Ticket 已完成；Streamlit 已移除，最终代码候选本地验收通过；PR49 已合并（8c506fa） |
 | R2 | 结果解释与可视化 | 图表与表格默认同显、可分别收起；可信列类型 / 指标 / 单位 / 查询范围、统一数字格式、产品及因素贡献证据；空值 / 截断 / 语义不明安全降级 | 完整Spec已确认，Design Review PASS，四项草案Readiness READY；四项本地实施与clean验收完成（[证据](acceptance/result-visualization-v1-20261004.md)），PR51 已合并（1f57c9b），交付记录见 [PR51](https://github.com/K999999999999/chatbi/pull/51) |
 | R3 | 历史与成果管理 | 历史列表、重新打开、保存查询 / 报告和删除；定义结果快照与重新查询、历史重开与继续追问、保留期限；读取历史仍检查当前身份和权限 | 完整 Spec、恢复语义与实施设计已确认，Design Review PASS，六项 Ticket Readiness READY；六项本地实现 / 检查已完成，当前候选真实验收与 Evaluation 状态见本机实时工作状态 |
-| R4 | 执行状态与流式反馈 | 先验收真实执行进度与最终结果，再验收分析文字逐步展示；定义失败、超时、断连、重试、重复提交、取消 / 恢复边界和事件 Contract | 完整 Spec 已确认，Design Review PASS，六项 Readiness READY；整体本地实施已确认；Ticket 01–03 已完成本地提交与适用验证，下一步为 Ticket 04 状态 / 结果真实验收；R4 整体验收尚未完成，远端发布未授权 |
+| R4 | 执行状态与流式反馈 | 先验收真实执行进度与最终结果，再验收分析文字逐步展示；定义失败、超时、断连、重试、重复提交、取消 / 恢复边界和事件 Contract | 完整 Spec 已确认，Design Review PASS，六项 Readiness READY；整体本地实施已确认；Ticket 01–04 已完成本地提交与适用验证，Ticket 04 状态 / 结果真实验收通过（[Acceptance](acceptance/execution-streaming-v1.md#ticket-04-状态与结果真实验收)）；下一步为 Ticket 05 报告文字流式和 Ticket 06 最终回归；R4 整体验收尚未完成，远端发布未授权 |
 | R5 | 成果导出 | 明确当前查询数据、图表或报告的导出格式、数据范围和授权；当前查询最多返回 100 行，完整数据导出需要独立确认资源限制与验收 | 待澄清 |
 | R6 | 部署交付 | 提前确定目标环境、浏览器访问与身份方式、配置和初始化；交付完整应用打包、升级 / 回滚流程，并在目标环境验收 | 正式部署待澄清；R2 前本地容器开发 Spec 已确认，设计 / Readiness 与拆分已确认；本地容器开发已通过clean candidate验收，PR50已合并 |
 | R7 | 运行保障 | 动态 readiness、并发与资源限制、监控告警、备份恢复及容量证据；按目标确定延迟、恢复和访问规模要求 | 待澄清 |
@@ -75,7 +75,7 @@ flowchart TD
 
 - 普通多轮查询与经营分析当前使用独立状态。R1 必须明确入口与切换行为；不默认自动路由或继承查询条件。经营分析继续遵守两个时期、人民币净销售额 / 毛利及产品因素归因范围；扩展分析行为需要单独确认。
 - 短期多轮状态、分析 checkpoint 和长期历史分别定义生命周期。当前多轮状态为进程内 30 分钟 Idle TTL，checkpoint 为 24 小时恢复期限；R3 不直接延长现有 TTL 来替代历史，R4 不把 checkpoint 当作完整执行状态 Contract。
-- R4 Contract 已确认：只显示真实执行阶段；报告生成中的文字标记未校验，最终报告须通过适用校验。查询成功且结果有效后展示表格 / 图表，SQL 校验完成后提供查看入口。当前仍在实现，尚不属于已交付能力。
+- R4 Contract 已确认：只显示真实执行阶段；报告生成中的文字标记未校验，最终报告须通过适用校验。查询成功且结果有效后展示表格 / 图表，SQL 校验完成后提供查看入口。Ticket 04 的执行状态 / 结果阶段已通过真实验收；分析文字流式和 R4 整体验收仍在实施中。
 - 已确认初始场景为单台 Linux / 云服务器供指定账号使用，同时支持本地开发；同源网页 / API、Cookie 登录、线上 HTTPS 和 CSRF 防护。所有有查询权限的指定用户共享同一套业务数据，历史按账号隔离；首版不新增区域 / 部门行列隔离。多 worker / 多副本的会话可见性未获承诺；流式、历史、并发与执行状态的关键 Contract 在相关实现前确定。
 - 每项需求交付同步完成适用 Software Test、浏览器验收、AI Evaluation 或运行验收。已有进程内多轮评测不覆盖真实浏览器登录、刷新、流式网络连接和长期历史；相应链路须新增验收证据。
 - 作品交付汇总各阶段证据，并提供可复现入口；原始本机报告不是新 clone 自动具备的证据。报告继续绑定提交、案例集和运行资源，不将历史通过结果改称新候选已通过。
@@ -103,7 +103,7 @@ flowchart TD
 - 单一 PostgreSQL `mart_sales` 数据源；没有多 Schema、多租户或多数据源 Contract。
 - 在线多指标查询最多支持 5 个指标，Join 只使用可认证的直接 FK→PK 关系。
 - Business Analysis 受当前已登记的指标和分析范围约束。
-- 当前入口为同步 API 与电脑端 React / TypeScript / Vite 网页；已支持 R2 可信结果说明、问数图表与经营分析贡献图，以及 R3 私人历史、快照恢复和独立成果，具体边界见 [R2 Spec](specs/result-visualization-v1.md) 与 [R3 Spec](specs/history-results-v1.md)。R4 执行状态与流式反馈正在本地实施，尚未交付；R5 导出仍属后续需求。
+- 当前入口为同步 API 与电脑端 React / TypeScript / Vite 网页；已支持 R2 可信结果说明、问数图表与经营分析贡献图，以及 R3 私人历史、快照恢复和独立成果，具体边界见 [R2 Spec](specs/result-visualization-v1.md) 与 [R3 Spec](specs/history-results-v1.md)。R4 本地实施中，Ticket 04 的真实执行阶段、最终结果、取消 / 重连及进程重启恢复验收已通过；分析报告文字流式和最终回归仍待完成；R5 导出仍属后续需求。
 
 ## 后续生产工作
 
