@@ -117,12 +117,18 @@ docker run --rm --network "container:$web_id" --user "$(id -u):$(id -g)" \
     -v "$root/frontend/playwright.container-reporter.ts:/workspace/frontend/playwright.container-reporter.ts:ro" \
     chatbi-browser-dev:local npx playwright test --config playwright.container.config.ts
 }
-run_browser
 "${compose[@]}" exec -T api python -c \
     'import os; assert not any("MIGRATOR" in k for k in os.environ); print("API迁移身份隔离通过。")'
+run_browser
+# Ticket 04 needs to prove recovery from a process that did not finish its worker.
+# Kill only this profile's API container; the PostgreSQL named volume remains untouched.
+api_id=$("${compose[@]}" ps -q api)
+[[ -n "$api_id" ]] || { echo '找不到当前验收 API 容器。' >&2; exit 1; }
+docker kill "$api_id" >/dev/null
 "$root/dev" down
 "$root/dev" up
 "$root/dev" status
+tools execution-recovery
 tools expire-analysis
 web_id=$("${compose[@]}" ps -q web)
 CHATBI_CONTAINER_RESTART_PHASE=1 run_browser

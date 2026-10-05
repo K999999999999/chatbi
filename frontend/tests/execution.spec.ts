@@ -217,7 +217,7 @@ test('问数取消终态保留上一成功上下文并允许用户新建下一�
   const cancelledTurn = { id: cancelledTurnId, history_id: historyId, ordinal: 2, question: '取消中的追问',
     status: 'failed', public_error: { error_code: 'EXECUTION_CANCELLED', error_message: '执行已取消' },
     execution_id: cancelledExecutionId };
-  let currentHeader = history;
+  let currentHeader: Omit<typeof history, 'active_turn_id'> & { active_turn_id: string | null } = history;
   let cancellationConfirmed = false;
   const submissions: Array<Record<string, unknown>> = [];
 

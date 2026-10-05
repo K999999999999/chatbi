@@ -1,7 +1,7 @@
 # Ticket 04：状态与最终结果阶段真实链路验收
 
 ID: execution-streaming-v1/04
-Status: open
+Status: in-progress
 Authorization: 用户于 2026-10-05 确认六项拆分及连续完成整个 R4 的本地实施，包含编码、适用测试与真实验收、Review 和本地 Commit；不含远端发布。
 
 Change Profile: 收敛型阶段验收 /中 /高风险证据 /真实Compose+浏览器+PG /本地状态阶段candidate。
@@ -28,5 +28,5 @@ Owned files: `scripts/verify_container_dev.sh` /既有helpers /真实验收入�
 验证：Runbook中既有真实验收方式、独立SQL /归因参考、真实PG进程 /migration回滚检查；文档identity /links /Diff核对。原报告保留身份。
 Migration / Rollback: 验收只使用已确认隔离资源和本地开发实例；回滚明确停止worker，不DROP业务数据，不做生产rollout。
 Done When: 1–4通过、Code Review /证据核对PASS；固定clean阶段候选并在Git公共目录记录报告，tracked入口不预写“新HEAD通过”；才能启动05。
-Result: 尚未实施。
+Result: 已扩展真实 Profile，覆盖问数 / 分析 SSE 阶段与终态、多页重连 / 刷新 / 取消，以及 API 进程强制停止后的真实 PostgreSQL 未确认恢复检查；旧版本 Schema verifier 迁移用例已修正并在开发 PostgreSQL 通过。前端 build / typecheck 通过；默认 Playwright 因宿主机缺少 Chrome 未能启动浏览器用例。正式 clean candidate 的真实调用与重启验收待运行。
 Comments: 若tracked证据回填产生新阶段提交，受影响真实证据按新clean身份复验，不改原report SHA。

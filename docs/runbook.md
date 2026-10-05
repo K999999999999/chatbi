@@ -553,6 +553,8 @@ R2默认Chrome用例通过 `cd frontend && npm test` 运行，不调用真实模
 
 升级前停止旧 API，显式迁移，再启动新版本。回滚先停止新 API 再启动兼容的旧版本，保留 v3 表和数据，不反向执行 DROP、不删除开发卷；旧版本仍识别保留的 v2 marker。再次升级后已保存历史 /成果可读。本地兼容测试不构成 R6 生产回滚承诺。
 
+`scripts/verify_container_dev.sh real` 还会用本次专用账号受理一条真实问数，在验收末尾仅对当前开发 API 容器执行 `docker kill`，随后按 `dev down` / `dev up` 重启并核对该轮进入“结果未确认”、上一成功轮次和历史快照仍可用。该步骤不删除 PostgreSQL / Qdrant named volume；退出清理仍禁用专用账号、撤销 Session 并移除临时凭证。阶段 / 终态证据保存在 ignored 的 `reports/browser-real/`，不代表 R4 最终验收或正式 Evaluation。
+
 `#history=<UUID>` / `#saved=<UUID>` 定位当前私人记录；新登录保持空白，旧账号私有数据不写浏览器持久存储。历史只读打开；失败分析有效期内手动恢复原 run，过期仅能显式新建分析。完成报告不依赖 checkpoint 存活。删除原历史保留成果，删除成果保留历史。
 
 验收入口与候选身份见 [R3 Acceptance](acceptance/history-results-v1.md)。

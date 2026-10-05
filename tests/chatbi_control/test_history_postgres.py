@@ -484,6 +484,7 @@ def test_v2_upgrade_repeated_migration_and_old_version_marker(
         if migration.name not in {
             "005_history_results.sql",
             "006_execution_streaming.sql",
+            "007_execution_stop.sql",
         }:
             (tmp_path / migration.name).write_text(migration.read_text())
     engine = None

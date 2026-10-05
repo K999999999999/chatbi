@@ -1,9 +1,113 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { login, send, isFinalExecutionResponse } from './helpers';
 import { querySnapshot } from '../src/results';
 import { analysisResult } from '../src/Analysis';
 import { buildChartPlans } from '../src/chartPlan';
+
+const executionStages = new Set([
+  'query_understanding', 'retrieval', 'sql_generation', 'sql_validation', 'query_execution', 'result_saving',
+  'analysis_understanding', 'analysis_plan_validation', 'analysis_query_tasks', 'analysis_attribution', 'analysis_report_generation',
+]);
+
+type ExecutionStreamEvidence = {
+  execution_id: string;
+  http_statuses: number[];
+  event_types: string[];
+  stages: string[];
+  terminal_statuses: string[];
+  event_count: number;
+};
+
+function summarizeSse(body: Buffer, executionId: string, httpStatus: number): ExecutionStreamEvidence {
+  const evidence: ExecutionStreamEvidence = {
+    execution_id: executionId, http_statuses: [httpStatus], event_types: [], stages: [], terminal_statuses: [], event_count: 0,
+  };
+  for (const frame of body.toString('utf8').split(/\r?\n\r?\n/)) {
+    let eventType = 'message';
+    const data: string[] = [];
+    for (const line of frame.split(/\r?\n/)) {
+      if (line.startsWith('event:')) eventType = line.slice(6).trim();
+      else if (line.startsWith('data:')) data.push(line.slice(5).trimStart());
+    }
+    if (!data.length) continue;
+    let event: Record<string, unknown>;
+    try { event = JSON.parse(data.join('\n')) as Record<string, unknown>; }
+    catch { continue; }
+    if (event.execution_id !== executionId) continue;
+    evidence.event_count += 1;
+    if (!evidence.event_types.includes(eventType)) evidence.event_types.push(eventType);
+    const payload = event.payload && typeof event.payload === 'object' ? event.payload as Record<string, unknown> : {};
+    if (typeof payload.stage === 'string' && executionStages.has(payload.stage) && !evidence.stages.includes(payload.stage)) {
+      evidence.stages.push(payload.stage);
+    }
+    if (eventType === 'terminal' && typeof payload.status === 'string' && !evidence.terminal_statuses.includes(payload.status)) {
+      evidence.terminal_statuses.push(payload.status);
+    }
+  }
+  return evidence;
+}
+
+function captureExecutionStreams(page: Page) {
+  const streams = new Map<string, Array<Promise<ExecutionStreamEvidence>>>();
+  const submissions: string[] = [];
+  page.on('request', request => {
+    if (request.method() !== 'POST') return;
+    const path = new URL(request.url()).pathname;
+    if (/^\/api\/v1\/histories\/[0-9a-f-]{36}\/executions$/.test(path)) submissions.push(path);
+  });
+  page.on('response', response => {
+    const match = new URL(response.url()).pathname.match(/^\/api\/v1\/executions\/([0-9a-f-]{36})\/events$/);
+    if (!match) return;
+    const executionId = match[1];
+    const capture = response.body()
+      .then(body => summarizeSse(body, executionId, response.status()))
+      .catch(() => ({
+        execution_id: executionId, http_statuses: [response.status()], event_types: [], stages: [], terminal_statuses: [], event_count: 0,
+      }));
+    streams.set(executionId, [...(streams.get(executionId) ?? []), capture]);
+  });
+  return {
+    submissions,
+    connectionCount(executionId: string): number { return streams.get(executionId)?.length ?? 0; },
+    async forExecution(executionId: string): Promise<ExecutionStreamEvidence> {
+      await expect.poll(() => streams.get(executionId)?.length ?? 0, { timeout: 30000 }).toBeGreaterThan(0);
+      const captures = await Promise.all(streams.get(executionId) ?? []);
+      const merged: ExecutionStreamEvidence = {
+        execution_id: executionId,
+        http_statuses: [...new Set(captures.flatMap(item => item.http_statuses))],
+        event_types: [...new Set(captures.flatMap(item => item.event_types))],
+        stages: [...new Set(captures.flatMap(item => item.stages))],
+        terminal_statuses: [...new Set(captures.flatMap(item => item.terminal_statuses))],
+        event_count: captures.reduce((count, item) => count + item.event_count, 0),
+      };
+      return merged;
+    },
+  };
+}
+
+function isExecutionSubmission(response: { url(): string; request(): { method(): string } }): boolean {
+  return response.request().method() === 'POST'
+    && /^\/api\/v1\/histories\/[0-9a-f-]{36}\/executions$/.test(new URL(response.url()).pathname);
+}
+
+async function executionView(page: Page, executionId: string, userId: number): Promise<{
+  execution: { status: string };
+  history: { last_success_turn_id: string | null };
+}> {
+  const origin = new URL(page.url()).origin;
+  const response = await page.request.get(`${origin}/api/v1/executions/${executionId}`, {
+    headers: { 'X-ChatBI-User-ID': String(userId) },
+  });
+  expect(response.ok()).toBe(true);
+  const body = await response.json() as Record<string, unknown>;
+  const execution = body.execution as Record<string, unknown>;
+  const history = body.history as Record<string, unknown>;
+  return {
+    execution: { status: String(execution.status) },
+    history: { last_success_turn_id: typeof history.last_success_turn_id === 'string' ? history.last_success_turn_id : null },
+  };
+}
 
 test('源码挂载实际触发 Python 重载与 Vite 热更新', async ({ page }) => {
   test.skip(process.env.CHATBI_CONTAINER_RESTART_PHASE === '1');
@@ -50,6 +154,8 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     username: process.env.CHATBI_REAL_E2E_USERNAME, reference,
     at: new Date().toISOString(), browser: browser.version(), target: 'compose-vite-api',
   };
+  const streams = captureExecutionStreams(page);
+  const account = JSON.parse(readFileSync('/reports/account.json', 'utf8')) as { id: number };
   try {
     await login(page, process.env.CHATBI_REAL_E2E_USERNAME!, process.env.CHATBI_REAL_E2E_PASSWORD!);
     const firstResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
@@ -61,6 +167,10 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     const first = querySnapshot(firstPayload.turn.snapshot);
     expect(first.rows.length).toBe(1);
     expect(Number(first.rows[0][0])).toBe(Number(reference.net_sales['2']));
+    const firstStream = await streams.forExecution(firstPayload.execution.id);
+    expect(firstStream.stages).toEqual(expect.arrayContaining(['sql_validation', 'query_execution', 'result_saving']));
+    expect(firstStream.terminal_statuses).toContain('succeeded');
+    evidence.query_execution_stream = firstStream;
     await expect(page.getByRole('table')).toBeVisible();
     const secondResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
     await send(page, '改成2025年3月');
@@ -139,6 +249,10 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     evidence.analysis_http_status = analysisHttp.status();
     evidence.step = 'analysis-parse';
     const analysisPayload = await analysisHttp.json();
+    const analysisStream = await streams.forExecution(analysisPayload.execution.id);
+    expect(analysisStream.stages).toEqual(expect.arrayContaining(['analysis_query_tasks', 'analysis_report_generation', 'result_saving']));
+    expect(analysisStream.terminal_statuses).toContain('succeeded');
+    evidence.analysis_execution_stream = analysisStream;
     const analysis = analysisResult(analysisPayload.turn.snapshot, analysisPayload.history.analysis_run_id);
     evidence.step = 'analysis-reference';
     const { reconciliation_passed: _reconciled, ...expectedAttribution } = reference.attribution;
@@ -189,10 +303,105 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     expect(ranked.rows.map(row => [String(row[0]), Number(row[1])])).toEqual(reference.top_products.map((row: unknown[]) => [String(row[0]), Number(row[1])]));
     evidence.restart_inputs = { ranked_history_id: rankedPayload.history.id, analysis_history_id: analysisPayload.history.id, analysis_run_id: analysisPayload.history.analysis_run_id, saved_url: savedUrl, analysis_url: analysisUrl };
     evidence.r3_before_restart = { saved_independent: true, refresh_analysis: true, top_n_reference: true };
+
+    evidence.step = 'multi-page-disconnect-and-cancel';
+    const submissionsBeforeRecovery = streams.submissions.length;
+    const cancelableResponse = page.waitForResponse(isExecutionSubmission, { timeout: 30000 });
+    await send(page, '只看前2个产品');
+    const cancelableAcceptance = await cancelableResponse;
+    const cancelableBody = await cancelableAcceptance.json();
+    const cancelableExecutionId = cancelableBody.execution.id as string;
+    const cancelableHistoryId = cancelableBody.history.id as string;
+    expect(cancelableHistoryId).toBe(rankedPayload.history.id);
+
+    const secondPage = await page.context().newPage();
+    const secondStreams = captureExecutionStreams(secondPage);
+    const isEventResponse = (response: { url(): string; request(): { method(): string } }) =>
+      response.request().method() === 'GET'
+        && new URL(response.url()).pathname === `/api/v1/executions/${cancelableExecutionId}/events`;
+    const secondPageAttached = secondPage.waitForResponse(isEventResponse, { timeout: 30000 });
+    await secondPage.goto('/#history=' + cancelableHistoryId);
+    await expect(secondPage.getByRole('button', { name: '退出登录' })).toBeVisible();
+    await secondPageAttached;
+    const attachedExecution = await executionView(secondPage, cancelableExecutionId, account.id);
+    const canCancelAtSecondPage = ['accepted', 'running'].includes(attachedExecution.execution.status);
+
+    await expect.poll(() => streams.connectionCount(cancelableExecutionId), { timeout: 30000 }).toBeGreaterThan(0);
+    const firstPageReattach = page.waitForResponse(isEventResponse, { timeout: 30000 });
+    await page.reload();
+    await firstPageReattach;
+    const executionPostsAfterReattach = streams.submissions.length + secondStreams.submissions.length;
+    expect(executionPostsAfterReattach - submissionsBeforeRecovery).toBe(1);
+
+    let cancelObservation: Record<string, unknown> = { attempted: false, status_before: attachedExecution.execution.status };
+    const cancelButton = secondPage.getByRole('button', { name: '取消执行', exact: true });
+    if (canCancelAtSecondPage) {
+      await expect(secondPage.getByText('当前账号已有执行，完成后可继续提交', { exact: true })).toBeVisible();
+      await expect(cancelButton).toBeVisible({ timeout: 5000 }).catch(() => undefined);
+      if (await cancelButton.isVisible()) {
+        const cancelResponse = secondPage.waitForResponse(response => response.request().method() === 'POST'
+          && new URL(response.url()).pathname === `/api/v1/executions/${cancelableExecutionId}/cancel`, { timeout: 30000 });
+        await cancelButton.click();
+        const response = await cancelResponse;
+        const body = await response.json();
+        cancelObservation = {
+          attempted: true, http_status: response.status(), status_before: attachedExecution.execution.status,
+          status_after_request: body.execution.status,
+        };
+      } else {
+        const statusAtCancel = await executionView(secondPage, cancelableExecutionId, account.id);
+        if (['accepted', 'running'].includes(statusAtCancel.execution.status)) {
+          throw new Error('执行仍在运行时第二个标签页没有显示取消入口');
+        }
+        cancelObservation = {
+          attempted: false, status_before: attachedExecution.execution.status,
+          status_at_cancel: statusAtCancel.execution.status, completion_race: true,
+        };
+      }
+    }
+    await expect.poll(async () => (await executionView(secondPage, cancelableExecutionId, account.id)).execution.status,
+      { timeout: 180000, intervals: [250, 500, 1000, 2000, 5000] }).toMatch(/^(succeeded|failed|cancelled|timed_out|unconfirmed)$/);
+    const cancelableFinal = await executionView(secondPage, cancelableExecutionId, account.id);
+    cancelObservation.status_final = cancelableFinal.execution.status;
+    cancelObservation.last_success_turn_preserved = cancelableFinal.history.last_success_turn_id === cancelableBody.history.last_success_turn_id;
+    if (['failed', 'cancelled', 'timed_out', 'unconfirmed'].includes(cancelableFinal.execution.status)) {
+      expect(cancelObservation.last_success_turn_preserved).toBe(true);
+    }
+    evidence.multi_page_recovery = {
+      execution_id: cancelableExecutionId, same_history_attached: true, browser_reload_reconnected: true,
+      submissions_for_operation: executionPostsAfterReattach - submissionsBeforeRecovery,
+      first_page_streams: streams.connectionCount(cancelableExecutionId),
+      second_page_streams: secondStreams.connectionCount(cancelableExecutionId), cancel: cancelObservation,
+    };
+    await secondPage.close();
+
+    evidence.step = 'post-cancel-new-operation';
+    const nextQuery = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
+    await send(page, '只看前2个产品');
+    const nextPayload = await (await nextQuery).json();
+    expect(nextPayload.history.id).toBe(rankedPayload.history.id);
+    const nextResult = querySnapshot(nextPayload.turn.snapshot);
+    expect(nextResult.rows.map(row => [String(row[0]), Number(row[1])])).toEqual(
+      reference.top_products.slice(0, 2).map((row: unknown[]) => [String(row[0]), Number(row[1])]),
+    );
+    evidence.after_cancel_or_completion = { terminal_status: cancelableFinal.execution.status, new_operation_reference_matches: true };
+
+    evidence.step = 'restart-unconfirmed-setup';
+    const interruptedResponse = page.waitForResponse(isExecutionSubmission, { timeout: 30000 });
+    await send(page, '2025年3月人民币净销售额最高的产品是什么？');
+    const interruptedAcceptance = await interruptedResponse;
+    expect(interruptedAcceptance.status()).toBe(202);
+    const interruptedBody = await interruptedAcceptance.json();
+    expect(interruptedBody.history.id).toBe(rankedPayload.history.id);
+    evidence.restart_inputs = {
+      ...(evidence.restart_inputs as Record<string, unknown>),
+      interrupted_execution: {
+        history_id: interruptedBody.history.id, execution_id: interruptedBody.execution.id, turn_id: interruptedBody.turn.id,
+        prior_success_turn_id: interruptedBody.history.last_success_turn_id,
+      },
+    };
     evidence.step = 'complete';
     evidence.status = 'passed';
-    await page.getByRole('button', { name: '退出登录' }).click();
-    await expect(page.getByRole('button', { name: '登录', exact: true })).toBeVisible();
   } catch (error) {
     evidence.status = 'failed'; evidence.error_type = (error as Error).name;
     evidence.error_locations = (error as Error).stack?.match(/container-real\.spec\.ts:\d+:\d+/g) ?? [];
@@ -212,6 +421,13 @@ test('停止重启后读取长期快照、重登录、续聊与显式重查', as
     await expect(page.getByRole('table')).toHaveCount(0);
     await page.goto('/#history=' + input.ranked_history_id);
     await expect(page.getByRole('table')).toBeVisible();
+    if (input.interrupted_execution) {
+      await expect(page.getByText('结果未确认；请刷新后明确选择下一步。', { exact: true })).toBeVisible();
+      expect(evidence.execution_recovery).toEqual(expect.objectContaining({
+        execution_status: 'unconfirmed', turn_status: 'unconfirmed',
+        active_turn_cleared: true, prior_success_turn_preserved: true,
+      }));
+    }
     const continued = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
     await send(page, '只看前2个产品');
     const body = await (await continued).json(); const result = querySnapshot(body.turn.snapshot);
@@ -230,6 +446,10 @@ test('停止重启后读取长期快照、重登录、续聊与显式重查', as
     await page.goto(newUrl); await expect(page.getByRole('table')).toBeVisible();
     await page.getByRole('button', { name: '退出登录', exact: true }).click();
     evidence.r3_after_restart = { top_n_continuation_reference: true, committed_analysis_after_expiry: true, requery_new_history: true, delete_saved_keeps_history: true, new_login_blank: true };
+    if (input.interrupted_execution) evidence.r4_after_restart = {
+      interrupted_execution_visible_as_unconfirmed: true, previous_success_continued: true,
+      api_process_killed_before_restart: true,
+    };
     evidence.status = 'passed';
   } catch (error) { evidence.status = 'failed'; evidence.step = 'r3-restart'; evidence.error_type = (error as Error).name; throw new Error('R3重启验收未通过，请检查私有报告。'); }
   finally { writeFileSync('/reports/browser.json', JSON.stringify(evidence, null, 2)); }

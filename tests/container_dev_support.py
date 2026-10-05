@@ -97,6 +97,9 @@ def cleanup():
             hot_reload = REPORT / "hot-reload.json"
             if hot_reload.exists():
                 evidence["hot_reload"] = json.loads(hot_reload.read_text())
+            recovery = REPORT / "recovery.json"
+            if recovery.exists():
+                evidence["execution_recovery"] = json.loads(recovery.read_text())
             images = REPORT / "images.jsonl"
             if images.exists():
                 evidence["image_ids"] = [
@@ -187,11 +190,78 @@ def verify_persistence():
     print("停止重启后的业务数据与RAG资产身份保持。")
 
 
+def verify_execution_recovery():
+    """核对真实 API 进程重启把遗留执行收敛为 unconfirmed。"""
+    evidence = json.loads((REPORT / "browser.json").read_text())
+    account = json.loads((REPORT / "account.json").read_text())
+    interrupted = evidence["restart_inputs"]["interrupted_execution"]
+    engine = create_control_engine(
+        ControlDatabaseConfig.from_environment(require_migrator=False)
+    )
+    try:
+        with engine.connect() as connection:
+            versions = set(
+                connection.execute(text("SELECT version FROM schema_migrations")).scalars()
+            )
+            required_versions = {f"chatbi-control-v{version}" for version in range(1, 6)}
+            if not required_versions.issubset(versions):
+                raise RuntimeError("重启后Control DB版本标记不完整")
+            row = connection.execute(
+                text(
+                    """SELECT history.last_success_turn_id::text AS last_success_turn_id,
+                    history.active_turn_id::text AS active_turn_id, turn.status AS turn_status,
+                    turn.snapshot IS NULL AS snapshot_absent, execution.status AS execution_status,
+                    execution.id::text AS execution_id
+                    FROM history_records AS history
+                    JOIN history_turns AS turn ON turn.history_id=history.id AND turn.id=:turn
+                    JOIN history_executions AS execution ON execution.history_id=history.id
+                        AND execution.turn_id=turn.id
+                    WHERE history.id=:history AND history.owner_user_id=:owner"""
+                ),
+                {
+                    "history": interrupted["history_id"],
+                    "turn": interrupted["turn_id"],
+                    "owner": account["id"],
+                },
+            ).mappings().one_or_none()
+        if row is None or row["execution_id"] != interrupted["execution_id"]:
+            raise RuntimeError("重启后的执行记录身份不匹配")
+        if (
+            row["execution_status"] != "unconfirmed"
+            or row["turn_status"] != "unconfirmed"
+            or row["active_turn_id"] is not None
+            or not row["snapshot_absent"]
+            or row["last_success_turn_id"] != interrupted["prior_success_turn_id"]
+        ):
+            raise RuntimeError("重启未保留结果未确认与上一成功轮次边界")
+        result = {
+            "execution_id": row["execution_id"],
+            "execution_status": row["execution_status"],
+            "turn_status": row["turn_status"],
+            "active_turn_cleared": row["active_turn_id"] is None,
+            "unconfirmed_snapshot_absent": row["snapshot_absent"],
+            "prior_success_turn_preserved": row["last_success_turn_id"]
+            == interrupted["prior_success_turn_id"],
+            "schema_versions": sorted(versions),
+        }
+        (REPORT / "recovery.json").write_text(json.dumps(result))
+        evidence["execution_recovery"] = result
+        (REPORT / "browser.json").write_text(
+            json.dumps(evidence, ensure_ascii=False, indent=2)
+        )
+    finally:
+        engine.dispose()
+    print("真实API重启后的未确认执行、上一成功轮次与Schema版本检查通过。")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "action",
-        choices=["prepare", "cleanup", "admin", "persistence", "expire-analysis"],
+        choices=[
+            "prepare", "cleanup", "admin", "persistence", "expire-analysis",
+            "execution-recovery",
+        ],
     )
     args = parser.parse_args()
     if args.action == "prepare":
@@ -202,5 +272,7 @@ if __name__ == "__main__":
         initialize_admin()
     elif args.action == "expire-analysis":
         expire_analysis()
+    elif args.action == "execution-recovery":
+        verify_execution_recovery()
     else:
         verify_persistence()
