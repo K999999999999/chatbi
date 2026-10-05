@@ -128,6 +128,23 @@ class AuthServiceTest(TestCase):
         with self.assertRaises(SessionExpired):
             self.service.authenticate_session(second.token)
 
+    def test_readonly_session_check_does_not_extend_idle_or_absolute_expiry(self) -> None:
+        result = self.service.login("analyst-1", "analyst-password-123")
+        with self.session_factory() as session:
+            original = session.scalar(select(UserSession))
+            assert original is not None
+            original_expiry = original.expires_at
+            original_seen = original.last_seen_at
+
+        self.clock.advance(timedelta(minutes=20))
+        checked = self.service.authenticate_session_readonly(result.token)
+        self.assertEqual(checked.username, "analyst-1")
+        with self.session_factory() as session:
+            current = session.scalar(select(UserSession))
+            assert current is not None
+            self.assertEqual(current.expires_at, original_expiry)
+            self.assertEqual(current.last_seen_at, original_seen)
+
     def test_logout_password_change_reset_and_disable_revoke_sessions(self) -> None:
         logged_in = self.service.login("analyst-1", "analyst-password-123")
         self.assertTrue(self.service.logout(logged_in.token))

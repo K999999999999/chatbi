@@ -1,7 +1,7 @@
 # Ticket 01：后台受理、稳定操作查回与最终结果
 
 ID: execution-streaming-v1/01
-Status: in-progress
+Status: complete
 Authorization: 用户于 2026-10-05 确认六项拆分及连续完成整个 R4 的本地实施，包含编码、适用测试与真实验收、Review 和本地 Commit；不含远端发布。
 
 Change Profile: 持续维护 /中偏大 /高风险事务与生命周期 /软件+真实PG+API /本地candidate。
@@ -32,5 +32,5 @@ Owned files: `database/control/006_execution_streaming.sql`、`src/chatbi_contro
 
 Migration / Rollback: v4只增对象 /grant /marker，v2/v3保留，执行FK cascade仅元数据；显式初始化，不在请求DDL；停止worker后v3保留数据恢复将在04 /06完整验收。
 Done When: 1–5通过、API /存储 /生命周期契约与适用文档完整，当前上下文Code Review PASS、Diff与本地Commit完成。
-Result: 尚未实施。
+Result: PASS（2026-10-05）。新增 v4 持久执行表 / DTO / Store、稳定操作查回、后台线程池、HTTP 受理 / 查询 API、转交式 history / analysis lease，以及执行结果与历史成功状态的同事务提交。并发相同 operation 只受理一次；调度 / 受理 / 终态写入失败均覆盖资源回收和结果未确认。隔离 development PostgreSQL 37 passed，包含 v3 历史 / 成果升级保留、重复 migration、owner 隔离、级联删除与独立成果保留；定向 Python 回归 31 passed + 3 subtests；Ruff scoped files PASS，`compileall` 与 `git diff --check` PASS。当前上下文 Review PASS。该证据是 R4 中间切片结果，不代表 R4 最终验收。
 Comments: 中间切片结果不冒称整个R4验收完成。

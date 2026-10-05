@@ -108,6 +108,7 @@ cp .env.example .env
 - ChatBI 应用库：`POSTGRES_CONTROL_DB`、`POSTGRES_CONTROL_APP_USER`、`POSTGRES_CONTROL_APP_PASSWORD`、`CHATBI_ADMIN_SECRET_KEY`。`chatbi_control_user` 只访问应用库，保存账号、Session、固定 RBAC 和审计事件。
 - 一次性迁移账号：`POSTGRES_MIGRATOR_USER`、`POSTGRES_MIGRATOR_PASSWORD`、`POSTGRES_CONTROL_MIGRATOR_USER`。迁移账号不进入 API 运行进程。
 - 运行模式：`CHATBI_ENV`。真实入口使用应用库内置账号，不再配置 `CHATBI_IDENTITY_PROVIDER`、`CHATBI_IDENTITY_SUBJECT_ID` 或 `CHATBI_AUTH_POLICY_FILE`。
+- R4 后台执行额度：`CHATBI_EXECUTION_MAX_PER_USER` 默认 `1`，`CHATBI_EXECUTION_MAX_TOTAL` 默认 `4`；问数和经营分析共用单进程额度，不构成容量验收结果。必须为正整数，且账号额度不能高于进程额度。
 - LLM：`LLM_API_KEY`、`LLM_MODEL`，必要时填写 `LLM_BASE_URL`
 - Qdrant：`QDRANT_API_KEY` 默认是仅供回环绑定本地开发的公开值，不要用于共享或生产环境。
 - RAG：保持 `RAG_MODEL_DIR=.model-cache/bge-m3-5617a9f61b02` 和 `RAG_EMBEDDING_DEVICE=auto`。
@@ -546,9 +547,9 @@ R2默认Chrome用例通过 `cd frontend && npm test` 运行，不调用真实模
 
 ## 13. 历史与成果运行
 
-新增 `database/control/005_history_results.sql` 由现有 `./dev migrate` / `src.bootstrap migrate` 显式安装；请求路径不执行 DDL。历史、轮次、固定成果在独立 Control DB 保存，业务库仍只读。初始化 / 升级 / 重复迁移均保留原账号、Session、RBAC、checkpoint 与业务数据；旧内存记录无法补回。
+新增 `database/control/005_history_results.sql` 与 `006_execution_streaming.sql` 由现有 `./dev migrate` / `src.bootstrap migrate` 显式安装；请求路径不执行 DDL。历史、轮次、固定成果和后台执行身份在独立 Control DB 保存，业务库仍只读。初始化 / 升级 / 重复迁移均保留原账号、Session、RBAC、checkpoint 与业务数据；旧内存记录无法补回。
 
-只运行一个 API 应用进程，禁止多 worker。启动持有独立 PG advisory lock 并更新 epoch：遗留 accepted 轮次标为结果未确认，保留上一成功状态。旧进程退出等待在执行请求完成，再释放 guard 与资源；失去 guard 后禁止执行和回收，已提交快照仍可按权限读取。重启不自动重发请求。
+只运行一个 API 应用进程，禁止多 worker。启动持有独立 PG advisory lock 并更新 epoch：遗留 accepted / running 执行和轮次标为结果未确认，保留上一成功状态。正常关闭先停止新受理并等待后台 worker 结束，再释放 guard 与业务资源；进程意外退出后，重启不自动重发未确认请求。
 
 升级前停止旧 API，显式迁移，再启动新版本。回滚先停止新 API 再启动兼容的旧版本，保留 v3 表和数据，不反向执行 DROP、不删除开发卷；旧版本仍识别保留的 v2 marker。再次升级后已保存历史 /成果可读。本地兼容测试不构成 R6 生产回滚承诺。
 

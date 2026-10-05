@@ -1,7 +1,9 @@
 """历史Application与存储Port的稳定DTO，不依赖HTTP或ORM。"""
 
+import json
 from dataclasses import dataclass
 from datetime import datetime
+from hashlib import sha256
 from typing import Protocol
 
 
@@ -9,11 +11,19 @@ class HistoryError(RuntimeError):
     """可公开的历史操作错误。"""
 
     def __init__(
-        self, code: str, message: str, status: int, *, history_id=None, turn_id=None
+        self,
+        code: str,
+        message: str,
+        status: int,
+        *,
+        history_id=None,
+        turn_id=None,
+        execution_id=None,
     ):
         super().__init__(message)
         self.code, self.message, self.status = code, message, status
         self.history_id, self.turn_id = history_id, turn_id
+        self.execution_id = execution_id
 
 
 def unavailable() -> HistoryError:
@@ -30,6 +40,16 @@ def stale() -> HistoryError:
 
 def storage_unavailable() -> HistoryError:
     return HistoryError("HISTORY_STORAGE_UNAVAILABLE", "历史存储暂时不可用", 503)
+
+
+def operation_hash(value) -> str:
+    """按稳定 JSON 结构生成操作请求摘要，不依赖具体存储 Adapter。"""
+
+    return sha256(
+        json.dumps(
+            value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode()
+    ).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +124,14 @@ class HistoryStore(Protocol):
         request_id: str,
         epoch: str,
     ) -> AcceptedAttempt: ...
+    def begin_execution_attempt(self, **kwargs): ...
+    def begin_execution_requery(self, **kwargs): ...
+    def execution(self, owner: int, execution_id: str): ...
+    def execution_by_operation(self, owner: int, operation_id: str): ...
+    def mark_execution_running(self, owner: int, execution_id: str) -> None: ...
+    def finish_execution_attempt(
+        self, owner: int, token: ExecutionToken, snapshot, error, execution_id: str
+    ) -> HistoryTurn: ...
     def finish_attempt(
         self,
         owner: int,

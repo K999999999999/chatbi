@@ -13,8 +13,8 @@ from sqlalchemy.orm import Session
 from src.chatbi_control.models import User, UserSession
 from src.chatbi_control.username import normalize_username
 
-from .contracts import AuthContext
 from .audit_service import AuditRecord, AuditUnavailable
+from .contracts import AuthContext
 from .passwords import hash_password, verify_password
 
 IDLE_TTL = timedelta(minutes=30)
@@ -158,6 +158,25 @@ class AuthService:
 
             record.last_seen_at = now
             record.expires_at = min(now + IDLE_TTL, _as_utc(record.absolute_expires_at))
+            return _context_for_user(record.user)
+
+    def authenticate_session_readonly(self, raw_token: str) -> AuthContext:
+        """仅确认 Session 当前有效，不延长期限，也不改写认证记录。"""
+
+        token_hash = _hash_token_or_raise(raw_token)
+        now = _as_utc(self._clock())
+        with self._session_factory() as session:
+            record = session.scalar(
+                select(UserSession).where(UserSession.token_hash == token_hash)
+            )
+            if record is None or record.revoked_at is not None:
+                raise SessionExpired("Session 已失效")
+            if not record.user.is_active:
+                raise SessionExpired("Session 已失效")
+            if now >= _as_utc(record.expires_at) or now >= _as_utc(
+                record.absolute_expires_at
+            ):
+                raise SessionExpired("Session 已失效")
             return _context_for_user(record.user)
 
     def logout(self, raw_token: str, *, request_id: str | None = None) -> bool:
@@ -355,7 +374,7 @@ class AuthService:
             writer(session, record)
         except AuditUnavailable:
             raise
-        except Exception as exc:  # noqa: BLE001 - security audit must Fail Closed
+        except Exception as exc:
             raise AuditUnavailable("ChatBI 审计写入失败") from exc
 
 
@@ -381,7 +400,26 @@ class LocalSessionIdentityProvider:
             from .contracts import AuthenticationRequired
 
             raise AuthenticationRequired("需要有效的身份认证") from exc
-        except Exception as exc:  # noqa: BLE001 - identity must Fail Closed
+        except Exception as exc:
+            from .contracts import IdentityProviderUnavailable
+
+            raise IdentityProviderUnavailable("本地 Session 暂时不可用") from exc
+
+    def authenticate_readonly(self, provider_input: object | None = None) -> AuthContext:
+        headers = getattr(provider_input, "headers", None)
+        authorization = headers.get("Authorization", "") if headers is not None else ""
+        scheme, separator, token = authorization.partition(" ")
+        if scheme.lower() != "bearer" or not separator or not token.strip():
+            from .contracts import AuthenticationRequired
+
+            raise AuthenticationRequired("需要有效的身份认证")
+        try:
+            return self._auth_service.authenticate_session_readonly(token.strip())
+        except SessionExpired as exc:
+            from .contracts import AuthenticationRequired
+
+            raise AuthenticationRequired("需要有效的身份认证") from exc
+        except Exception as exc:
             from .contracts import IdentityProviderUnavailable
 
             raise IdentityProviderUnavailable("本地 Session 暂时不可用") from exc

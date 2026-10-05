@@ -9,6 +9,8 @@ from uuid import uuid4
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.chatbi_control.execution import PostgresExecutionStore
+from src.query_api.execution_contracts import ExecutionAcceptance
 from src.query_api.history_contracts import (
     AcceptedAttempt,
     ExecutionToken,
@@ -17,6 +19,7 @@ from src.query_api.history_contracts import (
     HistoryTurn,
     SavedResultHeader,
     busy,
+    operation_hash,
     stale,
     storage_unavailable,
     unavailable,
@@ -34,14 +37,6 @@ def _database_errors(method):
             raise storage_unavailable() from None
 
     return call
-
-
-def operation_hash(value) -> str:
-    return sha256(
-        json.dumps(
-            value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-        ).encode()
-    ).hexdigest()
 
 
 def _header(row):
@@ -97,6 +92,105 @@ def _owned_saved(connection, owner, result_id, *, lock=False):
 class PostgresHistoryStore:
     def __init__(self, engine):
         self.engine = engine
+        self.executions = PostgresExecutionStore(engine)
+
+    @_database_errors
+    def execution(self, owner, execution_id):
+        return self.executions.get(owner, execution_id)
+
+    @_database_errors
+    def execution_by_operation(self, owner, operation_id, request_hash=None):
+        return self.executions.by_operation(owner, operation_id, request_hash)
+
+    @_database_errors
+    def mark_execution_running(self, owner, execution_id):
+        with self.engine.begin() as connection:
+            self.executions.mark_running_in_transaction(
+                connection, owner, execution_id
+            )
+
+    @_database_errors
+    def begin_execution_attempt(
+        self,
+        *,
+        owner,
+        history_id,
+        question,
+        operation_id,
+        request_hash,
+        revision,
+        request_id,
+        epoch,
+        mode,
+        operation_kind,
+        deadline_seconds,
+        expected_record_revision=None,
+    ):
+        with self.engine.begin() as connection:
+            self.executions.lock_operation_in_transaction(
+                connection, owner, operation_id
+            )
+            existing = self.executions.find_in_transaction(
+                connection, owner, operation_id, request_hash
+            )
+            if existing is not None:
+                return ExecutionAcceptance(existing, None, False)
+
+            header = _owned(connection, owner, history_id, lock=True)
+            if header["kind"] != mode:
+                raise HistoryError("INVALID_REQUEST", "执行模式与历史类型不匹配", 400)
+            if mode == "analysis":
+                if expected_record_revision is None:
+                    raise HistoryError("INVALID_REQUEST", "分析恢复版本缺失", 400)
+                if header["record_revision"] != expected_record_revision:
+                    raise stale()
+                digest = operation_hash(
+                    {"action": "resume", "record_revision": expected_record_revision}
+                )
+                accepted = self._begin(
+                    connection,
+                    owner,
+                    history_id,
+                    header["first_question"],
+                    operation_id,
+                    header["context_revision"],
+                    request_id,
+                    epoch,
+                    digest,
+                )
+            else:
+                if revision is None:
+                    raise HistoryError("INVALID_REQUEST", "查询版本缺失", 400)
+                accepted = self._begin(
+                    connection,
+                    owner,
+                    history_id,
+                    question,
+                    operation_id,
+                    revision,
+                    request_id,
+                    epoch,
+                    operation_hash({"question": question, "context_revision": revision}),
+                )
+            if accepted.token is None:
+                raise HistoryError(
+                    "HISTORY_OPERATION_CONFLICT", "操作编号已用于其他执行", 409
+                )
+            execution = self.executions.insert_in_transaction(
+                connection,
+                execution_id=str(uuid4()),
+                owner=owner,
+                history_id=history_id,
+                turn_id=accepted.turn.id,
+                operation_id=operation_id,
+                request_hash=request_hash,
+                mode=mode,
+                operation_kind=operation_kind,
+                epoch=epoch,
+                generation=accepted.token.generation,
+                deadline_seconds=deadline_seconds,
+            )
+            return ExecutionAcceptance(execution, accepted, True)
 
     @_database_errors
     def begin_requery(
@@ -109,6 +203,8 @@ class PostgresHistoryStore:
         request_id,
         epoch,
         new_id,
+        *,
+        execution_data=None,
     ):
         digest = operation_hash(
             {
@@ -119,6 +215,37 @@ class PostgresHistoryStore:
             }
         )
         with self.engine.begin() as connection:
+            if execution_data is not None:
+                self.executions.lock_operation_in_transaction(
+                    connection, owner, operation_id
+                )
+                execution = self.executions.find_in_transaction(
+                    connection,
+                    owner,
+                    operation_id,
+                    execution_data["request_hash"],
+                )
+                if execution is not None:
+                    header = _header(
+                        _owned(connection, owner, execution.history_id)
+                    )
+                    turn = (
+                        connection.execute(
+                            text("SELECT * FROM history_turns WHERE id=:turn AND history_id=:history"),
+                            {
+                                "turn": execution.turn_id,
+                                "history": execution.history_id,
+                            },
+                        )
+                        .mappings()
+                        .one()
+                    )
+                    return (
+                        header,
+                        AcceptedAttempt(None, _turn(turn), None),
+                        execution,
+                        False,
+                    )
             existing = (
                 connection.execute(
                     text(
@@ -130,6 +257,10 @@ class PostgresHistoryStore:
                 .first()
             )
             if existing is not None:
+                if execution_data is not None:
+                    raise HistoryError(
+                        "HISTORY_OPERATION_CONFLICT", "操作编号已用于其他执行", 409
+                    )
                 if existing["creation_operation_hash"] != digest:
                     raise HistoryError(
                         "HISTORY_OPERATION_CONFLICT", "操作标识与原请求不符", 409
@@ -216,7 +347,11 @@ class PostgresHistoryStore:
                     "question": question,
                     "op": operation_id,
                     "hash": digest,
-                    "run": str(uuid4()) if kind == "analysis" else None,
+                    "run": (
+                        execution_data.get("analysis_run_id") or str(uuid4())
+                        if kind == "analysis" and execution_data is not None
+                        else str(uuid4()) if kind == "analysis" else None
+                    ),
                 },
             )
             if inserted.scalar_one_or_none() is None:
@@ -251,10 +386,63 @@ class PostgresHistoryStore:
                     "input": json.dumps(snapshot, ensure_ascii=False, allow_nan=False),
                 },
             )
+            execution = None
+            if execution_data is not None:
+                execution = self.executions.insert_in_transaction(
+                    connection,
+                    execution_id=str(uuid4()),
+                    owner=owner,
+                    history_id=new_id,
+                    turn_id=accepted.turn.id,
+                    operation_id=operation_id,
+                    request_hash=execution_data["request_hash"],
+                    mode=kind,
+                    operation_kind=execution_data["operation_kind"],
+                    epoch=epoch,
+                    generation=accepted.token.generation,
+                    deadline_seconds=execution_data["deadline_seconds"],
+                )
             header = _header(_owned(connection, owner, new_id))
-            return header, AcceptedAttempt(
+            attempt = AcceptedAttempt(
                 accepted.token, accepted.turn, snapshot.get("query_state"), snapshot
             )
+            if execution_data is not None:
+                return header, attempt, execution, True
+            return header, attempt
+
+    @_database_errors
+    def begin_execution_requery(
+        self,
+        *,
+        owner,
+        source_kind,
+        source_id,
+        source_turn_id,
+        operation_id,
+        request_id,
+        epoch,
+        new_id,
+        request_hash,
+        operation_kind,
+        deadline_seconds,
+        analysis_run_id=None,
+    ):
+        return self.begin_requery(
+            owner,
+            source_kind,
+            source_id,
+            source_turn_id,
+            operation_id,
+            request_id,
+            epoch,
+            new_id,
+            execution_data={
+                "request_hash": request_hash,
+                "operation_kind": operation_kind,
+                "deadline_seconds": deadline_seconds,
+                "analysis_run_id": analysis_run_id,
+            },
+        )
 
     @_database_errors
     def create(self, owner, kind, question, operation_id):
@@ -489,7 +677,7 @@ class PostgresHistoryStore:
         )
 
     @_database_errors
-    def finish_attempt(self, owner, token, snapshot, error):
+    def finish_attempt(self, owner, token, snapshot, error, *, execution_id=None):
         with self.engine.begin() as connection:
             # Completion must survive a short metadata/copy/delete transaction that
             # observed the still-active turn. Returning NOWAIT here can strand a
@@ -551,7 +739,23 @@ class PostgresHistoryStore:
                     "id": token.history_id,
                 },
             )
+            if execution_id is not None:
+                self.executions.finish_in_transaction(
+                    connection,
+                    owner,
+                    execution_id,
+                    "succeeded" if snapshot is not None else "failed",
+                    error,
+                )
             return _turn(row)
+
+    @_database_errors
+    def finish_execution_attempt(
+        self, owner, token, snapshot, error, execution_id
+    ):
+        return self.finish_attempt(
+            owner, token, snapshot, error, execution_id=execution_id
+        )
 
     @_database_errors
     def turn(self, owner, history_id, turn_id):

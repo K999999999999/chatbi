@@ -284,6 +284,7 @@ def _run_tests(
         if migrated.returncode != 0:
             return migrated.returncode
         tests.append("tests/chatbi_control/test_postgres_dev_environment.py")
+        tests.append("tests/chatbi_control/test_execution_postgres.py")
         tests.append("tests/chatbi_control/test_history_postgres.py")
         tests.append("tests/evaluation/common/test_database_fingerprint.py")
     completed = subprocess.run(

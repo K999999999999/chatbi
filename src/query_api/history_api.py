@@ -159,6 +159,7 @@ def mount_history_api(app):
                 "error_message": exc.message,
                 **({"history_id": exc.history_id} if exc.history_id else {}),
                 **({"turn_id": exc.turn_id} if exc.turn_id else {}),
+                **({"execution_id": exc.execution_id} if exc.execution_id else {}),
             },
         )
 

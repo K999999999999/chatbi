@@ -1,7 +1,7 @@
 """历史Use Case：持久受理先于执行，成功快照与状态一起提交。"""
 
-from contextlib import nullcontext
 import logging
+from contextlib import nullcontext
 
 from src.authorization.query_entry import AuthorizedQueryService
 from src.business_analysis.application import BusinessAnalysisSuccess
@@ -80,6 +80,13 @@ class HistoryApplication:
                 else 403
             )
             raise HistoryError(code, rejection.error_message, status)
+
+    def _finish_attempt(self, owner, token, snapshot, error, execution_id=None):
+        if execution_id is not None:
+            return self.store.finish_execution_attempt(
+                owner, token, snapshot, error, execution_id
+            )
+        return self.store.finish_attempt(owner, token, snapshot, error)
 
     def create(self, auth, request_id, kind, question, operation_id):
         self.authorize(auth, request_id)
@@ -245,13 +252,17 @@ class HistoryApplication:
         requery=False,
         kind="query",
         analysis_run_id=None,
+        execution_id=None,
+        guard_preowned=False,
     ):
         if accepted.token is None:
             return accepted.turn
         try:
             guard = (
                 self.analysis_guard.executing(auth, analysis_run_id)
-                if kind == "analysis" and self.analysis_guard is not None
+                if kind == "analysis"
+                and self.analysis_guard is not None
+                and not guard_preowned
                 else nullcontext()
             )
             with guard:
@@ -265,9 +276,10 @@ class HistoryApplication:
                     requery=requery,
                     kind=kind,
                     analysis_run_id=analysis_run_id,
+                    execution_id=execution_id,
                 )
         except AnalysisExecutionBusy:
-            self.store.finish_attempt(
+            self._finish_attempt(
                 auth.user_id,
                 accepted.token,
                 None,
@@ -276,6 +288,7 @@ class HistoryApplication:
                     "error_code": "HISTORY_BUSY",
                     "error_message": "原分析运行仍在执行，请稍后刷新",
                 },
+                execution_id,
             )
             raise HistoryError(
                 "HISTORY_BUSY",
@@ -297,6 +310,7 @@ class HistoryApplication:
         requery,
         kind,
         analysis_run_id,
+        execution_id=None,
     ):
         token = accepted.token
         finishing = False
@@ -352,7 +366,7 @@ class HistoryApplication:
             self.runtime.check()
             if isinstance(result, QueryFailure):
                 finishing = True
-                return self.store.finish_attempt(
+                return self._finish_attempt(
                     auth.user_id,
                     token,
                     None,
@@ -361,6 +375,7 @@ class HistoryApplication:
                         "error_code": result.error_code.value,
                         "error_message": result.error_message,
                     },
+                    execution_id,
                 )
             if kind == "analysis" and isinstance(result, BusinessAnalysisSuccess):
                 snapshot = encode_snapshot(
@@ -380,7 +395,9 @@ class HistoryApplication:
                     "HISTORY_SNAPSHOT_UNAVAILABLE", "查询结果不可保存", 422
                 )
             finishing = True
-            return self.store.finish_attempt(auth.user_id, token, snapshot, None)
+            return self._finish_attempt(
+                auth.user_id, token, snapshot, None, execution_id
+            )
         except HistoryError as exc:
             exc.history_id, exc.turn_id = history_id, token.turn_id
             if finishing:
@@ -396,7 +413,7 @@ class HistoryApplication:
                 "HISTORY_SAVE_UNCONFIRMED",
             }:
                 try:
-                    self.store.finish_attempt(
+                    self._finish_attempt(
                         auth.user_id,
                         token,
                         None,
@@ -405,6 +422,7 @@ class HistoryApplication:
                             "error_code": exc.code,
                             "error_message": exc.message,
                         },
+                        execution_id,
                     )
                 except HistoryError:
                     raise HistoryError(

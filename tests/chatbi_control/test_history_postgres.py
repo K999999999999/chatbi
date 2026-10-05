@@ -481,7 +481,10 @@ def test_v2_upgrade_repeated_migration_and_old_version_marker(
     upgraded = replace(config, database="history_upgrade_" + uuid4().hex)
     migrations = Path(__file__).resolve().parents[2] / "database/control"
     for migration in sorted(migrations.glob("*.sql")):
-        if migration.name != "005_history_results.sql":
+        if migration.name not in {
+            "005_history_results.sql",
+            "006_execution_streaming.sql",
+        }:
             (tmp_path / migration.name).write_text(migration.read_text())
     engine = None
     try:
