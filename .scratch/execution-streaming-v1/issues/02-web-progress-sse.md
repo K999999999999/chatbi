@@ -1,7 +1,7 @@
 # Ticket 02：网页真实阶段、SSE观察与快照重连
 
 ID: execution-streaming-v1/02
-Status: open
+Status: complete
 Authorization: 用户于 2026-10-05 确认六项拆分及连续完成整个 R4 的本地实施，包含编码、适用测试与真实验收、Review 和本地 Commit；不含远端发布。
 
 Change Profile: 持续维护 /中 /高风险身份与传输 /软件+HTTP浏览器 /本地candidate。
@@ -30,5 +30,5 @@ Owned files: 01的execution Application /runtime /API与所需history DTO；`src
 验证：执行observer /runtime /SSE解析与reducer定向测试、真实HTTP/Cookie桌面浏览器；必要PG授权 /Session测试；types /build /静态 /links /Diff；不以Mock chunk证明实际模型流式。
 Migration / Rollback: 无新技术产品 /Schema决定，复用01存储；网页新流程与旧API兼容回归，保留数据回滚按04 /06执行。
 Done When: 1–5与适用检查通过、Review PASS、文档同步、本地Commit完成。
-Result: 尚未实施。
-Comments: Phase观察不得改变business result，业务停止Port的实际传播由03补全。
+Result: Ticket 02 已完成。真实 Query / Analysis 阶段通过可选 `ExecutionProgressObserver` 发布；Runtime 提供有界事件通道与原子 snapshot / SSE 增量；网页通过异步受理、GET/SSE 重连和正式执行读取恢复原任务，权限失效时清理私有状态，不重复提交。
+Comments: 最终回归：后端目标范围 406 passed、6 skipped、105 subtests passed；最新 SSE / HTTP 定向用例 14 passed；全套 Playwright 41 passed；`npm run build`、新增执行模块 Ruff、模块边界、Markdown 链接和 `git diff --check` 均通过。R3 查询 / 历史 / 分析 / 安全 / 可视化浏览器回归包含在全套 Playwright 中。真实 Provider 验收不属于本 Ticket，留待 Ticket 04 / 06。保存成果重查后的旧视图状态与 reducer 回退边界已在实现中修复。

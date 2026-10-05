@@ -91,6 +91,7 @@ class HistoryTurn:
     created_at: datetime
     public_error: dict | None
     snapshot: dict | None
+    execution_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

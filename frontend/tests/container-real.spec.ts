@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { login, send } from './helpers';
+import { login, send, isFinalExecutionResponse } from './helpers';
 import { querySnapshot } from '../src/results';
 import { analysisResult } from '../src/Analysis';
 import { buildChartPlans } from '../src/chartPlan';
@@ -52,7 +52,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
   };
   try {
     await login(page, process.env.CHATBI_REAL_E2E_USERNAME!, process.env.CHATBI_REAL_E2E_PASSWORD!);
-    const firstResponse = page.waitForResponse(r => r.request().method() === 'POST' && /\/(turns|resume)$/.test(new URL(r.url()).pathname), { timeout: 240000 });
+    const firstResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
     await send(page, '2025年2月已完成订单的人民币净销售额是多少？');
     const firstHttp = await firstResponse;
     const firstPayload = await firstHttp.json();
@@ -62,7 +62,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     expect(first.rows.length).toBe(1);
     expect(Number(first.rows[0][0])).toBe(Number(reference.net_sales['2']));
     await expect(page.getByRole('table')).toBeVisible();
-    const secondResponse = page.waitForResponse(r => r.request().method() === 'POST' && /\/(turns|resume)$/.test(new URL(r.url()).pathname), { timeout: 240000 });
+    const secondResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
     await send(page, '改成2025年3月');
     const secondHttp = await secondResponse;
     const secondPayload = await secondHttp.json();
@@ -79,7 +79,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     expect(first.result_metadata?.scope.time?.start).toBe('2025-02-01');
     expect(second.result_metadata?.scope.time?.start).toBe('2025-03-01');
     await page.getByRole('button', { name: '新建问数对话' }).click();
-    const trendResponse = page.waitForResponse(r => r.request().method() === 'POST' && /\/(turns|resume)$/.test(new URL(r.url()).pathname), { timeout: 240000 });
+    const trendResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
     await send(page, '按月份列出2025年已完成订单的人民币净销售额、人民币毛利和毛利率。');
     evidence.step = 'monthly-query';
     const trendHttp = await trendResponse;
@@ -111,7 +111,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     await expect(page.locator('[data-chart-kind="bar"] svg')).toHaveCount(1);
     evidence.monthly_mixed_units = { rows: trend.rows.length, reference_matches: true, money_series: 2, chart_units: trendPlans.plans.map(p => p.id), metadata_status: trendMetadata.status };
     await page.getByRole('button', { name: '新建问数对话' }).click();
-    const categoryResponse = page.waitForResponse(r => r.request().method() === 'POST' && /\/(turns|resume)$/.test(new URL(r.url()).pathname), { timeout: 240000 });
+    const categoryResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
     await send(page, '按产品线列出2025年已完成订单的人民币净销售额和人民币销售成本。');
     const categoryPayload = await (await categoryResponse).json();
     const category = querySnapshot(categoryPayload.turn.snapshot);
@@ -133,7 +133,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     evidence.category_same_unit = { rows: category.rows.length, reference_matches: true, series: 2, metadata_status: categoryMeta.status };
     evidence.step = 'analysis-request';
     await page.getByRole('button', { name: '经营分析', exact: true }).click();
-    const analysisResponse = page.waitForResponse(r => r.request().method() === 'POST' && /\/(turns|resume)$/.test(new URL(r.url()).pathname), { timeout: 600000 });
+    const analysisResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 600000 });
     await send(page, '分析2025年3月相比2025年2月的人民币毛利变化及产品因素贡献。');
     const analysisHttp = await analysisResponse;
     evidence.analysis_http_status = analysisHttp.status();
@@ -183,7 +183,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     const savedUrl = page.url();
     await page.getByRole('button', { name: '新建问数对话', exact: true }).click();
     evidence.step = 'top-n-query';
-    const rankedResponse = page.waitForResponse(r => r.request().method() === 'POST' && r.url().endsWith('/turns'), { timeout: 240000 });
+    const rankedResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
     await send(page, '2025年3月按人民币净销售额从高到低列出前3个产品。');
     const rankedPayload = await (await rankedResponse).json(); const ranked = querySnapshot(rankedPayload.turn.snapshot);
     expect(ranked.rows.map(row => [String(row[0]), Number(row[1])])).toEqual(reference.top_products.map((row: unknown[]) => [String(row[0]), Number(row[1])]));
@@ -212,14 +212,14 @@ test('停止重启后读取长期快照、重登录、续聊与显式重查', as
     await expect(page.getByRole('table')).toHaveCount(0);
     await page.goto('/#history=' + input.ranked_history_id);
     await expect(page.getByRole('table')).toBeVisible();
-    const continued = page.waitForResponse(r => r.request().method() === 'POST' && r.url().endsWith('/turns'), { timeout: 240000 });
+    const continued = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
     await send(page, '只看前2个产品');
     const body = await (await continued).json(); const result = querySnapshot(body.turn.snapshot);
     expect(body.history.id).toBe(input.ranked_history_id);
     expect(result.rows.map(row => [String(row[0]), Number(row[1])])).toEqual(reference.top_products.slice(0, 2).map((row: unknown[]) => [String(row[0]), Number(row[1])]));
     await page.goto(input.analysis_url); await expect(page.locator('.analysis-report h2')).toBeVisible();
     await page.goto(input.saved_url); await expect(page.getByRole('table')).toBeVisible();
-    const requery = page.waitForResponse(r => r.url().endsWith('/requery'), { timeout: 240000 });
+    const requery = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
     await page.getByRole('button', { name: '重新查询当前数据', exact: true }).click();
     const newBody = await (await requery).json(); querySnapshot(newBody.turn.snapshot);
     expect(newBody.history.id).not.toBe(input.ranked_history_id);

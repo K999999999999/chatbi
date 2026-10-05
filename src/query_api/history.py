@@ -6,7 +6,13 @@ from contextlib import nullcontext
 from src.authorization.query_entry import AuthorizedQueryService
 from src.business_analysis.application import BusinessAnalysisSuccess
 from src.business_analysis.run_execution import AnalysisExecutionBusy
-from src.online_query.contracts import QueryFailure, QueryRequest, QuerySuccess
+from src.online_query.contracts import (
+    ExecutionProgressObserver,
+    ExecutionStage,
+    QueryFailure,
+    QueryRequest,
+    QuerySuccess,
+)
 from src.online_query.semantic_state import SemanticCertificationError
 
 from .history_codec import decode_query_state, encode_snapshot, public_snapshot
@@ -64,11 +70,16 @@ class HistoryApplication:
             )
         return semantic
 
-    def authorize(self, auth, request_id):
+    def authorize(self, auth, request_id, *, audit=True):
         if auth.user_id is None:
             raise HistoryError("AUTHENTICATION_REQUIRED", "需要本地有效账号", 401)
-        rejection = self.query_service.authorize(
-            QueryRequest("历史管理", request_id=request_id), auth_context=auth
+        request = QueryRequest("历史管理", request_id=request_id)
+        rejection = (
+            self.query_service.authorize(request, auth_context=auth)
+            if audit
+            else self.query_service.authorize(
+                request, auth_context=auth, write_audit=False
+            )
         )
         if rejection is not None:
             code = rejection.error_code.value
@@ -254,6 +265,7 @@ class HistoryApplication:
         analysis_run_id=None,
         execution_id=None,
         guard_preowned=False,
+        progress_observer: ExecutionProgressObserver | None = None,
     ):
         if accepted.token is None:
             return accepted.turn
@@ -277,6 +289,7 @@ class HistoryApplication:
                     kind=kind,
                     analysis_run_id=analysis_run_id,
                     execution_id=execution_id,
+                    progress_observer=progress_observer,
                 )
         except AnalysisExecutionBusy:
             self._finish_attempt(
@@ -311,6 +324,7 @@ class HistoryApplication:
         kind,
         analysis_run_id,
         execution_id=None,
+        progress_observer: ExecutionProgressObserver | None = None,
     ):
         token = accepted.token
         finishing = False
@@ -325,6 +339,8 @@ class HistoryApplication:
                     )
             semantic = None
             if accepted.base_state is not None:
+                if not requery and progress_observer is not None:
+                    progress_observer.set_stage(ExecutionStage.QUERY_UNDERSTANDING)
                 previous = self.restore(accepted.base_state)
                 try:
                     semantic = (
@@ -341,12 +357,21 @@ class HistoryApplication:
             if kind == "analysis":
                 if self.analysis_service is None:
                     raise HistoryError("CONTEXT_ERROR", "分析服务暂时不可用", 503)
-                result = self.analysis_service.analyze(
-                    question,
-                    request_id=request_id,
-                    auth_context=auth,
-                    analysis_run_id=analysis_run_id,
-                )
+                if progress_observer is None:
+                    result = self.analysis_service.analyze(
+                        question,
+                        request_id=request_id,
+                        auth_context=auth,
+                        analysis_run_id=analysis_run_id,
+                    )
+                else:
+                    result = self.analysis_service.analyze(
+                        question,
+                        request_id=request_id,
+                        auth_context=auth,
+                        analysis_run_id=analysis_run_id,
+                        progress_observer=progress_observer,
+                    )
             else:
                 result = self.query_service.execute_authorized(
                     QueryRequest(
@@ -354,6 +379,7 @@ class HistoryApplication:
                         request_id=request_id,
                         semantic_query=semantic,
                         require_restorable=True,
+                        progress_observer=progress_observer,
                     ),
                     auth_context=auth,
                 )
@@ -366,6 +392,8 @@ class HistoryApplication:
             self.runtime.check()
             if isinstance(result, QueryFailure):
                 finishing = True
+                if progress_observer is not None:
+                    progress_observer.set_stage(ExecutionStage.RESULT_SAVING)
                 return self._finish_attempt(
                     auth.user_id,
                     token,
@@ -395,6 +423,8 @@ class HistoryApplication:
                     "HISTORY_SNAPSHOT_UNAVAILABLE", "查询结果不可保存", 422
                 )
             finishing = True
+            if progress_observer is not None:
+                progress_observer.set_stage(ExecutionStage.RESULT_SAVING)
             return self._finish_attempt(
                 auth.user_id, token, snapshot, None, execution_id
             )

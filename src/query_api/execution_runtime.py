@@ -9,6 +9,11 @@ from contextlib import contextmanager
 from threading import Condition, Lock
 from typing import TypeVar
 
+from .execution_events import (
+    ExecutionEventChannel,
+    ExecutionEventSubscription,
+)
+
 T = TypeVar("T")
 
 
@@ -41,6 +46,8 @@ class ExecutionLease:
         self._lock = Lock()
         self._released = False
         self._submitted = False
+        self._execution_id: str | None = None
+        self._event_channel: ExecutionEventChannel | None = None
 
     @property
     def released(self) -> bool:
@@ -59,7 +66,13 @@ class ExecutionLease:
             try:
                 self._history_lease.release()
             finally:
-                self._runtime._release_owner(self._owner_id)
+                try:
+                    self._runtime._release_owner(self._owner_id)
+                finally:
+                    if self._execution_id is not None:
+                        self._runtime._release_event_channel(
+                            self._execution_id, self._event_channel
+                        )
 
 
 class ExecutionRuntime:
@@ -91,6 +104,7 @@ class ExecutionRuntime:
         self._active_by_user: dict[int, int] = {}
         self._active_total = 0
         self._operation_locks: dict[tuple[int, str], tuple[Lock, int]] = {}
+        self._event_channels: dict[str, ExecutionEventChannel] = {}
         self._accepting = True
         self._closed = False
         self._executor = ThreadPoolExecutor(
@@ -160,6 +174,30 @@ class ExecutionRuntime:
                 history_lease.release()
             self._release_owner(owner_id)
             raise
+
+    def attach_progress(self, lease: ExecutionLease, execution):
+        """为已持久受理的 execution 安装仅存活于当前 worker 的进度通道。"""
+
+        if lease._runtime is not self:
+            raise ValueError("执行租约不属于当前 Runtime")
+        with lease._lock:
+            if lease._released or lease._submitted:
+                raise ExecutionRuntimeClosed()
+            if lease._execution_id is not None:
+                raise ValueError("执行租约已绑定进度通道")
+            channel = ExecutionEventChannel(execution)
+            with self._condition:
+                if execution.id in self._event_channels:
+                    raise ValueError("执行进度通道已存在")
+                self._event_channels[execution.id] = channel
+                lease._execution_id = execution.id
+                lease._event_channel = channel
+            return channel
+
+    def subscribe(self, execution_id: str) -> ExecutionEventSubscription | None:
+        with self._condition:
+            channel = self._event_channels.get(execution_id)
+        return None if channel is None else channel.subscribe()
 
     @contextmanager
     def serialize_operation(self, owner_id: int, operation_id: str):
@@ -239,6 +277,13 @@ class ExecutionRuntime:
                 self._active_by_user[owner_id] = active - 1
             self._active_total -= 1
             self._condition.notify_all()
+
+    def _release_event_channel(self, execution_id, channel) -> None:
+        if channel is not None and not channel.terminal:
+            channel.finish("unconfirmed")
+        with self._condition:
+            if self._event_channels.get(execution_id) is channel:
+                del self._event_channels[execution_id]
 
 
 def _positive_limit(value):

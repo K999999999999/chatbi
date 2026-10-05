@@ -12,7 +12,12 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 
 from src.authorization.contracts import AuthContext
-from src.online_query.contracts import QueryErrorCode, QueryFailure
+from src.online_query.contracts import (
+    ExecutionProgressObserver,
+    ExecutionStage,
+    QueryErrorCode,
+    QueryFailure,
+)
 
 from .attribution import (
     AttributionError,
@@ -46,6 +51,7 @@ class AnalysisRunContext(TypedDict):
 
     request_id: str
     auth_context: AuthContext
+    progress_observer: ExecutionProgressObserver | None
 
 
 class AnalysisRunState(TypedDict, total=False):
@@ -171,6 +177,7 @@ class BusinessAnalysisApplication:
         request_id: str,
         auth_context: AuthContext,
         analysis_run_id: str | None = None,
+        progress_observer: ExecutionProgressObserver | None = None,
     ) -> AnalysisResult:
         run_id = _analysis_run_uuid(analysis_run_id, request_id=request_id)
         if isinstance(run_id, QueryFailure):
@@ -205,7 +212,11 @@ class BusinessAnalysisApplication:
         try:
             state = self._graph.invoke(
                 {"question": question},
-                context={"request_id": request_id, "auth_context": auth_context},
+                context={
+                    "request_id": request_id,
+                    "auth_context": auth_context,
+                    "progress_observer": progress_observer,
+                },
                 config=config,
             )
         except Exception:
@@ -333,6 +344,10 @@ class BusinessAnalysisApplication:
         ):
             return {"failure": None}
         question = state.get("question", "")
+        if runtime.context["progress_observer"] is not None:
+            runtime.context["progress_observer"].set_stage(
+                ExecutionStage.ANALYSIS_UNDERSTANDING
+            )
         try:
             context = self._context_provider()
             catalog = AnalysisSemanticCatalog.from_records(
@@ -383,6 +398,10 @@ class BusinessAnalysisApplication:
             state.get("plan"), AnalysisPlan
         ):
             return {"failure": None}
+        if runtime.context["progress_observer"] is not None:
+            runtime.context["progress_observer"].set_stage(
+                ExecutionStage.ANALYSIS_PLAN_VALIDATION
+            )
         try:
             request, plan = build_comparison_plan(
                 state["candidate"],
@@ -463,6 +482,19 @@ class BusinessAnalysisApplication:
                 )
             }
 
+        if runtime.context["progress_observer"] is not None:
+            completed = sum(
+                result.status is TaskStatus.COMPLETED and not result.truncated
+                for result in previous.values()
+            )
+            total = len(state["plan"].tasks)
+            runtime.context["progress_observer"].set_stage(
+                ExecutionStage.ANALYSIS_QUERY_TASKS
+            )
+            runtime.context["progress_observer"].set_task_progress(
+                completed, total
+            )
+
         result = executor.execute_one(
             task,
             request_id=runtime.context["request_id"],
@@ -478,6 +510,14 @@ class BusinessAnalysisApplication:
             for item in state["plan"].tasks
             if item.task_id in previous
         )
+        if runtime.context["progress_observer"] is not None:
+            completed = sum(
+                item.status is TaskStatus.COMPLETED and not item.truncated
+                for item in task_results
+            )
+            runtime.context["progress_observer"].set_task_progress(
+                completed, len(state["plan"].tasks)
+            )
         if result.status is not TaskStatus.COMPLETED or result.truncated:
             return {
                 "task_results": task_results,
@@ -499,6 +539,10 @@ class BusinessAnalysisApplication:
         runtime: Runtime[AnalysisRunContext],
     ) -> dict[str, object]:
         try:
+            if runtime.context["progress_observer"] is not None:
+                runtime.context["progress_observer"].set_stage(
+                    ExecutionStage.ANALYSIS_REPORT_GENERATION
+                )
             report = self._summarizer.summarize(
                 state["question"],
                 state["task_results"],
@@ -528,6 +572,10 @@ class BusinessAnalysisApplication:
         runtime: Runtime[AnalysisRunContext],
     ) -> dict[str, object]:
         try:
+            if runtime.context["progress_observer"] is not None:
+                runtime.context["progress_observer"].set_stage(
+                    ExecutionStage.ANALYSIS_ATTRIBUTION
+                )
             attribution = calculate_product_attribution(
                 state["analysis_request"],
                 state["task_results"],

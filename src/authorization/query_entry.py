@@ -84,8 +84,9 @@ class AuthorizedQueryService:
         request: QueryRequest,
         *,
         auth_context: AuthContext | None,
+        write_audit: bool = True,
     ) -> QueryResult | None:
-        """执行一次身份、策略和允许审计；允许时不进入下游查询。"""
+        """检查身份 / 策略；受理审计可按调用场景显式关闭。"""
 
         request_id = _request_id(request.request_id)
         if auth_context is None:
@@ -94,8 +95,9 @@ class AuthorizedQueryService:
                 QueryErrorCode.AUTHENTICATION_REQUIRED,
                 internal_reason="AUTH_CONTEXT_MISSING",
             )
-            return self._audited_failure(
+            return self._authorization_failure(
                 result,
+                write_audit=write_audit,
                 request_id=request_id,
                 auth_context=None,
                 reason_code="AUTH_CONTEXT_MISSING",
@@ -115,8 +117,9 @@ class AuthorizedQueryService:
                 QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
                 internal_reason="POLICY_STORE_UNAVAILABLE",
             )
-            return self._audited_failure(
+            return self._authorization_failure(
                 result,
+                write_audit=write_audit,
                 request_id=request_id,
                 auth_context=auth_context,
                 reason_code="POLICY_STORE_UNAVAILABLE",
@@ -132,8 +135,9 @@ class AuthorizedQueryService:
                 QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
                 internal_reason="POLICY_STORE_FAILURE",
             )
-            return self._audited_failure(
+            return self._authorization_failure(
                 result,
+                write_audit=write_audit,
                 request_id=request_id,
                 auth_context=auth_context,
                 reason_code="POLICY_STORE_FAILURE",
@@ -150,8 +154,9 @@ class AuthorizedQueryService:
                 QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
                 internal_reason="INVALID_POLICY_DECISION",
             )
-            return self._audited_failure(
+            return self._authorization_failure(
                 result,
+                write_audit=write_audit,
                 request_id=request_id,
                 auth_context=auth_context,
                 reason_code="INVALID_POLICY_DECISION",
@@ -164,29 +169,51 @@ class AuthorizedQueryService:
                 QueryErrorCode.AUTHORIZATION_DENIED,
                 internal_reason=decision.reason_code,
             )
-            return self._audited_failure(
+            return self._authorization_failure(
                 result,
+                write_audit=write_audit,
                 request_id=request_id,
                 auth_context=auth_context,
                 reason_code=decision.reason_code,
                 policy_version=decision.policy_version,
             )
 
-        audit_failure = self._emit_audit(
-            request_id=request_id,
-            auth_context=auth_context,
-            decision=AuditDecision.ALLOW,
-            reason_code=decision.reason_code,
-            policy_version=decision.policy_version,
-        )
-        if audit_failure:
-            return authorization_failure(
-                request_id,
-                QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
-                internal_reason="AUDIT_SINK_UNAVAILABLE",
+        if write_audit:
+            audit_failure = self._emit_audit(
+                request_id=request_id,
+                auth_context=auth_context,
+                decision=AuditDecision.ALLOW,
+                reason_code=decision.reason_code,
+                policy_version=decision.policy_version,
             )
+            if audit_failure:
+                return authorization_failure(
+                    request_id,
+                    QueryErrorCode.AUTHENTICATION_UNAVAILABLE,
+                    internal_reason="AUDIT_SINK_UNAVAILABLE",
+                )
 
         return None
+
+    def _authorization_failure(
+        self,
+        result,
+        *,
+        write_audit,
+        request_id,
+        auth_context,
+        reason_code,
+        policy_version,
+    ):
+        if not write_audit:
+            return result
+        return self._audited_failure(
+            result,
+            request_id=request_id,
+            auth_context=auth_context,
+            reason_code=reason_code,
+            policy_version=policy_version,
+        )
 
     def execute_authorized(
         self,

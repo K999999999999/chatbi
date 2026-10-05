@@ -6,8 +6,9 @@ from uuid import UUID
 
 from fastapi import APIRouter, Request
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, field_validator
+from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import Headers
 
 from src.authorization.contracts import (
@@ -16,6 +17,7 @@ from src.authorization.contracts import (
     IdentityProviderUnavailable,
 )
 
+from .execution_events import encode_sse
 from .history_api import _identity, _public_header, _public_turn, _request_id
 from .history_contracts import HistoryError, storage_unavailable
 
@@ -167,6 +169,37 @@ def _public_view(view):
     )
 
 
+def _persisted_snapshot(view):
+    execution = view.execution
+    return {
+        "version": 1,
+        "execution_id": execution.id,
+        "history_id": execution.history_id,
+        "turn_id": execution.turn_id,
+        "sequence": 0,
+        "draft_generation": 0,
+        "type": "snapshot",
+        "payload": {
+            "status": execution.status,
+            "stage": None,
+            "completed_tasks": 0,
+            "total_tasks": None,
+            "stop_reason": execution.stop_reason,
+            "draft_generation": 0,
+        },
+    }
+
+
+def _auth_lost_event(execution_id, sequence):
+    return {
+        "version": 1,
+        "execution_id": execution_id,
+        "sequence": sequence,
+        "type": "auth_lost",
+        "payload": {},
+    }
+
+
 def mount_execution_api(app):
     histories = APIRouter(prefix="/api/v1/histories")
     executions = APIRouter(prefix="/api/v1/executions")
@@ -258,6 +291,92 @@ def mount_execution_api(app):
             str(execution_id),
         )
         return _public_view(view)
+
+    @executions.get("/{execution_id}/events")
+    async def observe_execution(request: Request, execution_id: UUID):
+        application = _execution_application(request)
+        initial_auth = _readonly_identity(request)
+        view, subscription = application.subscribe(
+            initial_auth,
+            _request_id(request),
+            str(execution_id),
+        )
+        reauthenticate = _reauthenticator(request, initial_auth)
+
+        async def stream():
+            sequence = 0
+
+            async def authorized_now():
+                current_auth = await run_in_threadpool(reauthenticate)
+                await run_in_threadpool(
+                    application.authorize_observer,
+                    current_auth,
+                    _request_id(request),
+                    str(execution_id),
+                )
+
+            try:
+                if subscription is None:
+                    event = _persisted_snapshot(view)
+                    try:
+                        await authorized_now()
+                    except HistoryError:
+                        yield encode_sse(_auth_lost_event(str(execution_id), 0))
+                        return
+                    yield encode_sse(event)
+                    return
+
+                initial = subscription.snapshot
+                sequence = initial["sequence"]
+                try:
+                    await authorized_now()
+                except HistoryError:
+                    yield encode_sse(_auth_lost_event(str(execution_id), sequence))
+                    return
+                yield encode_sse(initial)
+                if initial["payload"]["status"] in {
+                    "succeeded",
+                    "failed",
+                    "cancelled",
+                    "timed_out",
+                    "unconfirmed",
+                }:
+                    return
+
+                while not await request.is_disconnected():
+                    events = await run_in_threadpool(subscription.read, 15.0)
+                    if not events:
+                        try:
+                            await authorized_now()
+                        except HistoryError:
+                            yield encode_sse(_auth_lost_event(str(execution_id), sequence))
+                            return
+                        yield b": heartbeat\n\n"
+                        continue
+                    for event in events:
+                        try:
+                            await authorized_now()
+                        except HistoryError:
+                            yield encode_sse(
+                                _auth_lost_event(str(execution_id), sequence)
+                            )
+                            return
+                        sequence = event["sequence"]
+                        yield encode_sse(event)
+                        if event["type"] == "terminal":
+                            return
+            finally:
+                if subscription is not None:
+                    subscription.close()
+
+        return StreamingResponse(
+            stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-store",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     app.include_router(histories)
     app.include_router(saved)

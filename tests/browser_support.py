@@ -68,7 +68,8 @@ class BrowserQueryFixture:
 
 
 class BrowserAnalysisFixture:
-    def analyze(self, question, *, request_id, auth_context, analysis_run_id):
+    def analyze(self, question, *, request_id, auth_context, analysis_run_id, progress_observer=None):
+        del progress_observer
         return BusinessAnalysisSuccess(
             request_id,
             BusinessAnalysisReport(

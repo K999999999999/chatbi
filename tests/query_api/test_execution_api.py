@@ -47,6 +47,8 @@ class ExecutionApplication:
     def __init__(self, view):
         self.view = view
         self.calls = []
+        self.subscription = None
+        self.observer_checks = 0
 
     def submit(self, *args, **kwargs):
         self.calls.append((args, kwargs))
@@ -63,6 +65,44 @@ class ExecutionApplication:
     def get(self, *args, **kwargs):
         self.calls.append((args, kwargs))
         return self.view
+
+    def subscribe(self, *args, **kwargs):
+        self.calls.append((args, kwargs))
+        return self.view, self.subscription
+
+    def authorize_observer(self, *args, **kwargs):
+        self.observer_checks += 1
+        return self.view.execution
+
+
+class EventSubscription:
+    def __init__(self, execution_id, history_id, turn_id, events):
+        self.snapshot = {
+            "version": 1,
+            "execution_id": execution_id,
+            "history_id": history_id,
+            "turn_id": turn_id,
+            "sequence": 0,
+            "draft_generation": 0,
+            "type": "snapshot",
+            "payload": {
+                "status": "running",
+                "stage": None,
+                "completed_tasks": 0,
+                "total_tasks": None,
+                "stop_reason": None,
+                "draft_generation": 0,
+            },
+        }
+        self.events = tuple(events)
+        self.closed = False
+
+    def read(self, _timeout=None):
+        events, self.events = self.events, ()
+        return events
+
+    def close(self):
+        self.closed = True
 
 
 def execution_view(status="running"):
@@ -173,6 +213,131 @@ def test_execution_reads_use_readonly_identity_and_return_formal_turn():
     assert by_id.status_code == 200
     assert by_id.json()["turn"]["status"] == "accepted"
     assert provider.reads == 2
+
+
+def test_event_stream_sends_atomic_snapshot_then_events_and_rechecks_permission():
+    provider = Provider()
+    app, execution_app = make_app(provider)
+    execution = execution_app.view.execution
+    execution_app.subscription = EventSubscription(
+        execution.id,
+        execution.history_id,
+        execution.turn_id,
+        (
+            {
+                "version": 1,
+                "execution_id": execution.id,
+                "history_id": execution.history_id,
+                "turn_id": execution.turn_id,
+                "sequence": 1,
+                "draft_generation": 0,
+                "type": "progress",
+                "payload": {"stage": "query_execution"},
+            },
+            {
+                "version": 1,
+                "execution_id": execution.id,
+                "history_id": execution.history_id,
+                "turn_id": execution.turn_id,
+                "sequence": 2,
+                "draft_generation": 0,
+                "type": "terminal",
+                "payload": {"status": "succeeded"},
+            },
+        ),
+    )
+    with TestClient(app) as client:
+        app.state.execution_application = execution_app
+        response = client.get(f"/api/v1/executions/{execution.id}/events")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-accel-buffering"] == "no"
+    assert response.text.index('"type":"snapshot"') < response.text.index('"sequence":1')
+    assert '"stage":"query_execution"' in response.text
+    assert '"type":"terminal"' in response.text
+    assert execution_app.observer_checks == 3
+    assert execution_app.subscription.closed
+
+
+def test_event_stream_closes_with_auth_lost_without_private_snapshot():
+    class ExpiringProvider(Provider):
+        def authenticate_readonly(self, _provider_input=None):
+            self.reads += 1
+            auth = self.authenticate(_provider_input)
+            if self.reads > 1:
+                return AuthContext(
+                    "other",
+                    self.identity_provider,
+                    user_id=12,
+                    permissions=frozenset({"query.execute"}),
+                )
+            return auth
+
+    provider = ExpiringProvider()
+    app, execution_app = make_app(provider)
+    execution = execution_app.view.execution
+    execution_app.subscription = EventSubscription(
+        execution.id, execution.history_id, execution.turn_id, ()
+    )
+    with TestClient(app) as client:
+        app.state.execution_application = execution_app
+        response = client.get(f"/api/v1/executions/{execution.id}/events")
+
+    assert response.status_code == 200
+    assert '"type":"auth_lost"' in response.text
+    assert '"type":"snapshot"' not in response.text
+    assert '"stage"' not in response.text
+    assert execution_app.subscription.closed
+
+
+def test_event_stream_rechecks_identity_before_heartbeat_after_snapshot():
+    class HeartbeatExpiringProvider(Provider):
+        def authenticate_readonly(self, _provider_input=None):
+            self.reads += 1
+            auth = self.authenticate(_provider_input)
+            if self.reads > 2:
+                return AuthContext(
+                    "other",
+                    self.identity_provider,
+                    user_id=12,
+                    permissions=frozenset({"query.execute"}),
+                )
+            return auth
+
+    provider = HeartbeatExpiringProvider()
+    app, execution_app = make_app(provider)
+    execution = execution_app.view.execution
+    execution_app.subscription = EventSubscription(
+        execution.id, execution.history_id, execution.turn_id, ()
+    )
+    with TestClient(app) as client:
+        app.state.execution_application = execution_app
+        response = client.get(f"/api/v1/executions/{execution.id}/events")
+
+    assert response.status_code == 200
+    assert response.text.count('"type":"snapshot"') == 1
+    assert '"type":"auth_lost"' in response.text
+    assert response.text.index('"type":"snapshot"') < response.text.index('"type":"auth_lost"')
+    assert execution_app.subscription.closed
+    assert provider.reads == 3
+
+
+def test_event_stream_after_channel_cleanup_uses_persisted_terminal_snapshot():
+    provider = Provider()
+    app, execution_app = make_app(provider)
+    execution_app.view = execution_view(status="succeeded")
+    execution = execution_app.view.execution
+    with TestClient(app) as client:
+        app.state.execution_application = execution_app
+        response = client.get(f"/api/v1/executions/{execution.id}/events")
+
+    assert response.status_code == 200
+    assert '"type":"snapshot"' in response.text
+    assert '"status":"succeeded"' in response.text
+    assert '"stage":null' in response.text
+    assert execution_app.observer_checks == 1
 
 
 def test_cookie_execution_write_requires_origin_and_browser_marker():

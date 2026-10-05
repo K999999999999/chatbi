@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync, readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
-import { login, send } from './helpers';
+import { login, send, isFinalExecutionResponse } from './helpers';
 import { querySnapshot } from '../src/results';
 import { analysisResult } from '../src/Analysis';
 
@@ -24,14 +24,14 @@ test('real Chrome login → model/RAG query → followup → two-period analysis
     evidence.step = "login";
     await login(page, process.env.CHATBI_REAL_E2E_USERNAME!, process.env.CHATBI_REAL_E2E_PASSWORD!);
     evidence.step = "query";
-    const firstResponse = page.waitForResponse(response => response.request().method() === 'POST' && /\/(turns|resume)$/.test(new URL(response.url()).pathname), { timeout: 200000 });
+    const firstResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 200000 });
     await send(page, '2025年2月已完成订单的人民币净销售额是多少？');
     evidence.query_response = await (await firstResponse).json();
     const first = querySnapshot((evidence.query_response as any).turn.snapshot); evidence.query = first;
     expect(Number(first.rows[0][0])).toBe(Number(reference.net_sales['2']));
     await expect(page.getByRole('table')).toHaveCount(1);
     evidence.step = "followup";
-    const followupResponse = page.waitForResponse(response => response.request().method() === 'POST' && /\/(turns|resume)$/.test(new URL(response.url()).pathname), { timeout: 200000 });
+    const followupResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 200000 });
     await send(page, '改成2025年3月');
     evidence.followup_response = await (await followupResponse).json();
     const followup = querySnapshot((evidence.followup_response as any).turn.snapshot); evidence.followup = followup;
@@ -40,7 +40,7 @@ test('real Chrome login → model/RAG query → followup → two-period analysis
     await expect(page.getByRole('table')).toHaveCount(2);
     evidence.step = 'analysis';
     await page.getByRole('button', { name: '经营分析', exact: true }).click();
-    const responsePromise = page.waitForResponse(response => response.request().method() === 'POST' && /\/(turns|resume)$/.test(new URL(response.url()).pathname), { timeout: 1250000 });
+    const responsePromise = page.waitForResponse(isFinalExecutionResponse, { timeout: 1250000 });
     await send(page, '分析2025年3月相比2025年2月的人民币毛利变化及产品因素贡献。');
     const response = await responsePromise; const body = await response.json(); evidence.analysis_response = body;
     const id = body.history.analysis_run_id;

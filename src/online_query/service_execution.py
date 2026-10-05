@@ -8,6 +8,7 @@ from typing import Any
 from ..observability.contracts import ErrorType, TraceOutcome, TraceRecorder
 
 from .contracts import (
+    ExecutionStage,
     QueryContext,
     QueryErrorCode,
     QueryExecutor,
@@ -40,6 +41,7 @@ def _execute_query(
     failure_factory: Callable[..., QueryFailure],
     validation_session_factory: Callable[..., Any],
     require_restorable: bool = False,
+    progress_observer=None,
 ) -> QueryResult:
     """执行已完成 Request / Context 阶段的 SQL 查询。"""
 
@@ -84,6 +86,8 @@ def _execute_query(
 
     with _safe_trace_scope(trace_recorder, name="llm.generate"):
         try:
+            if progress_observer is not None:
+                progress_observer.set_stage(ExecutionStage.SQL_GENERATION)
             candidate = sql_generator.generate(prompt)
         except Exception:
             result = failure_factory(request_id, QueryErrorCode.LLM_ERROR)
@@ -101,6 +105,8 @@ def _execute_query(
         name="candidate_scope.validate",
     ):
         try:
+            if progress_observer is not None:
+                progress_observer.set_stage(ExecutionStage.SQL_VALIDATION)
             validation_session = validation_session_factory(
                 candidate,
                 context,
@@ -156,6 +162,8 @@ def _execute_query(
 
     with _safe_trace_scope(trace_recorder, name="database.execute"):
         try:
+            if progress_observer is not None:
+                progress_observer.set_stage(ExecutionStage.QUERY_EXECUTION)
             data = query_executor.execute(validated_sql)
         except DatabaseQueryTimeout:
             result = failure_factory(request_id, QueryErrorCode.QUERY_TIMEOUT)

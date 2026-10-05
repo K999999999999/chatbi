@@ -27,12 +27,37 @@ class QueryErrorCode(StrEnum):
     CONVERSATION_CONFLICT = "CONVERSATION_CONFLICT"
 
 
+class ExecutionStage(StrEnum):
+    """R4 网页可见的确定性执行阶段编号。"""
+
+    QUERY_UNDERSTANDING = "query_understanding"
+    RETRIEVAL = "retrieval"
+    SQL_GENERATION = "sql_generation"
+    SQL_VALIDATION = "sql_validation"
+    QUERY_EXECUTION = "query_execution"
+    ANALYSIS_UNDERSTANDING = "analysis_understanding"
+    ANALYSIS_PLAN_VALIDATION = "analysis_plan_validation"
+    ANALYSIS_QUERY_TASKS = "analysis_query_tasks"
+    ANALYSIS_ATTRIBUTION = "analysis_attribution"
+    ANALYSIS_REPORT_GENERATION = "analysis_report_generation"
+    RESULT_SAVING = "result_saving"
+
+
+class ExecutionProgressObserver(Protocol):
+    """业务链可选的阶段 / 实际任务计数反馈 Port。"""
+
+    def set_stage(self, stage: ExecutionStage) -> None: ...
+
+    def set_task_progress(self, completed: int, total: int) -> None: ...
+
+
 @dataclass(frozen=True, slots=True)
 class QueryRequest:
     question: str
     request_id: str | None = None
     semantic_query: ValidatedSemanticQuery | None = None
     require_restorable: bool = False
+    progress_observer: ExecutionProgressObserver | None = None
 
 
 @dataclass(frozen=True, slots=True)

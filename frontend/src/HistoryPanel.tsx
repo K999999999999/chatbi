@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { APIError, request, type Identity } from './api';
 import { historyHeader, pageItems, savedResult, type HistoryHeader, type SavedResult } from './history';
 
-export function HistoryPanel({ user, pending, refresh, onExpired, onOpen, onSaved }: {
-  user: Identity; pending: boolean; refresh: number; onExpired: () => void;
+export function HistoryPanel({ user, pending, refresh, clearPrivateVersion, onExpired, onForbidden, onOpen, onSaved }: {
+  user: Identity; pending: boolean; refresh: number; clearPrivateVersion: number; onExpired: () => void; onForbidden: () => void;
   onOpen: (id: string) => void; onSaved: (id: string) => void;
 }) {
   const [tab, setTab] = useState<'histories' | 'saved-results'>('histories');
@@ -11,6 +11,14 @@ export function HistoryPanel({ user, pending, refresh, onExpired, onOpen, onSave
   const [items, setItems] = useState<(HistoryHeader | SavedResult)[]>([]);
   const [cursor, setCursor] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
   const epoch = useRef(0);
+  const lastClearVersion = useRef(clearPrivateVersion);
+  const suppressNextLoad = useRef(false);
+  function clearPrivateState(message: string) {
+    const filtersChanged = !!(search || q || kind);
+    if (filtersChanged) suppressNextLoad.current = true;
+    epoch.current++; setItems([]); setCursor(null); setBusy(false); setError(message);
+    setSearch(''); setQ(''); setKind('');
+  }
   async function load(next?: string) {
     const version = ++epoch.current; setBusy(true); setError('');
     try {
@@ -19,10 +27,25 @@ export function HistoryPanel({ user, pending, refresh, onExpired, onOpen, onSave
       if (version !== epoch.current) return;
       const decoded = result.items.map(value => tab === 'histories' ? historyHeader(value) : savedResult(value));
       setItems(old => next ? [...old, ...decoded] : decoded); setCursor(result.next_cursor as string | null);
-    } catch (err) { if (version === epoch.current) { if (err instanceof APIError && err.status === 401) onExpired(); else setError((err as Error).message); } }
+    } catch (err) { if (version === epoch.current) {
+      if (err instanceof APIError && err.status === 401) onExpired();
+      else if (err instanceof APIError && err.status === 403) onForbidden();
+      else setError((err as Error).message);
+    } }
     finally { if (version === epoch.current) setBusy(false); }
   }
-  useEffect(() => { setItems([]); setCursor(null); void load(); return () => { epoch.current++; }; }, [tab, kind, q, refresh]);
+  useEffect(() => {
+    if (lastClearVersion.current === clearPrivateVersion) return;
+    lastClearVersion.current = clearPrivateVersion;
+    clearPrivateState('');
+  }, [clearPrivateVersion]);
+  useEffect(() => {
+    if (suppressNextLoad.current) {
+      suppressNextLoad.current = false; setItems([]); setCursor(null); setBusy(false);
+      return () => { epoch.current++; };
+    }
+    setItems([]); setCursor(null); void load(); return () => { epoch.current++; };
+  }, [tab, kind, q, refresh]);
   return <section className="history-panel" aria-label="私人记录">
     <div className="history-tabs"><button aria-pressed={tab === 'histories'} disabled={pending} onClick={() => setTab('histories')}>历史记录</button>
       <button aria-pressed={tab === 'saved-results'} disabled={pending} onClick={() => setTab('saved-results')}>已保存成果</button></div>

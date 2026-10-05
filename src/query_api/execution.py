@@ -10,6 +10,7 @@ from uuid import uuid4
 from src.business_analysis.run_execution import AnalysisExecutionBusy
 
 from .execution_contracts import ExecutionRecord
+from .execution_events import ExecutionSubscriberLimit
 from .execution_runtime import (
     ExecutionCapacityExceeded,
     ExecutionRuntimeClosed,
@@ -220,6 +221,27 @@ class ExecutionApplication:
             raise
         return self._view(auth, request_id, record)
 
+    def subscribe(self, auth, request_id, execution_id):
+        view = self.get(auth, request_id, execution_id)
+        try:
+            subscription = self.runtime.subscribe(view.execution.id)
+        except ExecutionSubscriberLimit:
+            raise HistoryError(
+                "EXECUTION_SUBSCRIBER_LIMIT", "当前执行的观察连接已满", 429
+            ) from None
+        return view, subscription
+
+    def authorize_observer(self, auth, request_id, execution_id):
+        self.history.authorize(auth, request_id, audit=False)
+        try:
+            return self.store.execution(auth.user_id, execution_id)
+        except HistoryError as exc:
+            if exc.status == 404:
+                raise HistoryError(
+                    "EXECUTION_UNAVAILABLE", "执行记录不可用", 404
+                ) from None
+            raise
+
     def by_operation(self, auth, request_id, operation_id):
         self.history.authorize(auth, request_id)
         record = self.store.execution_by_operation(auth.user_id, operation_id)
@@ -260,10 +282,14 @@ class ExecutionApplication:
         requery=False,
         analysis_run_id=None,
     ):
+        progress = None
+
         def work():
             try:
                 self.store.mark_execution_running(auth.user_id, execution.id)
-                self.history._execute_attempt(
+                assert progress is not None
+                progress.set_status("running")
+                turn = self.history._execute_attempt(
                     auth,
                     request_id,
                     execution.history_id,
@@ -275,11 +301,14 @@ class ExecutionApplication:
                     analysis_run_id=analysis_run_id,
                     execution_id=execution.id,
                     guard_preowned=True,
+                    progress_observer=progress,
                 )
+                progress.finish(turn.status, turn.public_error)
             except HistoryError as exc:
                 self._persist_worker_failure(
                     auth.user_id, execution, accepted, request_id, exc.code, exc.message
                 )
+                self._finish_from_persistence(auth.user_id, execution, progress)
             except Exception as exc:  # noqa: BLE001 - worker failure must not leak internals
                 _LOGGER.warning(
                     "Background execution failed: error_type=%s", type(exc).__name__
@@ -292,10 +321,12 @@ class ExecutionApplication:
                     "EXECUTION_FAILED",
                     "执行失败，请刷新后查看状态",
                 )
+                self._finish_from_persistence(auth.user_id, execution, progress)
 
         try:
+            progress = self.runtime.attach_progress(lease, execution)
             self.runtime.submit(lease, work)
-        except RuntimeError as exc:
+        except (RuntimeError, ValueError) as exc:
             _LOGGER.warning("Background execution dispatch failed: error_type=%s", type(exc).__name__)
             self._persist_worker_failure(
                 auth.user_id,
@@ -305,6 +336,8 @@ class ExecutionApplication:
                 "EXECUTION_UNAVAILABLE",
                 "执行启动失败，请刷新后查看状态",
             )
+            if progress is not None:
+                self._finish_from_persistence(auth.user_id, execution, progress)
             raise HistoryError(
                 "EXECUTION_UNAVAILABLE",
                 "执行启动失败，请刷新后查看状态",
@@ -331,7 +364,21 @@ class ExecutionApplication:
             )
         except HistoryError:
             # 保存结果不确定时不能再尝试业务工作；后续状态以 PostgreSQL 为准。
+            return False
+        return True
+
+    def _finish_from_persistence(self, owner, execution, progress):
+        if progress is None:
             return
+        try:
+            current = self.store.execution(owner, execution.id)
+        except HistoryError:
+            progress.finish("unconfirmed")
+            return
+        if current.status in {"succeeded", "failed", "cancelled", "timed_out"}:
+            progress.finish(current.status, current.public_error)
+        else:
+            progress.finish("unconfirmed", current.public_error)
 
     def _view(self, auth, request_id, execution):
         header = self.history.header(auth, request_id, execution.history_id)

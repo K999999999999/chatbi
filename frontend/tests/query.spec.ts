@@ -14,7 +14,7 @@ async function send(page: Page, question: string) {
 
 test('query table, successful context, failure recovery and refresh', async ({ page }) => {
   const bodies: Record<string, unknown>[] = [];
-  page.on('request', req => { if (req.method() === 'POST' && req.url().endsWith('/turns')) bodies.push(req.postDataJSON()); });
+  page.on('request', req => { if (req.method() === 'POST' && req.url().endsWith('/executions')) bodies.push(req.postDataJSON()); });
   await login(page);
   await send(page, '2025年2月净销售额');
   await expect(page.getByRole('table')).toBeVisible();
@@ -27,7 +27,7 @@ test('query table, successful context, failure recovery and refresh', async ({ p
   await expect(page.getByText('请明确指标口径', { exact: true })).toBeVisible();
   await send(page, '空结果');
   await expect(page.getByText('查询成功，没有匹配的数据。')).toBeVisible();
-  expect(bodies[0]).toEqual({ question: '2025年2月净销售额', expected_context_revision: 0, operation_id: expect.any(String) });
+  expect(bodies[0]).toEqual({ mode: 'query', question: '2025年2月净销售额', expected_context_revision: 0, operation_id: expect.any(String) });
   expect(bodies[1].expected_context_revision).toBe(1);
   expect(bodies[2].expected_context_revision).toBe(1);
   await page.reload();
@@ -36,26 +36,30 @@ test('query table, successful context, failure recovery and refresh', async ({ p
   expect(bodies).toHaveLength(3);
 });
 
-test('disconnect requires new dialogue and never resends automatically', async ({ page }) => {
+test('提交响应丢失时不自动重发，明确重试复用原编号', async ({ page }) => {
   await login(page);
+  const bodies: Record<string, unknown>[] = [];
   let count = 0;
-  await page.route('**/api/v1/histories/*/turns', route => { count++; return route.abort('failed'); });
+  page.on('request', request => { if (request.method() === 'POST' && request.url().endsWith('/executions')) bodies.push(request.postDataJSON()); });
+  await page.route('**/api/v1/histories/*/executions', route => { count++; return count === 1 ? route.abort('failed') : route.continue(); });
   await send(page, '2025年2月净销售额');
-  await expect(page.getByText('结果未确认，请刷新历史；本请求不会自动重试。')).toBeVisible();
+  await expect(page.getByText('受理结果暂未确认。可刷新该历史恢复观察，或明确重试同一请求。').first()).toBeVisible();
   await expect(page.getByRole('button', { name: '发送', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '明确重试同一请求', exact: true })).toBeVisible();
   expect(count).toBe(1);
-  await page.getByRole('button', { name: '新建问数对话' }).click();
-  await page.getByLabel('问题').fill('完整问题');
-  await expect(page.getByRole('button', { name: '发送', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: '明确重试同一请求', exact: true }).click();
+  await expect(page.getByRole('table')).toBeVisible();
+  expect(count).toBe(2);
+  expect(bodies[1].operation_id).toBe(bodies[0].operation_id);
 });
 
 test('pending locks actions but preserves the next draft; truncation is explicit', async ({ page }) => {
   await login(page);
   let release!: () => void;
   const held = new Promise<void>(resolve => { release = resolve; });
-  await page.route('**/api/v1/histories/*/turns', async route => { await held; await route.continue(); });
+  await page.route('**/api/v1/histories/*/executions', async route => { await held; await route.continue(); });
   await send(page, '截断结果');
-  await expect(page.getByRole('status')).toHaveText('正在查询…');
+  await expect(page.getByRole('status')).toHaveText('正在提交执行请求…');
   await page.getByLabel('问题').fill('下一条问题');
   await expect(page.getByRole('button', { name: '发送', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: '新建问数对话' })).toBeDisabled();
@@ -66,7 +70,7 @@ test('pending locks actions but preserves the next draft; truncation is explicit
 
 test('malformed successful response cannot become trusted query context', async ({ page }) => {
   await login(page);
-  await page.route('**/api/v1/histories/*/turns', route => route.fulfill({ json: { conversation_id: 'bad', rows: [{}] } }));
+  await page.route('**/api/v1/histories/*/executions', route => route.fulfill({ json: { conversation_id: 'bad', rows: [{}] } }));
   await send(page, '完整问题');
   await expect(page.getByText('结果未确认，请刷新历史；本请求不会自动重试。')).toBeVisible();
   await expect(page.getByRole('table')).toHaveCount(0);

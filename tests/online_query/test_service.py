@@ -7,6 +7,7 @@ from uuid import UUID
 import src.online_query.sql_guard as sql_guard
 from src.online_query.context import ContextLoadError
 from src.online_query.contracts import (
+    ExecutionStage,
     QueryContext,
     QueryData,
     QueryErrorCode,
@@ -65,6 +66,29 @@ class ServiceTest(unittest.TestCase):
         prompt = self.generator.generate.call_args.args[0]
         self.assertIn("查询已完成订单", prompt)
         self.executor.execute.assert_called_once_with(ValidatedSQL(self.sql))
+
+    def test_progress_reports_only_business_stages_that_are_executed(self) -> None:
+        observer = Mock()
+        observer.set_stage.side_effect = lambda stage: self.assertIsInstance(
+            stage, ExecutionStage
+        )
+
+        result = self._service().execute(
+            QueryRequest(
+                question="查询订单",
+                progress_observer=observer,
+            )
+        )
+
+        self.assertIsInstance(result, QuerySuccess)
+        self.assertEqual(
+            [call.args[0] for call in observer.set_stage.call_args_list],
+            [
+                ExecutionStage.SQL_GENERATION,
+                ExecutionStage.SQL_VALIDATION,
+                ExecutionStage.QUERY_EXECUTION,
+            ],
+        )
 
     def test_missing_request_id_is_generated(self) -> None:
         result = self._service().execute(QueryRequest(question="查询订单"))

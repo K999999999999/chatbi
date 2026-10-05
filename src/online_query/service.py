@@ -13,6 +13,7 @@ from ..observability.contracts import (
 from ..observability.tracing import create_trace_recorder
 from .context import load_query_context
 from .contracts import (
+    ExecutionStage,
     FallbackPolicy,
     QueryContext,
     QueryErrorCode,
@@ -171,6 +172,12 @@ class OnlineQueryService:
         if request.semantic_query is not None:
             semantic_query = request.semantic_query
         else:
+            if request.progress_observer is not None and (
+                self._retrieval_provider is not None or request.require_restorable
+            ):
+                request.progress_observer.set_stage(
+                    ExecutionStage.QUERY_UNDERSTANDING
+                )
             semantic_query, understanding_error = self._understand_query(
                 request.question.strip(),
                 request_id,
@@ -183,6 +190,7 @@ class OnlineQueryService:
             request.question.strip(),
             request_id,
             semantic_query,
+            progress_observer=request.progress_observer,
         )
         if context_error is not None:
             return _failure(
@@ -204,6 +212,7 @@ class OnlineQueryService:
             failure_factory=_failure,
             validation_session_factory=_new_validation_session,
             require_restorable=request.require_restorable,
+            progress_observer=request.progress_observer,
         )
 
     def _resolve_context(
@@ -211,6 +220,8 @@ class OnlineQueryService:
         question: str,
         request_id: str,
         semantic_query: ValidatedSemanticQuery | None,
+        *,
+        progress_observer=None,
     ) -> tuple[QueryContext | None, QueryErrorCode | None, str | None]:
         if self._retrieval_provider is None:
             if self._context_failed or self._context is None:
@@ -220,6 +231,9 @@ class OnlineQueryService:
                     "STATIC_CONTEXT_UNAVAILABLE",
                 )
             return self._context, None, None
+
+        if progress_observer is not None:
+            progress_observer.set_stage(ExecutionStage.RETRIEVAL)
 
         with _safe_trace_scope(self._trace_recorder, name="retrieval.plan"):
             if semantic_query is None:

@@ -2,9 +2,10 @@ import { object, text } from './results';
 
 export type HistoryHeader = { id: string; kind: 'query' | 'analysis'; title: string; first_question: string;
   context_revision: number; record_revision: number; active: boolean; can_continue: boolean; can_resume: boolean;
-  last_success_turn_id: string | null; analysis_run_id: string | null };
+  last_success_turn_id: string | null; active_turn_id: string | null; analysis_run_id: string | null };
 export type HistoryTurn = { id: string; history_id: string; ordinal: number; question: string;
-  status: 'accepted' | 'succeeded' | 'failed' | 'unconfirmed'; public_error: { error_message: string } | null; snapshot?: unknown };
+  status: 'accepted' | 'succeeded' | 'failed' | 'unconfirmed'; public_error: { error_message: string } | null;
+  execution_id?: string | null; snapshot?: unknown };
 export type SavedResult = { id: string; kind: 'query' | 'analysis'; title: string; record_revision: number;
   source_history_id: string; source_turn_id: string; snapshot?: unknown };
 export function savedResult(value: unknown): SavedResult {
@@ -19,9 +20,10 @@ export function historyHeader(value: unknown): HistoryHeader {
       || Number(p.context_revision) < 0 || !Number.isSafeInteger(p.record_revision) || Number(p.record_revision) < 0
       || typeof p.active !== 'boolean' || typeof p.can_continue !== 'boolean' || typeof p.can_resume !== 'boolean'
       || !(p.last_success_turn_id === null || typeof p.last_success_turn_id === 'string')
+      || !(p.active_turn_id === undefined || p.active_turn_id === null || typeof p.active_turn_id === 'string')
       || !(p.analysis_run_id === null || typeof p.analysis_run_id === 'string')) throw new Error('历史响应无效');
   text(p.id); text(p.title); text(p.first_question);
-  return p as HistoryHeader;
+  return { ...p, active_turn_id: p.active_turn_id ?? null } as HistoryHeader;
 }
 export function historyTurn(value: unknown): HistoryTurn {
   const p = object(value);
@@ -29,6 +31,7 @@ export function historyTurn(value: unknown): HistoryTurn {
   if (!Number.isSafeInteger(p.ordinal) || Number(p.ordinal) < 1
       || !['accepted', 'succeeded', 'failed', 'unconfirmed'].includes(String(p.status))) throw new Error('历史轮次响应无效');
   if (p.public_error !== null) text(object(p.public_error).error_message);
+  if (p.execution_id !== undefined && p.execution_id !== null) text(p.execution_id);
   return p as HistoryTurn;
 }
 export function pageItems(value: unknown): { items: unknown[]; next_cursor: string | number | null } {

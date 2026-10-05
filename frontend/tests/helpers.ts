@@ -1,8 +1,22 @@
-import { expect, type Page, type Route } from '@playwright/test';
-export async function queryResponse(route: Route, snapshot: unknown) {
-  const response = await route.fetch(); const body = await response.json();
-  body.turn.snapshot = snapshot;
-  await route.fulfill({ response, json: body });
+import { expect, type Page } from '@playwright/test';
+
+export function isFinalExecutionResponse(response: { url(): string; request(): { method(): string } }): boolean {
+  const path = new URL(response.url()).pathname;
+  return response.request().method() === 'GET' && /^\/api\/v1\/executions\/[0-9a-f-]{36}$/.test(path);
+}
+
+export async function mockFinalExecution(page: Page, snapshot: unknown | ((current: unknown, call: number) => unknown)) {
+  let calls = 0;
+  await page.route('**/api/v1/executions/*', async route => {
+    const path = new URL(route.request().url()).pathname;
+    if (route.request().method() !== 'GET' || path.endsWith('/events') || path.includes('/by-operation/')) return route.continue();
+    const response = await route.fetch(); const body = await response.json();
+    if (body.turn?.snapshot !== undefined) {
+      calls += 1;
+      body.turn.snapshot = typeof snapshot === 'function' ? snapshot(body.turn.snapshot, calls) : snapshot;
+    }
+    await route.fulfill({ response, json: body });
+  });
 }
 export async function login(page: Page, username = 'analyst', password = 'test-password-123') {
   await page.goto('/');

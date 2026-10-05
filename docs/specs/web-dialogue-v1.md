@@ -1,6 +1,6 @@
 # R1：电脑端 Web 对话与经营分析入口
 
-当前 Web 长期状态以 [R3 History Spec](history-results-v1.md) 为准：显式 `/api/v1/histories` 与 `/api/v1/saved-results` 保存私人快照，刷新只读，续聊恢复完整条件；旧 `/api/v1/query` 继续原短期 Contract。本文的 R1 / R2 阶段状态描述保留历史边界，不能用来否定 R3。
+当前 Web 长期状态以 [R3 History Spec](history-results-v1.md) 为准：显式 `/api/v1/histories` 与 `/api/v1/saved-results` 保存私人快照，刷新只读，续聊恢复完整条件；旧 `/api/v1/query` 继续原短期 Contract。本文保留 R1 的历史行为 Contract；R4 对历史页面增加独立的异步执行与状态观察路径，细节见已确认 [R4 Spec](../../.scratch/execution-streaming-v1/spec.md)。R1 原临时等待边界不代表当前网页执行生命周期。
 状态：用户于 2026-10-03 整体确认；实现、旧入口移除和最终候选本地验收完成；验收证据见 [Acceptance](../acceptance/web-dialogue-v1-20261003.md)。技术细化见 [R1 Design](../designs/web-dialogue-v1.md)。
 
 ## Problem Statement

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { login, send } from './helpers';
+import { login, send, mockFinalExecution } from './helpers';
 
 test('logout failure stays explicit across refresh and clears private records', async ({ page }) => {
   await login(page);
@@ -21,7 +21,7 @@ test('expired query session clears records and stale data cannot reappear', asyn
   await login(page);
   await send(page, '私有查询问题');
   await expect(page.getByRole('table')).toBeVisible();
-  await page.route('**/api/v1/histories/*/turns', route => route.fulfill({ status: 401,
+  await page.route('**/api/v1/histories/*/executions', route => route.fulfill({ status: 401,
     json: { request_id: 'test', error_code: 'AUTHENTICATION_REQUIRED', error_message: '会话已失效' } }));
   await send(page, '追问');
   await expect(page.getByRole('button', { name: '登录', exact: true })).toBeVisible();
@@ -48,7 +48,7 @@ test('pending response cannot restore data after logout', async ({ page }) => {
   const held = new Promise<void>(resolve => { release = resolve; });
   let arrived!: () => void;
   const received = new Promise<void>(resolve => { arrived = resolve; });
-  await page.route('**/api/v1/histories/*/turns', async route => {
+  await page.route('**/api/v1/histories/*/executions', async route => {
     const response = await route.fetch(); arrived(); await held;
     await route.fulfill({ response }).catch(() => {});
   });
@@ -62,17 +62,39 @@ test('pending response cannot restore data after logout', async ({ page }) => {
   await expect(page.getByText('迟到的私有问题', { exact: true })).toHaveCount(0);
 });
 
-test('client deadline is uncertain and never resends query', async ({ page }) => {
+test('SSE断连后只重连读取，不重复提交执行', async ({ page }) => {
   await login(page);
-  await page.clock.install();
-  let calls = 0;
-  await page.route('**/api/v1/histories/*/turns', () => { calls++; });
+  let reads = 0; let submissions = 0;
+  page.on('request', request => { if (request.method() === 'POST' && request.url().endsWith('/executions')) submissions++; });
+  await page.route('**/api/v1/executions/*/events', route => {
+    reads++;
+    return reads === 1 ? route.abort('failed') : route.continue();
+  });
   await send(page, '完整问题');
-  await expect(page.getByRole('status')).toBeVisible();
-  await expect.poll(() => calls).toBe(1);
-  await page.clock.fastForward(180001);
-  await expect(page.getByText('结果未确认，请刷新历史；本请求不会自动重试。')).toBeVisible();
-  expect(calls).toBe(1);
+  await expect(page.getByRole('table')).toBeVisible();
+  expect(reads).toBeGreaterThanOrEqual(2);
+  expect(submissions).toBe(1);
+});
+
+test('SSE权限失效关闭观察并清除页面和历史列表中的私有内容', async ({ page }) => {
+  await login(page);
+  await send(page, '仅授权账号可见的历史问题');
+  await expect(page.getByRole('table')).toBeVisible();
+  await expect(page.getByRole('button', { name: /问数 · 仅授权账号可见的历史问题/ })).toBeVisible();
+  await page.getByLabel('搜索名称').fill('仅授权账号可见的历史问题');
+  await page.getByRole('button', { name: '搜索', exact: true }).click();
+  await expect(page.getByRole('button', { name: /问数 · 仅授权账号可见的历史问题/ })).toBeVisible();
+  await page.route('**/api/v1/executions/*/events', route => {
+    const executionId = new URL(route.request().url()).pathname.split('/').at(-2)!;
+    const event = { version: 1, execution_id: executionId, sequence: 0, type: 'auth_lost', payload: {} };
+    return route.fulfill({ status: 200, contentType: 'text/event-stream', body: `id: 0\nevent: auth_lost\ndata: ${JSON.stringify(event)}\n\n` });
+  });
+  await send(page, '权限撤销后的下一条问题');
+  await expect(page.getByRole('alert')).toContainText('当前身份已无权查看');
+  await expect(page.getByRole('table')).toHaveCount(0);
+  await expect(page.getByText('仅授权账号可见的历史问题', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /问数 · 仅授权账号可见的历史问题/ })).toHaveCount(0);
+  await expect(page.getByLabel('搜索名称')).toHaveValue('');
 });
 
 test('browser CSRF and expected account reject before query', async ({ page }) => {
@@ -89,10 +111,10 @@ test('browser CSRF and expected account reject before query', async ({ page }) =
 test('analysis text stays inert and displays authoritative contribution', async ({ page }) => {
   await login(page);
   await page.getByRole('button', { name: '经营分析', exact: true }).click();
-  await page.route('**/api/v1/histories/*/resume', async route => {
-    const response = await route.fetch(); const envelope = await response.json(); const body = envelope.turn.snapshot;
+  await mockFinalExecution(page, (current: unknown) => {
+    const body = current as Record<string, any>;
     body.report.title = '<img src=x onerror="window.hacked=true">';
-    await route.fulfill({ response, json: envelope });
+    return body;
   });
   await send(page, '完整分析问题');
   await expect(page.getByRole('heading', { name: '<img src=x onerror="window.hacked=true">' })).toBeVisible();

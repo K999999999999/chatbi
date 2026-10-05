@@ -764,7 +764,12 @@ class PostgresHistoryStore:
             row = (
                 connection.execute(
                     text(
-                        "SELECT * FROM history_turns WHERE id=:turn AND history_id=:id"
+                        """SELECT turn.*, execution.id AS execution_id
+                        FROM history_turns AS turn
+                        LEFT JOIN history_executions AS execution
+                          ON execution.history_id=turn.history_id
+                         AND execution.turn_id=turn.id
+                        WHERE turn.id=:turn AND turn.history_id=:id"""
                     ),
                     {"turn": turn_id, "id": history_id},
                 )
@@ -989,7 +994,15 @@ class PostgresHistoryStore:
             rows = (
                 connection.execute(
                     text(
-                        "SELECT id,history_id,ordinal,question,status,request_id,created_at,public_error FROM history_turns WHERE history_id=:id AND ordinal>:cursor ORDER BY ordinal LIMIT :limit"
+                        """SELECT turn.id,turn.history_id,turn.ordinal,turn.question,
+                        turn.status,turn.request_id,turn.created_at,turn.public_error,
+                        execution.id AS execution_id
+                        FROM history_turns AS turn
+                        LEFT JOIN history_executions AS execution
+                          ON execution.history_id=turn.history_id
+                         AND execution.turn_id=turn.id
+                        WHERE turn.history_id=:id AND turn.ordinal>:cursor
+                        ORDER BY turn.ordinal LIMIT :limit"""
                     ),
                     {"id": history_id, "cursor": cursor, "limit": limit + 1},
                 )

@@ -20,13 +20,50 @@ from src.business_analysis.execution import TaskStatus
 from src.business_analysis.reporting import BusinessAnalysisReport
 from src.business_analysis.run_store import AnalysisRun, AnalysisRunStatus
 from src.business_analysis.runtime import _checkpoint_allowed_types
-from src.online_query.contracts import QueryErrorCode, QueryFailure, QuerySuccess
+from src.online_query.contracts import (
+    ExecutionStage,
+    QueryErrorCode,
+    QueryFailure,
+    QuerySuccess,
+)
 from src.online_query.query_understanding import TimeGranularity
 
 _DEFAULT_PERIOD = AnalysisTimeRange("2025年2月", TimeGranularity.MONTH)
 
 
 class BusinessAnalysisApplicationTest(unittest.TestCase):
+    def test_progress_observer_reports_stages_and_actual_task_count(self) -> None:
+        observer = _ProgressObserver()
+        bound = _BoundService()
+        application = _application(
+            _AuthorizedService(bound), _Decomposer(_candidate()), _Summarizer()
+        )
+
+        result = application.analyze(
+            "2025年3月毛利为什么比2月下降？",
+            request_id="analysis-progress",
+            auth_context="auth-context",
+            progress_observer=observer,
+        )
+
+        self.assertIsInstance(result, BusinessAnalysisSuccess)
+        self.assertEqual(
+            observer.stages,
+            [
+                ExecutionStage.ANALYSIS_UNDERSTANDING,
+                ExecutionStage.ANALYSIS_PLAN_VALIDATION,
+                *([ExecutionStage.ANALYSIS_QUERY_TASKS] * 4),
+                ExecutionStage.ANALYSIS_ATTRIBUTION,
+                ExecutionStage.ANALYSIS_REPORT_GENERATION,
+            ],
+        )
+        self.assertEqual(observer.task_progress[0], (0, 4))
+        self.assertEqual(observer.task_progress[-1], (4, 4))
+        self.assertEqual(
+            [completed for completed, _total in observer.task_progress],
+            sorted(completed for completed, _total in observer.task_progress),
+        )
+
     def test_graph_builds_fixed_tasks_and_executes_each_through_authorized_query(
         self,
     ) -> None:
@@ -251,6 +288,18 @@ class _Decomposer:
         del context
         self.questions.append(question)
         return self.candidate
+
+
+class _ProgressObserver:
+    def __init__(self) -> None:
+        self.stages = []
+        self.task_progress = []
+
+    def set_stage(self, stage) -> None:
+        self.stages.append(stage)
+
+    def set_task_progress(self, completed, total) -> None:
+        self.task_progress.append((completed, total))
 
 
 class _Summarizer:
