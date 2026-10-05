@@ -39,9 +39,10 @@ POST /api/v1/saved-results/{result_id}/requery-executions
 GET  /api/v1/executions/by-operation/{operation_id}
 GET  /api/v1/executions/{execution_id}
 GET  /api/v1/executions/{execution_id}/events
+POST /api/v1/executions/{execution_id}/cancel
 ```
 
-写入路由返回 `202` 受理身份；读取路由以只读身份检查现有 Session 和当前权限。`events` 使用版本化 SSE snapshot / progress / terminal 帧与心跳，响应设为 `no-store`，身份失效时以不含私有字段的 `auth_lost` 帧关闭。网页重连只重新 GET，不重放业务 POST。阶段名称、缓冲上限、停止与草稿行为以 R4 Spec 为准；R4 最终验收后再将完整事件 Contract 固化于本文。
+执行创建路由返回 `202` 受理身份；取消路由接受空 JSON body，返回 `202 stopping` 或 `200` 已有终态，重复请求幂等且不会改写成功终态。读取路由以只读身份检查现有 Session 和当前权限。`events` 使用版本化 SSE snapshot / progress / terminal 帧与心跳，响应设为 `no-store`，身份失效时以不含私有字段的 `auth_lost` 帧关闭。网页重连只重新 GET，不重放业务 POST。阶段名称、缓冲上限、停止与草稿行为以 R4 Spec 为准；R4 最终验收后再将完整事件 Contract 固化于本文。
 
 ### 查询
 

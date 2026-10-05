@@ -8,6 +8,7 @@ from functools import wraps
 from uuid import uuid4
 
 from src.business_analysis.run_execution import AnalysisExecutionBusy
+from src.online_query.contracts import ExecutionStopped, ExecutionStopReason
 
 from .execution_contracts import ExecutionRecord
 from .execution_events import ExecutionSubscriberLimit
@@ -242,6 +243,18 @@ class ExecutionApplication:
                 ) from None
             raise
 
+    def cancel(self, auth, request_id, execution_id):
+        self.history.authorize(auth, request_id)
+        record = self.store.request_execution_stop(
+            auth.user_id,
+            execution_id,
+            ExecutionStopReason.USER_CANCELLED.value,
+            analysis_owner_subject=f"{auth.identity_provider}:{auth.subject_id}",
+        )
+        if record.status == "stopping":
+            self.runtime.signal_stop(execution_id, record.stop_reason)
+        return self._view(auth, request_id, record)
+
     def by_operation(self, auth, request_id, operation_id):
         self.history.authorize(auth, request_id)
         record = self.store.execution_by_operation(auth.user_id, operation_id)
@@ -283,12 +296,36 @@ class ExecutionApplication:
         analysis_run_id=None,
     ):
         progress = None
+        control = None
+
+        def authorize_worker():
+            self.history.runtime.check()
+            current = reauthenticate()
+            if (
+                current.user_id != auth.user_id
+                or current.subject_id != auth.subject_id
+                or current.identity_provider != auth.identity_provider
+            ):
+                raise HistoryError(
+                    "AUTHORIZATION_DENIED", "当前身份不可交付该结果", 403
+                )
+            self.history.authorize(current, request_id, audit=False)
+
+        def persist_stop(reason):
+            return self.store.request_execution_stop(
+                auth.user_id,
+                execution.id,
+                reason,
+                analysis_owner_subject=f"{auth.identity_provider}:{auth.subject_id}",
+            )
 
         def work():
             try:
                 self.store.mark_execution_running(auth.user_id, execution.id)
                 assert progress is not None
                 progress.set_status("running")
+                assert control is not None
+                control.checkpoint()
                 turn = self.history._execute_attempt(
                     auth,
                     request_id,
@@ -302,29 +339,47 @@ class ExecutionApplication:
                     execution_id=execution.id,
                     guard_preowned=True,
                     progress_observer=progress,
+                    execution_control=control,
                 )
                 progress.finish(turn.status, turn.public_error)
-            except HistoryError as exc:
-                self._persist_worker_failure(
-                    auth.user_id, execution, accepted, request_id, exc.code, exc.message
+            except ExecutionStopped as stopped:
+                self._persist_stopped(
+                    auth.user_id,
+                    execution,
+                    accepted,
+                    request_id,
+                    stopped.reason,
                 )
                 self._finish_from_persistence(auth.user_id, execution, progress)
+            except HistoryError as exc:
+                self._finish_worker_failure(
+                    auth.user_id, execution, accepted, request_id, exc.code, exc.message,
+                    progress,
+                )
             except Exception as exc:  # noqa: BLE001 - worker failure must not leak internals
                 _LOGGER.warning(
                     "Background execution failed: error_type=%s", type(exc).__name__
                 )
-                self._persist_worker_failure(
+                self._finish_worker_failure(
                     auth.user_id,
                     execution,
                     accepted,
                     request_id,
                     "EXECUTION_FAILED",
                     "执行失败，请刷新后查看状态",
+                    progress,
                 )
-                self._finish_from_persistence(auth.user_id, execution, progress)
 
         try:
             progress = self.runtime.attach_progress(lease, execution)
+            current = self.store.execution(auth.user_id, execution.id)
+            control = self.runtime.bind_stop_control(
+                lease,
+                current,
+                progress,
+                persist_stop=persist_stop,
+                authorize=authorize_worker,
+            )
             self.runtime.submit(lease, work)
         except (RuntimeError, ValueError) as exc:
             _LOGGER.warning("Background execution dispatch failed: error_type=%s", type(exc).__name__)
@@ -347,6 +402,19 @@ class ExecutionApplication:
                 execution_id=execution.id,
             ) from None
 
+    def _finish_worker_failure(
+        self, owner, execution, accepted, request_id, error_code, error_message, progress
+    ):
+        try:
+            self._persist_worker_failure(
+                owner, execution, accepted, request_id, error_code, error_message
+            )
+        except ExecutionStopped as stopped:
+            self._persist_stopped(
+                owner, execution, accepted, request_id, stopped.reason
+            )
+        self._finish_from_persistence(owner, execution, progress)
+
     def _persist_worker_failure(
         self, owner, execution, accepted, request_id, error_code, error_message
     ):
@@ -362,10 +430,56 @@ class ExecutionApplication:
                 },
                 execution.id,
             )
+        except ExecutionStopped as stopped:
+            self._persist_stopped(
+                owner, execution, accepted, request_id, stopped.reason
+            )
         except HistoryError:
             # 保存结果不确定时不能再尝试业务工作；后续状态以 PostgreSQL 为准。
-            return False
-        return True
+            return
+
+    def _persist_stopped(self, owner, execution, accepted, request_id, reason):
+        reason = ExecutionStopReason(reason)
+        try:
+            current = self.store.request_execution_stop(
+                owner,
+                execution.id,
+                reason.value,
+            )
+            if current.status != "stopping":
+                return
+            # PostgreSQL 的首次停止理由是取消、超时和授权失效之间的裁决。
+            reason = ExecutionStopReason(current.stop_reason or reason.value)
+            if reason is ExecutionStopReason.USER_CANCELLED:
+                status, error_code, message = "cancelled", "EXECUTION_CANCELLED", "执行已取消"
+            elif reason is ExecutionStopReason.DEADLINE_EXCEEDED:
+                status, error_code, message = "timed_out", "EXECUTION_TIMEOUT", "执行超过服务端时限"
+            elif reason is ExecutionStopReason.AUTHORIZATION_REVOKED:
+                status, error_code, message = (
+                    "failed",
+                    "AUTHORIZATION_DENIED",
+                    "登录状态或执行权限已失效，执行已停止",
+                )
+            else:
+                status, error_code, message = (
+                    "failed",
+                    "AUTHENTICATION_UNAVAILABLE",
+                    "无法确认登录或执行权限，执行已停止",
+                )
+            self.store.finish_execution_stopped(
+                owner,
+                accepted.token,
+                execution.id,
+                status,
+                {
+                    "request_id": request_id,
+                    "error_code": error_code,
+                    "error_message": message,
+                },
+            )
+        except HistoryError:
+            # 无法证明停止终态时保留 stopping，HistoryRuntime 稍后将其回收为 unconfirmed。
+            _LOGGER.warning("Stopped execution persistence unavailable: execution_id=%s", execution.id)
 
     def _finish_from_persistence(self, owner, execution, progress):
         if progress is None:

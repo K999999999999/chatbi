@@ -7,8 +7,10 @@ from src.authorization.query_entry import AuthorizedQueryService
 from src.business_analysis.application import BusinessAnalysisSuccess
 from src.business_analysis.run_execution import AnalysisExecutionBusy
 from src.online_query.contracts import (
+    ExecutionControl,
     ExecutionProgressObserver,
     ExecutionStage,
+    ExecutionStopped,
     QueryFailure,
     QueryRequest,
     QuerySuccess,
@@ -266,6 +268,7 @@ class HistoryApplication:
         execution_id=None,
         guard_preowned=False,
         progress_observer: ExecutionProgressObserver | None = None,
+        execution_control: ExecutionControl | None = None,
     ):
         if accepted.token is None:
             return accepted.turn
@@ -290,7 +293,10 @@ class HistoryApplication:
                     analysis_run_id=analysis_run_id,
                     execution_id=execution_id,
                     progress_observer=progress_observer,
+                    execution_control=execution_control,
                 )
+        except ExecutionStopped:
+            raise
         except AnalysisExecutionBusy:
             self._finish_attempt(
                 auth.user_id,
@@ -325,10 +331,13 @@ class HistoryApplication:
         analysis_run_id,
         execution_id=None,
         progress_observer: ExecutionProgressObserver | None = None,
+        execution_control: ExecutionControl | None = None,
     ):
         token = accepted.token
         finishing = False
         try:
+            if execution_control is not None:
+                execution_control.checkpoint()
             if requery and kind == "query":
                 public_snapshot(accepted.source_snapshot)
                 if accepted.base_state is None:
@@ -339,6 +348,8 @@ class HistoryApplication:
                     )
             semantic = None
             if accepted.base_state is not None:
+                if execution_control is not None:
+                    execution_control.checkpoint()
                 if not requery and progress_observer is not None:
                     progress_observer.set_stage(ExecutionStage.QUERY_UNDERSTANDING)
                 previous = self.restore(accepted.base_state)
@@ -350,19 +361,28 @@ class HistoryApplication:
                             previous,
                             question,
                             query_understanding=self.query_understanding,
+                            execution_control=execution_control,
                         )
                     )
+                    if execution_control is not None:
+                        execution_control.checkpoint()
                 except SemanticRevisionError as exc:
                     raise HistoryError(exc.error_code.value, str(exc), 422) from None
             if kind == "analysis":
                 if self.analysis_service is None:
                     raise HistoryError("CONTEXT_ERROR", "分析服务暂时不可用", 503)
+                analysis_options = (
+                    {"execution_control": execution_control}
+                    if execution_control is not None
+                    else {}
+                )
                 if progress_observer is None:
                     result = self.analysis_service.analyze(
                         question,
                         request_id=request_id,
                         auth_context=auth,
                         analysis_run_id=analysis_run_id,
+                        **analysis_options,
                     )
                 else:
                     result = self.analysis_service.analyze(
@@ -371,6 +391,7 @@ class HistoryApplication:
                         auth_context=auth,
                         analysis_run_id=analysis_run_id,
                         progress_observer=progress_observer,
+                        **analysis_options,
                     )
             else:
                 result = self.query_service.execute_authorized(
@@ -380,9 +401,12 @@ class HistoryApplication:
                         semantic_query=semantic,
                         require_restorable=True,
                         progress_observer=progress_observer,
+                        execution_control=execution_control,
                     ),
                     auth_context=auth,
                 )
+            if execution_control is not None:
+                execution_control.checkpoint()
             current_auth = reauthenticate()
             if current_auth.user_id != auth.user_id:
                 raise HistoryError(
@@ -392,6 +416,8 @@ class HistoryApplication:
             self.runtime.check()
             if isinstance(result, QueryFailure):
                 finishing = True
+                if execution_control is not None:
+                    execution_control.checkpoint()
                 if progress_observer is not None:
                     progress_observer.set_stage(ExecutionStage.RESULT_SAVING)
                 return self._finish_attempt(
@@ -423,11 +449,15 @@ class HistoryApplication:
                     "HISTORY_SNAPSHOT_UNAVAILABLE", "查询结果不可保存", 422
                 )
             finishing = True
+            if execution_control is not None:
+                execution_control.checkpoint()
             if progress_observer is not None:
                 progress_observer.set_stage(ExecutionStage.RESULT_SAVING)
             return self._finish_attempt(
                 auth.user_id, token, snapshot, None, execution_id
             )
+        except ExecutionStopped:
+            raise
         except HistoryError as exc:
             exc.history_id, exc.turn_id = history_id, token.turn_id
             if finishing:

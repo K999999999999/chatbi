@@ -8,6 +8,7 @@ import src.online_query.sql_guard as sql_guard
 from src.online_query.context import ContextLoadError
 from src.online_query.contracts import (
     ExecutionStage,
+    ExecutionStopped,
     QueryContext,
     QueryData,
     QueryErrorCode,
@@ -66,6 +67,31 @@ class ServiceTest(unittest.TestCase):
         prompt = self.generator.generate.call_args.args[0]
         self.assertIn("查询已完成订单", prompt)
         self.executor.execute.assert_called_once_with(ValidatedSQL(self.sql))
+
+    def test_execution_stop_after_sql_generator_returns_is_not_mapped_to_failure(self) -> None:
+        class Control:
+            stopped = False
+
+            def checkpoint(self):
+                if self.stopped:
+                    raise ExecutionStopped("user_cancelled")
+
+            def register_database_cancel(self, _callback):
+                raise AssertionError("SQL generation must not register database cancel")
+
+        control = Control()
+        self.generator.generate_with_control.side_effect = lambda _prompt, _control: (
+            setattr(control, "stopped", True) or self.sql
+        )
+
+        with self.assertRaises(ExecutionStopped) as stopped:
+            self._service().execute(
+                QueryRequest(question="查询订单", execution_control=control)
+            )
+
+        self.assertEqual(stopped.exception.reason.value, "user_cancelled")
+        self.generator.generate_with_control.assert_called_once()
+        self.executor.execute.assert_not_called()
 
     def test_progress_reports_only_business_stages_that_are_executed(self) -> None:
         observer = Mock()

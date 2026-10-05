@@ -1,4 +1,4 @@
-export type ExecutionStatus = 'accepted' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'timed_out' | 'unconfirmed';
+export type ExecutionStatus = 'accepted' | 'running' | 'stopping' | 'succeeded' | 'failed' | 'cancelled' | 'timed_out' | 'unconfirmed';
 export type ExecutionStage = 'query_understanding' | 'retrieval' | 'sql_generation' | 'sql_validation' | 'query_execution'
   | 'analysis_understanding' | 'analysis_plan_validation' | 'analysis_query_tasks' | 'analysis_attribution'
   | 'analysis_report_generation' | 'result_saving';
@@ -14,9 +14,10 @@ export type ReducedExecution = { state: ExecutionState | null; resnapshot: boole
 const stages: ExecutionStage[] = ['query_understanding', 'retrieval', 'sql_generation', 'sql_validation', 'query_execution',
   'analysis_understanding', 'analysis_plan_validation', 'analysis_query_tasks', 'analysis_attribution',
   'analysis_report_generation', 'result_saving'];
-const statuses: ExecutionStatus[] = ['accepted', 'running', 'succeeded', 'failed', 'cancelled', 'timed_out', 'unconfirmed'];
+const statuses: ExecutionStatus[] = ['accepted', 'running', 'stopping', 'succeeded', 'failed', 'cancelled', 'timed_out', 'unconfirmed'];
 const terminal = new Set<ExecutionStatus>(['succeeded', 'failed', 'cancelled', 'timed_out', 'unconfirmed']);
-const statusRank = (value: ExecutionStatus) => terminal.has(value) ? 2 : value === 'running' ? 1 : 0;
+const statusRank = (value: ExecutionStatus) => terminal.has(value) ? 3 : value === 'stopping' ? 2 : value === 'running' ? 1 : 0;
+const stopReasons = ['user_cancelled', 'deadline_exceeded', 'authorization_revoked', 'authorization_unavailable'];
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('执行事件格式无效');
@@ -45,12 +46,15 @@ export function decodeExecutionEvent(value: unknown, expected: ExecutionIdentity
     if (!onlyKeys(payload, ['status', 'stage', 'completed_tasks', 'total_tasks', 'stop_reason', 'draft_generation'])
         || !validStatus(payload.status) || !validStage(payload.stage) || !safeCount(payload.completed_tasks)
         || !(payload.total_tasks === null || (safeCount(payload.total_tasks) && Number(payload.total_tasks) > 0))
-        || !(payload.stop_reason === null || typeof payload.stop_reason === 'string')
+        || !(payload.stop_reason === null || stopReasons.includes(String(payload.stop_reason)))
+        || payload.status === 'stopping' && !stopReasons.includes(String(payload.stop_reason))
         || payload.draft_generation !== event.draft_generation
         || (payload.total_tasks !== null && Number(payload.completed_tasks) > Number(payload.total_tasks))) throw new Error('执行快照字段无效');
   } else if (event.type === 'progress') {
-    if (!onlyKeys(payload, ['status', 'stage', 'completed_tasks', 'total_tasks'])
-        || payload.status !== undefined && payload.status !== 'accepted' && payload.status !== 'running') throw new Error('执行状态无效');
+    if (!onlyKeys(payload, ['status', 'stop_reason', 'stage', 'completed_tasks', 'total_tasks'])
+        || payload.status !== undefined && !['accepted', 'running', 'stopping'].includes(String(payload.status))) throw new Error('执行状态无效');
+    if (payload.stop_reason !== undefined && !stopReasons.includes(String(payload.stop_reason))) throw new Error('执行停止原因无效');
+    if (payload.status === 'stopping' && !stopReasons.includes(String(payload.stop_reason))) throw new Error('执行停止原因无效');
     if (payload.stage !== undefined && !validStage(payload.stage)) throw new Error('执行阶段无效');
     if (payload.completed_tasks !== undefined && !safeCount(payload.completed_tasks)) throw new Error('分析任务计数无效');
     if (payload.total_tasks !== undefined && !(payload.total_tasks === null || (safeCount(payload.total_tasks) && Number(payload.total_tasks) > 0))) throw new Error('分析任务总数无效');
@@ -118,11 +122,13 @@ export function reduceExecutionEvent(current: ExecutionState | null, event: Exec
   const nextStage = payload.stage === undefined ? current.stage : payload.stage as ExecutionStage | null;
   const nextCompleted = payload.completed_tasks === undefined ? current.completedTasks : Number(payload.completed_tasks);
   const nextTotal = payload.total_tasks === undefined ? current.totalTasks : payload.total_tasks as number | null;
+  const nextStopReason = payload.stop_reason === undefined ? current.stopReason : payload.stop_reason as string;
   if (nextCompleted < current.completedTasks || (nextTotal !== null && nextCompleted > nextTotal)) return { state: current, resnapshot: true, authLost: false };
   if (current.totalTasks !== null && nextTotal !== current.totalTasks) return { state: current, resnapshot: true, authLost: false };
   if (current.stage !== null && (nextStage === null || stages.indexOf(nextStage) < stages.indexOf(current.stage))) return { state: current, resnapshot: true, authLost: false };
   const next: ExecutionState = { ...current, sequence: event.sequence, draftGeneration: Number(event.draft_generation),
-    status: nextStatus ?? current.status, stage: nextStage, completedTasks: nextCompleted, totalTasks: nextTotal };
+    status: nextStatus ?? current.status, stage: nextStage, completedTasks: nextCompleted, totalTasks: nextTotal,
+    stopReason: nextStopReason };
   if (event.type === 'terminal' && payload.public_error) next.publicError = payload.public_error as ExecutionState['publicError'];
   return { state: next, resnapshot: false, authLost: false };
 }

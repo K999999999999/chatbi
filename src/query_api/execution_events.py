@@ -61,16 +61,23 @@ class ExecutionEventChannel:
         with self._condition:
             return self._ring_bytes
 
-    def set_status(self, status: str) -> None:
-        if status not in {"accepted", "running"}:
+    def set_status(self, status: str, stop_reason: str | None = None) -> None:
+        if status not in {"accepted", "running", "stopping"}:
             raise ValueError("执行中状态无效")
         with self._condition:
             if self._terminal:
                 return
-            if status == "accepted" and self._state["status"] != "accepted":
+            order = {"accepted": 0, "running": 1, "stopping": 2}
+            if order[status] < order[self._state["status"]]:
                 raise ValueError("执行状态不能回退")
             self._state["status"] = status
-            self._append_locked("progress", {"status": status})
+            payload = {"status": status}
+            if status == "stopping":
+                if stop_reason is None:
+                    raise ValueError("停止状态必须包含原因")
+                self._state["stop_reason"] = stop_reason
+                payload["stop_reason"] = stop_reason
+            self._append_locked("progress", payload)
 
     def set_stage(self, stage: ExecutionStage | str) -> None:
         try:

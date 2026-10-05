@@ -1,12 +1,17 @@
 """psycopg Database Adapter（数据库适配器）单元测试。"""
 
-from types import SimpleNamespace
 import unittest
+from contextlib import nullcontext
+from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock, call
 
 from psycopg.errors import QueryCanceled
 
-from src.online_query.contracts import ValidatedSQL
+from src.online_query.contracts import (
+    ExecutionStopped,
+    ExecutionStopReason,
+    ValidatedSQL,
+)
 from src.online_query.database import (
     DatabaseError,
     DatabaseQueryTimeout,
@@ -111,6 +116,23 @@ class DatabaseTest(unittest.TestCase):
 
         self.assertIsInstance(raised.exception.__cause__, QueryCanceled)
         self.assertNotIn("provider detail", str(raised.exception))
+
+    def test_query_canceled_after_stop_propagates_execution_stopped(self) -> None:
+        executor, _, cursor = self._executor_with_cursor()
+        cursor.execute.side_effect = [None, QueryCanceled("cancelled by server")]
+        control = Mock()
+        control.register_database_cancel.return_value = nullcontext()
+        control.checkpoint.side_effect = [
+            None,
+            None,
+            ExecutionStopped(ExecutionStopReason.USER_CANCELLED),
+        ]
+
+        with self.assertRaises(ExecutionStopped) as raised:
+            executor.execute_with_control(ValidatedSQL("SELECT 1"), control)
+
+        self.assertEqual(raised.exception.reason, ExecutionStopReason.USER_CANCELLED)
+        self.assertEqual(control.checkpoint.call_count, 3)
 
     def test_other_database_error_is_controlled(self) -> None:
         connect = Mock(side_effect=RuntimeError("connection detail"))

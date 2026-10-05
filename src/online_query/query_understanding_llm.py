@@ -14,11 +14,8 @@ from ..semantic.metric_vocabulary import (
     format_metric_vocabulary,
     load_metric_vocabulary,
 )
+from .contracts import ExecutionControl, ExecutionStopped
 from .llm import LLMError
-from .restoration_conditions import (
-    revision_operations_from_payload,
-    RestorationConditionError,
-)
 from .query_trace import safe_enrich, safe_trace_scope
 from .query_understanding import (
     QueryUnderstandingClarificationRequired,
@@ -26,6 +23,10 @@ from .query_understanding import (
     SemanticQueryStructureError,
     ValidatedSemanticQuery,
     candidate_from_payload,
+)
+from .restoration_conditions import (
+    RestorationConditionError,
+    revision_operations_from_payload,
 )
 
 _MAX_LLM_TIMEOUT_SECONDS = 30.0
@@ -124,14 +125,30 @@ class LangChainQueryUnderstanding:
         return cls(model, trace_recorder=trace_recorder)
 
     def understand(self, question: str) -> QueryUnderstandingResult:
+        return self.understand_with_control(question, None)
+
+    def understand_with_control(
+        self, question: str, execution_control: ExecutionControl | None
+    ) -> QueryUnderstandingResult:
         if not isinstance(question, str) or not question.strip():
             raise ValueError("查询问题不能为空")
-        return self._understand_prompt(build_query_understanding_prompt(question))
+        return self._understand_prompt(
+            build_query_understanding_prompt(question),
+            execution_control=execution_control,
+        )
 
     def understand_revision(
         self,
         previous: ValidatedSemanticQuery,
         question: str,
+    ) -> QueryUnderstandingResult:
+        return self.understand_revision_with_control(previous, question, None)
+
+    def understand_revision_with_control(
+        self,
+        previous: ValidatedSemanticQuery,
+        question: str,
+        execution_control: ExecutionControl | None,
     ) -> QueryUnderstandingResult:
         if not isinstance(previous, ValidatedSemanticQuery):
             raise ValueError("上一轮结构化查询状态无效")
@@ -139,10 +156,16 @@ class LangChainQueryUnderstanding:
             raise ValueError("查询问题不能为空")
         return self._understand_prompt(
             build_query_revision_prompt(previous, question),
+            execution_control=execution_control,
         )
 
     def understand_history(self, question: str) -> QueryUnderstandingResult:
         """解析完整历史profile候选，保持旧六字段入口不变。"""
+        return self.understand_history_with_control(question, None)
+
+    def understand_history_with_control(
+        self, question: str, execution_control: ExecutionControl | None
+    ) -> QueryUnderstandingResult:
         prompt = build_query_understanding_prompt(question)
         from .semantic_state import load_query_bindings
 
@@ -161,9 +184,18 @@ aggregate_filters为聚合后业务条件，每项{\"metric\":\"规范指标名\
 严格输出完整conditions，不从数据库实现细节发明业务条件。
 实体字段仅客户名称、客户编码、产品名称、产品编码、订单编号；列出客户名称和订单编号默认distinct=true。
 """
-        return self._understand_prompt(prompt, require_restorable=True)
+        return self._understand_prompt(
+            prompt,
+            require_restorable=True,
+            execution_control=execution_control,
+        )
 
     def understand_history_revision(self, previous, question):
+        return self.understand_history_revision_with_control(previous, question, None)
+
+    def understand_history_revision_with_control(
+        self, previous, question, execution_control: ExecutionControl | None
+    ):
         from .prompt import _semantic_query_json
 
         prompt = build_query_revision_prompt(previous, question)
@@ -178,7 +210,11 @@ aggregate_filters每项metric、operator(equals/in/gt/gte/lt/lte)、values(十�
 模型只提出用户明确表达的变化，不能夹带旧条件作为delta。实体字段仅客户名称、客户编码、产品名称、产品编码、订单编号。
 完整上一轮条件（其中绝对时间不重新解释）：
 """ + _semantic_query_json(previous)
-        return self._understand_prompt(prompt, history_revision=True)
+        return self._understand_prompt(
+            prompt,
+            history_revision=True,
+            execution_control=execution_control,
+        )
 
     def _understand_prompt(
         self,
@@ -186,9 +222,10 @@ aggregate_filters每项metric、operator(equals/in/gt/gte/lt/lte)、values(十�
         *,
         require_restorable: bool = False,
         history_revision: bool = False,
+        execution_control: ExecutionControl | None = None,
     ) -> QueryUnderstandingResult:
         with self._stage_trace():
-            response = self._invoke_with_retry(prompt)
+            response = self._invoke_with_retry(prompt, execution_control)
 
             content = getattr(response, "content", None)
             if not isinstance(content, str):
@@ -248,12 +285,21 @@ aggregate_filters每项metric、operator(equals/in/gt/gte/lt/lte)、values(十�
                     reason=getattr(exc, "reason", "HISTORY_REVISION_INVALID"),
                 ) from exc
 
-    def _invoke_with_retry(self, prompt: str) -> object:
+    def _invoke_with_retry(
+        self, prompt: str, execution_control: ExecutionControl | None = None
+    ) -> object:
         """仅重试 Provider 调用异常，不重试模型响应或 Contract 错误。"""
 
         for attempt in range(_QUERY_UNDERSTANDING_MAX_ATTEMPTS):
             try:
-                return self._model.invoke(prompt)
+                if execution_control is not None:
+                    execution_control.checkpoint()
+                response = self._model.invoke(prompt)
+                if execution_control is not None:
+                    execution_control.checkpoint()
+                return response
+            except ExecutionStopped:
+                raise
             except Exception as exc:
                 if attempt == _QUERY_UNDERSTANDING_MAX_ATTEMPTS - 1:
                     raise LLMError(

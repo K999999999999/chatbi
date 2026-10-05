@@ -4,6 +4,7 @@ import json
 
 from sqlalchemy import text
 
+from src.online_query.contracts import ExecutionStopped
 from src.query_api.execution_contracts import ExecutionRecord
 from src.query_api.history_contracts import HistoryError, unavailable
 
@@ -23,6 +24,7 @@ def _record(row):
         created_at=row["created_at"],
         started_at=row["started_at"],
         deadline_at=row["deadline_at"],
+        stop_requested_at=row["stop_requested_at"],
         finished_at=row["finished_at"],
         public_error=row["public_error"],
     )
@@ -127,7 +129,7 @@ class PostgresExecutionStore:
             return
         row = (
             connection.execute(
-                text("SELECT status FROM history_executions WHERE id=:id AND owner_user_id=:owner"),
+                text("SELECT status,stop_reason FROM history_executions WHERE id=:id AND owner_user_id=:owner"),
                 {"id": execution_id, "owner": owner},
             )
             .mappings()
@@ -135,8 +137,61 @@ class PostgresExecutionStore:
         )
         if row is None:
             raise unavailable()
+        if row["status"] == "stopping":
+            raise ExecutionStopped(row["stop_reason"])
         if row["status"] != "running":
             raise HistoryError("HISTORY_SAVE_UNCONFIRMED", "执行状态已变化，请刷新历史", 503)
+
+    def locked_in_transaction(self, connection, owner, execution_id):
+        row = (
+            connection.execute(
+                text("""SELECT * FROM history_executions
+                    WHERE id=:id AND owner_user_id=:owner FOR UPDATE"""),
+                {"id": execution_id, "owner": owner},
+            )
+            .mappings()
+            .first()
+        )
+        if row is None:
+            raise unavailable()
+        return row
+
+    @staticmethod
+    def record_from_row(row):
+        return _record(row)
+
+    def request_stop_in_transaction(self, connection, row, reason):
+        if row["status"] not in {"accepted", "running"}:
+            return _record(row)
+        stopped = (
+            connection.execute(
+                text("""UPDATE history_executions SET status='stopping',
+                    stop_reason=:reason,stop_requested_at=CURRENT_TIMESTAMP
+                    WHERE id=:id AND status IN ('accepted','running')
+                    RETURNING *"""),
+                {"id": row["id"], "reason": reason},
+            )
+            .mappings()
+            .one()
+        )
+        return _record(stopped)
+
+    def finish_stop_in_transaction(
+        self, connection, owner, execution_id, status, public_error
+    ):
+        result = connection.execute(
+            text("""UPDATE history_executions SET status=:status,
+                public_error=CAST(:error AS jsonb),finished_at=CURRENT_TIMESTAMP
+                WHERE id=:id AND owner_user_id=:owner AND status='stopping'"""),
+            {
+                "id": execution_id,
+                "owner": owner,
+                "status": status,
+                "error": json.dumps(public_error),
+            },
+        )
+        if result.rowcount != 1:
+            raise HistoryError("HISTORY_SAVE_UNCONFIRMED", "停止结果未确认，请刷新历史", 503)
 
     def finish_in_transaction(self, connection, owner, execution_id, status, public_error):
         result = connection.execute(

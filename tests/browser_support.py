@@ -18,20 +18,20 @@ from src.authorization import (
 from src.business_analysis.application import BusinessAnalysisSuccess
 from src.business_analysis.attribution import (
     BusinessAnalysisAttribution,
-    ProductContribution,
     FactorContribution,
+    ProductContribution,
 )
-from src.business_analysis.reporting import BusinessAnalysisReport
 from src.business_analysis.execution import TaskResult, TaskStatus
+from src.business_analysis.reporting import BusinessAnalysisReport
 from src.chatbi_control.bootstrap import seed_rbac
 from src.chatbi_control.models import Base, User
 from src.online_query.contracts import QueryErrorCode, QueryFailure, QuerySuccess
 from src.online_query.query_understanding import QueryType, ValidatedSemanticQuery
 from src.query_api.app import create_app
 from src.query_api.browser import BrowserSettings
-from tests.query_api.support import _DefaultRevisionAdapter
+from tests.history_support import BrowserHistoryRuntime, BrowserHistoryStore
 from tests.query_api.history_fixtures import query_state
-from tests.history_support import BrowserHistoryStore, BrowserHistoryRuntime
+from tests.query_api.support import _DefaultRevisionAdapter
 
 
 class BrowserQueryFixture:
@@ -68,8 +68,19 @@ class BrowserQueryFixture:
 
 
 class BrowserAnalysisFixture:
-    def analyze(self, question, *, request_id, auth_context, analysis_run_id, progress_observer=None):
+    def analyze(
+        self,
+        question,
+        *,
+        request_id,
+        auth_context,
+        analysis_run_id,
+        progress_observer=None,
+        execution_control=None,
+    ):
         del progress_observer
+        if execution_control is not None:
+            execution_control.checkpoint()
         return BusinessAnalysisSuccess(
             request_id,
             BusinessAnalysisReport(

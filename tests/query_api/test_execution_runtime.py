@@ -1,10 +1,14 @@
 """执行额度覆盖 API 受理到后台 worker 的整个生命周期。"""
 
+from datetime import UTC, datetime, timedelta
 from threading import Event, Thread
 from time import monotonic, sleep
+from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 
+from src.online_query.contracts import ExecutionStopReason
 from src.query_api.execution_runtime import (
     ExecutionCapacityExceeded,
     ExecutionRuntime,
@@ -161,3 +165,121 @@ def test_same_operation_guard_serializes_replays_but_releases_its_key():
     assert completed.is_set()
     assert runtime._operation_locks == {}
     runtime.close()
+
+
+def _execution(deadline, *, status="running", stop_reason=None):
+    now = datetime(2026, 10, 5, tzinfo=UTC)
+    return SimpleNamespace(
+        id=str(uuid4()),
+        history_id=str(uuid4()),
+        turn_id=str(uuid4()),
+        operation_id=str(uuid4()),
+        mode="query",
+        operation_kind="query",
+        status=status,
+        stop_reason=stop_reason,
+        created_at=now,
+        started_at=now,
+        deadline_at=deadline,
+        stop_requested_at=None,
+        finished_at=None,
+        public_error=None,
+    )
+
+
+def test_deadline_monitor_persists_stop_then_signals_stopping_snapshot():
+    now = datetime(2026, 10, 5, tzinfo=UTC)
+    monotonic_now = [100.0]
+    persisted = []
+
+    def persist(reason):
+        persisted.append(reason)
+        return SimpleNamespace(status="stopping", stop_reason=reason)
+
+    runtime = ExecutionRuntime(
+        HistoryRuntime(),
+        None,
+        wall_clock=lambda: now,
+        monotonic_clock=lambda: monotonic_now[0],
+        monitor_interval=60,
+    )
+    lease = runtime.reserve(21, "deadline-history")
+    execution = _execution(now + timedelta(seconds=5))
+    runtime.attach_progress(lease, execution)
+    control = runtime.bind_stop_control(
+        lease, execution, lease._event_channel, persist_stop=persist, authorize=lambda: None
+    )
+    try:
+        runtime.monitor_once()
+        assert not control.stopped
+        monotonic_now[0] = 105.0
+        runtime.monitor_once()
+
+        assert persisted == [ExecutionStopReason.DEADLINE_EXCEEDED.value]
+        assert control.stopped
+        subscription = runtime.subscribe(execution.id)
+        assert subscription.snapshot["payload"]["status"] == "stopping"
+        assert subscription.snapshot["payload"]["stop_reason"] == "deadline_exceeded"
+        subscription.close()
+    finally:
+        lease.release()
+        runtime.close()
+
+
+def test_authorization_loss_monitor_fails_closed_and_keeps_worker_lease_until_return():
+    class PermissionLost(Exception):
+        status = 403
+
+    now = datetime(2026, 10, 5, tzinfo=UTC)
+    persisted = []
+    durable_reason = [None]
+    runtime = ExecutionRuntime(
+        HistoryRuntime(),
+        None,
+        wall_clock=lambda: now,
+        monotonic_clock=lambda: 1.0,
+        monitor_interval=60,
+    )
+    lease = runtime.reserve(22, "auth-history")
+    execution = _execution(now + timedelta(minutes=3))
+    progress = runtime.attach_progress(lease, execution)
+    control = runtime.bind_stop_control(
+        lease,
+        execution,
+        progress,
+        persist_stop=lambda reason: _persist_first_stop(
+            persisted, durable_reason, reason
+        ),
+        authorize=lambda: (_ for _ in ()).throw(PermissionLost()),
+    )
+    entered, leave_downstream, cancelled = Event(), Event(), Event()
+
+    def work():
+        with control.register_database_cancel(cancelled.set):
+            entered.set()
+            assert leave_downstream.wait(3)
+
+    future = runtime.submit(lease, work)
+    try:
+        assert entered.wait(2)
+        runtime.monitor_once()
+        assert persisted == [ExecutionStopReason.AUTHORIZATION_REVOKED.value]
+        assert cancelled.wait(2)
+        assert runtime.active_total == 1
+        assert not lease.released
+        assert runtime.request_stop(execution.id, "user_cancelled").stop_reason == "authorization_revoked"
+
+        leave_downstream.set()
+        future.result(timeout=3)
+        assert lease.released
+        assert runtime.active_total == 0
+    finally:
+        leave_downstream.set()
+        runtime.close()
+
+
+def _persist_first_stop(calls, durable_reason, reason):
+    calls.append(reason)
+    if durable_reason[0] is None:
+        durable_reason[0] = reason
+    return SimpleNamespace(status="stopping", stop_reason=durable_reason[0])

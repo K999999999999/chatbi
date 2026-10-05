@@ -56,6 +56,10 @@ class RequeryExecutionBody(BaseModel):
     source_turn_id: UUID | None = None
 
 
+class CancelExecutionBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
 def _execution_application(request):
     application = getattr(request.app.state, "execution_application", None)
     if application is None:
@@ -157,6 +161,7 @@ def _public_view(view):
                 "created_at": execution.created_at,
                 "started_at": execution.started_at,
                 "deadline_at": execution.deadline_at,
+                "stop_requested_at": execution.stop_requested_at,
                 "finished_at": execution.finished_at,
                 "public_error": execution.public_error,
             },
@@ -291,6 +296,20 @@ def mount_execution_api(app):
             str(execution_id),
         )
         return _public_view(view)
+
+    @executions.post("/{execution_id}/cancel")
+    def cancel_execution(
+        request: Request,
+        execution_id: UUID,
+        _body: CancelExecutionBody,
+    ):
+        view = _execution_application(request).cancel(
+            _identity(request),
+            _request_id(request),
+            str(execution_id),
+        )
+        status = 202 if view.execution.status == "stopping" else 200
+        return JSONResponse(status_code=status, content=_public_view(view))
 
     @executions.get("/{execution_id}/events")
     async def observe_execution(request: Request, execution_id: UUID):

@@ -1,7 +1,7 @@
 # Ticket 03：主动取消、总时限与授权失效停止
 
 ID: execution-streaming-v1/03
-Status: open
+Status: complete
 Authorization: 用户于 2026-10-05 确认六项拆分及连续完成整个 R4 的本地实施，包含编码、适用测试与真实验收、Review 和本地 Commit；不含远端发布。
 
 Change Profile: 持续维护 /中偏大 /高风险竞态 /软件+真实PG+浏览器 /本地candidate。
@@ -30,5 +30,7 @@ Owned files: execution API /Application /runtime、History Application /Store /r
 验证：全风险控制的确定性回归、真实PG stop/commit /registry /TTL，浏览器取消 /超时 /撤权。实际Provider不能立刻中断的限制准确报告。用户已确认的手动重试 /新任务行为须有浏览器证据。
 Migration / Rollback: 使用01最小execution状态，cancelled run写旧版可识别expired；停止旧worker后回滚，不通过删数据解锁。
 Done When: 1–5通过、Code Review PASS、相关安全 /状态Contract同步、本地Commit完成，可进入状态阶段真实验收。
-Result: 尚未实施。
+Result: 已完成取消 API / 网页入口、持久首次停止裁决、共享执行 deadline、权限监视与下游停止传播；停止中保持 worker、配额和 run lease，worker 返回后才提交终态。PostgreSQL 迁移 v5 保存首次停止时间。取消、超时、撤权提示及失败不恢复、分析 run 封锁和最后成功上下文保留均有对应测试。
+Verification: `uv run python -m pytest -q tests/query_api tests/online_query tests/business_analysis tests/chatbi_control` → 445 passed、37 skipped、100 subtests passed；development PostgreSQL `tests/chatbi_control/test_execution_postgres.py` → 9 passed；Playwright 全套 → 45 passed；`npm run build`、compileall、变更 Python 文件 Ruff、模块边界、Markdown links 和 `git diff --check` 均通过。浏览器覆盖取消终态后的下一轮提交并确认仍使用上一成功的 context revision。新增 SQL cancel race regression 验证 PostgreSQL `QueryCanceled` 优先传播已获停止信号。提交候选通过当前上下文 `workflow-code-review`。
+Provider Boundary: 模型调用无法保证即时中断；控制在其返回后的 checkpoint 阻止后续步骤。PostgreSQL `cancel_safe` 为 best-effort；取消回执不作为 worker 已退出的证据。真实模型 / RAG / Sales DB 停止及流式验收留待 Ticket 04。
 Comments: 验收deadline用可控clock与barrier，不长时间真实sleep。

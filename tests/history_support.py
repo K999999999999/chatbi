@@ -226,7 +226,7 @@ class BrowserHistoryStore:
         now = datetime.now(UTC)
         execution = ExecutionRecord(
             str(uuid4()), history_id, turn_id, operation_id, mode, operation_kind, "accepted",
-            None, now, None, now + timedelta(seconds=deadline_seconds), None, None,
+            None, now, None, now + timedelta(seconds=deadline_seconds), None, None, None,
         )
         self.executions[execution.id] = (owner, request_hash, execution)
         self.operations[(owner, operation_id)] = execution.id

@@ -26,6 +26,7 @@ def execution():
         created_at=now,
         started_at=None,
         deadline_at=now + timedelta(minutes=20),
+        stop_requested_at=None,
         finished_at=None,
         public_error=None,
     )

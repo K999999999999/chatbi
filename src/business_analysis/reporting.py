@@ -5,6 +5,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Protocol
 
+from src.online_query.contracts import ExecutionControl, ExecutionStopped
+
 from .attribution import BusinessAnalysisAttribution
 from .execution import TaskResult, TaskStatus
 
@@ -74,6 +76,17 @@ class LangChainAnalysisSummarizer:
         task_results: Iterable[TaskResult],
         attribution: BusinessAnalysisAttribution | None = None,
     ) -> BusinessAnalysisReport:
+        return self.summarize_with_control(question, task_results, attribution, None)
+
+    def summarize_with_control(
+        self,
+        question: str,
+        task_results: Iterable[TaskResult],
+        attribution: BusinessAnalysisAttribution | None,
+        execution_control: ExecutionControl | None,
+    ) -> BusinessAnalysisReport:
+        if execution_control is not None:
+            execution_control.checkpoint()
         if not isinstance(question, str) or not question.strip():
             raise AnalysisReportError(
                 "经营分析问题不能为空",
@@ -100,7 +113,7 @@ class LangChainAnalysisSummarizer:
             incomplete_tasks,
             attribution=attribution,
         )
-        payload = self._invoke_json(prompt)
+        payload = self._invoke_json(prompt, execution_control)
         candidate = _report_candidate(payload)
         _validate_candidate_references(
             candidate,
@@ -119,8 +132,10 @@ class LangChainAnalysisSummarizer:
             attribution=attribution,
         )
 
-    def _invoke_json(self, prompt: str) -> Mapping[str, object]:
-        response = self._invoke_with_retry(prompt)
+    def _invoke_json(
+        self, prompt: str, execution_control: ExecutionControl | None = None
+    ) -> Mapping[str, object]:
+        response = self._invoke_with_retry(prompt, execution_control)
         content = getattr(response, "content", None)
         if not isinstance(content, str) or not content.strip():
             raise _llm_error("RESPONSE_NOT_TEXT", "Summary LLM 未返回文本")
@@ -135,10 +150,19 @@ class LangChainAnalysisSummarizer:
             raise _llm_error("REPORT_NOT_OBJECT", "Summary LLM 报告不是对象")
         return payload
 
-    def _invoke_with_retry(self, prompt: str) -> object:
+    def _invoke_with_retry(
+        self, prompt: str, execution_control: ExecutionControl | None = None
+    ) -> object:
         for attempt in range(2):
             try:
-                return self._model.invoke(prompt)
+                if execution_control is not None:
+                    execution_control.checkpoint()
+                response = self._model.invoke(prompt)
+                if execution_control is not None:
+                    execution_control.checkpoint()
+                return response
+            except ExecutionStopped:
+                raise
             except Exception as exc:
                 if attempt == 1:
                     raise _llm_error(

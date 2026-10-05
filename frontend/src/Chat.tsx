@@ -10,7 +10,8 @@ import type { ExecutionIdentity, ExecutionStage, ExecutionState } from './execut
 type Mode = 'query' | 'analysis';
 type Entry = { id: number; question: string; turnId?: string; saved?: boolean; result?: QuerySnapshot;
   analysis?: AnalysisResult; error?: string; requestId?: string; traceId?: string; executionId?: string;
-  operationId?: string; executionStatus?: string; stage?: ExecutionStage | null; completedTasks?: number; totalTasks?: number | null };
+  operationId?: string; executionStatus?: string; stopReason?: string | null; stage?: ExecutionStage | null;
+  completedTasks?: number; totalTasks?: number | null };
 type Edit = { action: 'save' | 'rename-history' | 'rename-result'; title: string; turnId?: string };
 type UncertainExecution = { operationId: string; path: string; body: Record<string, unknown>; historyId: string;
   kind: Mode; entryId: number; question: string };
@@ -33,6 +34,7 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
   const [saving, setSaving] = useState(false); const savingRef = useRef(false);
   const [pending, setPending] = useState(false); const [blocked, setBlocked] = useState(false); const [notice, setNotice] = useState('');
   const [activeExecutionId, setActiveExecutionId] = useState<string | null>(null);
+  const [cancelingExecutionId, setCancelingExecutionId] = useState<string | null>(null);
   const [uncertainExecution, setUncertainExecution] = useState<UncertainExecution | null>(null);
   const [turnCursor, setTurnCursor] = useState<number | null>(null); const [refresh, setRefresh] = useState(0); const [edit, setEdit] = useState<Edit>();
   const [privateClearVersion, setPrivateClearVersion] = useState(0);
@@ -71,6 +73,29 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
   function setActiveExecution(id: string | null) {
     activeExecution.current = id; setActiveExecutionId(id);
   }
+  async function cancelExecution(item: Entry, kind: Mode) {
+    if (!item.executionId || !item.turnId || cancelingExecutionId) return;
+    setCancelingExecutionId(item.executionId);
+    try {
+      const response = object(await request(
+        `/api/v1/executions/${item.executionId}/cancel`, {}, user.user_id, AbortSignal.timeout(30000),
+      ));
+      const execution = object(response.execution);
+      updateExecutionEntry(kind, item.turnId, currentEntry => ({
+        ...currentEntry,
+        executionStatus: typeof execution.status === 'string' ? execution.status : currentEntry.executionStatus,
+        stopReason: typeof execution.stop_reason === 'string' ? execution.stop_reason : currentEntry.stopReason,
+      }));
+    } catch (error) {
+      if (error instanceof APIError && (error.status === 401 || error.status === 403)) {
+        fail(error, current.current);
+      } else {
+        setNotice((error as Error).message || '取消请求未确认；执行状态仍会继续观察。');
+      }
+    } finally {
+      setCancelingExecutionId(value => value === item.executionId ? null : value);
+    }
+  }
   function startObservation(identity: ExecutionIdentity, kind: Mode) {
     if (!mounted.current) return;
     if (watching.current?.id === identity.executionId) return;
@@ -83,7 +108,8 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
       try {
         const terminal = await observeExecution(identity, user.user_id, abort.signal, state => {
           updateExecutionEntry(kind, identity.turnId, item => ({ ...item, executionId: identity.executionId,
-            executionStatus: state.status, stage: state.stage, completedTasks: state.completedTasks, totalTasks: state.totalTasks }));
+            executionStatus: state.status, stopReason: state.stopReason, stage: state.stage,
+            completedTasks: state.completedTasks, totalTasks: state.totalTasks }));
         });
         terminalStatus = terminal.status;
         let response: Record<string, unknown> | null = null;
@@ -373,10 +399,20 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
         {!entries.length && <section className="welcome"><div className="welcome-mark">BI</div><h2>从一个经营问题开始</h2>
           <p>{mode === 'query' ? '例如：2025年2月的人民币净销售额是多少？' : '例如：分析2025年2月相比2025年1月的人民币毛利变化。'}</p></section>}
         {entries.map(item => <article className="turn" key={item.id}><div className="question"><span>你</span><p>{item.question}</p></div>
-          {item.executionStatus && ['accepted', 'running'].includes(item.executionStatus) && <p className="loading" role="status">
-            {item.stage ? stageLabels[item.stage] : '请求已受理，正在准备执行'}
-            {item.totalTasks !== null && item.totalTasks !== undefined ? `（已完成 ${item.completedTasks ?? 0} / ${item.totalTasks} 项）` : ''}
-          </p>}
+          {item.executionStatus && ['accepted', 'running', 'stopping'].includes(item.executionStatus) && <>
+            <p className="loading" role="status">
+              {item.executionStatus === 'stopping'
+                ? item.stopReason === 'deadline_exceeded' ? '执行超时，正在停止…'
+                  : item.stopReason === 'user_cancelled' ? '正在取消执行…' : '执行权限已变化，正在停止…'
+                : item.stage ? stageLabels[item.stage] : '请求已受理，正在准备执行'}
+              {item.executionStatus !== 'stopping' && item.totalTasks !== null && item.totalTasks !== undefined
+                ? `（已完成 ${item.completedTasks ?? 0} / ${item.totalTasks} 项）` : ''}
+            </p>
+            {item.executionStatus !== 'stopping' && item.executionId && <button
+              disabled={cancelingExecutionId === item.executionId}
+              onClick={() => void cancelExecution(item, mode)}
+            >{cancelingExecutionId === item.executionId ? '正在提交取消…' : '取消执行'}</button>}
+          </>}
           {item.result && <div className="answer"><span className="answer-label">ChatBI</span><ResultView data={item.result}/><details><summary>查看经校验 SQL</summary><pre>{item.result.sql}</pre></details></div>}
           {item.analysis && <div className="answer"><span className="answer-label">ChatBI</span><AnalysisReport result={item.analysis}/></div>}
           {item.error && <p role="alert">{item.error}</p>}

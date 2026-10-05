@@ -170,7 +170,7 @@ class ControlBootstrapTest(TestCase):
                 "CREATE TABLE schema_migrations (version TEXT PRIMARY KEY)"
             )
             connection.exec_driver_sql(
-                "INSERT INTO schema_migrations(version) VALUES ('chatbi-control-v3')"
+                "INSERT INTO schema_migrations(version) VALUES ('chatbi-control-v5')"
             )
         with self.assertRaisesRegex(ControlDatabaseMigrationError, "checkpoint"):
             verify_control_schema(self.engine)

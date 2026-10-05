@@ -1,14 +1,15 @@
 """Online Query 的 Prompt、SQL 生成、校验和数据库执行阶段。"""
 
-from collections.abc import Callable
 import logging
+from collections.abc import Callable
 from hashlib import sha256
 from typing import Any
 
 from ..observability.contracts import ErrorType, TraceOutcome, TraceRecorder
-
 from .contracts import (
+    ExecutionControl,
     ExecutionStage,
+    ExecutionStopped,
     QueryContext,
     QueryErrorCode,
     QueryExecutor,
@@ -19,13 +20,17 @@ from .contracts import (
 )
 from .database import DatabaseError, DatabaseQueryTimeout
 from .prompt import build_prompt
-from .result_metadata import build_result_metadata
 from .query_trace import (
     enrich_failure_span as _enrich_failure_span,
+)
+from .query_trace import (
     safe_enrich as _safe_enrich,
+)
+from .query_trace import (
     safe_trace_scope as _safe_trace_scope,
 )
 from .query_understanding import ValidatedSemanticQuery
+from .result_metadata import build_result_metadata
 from .semantic_state import prepare_restoration_state, validate_restoration_sql
 
 
@@ -42,10 +47,13 @@ def _execute_query(
     validation_session_factory: Callable[..., Any],
     require_restorable: bool = False,
     progress_observer=None,
+    execution_control: ExecutionControl | None = None,
 ) -> QueryResult:
     """执行已完成 Request / Context 阶段的 SQL 查询。"""
 
     restoration_state = None
+    if execution_control is not None:
+        execution_control.checkpoint()
     if require_restorable:
         try:
             if semantic_query is None:
@@ -53,6 +61,8 @@ def _execute_query(
             semantic_query, restoration_state = prepare_restoration_state(
                 semantic_query, context
             )
+        except ExecutionStopped:
+            raise
         except Exception as exc:
             logging.getLogger(__name__).warning(
                 "History query semantic certification failed: error_type=%s",
@@ -61,11 +71,15 @@ def _execute_query(
             return failure_factory(request_id, QueryErrorCode.CONTEXT_ERROR)
     with _safe_trace_scope(trace_recorder, name="prompt.build"):
         try:
+            if execution_control is not None:
+                execution_control.checkpoint()
             prompt = build_prompt(
                 semantic_query if semantic_query is not None else question,
                 context,
                 original_question=question if semantic_query is not None else None,
             )
+        except ExecutionStopped:
+            raise
         except Exception:
             result = failure_factory(request_id, QueryErrorCode.CONTEXT_ERROR)
             _enrich_failure_span(
@@ -86,9 +100,20 @@ def _execute_query(
 
     with _safe_trace_scope(trace_recorder, name="llm.generate"):
         try:
+            if execution_control is not None:
+                execution_control.checkpoint()
             if progress_observer is not None:
                 progress_observer.set_stage(ExecutionStage.SQL_GENERATION)
-            candidate = sql_generator.generate(prompt)
+            generator = getattr(sql_generator, "generate_with_control", None)
+            candidate = (
+                generator(prompt, execution_control)
+                if execution_control is not None and callable(generator)
+                else sql_generator.generate(prompt)
+            )
+            if execution_control is not None:
+                execution_control.checkpoint()
+        except ExecutionStopped:
+            raise
         except Exception:
             result = failure_factory(request_id, QueryErrorCode.LLM_ERROR)
             _enrich_failure_span(trace_recorder, result.error_code, ErrorType.LLM)
@@ -105,6 +130,8 @@ def _execute_query(
         name="candidate_scope.validate",
     ):
         try:
+            if execution_control is not None:
+                execution_control.checkpoint()
             if progress_observer is not None:
                 progress_observer.set_stage(ExecutionStage.SQL_VALIDATION)
             validation_session = validation_session_factory(
@@ -113,6 +140,8 @@ def _execute_query(
                 allow_expression_dimensions=require_restorable,
             )
             validation_session.validate_candidate_scope()
+        except ExecutionStopped:
+            raise
         except Exception as exc:
             if require_restorable:
                 logging.getLogger(__name__).warning(
@@ -131,11 +160,15 @@ def _execute_query(
 
     with _safe_trace_scope(trace_recorder, name="sql.guard"):
         try:
+            if execution_control is not None:
+                execution_control.checkpoint()
             validated_sql = validation_session.validate_sql()
             if require_restorable:
                 validate_restoration_sql(
                     validated_sql.sql, semantic_query, restoration_state, context
                 )
+        except ExecutionStopped:
+            raise
         except Exception as exc:
             if require_restorable:
                 logging.getLogger(__name__).warning(
@@ -162,10 +195,23 @@ def _execute_query(
 
     with _safe_trace_scope(trace_recorder, name="database.execute"):
         try:
+            if execution_control is not None:
+                execution_control.checkpoint()
             if progress_observer is not None:
                 progress_observer.set_stage(ExecutionStage.QUERY_EXECUTION)
-            data = query_executor.execute(validated_sql)
+            controlled_execute = getattr(query_executor, "execute_with_control", None)
+            data = (
+                controlled_execute(validated_sql, execution_control)
+                if execution_control is not None and callable(controlled_execute)
+                else query_executor.execute(validated_sql)
+            )
+            if execution_control is not None:
+                execution_control.checkpoint()
+        except ExecutionStopped:
+            raise
         except DatabaseQueryTimeout:
+            if execution_control is not None:
+                execution_control.checkpoint()
             result = failure_factory(request_id, QueryErrorCode.QUERY_TIMEOUT)
             _enrich_failure_span(
                 trace_recorder,
@@ -174,6 +220,8 @@ def _execute_query(
             )
             return result
         except DatabaseError:
+            if execution_control is not None:
+                execution_control.checkpoint()
             result = failure_factory(request_id, QueryErrorCode.DATABASE_ERROR)
             _enrich_failure_span(
                 trace_recorder,
@@ -182,6 +230,8 @@ def _execute_query(
             )
             return result
         except Exception:
+            if execution_control is not None:
+                execution_control.checkpoint()
             result = failure_factory(request_id, QueryErrorCode.DATABASE_ERROR)
             _enrich_failure_span(
                 trace_recorder,

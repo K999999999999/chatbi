@@ -83,6 +83,7 @@ class Store:
             created_at=now,
             started_at=None,
             deadline_at=now + timedelta(seconds=180),
+            stop_requested_at=None,
             finished_at=None,
             public_error=None,
         )
@@ -121,7 +122,7 @@ class HistoryApplication:
         self.store, self.runtime = store, runtime
         self.worker_entered, self.finish_worker = worker_entered, finish_worker
 
-    def authorize(self, *_args):
+    def authorize(self, *_args, **_kwargs):
         return None
 
     def header(self, auth, request_id, history_id):

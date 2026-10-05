@@ -23,7 +23,7 @@ class ControlDatabaseMigrationError(RuntimeError):
     """应用库迁移失败。"""
 
 
-CONTROL_SCHEMA_VERSION = "chatbi-control-v4"
+CONTROL_SCHEMA_VERSION = "chatbi-control-v5"
 
 
 @dataclass(frozen=True)
@@ -271,6 +271,7 @@ def _verify_history_schema(engine: Engine) -> None:
             "created_at",
             "started_at",
             "deadline_at",
+            "stop_requested_at",
             "finished_at",
             "public_error",
         },

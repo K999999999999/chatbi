@@ -66,6 +66,10 @@ class ExecutionApplication:
         self.calls.append((args, kwargs))
         return self.view
 
+    def cancel(self, *args, **kwargs):
+        self.calls.append((args, kwargs))
+        return self.view
+
     def subscribe(self, *args, **kwargs):
         self.calls.append((args, kwargs))
         return self.view, self.subscription
@@ -105,7 +109,7 @@ class EventSubscription:
         self.closed = True
 
 
-def execution_view(status="running"):
+def execution_view(status="running", stop_reason=None):
     now = datetime(2026, 10, 5, tzinfo=UTC)
     history_id = str(uuid4())
     turn_id = str(uuid4())
@@ -118,10 +122,11 @@ def execution_view(status="running"):
         mode="query",
         operation_kind="query",
         status=status,
-        stop_reason=None,
+        stop_reason=stop_reason,
         created_at=now,
         started_at=now,
         deadline_at=now,
+        stop_requested_at=None,
         finished_at=None,
         public_error=None,
     )
@@ -213,6 +218,46 @@ def test_execution_reads_use_readonly_identity_and_return_formal_turn():
     assert by_id.status_code == 200
     assert by_id.json()["turn"]["status"] == "accepted"
     assert provider.reads == 2
+
+
+def test_cancel_route_requires_browser_marker_and_returns_stopping_state():
+    provider = Provider()
+    settings = BrowserSettings("http://127.0.0.1:5173", secure=False)
+    app, execution_app = make_app(provider, browser_settings=settings)
+    execution_app.view = execution_view(
+        status="stopping", stop_reason="user_cancelled"
+    )
+    execution_id = execution_app.view.execution.id
+    with TestClient(app) as client:
+        app.state.execution_application = execution_app
+        client.cookies.set("chatbi_web_session", "opaque")
+        headers = {
+            "Origin": "http://127.0.0.1:5173",
+            "X-ChatBI-Request": "browser",
+        }
+        response = client.post(
+            f"/api/v1/executions/{execution_id}/cancel",
+            json={},
+            headers=headers,
+        )
+        invalid = client.post(
+            f"/api/v1/executions/{execution_id}/cancel",
+            json={"force": True},
+            headers=headers,
+        )
+        csrf_rejected = client.post(
+            f"/api/v1/executions/{execution_id}/cancel",
+            json={},
+            headers={"Origin": "http://127.0.0.1:5173"},
+        )
+
+    assert response.status_code == 202, response.text
+    assert response.json()["execution"]["status"] == "stopping"
+    assert response.json()["execution"]["stop_reason"] == "user_cancelled"
+    assert "stop_requested_at" in response.json()["execution"]
+    assert len(execution_app.calls) == 1
+    assert invalid.status_code == 400
+    assert csrf_rejected.status_code == 403
 
 
 def test_event_stream_sends_atomic_snapshot_then_events_and_rechecks_permission():

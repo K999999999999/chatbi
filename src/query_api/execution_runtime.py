@@ -6,8 +6,12 @@ import os
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager
-from threading import Condition, Lock
+from datetime import UTC, datetime
+from threading import Condition, Event, Lock, Thread
+from time import monotonic
 from typing import TypeVar
+
+from src.online_query.contracts import ExecutionStopped, ExecutionStopReason
 
 from .execution_events import (
     ExecutionEventChannel,
@@ -48,6 +52,7 @@ class ExecutionLease:
         self._submitted = False
         self._execution_id: str | None = None
         self._event_channel: ExecutionEventChannel | None = None
+        self._stop_control: _ExecutionStopControl | None = None
 
     @property
     def released(self) -> bool:
@@ -60,19 +65,24 @@ class ExecutionLease:
                 return
             self._released = True
         try:
-            if self._analysis_lease is not None:
-                self._analysis_lease.release()
+            if self._execution_id is not None:
+                try:
+                    self._runtime._release_event_channel(
+                        self._execution_id, self._event_channel
+                    )
+                finally:
+                    self._runtime._release_stop_control(
+                        self._execution_id, self._stop_control
+                    )
         finally:
             try:
-                self._history_lease.release()
+                if self._analysis_lease is not None:
+                    self._analysis_lease.release()
             finally:
                 try:
-                    self._runtime._release_owner(self._owner_id)
+                    self._history_lease.release()
                 finally:
-                    if self._execution_id is not None:
-                        self._runtime._release_event_channel(
-                            self._execution_id, self._event_channel
-                        )
+                    self._runtime._release_owner(self._owner_id)
 
 
 class ExecutionRuntime:
@@ -85,6 +95,9 @@ class ExecutionRuntime:
         *,
         max_per_user: int = 1,
         max_total: int = 4,
+        wall_clock: Callable[[], datetime] | None = None,
+        monotonic_clock: Callable[[], float] = monotonic,
+        monitor_interval: float = 1.0,
     ) -> None:
         if (
             isinstance(max_per_user, bool)
@@ -94,6 +107,7 @@ class ExecutionRuntime:
             or max_per_user < 1
             or max_total < 1
             or max_per_user > max_total
+            or monitor_interval <= 0
         ):
             raise ValueError("执行额度必须为正整数，且账号额度不能大于进程额度")
         self._history_runtime = history_runtime
@@ -105,11 +119,22 @@ class ExecutionRuntime:
         self._active_total = 0
         self._operation_locks: dict[tuple[int, str], tuple[Lock, int]] = {}
         self._event_channels: dict[str, ExecutionEventChannel] = {}
+        self._stop_controls: dict[str, _ExecutionStopControl] = {}
+        self._wall_clock = wall_clock or (lambda: datetime.now(UTC))
+        self._monotonic_clock = monotonic_clock
+        self._monitor_interval = monitor_interval
+        self._monitor_stop = Event()
+        self._monitor_thread = Thread(
+            target=self._monitor_loop,
+            name="chatbi-execution-monitor",
+            daemon=True,
+        )
         self._accepting = True
         self._closed = False
         self._executor = ThreadPoolExecutor(
             max_workers=max_total, thread_name_prefix="chatbi-execution"
         )
+        self._monitor_thread.start()
 
     @classmethod
     def from_environment(cls, history_runtime, analysis_guard, environ=None):
@@ -199,6 +224,83 @@ class ExecutionRuntime:
             channel = self._event_channels.get(execution_id)
         return None if channel is None else channel.subscribe()
 
+    def bind_stop_control(
+        self,
+        lease: ExecutionLease,
+        execution,
+        progress,
+        *,
+        persist_stop: Callable[[str], object],
+        authorize: Callable[[], None],
+    ) -> _ExecutionStopControl:
+        """把持久停止裁决、授权轮询和下游中断绑定到当前 worker 租约。"""
+
+        if lease._runtime is not self:
+            raise ValueError("执行租约不属于当前 Runtime")
+        with lease._lock:
+            if lease._released or lease._submitted or lease._execution_id is None:
+                raise ExecutionRuntimeClosed()
+            if lease._stop_control is not None:
+                raise ValueError("执行租约已绑定停止控制")
+            remaining = (execution.deadline_at - self._wall_clock()).total_seconds()
+            control = _ExecutionStopControl(
+                execution.id,
+                progress,
+                persist_stop,
+                authorize,
+                deadline=self._monotonic_clock() + max(0.0, remaining),
+                monotonic_clock=self._monotonic_clock,
+            )
+            if execution.status == "stopping":
+                control.signal(execution.stop_reason or ExecutionStopReason.USER_CANCELLED)
+            with self._condition:
+                self._stop_controls[execution.id] = control
+                lease._stop_control = control
+            return control
+
+    def request_stop(self, execution_id: str, reason: str):
+        with self._condition:
+            control = self._stop_controls.get(execution_id)
+        return None if control is None else control.request_stop(reason)
+
+    def signal_stop(self, execution_id: str, reason: str) -> None:
+        with self._condition:
+            control = self._stop_controls.get(execution_id)
+        if control is not None:
+            control.signal(reason)
+
+    def monitor_once(self) -> None:
+        """检查 deadline 和原执行身份；向测试 seam 提供无 sleep 的时钟边界。"""
+
+        with self._condition:
+            controls = tuple(self._stop_controls.values())
+        now = self._monotonic_clock()
+        for control in controls:
+            if control.stopped:
+                continue
+            if now >= control.deadline:
+                self._request_stop_from_monitor(
+                    control, ExecutionStopReason.DEADLINE_EXCEEDED
+                )
+                continue
+            try:
+                control.authorize()
+            except Exception as exc:
+                self._request_stop_from_monitor(
+                    control, _authorization_stop_reason(exc)
+                )
+
+    def _request_stop_from_monitor(self, control, reason) -> None:
+        try:
+            control.request_stop(reason)
+        except Exception:
+            # 认证或持久化依赖失效时停止本地业务链；持久化不确定性由重开协调标识。
+            control.signal(reason)
+
+    def _monitor_loop(self) -> None:
+        while not self._monitor_stop.wait(self._monitor_interval):
+            self.monitor_once()
+
     @contextmanager
     def serialize_operation(self, owner_id: int, operation_id: str):
         """让同一账号的并发重放先看到第一次持久受理结果。"""
@@ -262,6 +364,8 @@ class ExecutionRuntime:
             if self._closed:
                 return
         self.drain()
+        self._monitor_stop.set()
+        self._monitor_thread.join(timeout=max(1.0, self._monitor_interval * 2))
         self._executor.shutdown(wait=True, cancel_futures=False)
         with self._condition:
             self._closed = True
@@ -285,6 +389,108 @@ class ExecutionRuntime:
             if self._event_channels.get(execution_id) is channel:
                 del self._event_channels[execution_id]
 
+    def _release_stop_control(self, execution_id, control) -> None:
+        with self._condition:
+            if self._stop_controls.get(execution_id) is control:
+                del self._stop_controls[execution_id]
+
+
+class _ExecutionStopControl:
+    def __init__(
+        self,
+        execution_id,
+        progress,
+        persist_stop,
+        authorize,
+        *,
+        deadline,
+        monotonic_clock,
+    ):
+        self.execution_id = execution_id
+        self.progress = progress
+        self._persist_stop = persist_stop
+        self.authorize = authorize
+        self.deadline = deadline
+        self._monotonic_clock = monotonic_clock
+        self._lock = Lock()
+        self._reason: ExecutionStopReason | None = None
+        self._database_cancel: Callable[[], None] | None = None
+
+    @property
+    def stopped(self) -> bool:
+        with self._lock:
+            return self._reason is not None
+
+    def checkpoint(self) -> None:
+        with self._lock:
+            reason = self._reason
+        if reason is not None:
+            raise ExecutionStopped(reason)
+        if self._monotonic_clock() >= self.deadline:
+            reason = ExecutionStopReason.DEADLINE_EXCEEDED
+            try:
+                self.request_stop(reason)
+            except Exception:
+                self.signal(reason)
+            with self._lock:
+                reason = self._reason or reason
+            raise ExecutionStopped(reason)
+        try:
+            self.authorize()
+        except Exception as exc:
+            reason = _authorization_stop_reason(exc)
+            try:
+                self.request_stop(reason)
+            except Exception:
+                self.signal(reason)
+            with self._lock:
+                reason = self._reason or reason
+            raise ExecutionStopped(reason) from None
+        with self._lock:
+            reason = self._reason
+        if reason is not None:
+            raise ExecutionStopped(reason)
+
+    def request_stop(self, reason: str):
+        requested = ExecutionStopReason(reason)
+        record = self._persist_stop(requested.value)
+        if record.status == "stopping":
+            self.signal(record.stop_reason or requested)
+        return record
+
+    def signal(self, reason: str) -> None:
+        requested = ExecutionStopReason(reason)
+        with self._lock:
+            if self._reason is not None:
+                return
+            self._reason = requested
+            callback = self._database_cancel
+        if self.progress is not None:
+            self.progress.set_status("stopping", requested.value)
+        if callback is not None:
+            try:
+                callback()
+            except Exception:
+                pass
+
+    @contextmanager
+    def register_database_cancel(self, callback: Callable[[], None]):
+        with self._lock:
+            previous = self._database_cancel
+            self._database_cancel = callback
+            already_stopped = self._reason is not None
+        if already_stopped:
+            try:
+                callback()
+            except Exception:
+                pass
+        try:
+            yield
+        finally:
+            with self._lock:
+                if self._database_cancel is callback:
+                    self._database_cancel = previous
+
 
 def _positive_limit(value):
     if not isinstance(value, str) or not value.strip().isdigit():
@@ -293,3 +499,10 @@ def _positive_limit(value):
     if result < 1:
         raise ValueError("执行额度配置必须为正整数")
     return result
+
+
+def _authorization_stop_reason(error):
+    status = getattr(error, "status", None)
+    if status in {401, 403}:
+        return ExecutionStopReason.AUTHORIZATION_REVOKED
+    return ExecutionStopReason.AUTHORIZATION_UNAVAILABLE

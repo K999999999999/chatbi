@@ -3,7 +3,11 @@
 import re
 from dataclasses import replace
 
-from src.online_query.contracts import QueryErrorCode
+from src.online_query.contracts import (
+    ExecutionControl,
+    ExecutionStopped,
+    QueryErrorCode,
+)
 from src.online_query.query_understanding import (
     FilterCandidate,
     QueryType,
@@ -199,7 +203,13 @@ def _merge_and_validate(
     return validated
 
 
-def revise_history_semantic_query(previous, question, *, query_understanding):
+def revise_history_semantic_query(
+    previous,
+    question,
+    *,
+    query_understanding,
+    execution_control: ExecutionControl | None = None,
+):
     """历史profile使用完整条件delta，基础语义沿用既有确定性合并。"""
 
     def clarification(message):
@@ -219,7 +229,25 @@ def revise_history_semantic_query(previous, question, *, query_understanding):
     if dimension_operation == "clarify":
         raise clarification("请明确增加还是替换分组维度")
     try:
-        response = query_understanding.understand_history_revision(previous, question)
+        if execution_control is not None:
+            controlled = getattr(
+                query_understanding,
+                "understand_history_revision_with_control",
+                None,
+            )
+            response = (
+                controlled(previous, question, execution_control)
+                if callable(controlled)
+                else query_understanding.understand_history_revision(
+                    previous, question
+                )
+            )
+        else:
+            response = query_understanding.understand_history_revision(
+                previous, question
+            )
+    except ExecutionStopped:
+        raise
     except Exception as exc:  # noqa: BLE001 - model候选故障映射为公开错误
         raise SemanticRevisionError(
             "暂时无法理解追问",

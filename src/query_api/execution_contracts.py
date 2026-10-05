@@ -20,6 +20,7 @@ class ExecutionRecord:
     created_at: datetime
     started_at: datetime | None
     deadline_at: datetime
+    stop_requested_at: datetime | None
     finished_at: datetime | None
     public_error: dict | None
 

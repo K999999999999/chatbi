@@ -14,6 +14,7 @@ from ..observability.tracing import create_trace_recorder
 from .context import load_query_context
 from .contracts import (
     ExecutionStage,
+    ExecutionStopped,
     FallbackPolicy,
     QueryContext,
     QueryErrorCode,
@@ -128,10 +129,13 @@ class OnlineQueryService:
             name="query.request",
             attributes={"chatbi.request.id": request_id},
         ):
+            if request.execution_control is not None:
+                request.execution_control.checkpoint()
             result = self._query(
                 request,
                 request_id,
                 request_id_valid,
+                execution_control=request.execution_control,
             )
             _enrich_query_result(self._trace_recorder, result)
             return result
@@ -141,6 +145,8 @@ class OnlineQueryService:
         request: QueryRequest,
         request_id: str,
         request_id_valid: bool,
+        *,
+        execution_control=None,
     ) -> QueryResult:
         with _safe_trace_scope(
             self._trace_recorder,
@@ -182,6 +188,7 @@ class OnlineQueryService:
                 request.question.strip(),
                 request_id,
                 require_restorable=request.require_restorable,
+                execution_control=execution_control,
             )
             if understanding_error is not None:
                 return understanding_error
@@ -191,6 +198,7 @@ class OnlineQueryService:
             request_id,
             semantic_query,
             progress_observer=request.progress_observer,
+            execution_control=execution_control,
         )
         if context_error is not None:
             return _failure(
@@ -213,6 +221,7 @@ class OnlineQueryService:
             validation_session_factory=_new_validation_session,
             require_restorable=request.require_restorable,
             progress_observer=request.progress_observer,
+            execution_control=execution_control,
         )
 
     def _resolve_context(
@@ -222,6 +231,7 @@ class OnlineQueryService:
         semantic_query: ValidatedSemanticQuery | None,
         *,
         progress_observer=None,
+        execution_control=None,
     ) -> tuple[QueryContext | None, QueryErrorCode | None, str | None]:
         if self._retrieval_provider is None:
             if self._context_failed or self._context is None:
@@ -266,7 +276,13 @@ class OnlineQueryService:
                 "chatbi.retrieval.fallback_used": False,
             }
             try:
+                if execution_control is not None:
+                    execution_control.checkpoint()
                 result = self._retrieval_provider.retrieve(retrieval_request)
+                if execution_control is not None:
+                    execution_control.checkpoint()
+            except ExecutionStopped:
+                raise
             except Exception as exc:
                 _LOGGER.warning(
                     "Online Retrieval technical failure: request_id=%s status=PROVIDER_EXCEPTION "
@@ -350,6 +366,7 @@ class OnlineQueryService:
         request_id: str,
         *,
         require_restorable: bool = False,
+        execution_control=None,
     ) -> tuple[ValidatedSemanticQuery | None, QueryFailure | None]:
         """在线模式下先完成 Query Understanding，再允许进入 Retrieval。"""
 
@@ -377,6 +394,8 @@ class OnlineQueryService:
                 return None, result
 
             try:
+                if execution_control is not None:
+                    execution_control.checkpoint()
                 understand = (
                     getattr(self._query_understanding, "understand_history", None)
                     if require_restorable
@@ -384,7 +403,22 @@ class OnlineQueryService:
                 )
                 if not callable(understand):
                     raise ValueError("历史语义理解未配置")
-                candidate = understand(question)
+                controlled = getattr(
+                    self._query_understanding,
+                    "understand_history_with_control"
+                    if require_restorable
+                    else "understand_with_control",
+                    None,
+                )
+                candidate = (
+                    controlled(question, execution_control)
+                    if execution_control is not None and callable(controlled)
+                    else understand(question)
+                )
+                if execution_control is not None:
+                    execution_control.checkpoint()
+            except ExecutionStopped:
+                raise
             except Exception as exc:
                 result = _failure(
                     request_id,
@@ -525,8 +559,8 @@ class OnlineQueryService:
     def certify_history_query(self, semantic: ValidatedSemanticQuery) -> dict:
         """当前发布事实认证；不理解自然语言，也不生成或执行SQL。"""
         from .semantic_state import (
-            prepare_restoration_state,
             SemanticCertificationError,
+            prepare_restoration_state,
         )
 
         context, error, _ = self._resolve_context(

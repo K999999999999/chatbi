@@ -149,7 +149,7 @@ uv run --env-file .env python -m src.bootstrap migrate
 uv run --env-file .env python -m src.bootstrap create-admin --username admin-1
 ```
 
-管理员密码不放入 `.env.example`、Compose 或 Seed。首次启动和初始化不创建任何用户。API 运行进程只使用 `POSTGRES_CONTROL_APP_PASSWORD`，不使用迁移密码。启动 API 时会用 `chatbi_control_user` 检查 `schema_migrations` 中的 `chatbi-control-v3`，并验证 checkpoint /历史 /成果对象、约束、索引、版本记录及运行权限（保留 v2 标记供旧版本回滚）；Schema 未完整迁移时，认证、SQLAdmin 和查询入口不会启动。
+管理员密码不放入 `.env.example`、Compose 或 Seed。首次启动和初始化不创建任何用户。API 运行进程只使用 `POSTGRES_CONTROL_APP_PASSWORD`，不使用迁移密码。启动 API 时会用 `chatbi_control_user` 检查 `schema_migrations` 中的 `chatbi-control-v5`，并验证 checkpoint /历史 /成果/执行对象、约束、索引、版本记录及运行权限（保留 v2–v4 标记供旧版本识别）；Schema 未完整迁移时，认证、SQLAdmin 和查询入口不会启动。
 
 ### 4.4 重置 PostgreSQL 开发环境
 

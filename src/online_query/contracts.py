@@ -2,10 +2,10 @@
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Mapping, Protocol, TypeAlias
+from typing import Any, Callable, ContextManager, Mapping, Protocol, TypeAlias
 
-from .result_contracts import ResultMetadata
 from .query_understanding import ValidatedSemanticQuery
+from .result_contracts import ResultMetadata
 
 
 class QueryErrorCode(StrEnum):
@@ -51,6 +51,33 @@ class ExecutionProgressObserver(Protocol):
     def set_task_progress(self, completed: int, total: int) -> None: ...
 
 
+class ExecutionStopReason(StrEnum):
+    """受控后台执行可以进入的持久停止原因。"""
+
+    USER_CANCELLED = "user_cancelled"
+    DEADLINE_EXCEEDED = "deadline_exceeded"
+    AUTHORIZATION_REVOKED = "authorization_revoked"
+    AUTHORIZATION_UNAVAILABLE = "authorization_unavailable"
+
+
+class ExecutionStopped(RuntimeError):
+    """执行在业务边界发现服务端停止裁决后退出。"""
+
+    def __init__(self, reason: ExecutionStopReason | str) -> None:
+        super().__init__(str(reason))
+        self.reason = ExecutionStopReason(reason)
+
+
+class ExecutionControl(Protocol):
+    """由后台 Runtime 持有的短期停止与下游中断 Port。"""
+
+    def checkpoint(self) -> None: ...
+
+    def register_database_cancel(
+        self, callback: Callable[[], None]
+    ) -> ContextManager[None]: ...
+
+
 @dataclass(frozen=True, slots=True)
 class QueryRequest:
     question: str
@@ -58,6 +85,7 @@ class QueryRequest:
     semantic_query: ValidatedSemanticQuery | None = None
     require_restorable: bool = False
     progress_observer: ExecutionProgressObserver | None = None
+    execution_control: ExecutionControl | None = None
 
 
 @dataclass(frozen=True, slots=True)
