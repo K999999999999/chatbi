@@ -40,7 +40,11 @@ from .contracts import (
 from .decomposer import AnalysisRequestExtractor
 from .execution import TaskExecutor, TaskResult, TaskSemanticAdapter, TaskStatus
 from .planning import build_comparison_plan
-from .reporting import AnalysisReportError, BusinessAnalysisReport
+from .reporting import (
+    AnalysisReportError,
+    BusinessAnalysisReport,
+    ReportDraftObserver,
+)
 from .run_store import (
     AnalysisRunConflict,
     AnalysisRunStatus,
@@ -55,6 +59,7 @@ class AnalysisRunContext(TypedDict):
     auth_context: AuthContext
     progress_observer: ExecutionProgressObserver | None
     execution_control: ExecutionControl | None
+    report_observer: ReportDraftObserver | None
 
 
 class AnalysisRunState(TypedDict, total=False):
@@ -182,6 +187,7 @@ class BusinessAnalysisApplication:
         analysis_run_id: str | None = None,
         progress_observer: ExecutionProgressObserver | None = None,
         execution_control: ExecutionControl | None = None,
+        report_observer: ReportDraftObserver | None = None,
     ) -> AnalysisResult:
         if execution_control is not None:
             execution_control.checkpoint()
@@ -229,6 +235,7 @@ class BusinessAnalysisApplication:
                     "auth_context": auth_context,
                     "progress_observer": progress_observer,
                     "execution_control": execution_control,
+                    "report_observer": report_observer,
                 },
                 config=config,
             )
@@ -541,9 +548,7 @@ class BusinessAnalysisApplication:
             runtime.context["progress_observer"].set_stage(
                 ExecutionStage.ANALYSIS_QUERY_TASKS
             )
-            runtime.context["progress_observer"].set_task_progress(
-                completed, total
-            )
+            runtime.context["progress_observer"].set_task_progress(completed, total)
 
         result = executor.execute_one(
             task,
@@ -603,20 +608,35 @@ class BusinessAnalysisApplication:
                     ExecutionStage.ANALYSIS_REPORT_GENERATION
                 )
             controlled = getattr(self._summarizer, "summarize_with_control", None)
-            report = (
-                controlled(
+            report_observer = runtime.context["report_observer"]
+            if report_observer is not None and not callable(controlled):
+                raise AnalysisReportError(
+                    "Summary LLM 不支持报告流式输出",
+                    code="LLM_ERROR",
+                    reason="PROVIDER_STREAM_UNAVAILABLE",
+                )
+            if report_observer is not None:
+                assert callable(controlled)
+                report = controlled(
+                    state["question"],
+                    state["task_results"],
+                    state["attribution"],
+                    control,
+                    report_observer,
+                )
+            elif control is not None and callable(controlled):
+                report = controlled(
                     state["question"],
                     state["task_results"],
                     state["attribution"],
                     control,
                 )
-                if control is not None and callable(controlled)
-                else self._summarizer.summarize(
+            else:
+                report = self._summarizer.summarize(
                     state["question"],
                     state["task_results"],
                     state["attribution"],
                 )
-            )
             if control is not None:
                 control.checkpoint()
         except ExecutionStopped:

@@ -17,6 +17,9 @@ type ExecutionStreamEvidence = {
   stages: string[];
   terminal_statuses: string[];
   event_count: number;
+  text_delta_count: number;
+  first_text_delta_sequence: number | null;
+  succeeded_sequence: number | null;
 };
 
 declare global {
@@ -43,6 +46,7 @@ async function captureExecutionStreams(page: Page) {
       const evidence = target.__chatbiExecutionEvidence ??= {};
       const summary = evidence[executionId] ??= {
         execution_id: executionId, http_statuses: [], event_types: [], stages: [], terminal_statuses: [], event_count: 0,
+        text_delta_count: 0, first_text_delta_sequence: null, succeeded_sequence: null,
       };
       if (!summary.http_statuses.includes(response.status)) summary.http_statuses.push(response.status);
       const reader = response.clone().body?.getReader();
@@ -69,6 +73,15 @@ async function captureExecutionStreams(page: Page) {
           }
           if (typeof payload.status === 'string' && terminal.has(payload.status) && !summary.terminal_statuses.includes(payload.status)) {
             summary.terminal_statuses.push(payload.status);
+          }
+          if (eventType === 'text_delta' && typeof payload.text === 'string' && payload.text.length > 0) {
+            summary.text_delta_count += 1;
+            if (summary.first_text_delta_sequence === null && Number.isSafeInteger(event.sequence)) {
+              summary.first_text_delta_sequence = Number(event.sequence);
+            }
+          }
+          if (eventType === 'terminal' && payload.status === 'succeeded' && Number.isSafeInteger(event.sequence)) {
+            summary.succeeded_sequence = Number(event.sequence);
           }
         };
         try {
@@ -283,6 +296,10 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     expect(analysisStream.stages).toContain('result_saving');
     expect(analysisStream.stages).toContain('analysis_query_tasks');
     expect(analysisStream.terminal_statuses).toContain('succeeded');
+    expect(analysisStream.text_delta_count).toBeGreaterThan(0);
+    expect(analysisStream.first_text_delta_sequence).not.toBeNull();
+    expect(analysisStream.succeeded_sequence).not.toBeNull();
+    expect(analysisStream.first_text_delta_sequence!).toBeLessThan(analysisStream.succeeded_sequence!);
     const analysis = analysisResult(analysisPayload.turn.snapshot, analysisPayload.history.analysis_run_id);
     evidence.step = 'analysis-reference';
     const { reconciliation_passed: _reconciled, ...expectedAttribution } = reference.attribution;

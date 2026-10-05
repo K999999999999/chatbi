@@ -128,7 +128,7 @@ GET  /health
 POST /api/v1/query
 ```
 
-`GET /health` 与 `POST /api/v1/query` 保持既有同步 JSON 行为。R4 的网页执行路由独立安装于 `execution_api.py`：执行 POST 返回受理视图；取消 POST 持久记录停止请求；GET 执行资源返回正式历史轮次；GET `events` 使用 FastAPI `StreamingResponse` 输出版本化 SSE。运行阶段由可选进度 Port 发布，经 Runtime 有界共享通道 fan-out；不增加 WebSocket 或独立 SSE 依赖。授权、容量、持久化与业务执行分别留在既有授权、History、Execution Application / Runtime 和 Domain / Application 边界内。
+`GET /health` 与 `POST /api/v1/query` 保持既有同步 JSON 行为。R4 的网页执行路由独立安装于 `execution_api.py`：执行 POST 返回受理视图；取消 POST 持久记录停止请求；GET 执行资源返回正式历史轮次；GET `events` 使用 FastAPI `StreamingResponse` 输出版本化 SSE。运行阶段由可选进度 Port 发布，经 Runtime 有界共享通道 fan-out。经营分析另由可选报告草稿 Port 触发 Summary Model 的真实 `stream`，增量 JSON 解码器只映射六个白名单文字字段；无观察者时保留现有 `invoke` 路径，最终报告继续使用同一校验与持久化门槛。不增加 WebSocket 或独立 SSE 依赖。授权、容量、持久化与业务执行分别留在既有授权、History、Execution Application / Runtime 和 Domain / Application 边界内。
 
 ## `main.py` 设计
 

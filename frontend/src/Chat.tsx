@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { APIError, request, type Identity } from './api';
 import { object, querySnapshot, ResultView, type QuerySnapshot } from './results';
-import { analysisResult, AnalysisReport, type AnalysisResult } from './Analysis';
+import { analysisResult, AnalysisDraft, AnalysisReport, type AnalysisResult } from './Analysis';
 import { historyHeader, historyTurn, pageItems, savedResult, type HistoryHeader, type HistoryTurn, type SavedResult } from './history';
 import { HistoryPanel } from './HistoryPanel';
 import { ExecutionStreamError, observeExecution } from './executionStream';
-import type { ExecutionIdentity, ExecutionStage, ExecutionState } from './execution';
+import type { ExecutionIdentity, ExecutionStage, ExecutionState, ReportDraft } from './execution';
 
 type Mode = 'query' | 'analysis';
 type Entry = { id: number; question: string; turnId?: string; saved?: boolean; result?: QuerySnapshot;
   analysis?: AnalysisResult; error?: string; requestId?: string; traceId?: string; executionId?: string;
   operationId?: string; executionStatus?: string; stopReason?: string | null; stage?: ExecutionStage | null;
-  completedTasks?: number; totalTasks?: number | null };
+  completedTasks?: number; totalTasks?: number | null; reportDraft?: ReportDraft | null; draftInterrupted?: boolean };
 type Edit = { action: 'save' | 'rename-history' | 'rename-result'; title: string; turnId?: string };
 type UncertainExecution = { operationId: string; path: string; body: Record<string, unknown>; historyId: string;
   kind: Mode; entryId: number; question: string };
@@ -109,7 +109,13 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
         const terminal = await observeExecution(identity, user.user_id, abort.signal, state => {
           updateExecutionEntry(kind, identity.turnId, item => ({ ...item, executionId: identity.executionId,
             executionStatus: state.status, stopReason: state.stopReason, stage: state.stage,
-            completedTasks: state.completedTasks, totalTasks: state.totalTasks }));
+            completedTasks: state.completedTasks, totalTasks: state.totalTasks,
+            reportDraft: state.draft, draftInterrupted: false }));
+        }, state => {
+          updateExecutionEntry(kind, identity.turnId, item => ({
+            ...item,
+            draftInterrupted: !!state?.draft,
+          }));
         });
         terminalStatus = terminal.status;
         let response: Record<string, unknown> | null = null;
@@ -143,10 +149,15 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
           clearPrivate('当前身份已无权查看这些记录，私有内容已清除。');
         } else if (terminalStatus !== null) {
           updateExecutionEntry(kind, identity.turnId, item => ({ ...item, result: undefined, analysis: undefined,
+            reportDraft: undefined, draftInterrupted: false,
             executionStatus: terminalStatus!, error: '执行已结束，但正式结果暂不可用；请刷新历史确认。' }));
           if (kind === 'query') setBlocked(true);
           if (activeExecution.current === identity.executionId) setActiveExecution(null);
         } else {
+          updateExecutionEntry(kind, identity.turnId, item => ({
+            ...item,
+            draftInterrupted: !!item.reportDraft,
+          }));
           setNotice('执行仍可能在后台运行；连接中断后可刷新历史重新观察。');
         }
       } finally {
@@ -414,6 +425,8 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
             >{cancelingExecutionId === item.executionId ? '正在提交取消…' : '取消执行'}</button>}
           </>}
           {item.result && <div className="answer"><span className="answer-label">ChatBI</span><ResultView data={item.result}/><details><summary>查看经校验 SQL</summary><pre>{item.result.sql}</pre></details></div>}
+          {item.reportDraft && !item.analysis && <div className="answer"><span className="answer-label">ChatBI</span>
+            <AnalysisDraft draft={item.reportDraft} interrupted={!!item.draftInterrupted}/></div>}
           {item.analysis && <div className="answer"><span className="answer-label">ChatBI</span><AnalysisReport result={item.analysis}/></div>}
           {item.error && <p role="alert">{item.error}</p>}
           {item.saved && !item.result && !item.analysis && <button disabled={pending} onClick={() => void loadTurn(item)}>查看已保存结果</button>}

@@ -1,7 +1,7 @@
 # Ticket 05：分析文字真实流式、草稿重置与最终校验
 
 ID: execution-streaming-v1/05
-Status: in-progress
+Status: complete
 Authorization: 用户于 2026-10-05 确认六项拆分及连续完成整个 R4 的本地实施，包含编码、适用测试与真实验收、Review 和本地 Commit；不含远端发布。
 
 Change Profile: 持续维护 /中偏大 /高风险模型不可信输出 /纯decoder+软件+浏览器 /本地candidate。
@@ -30,5 +30,6 @@ Owned files: `src/business_analysis/reporting.py` /contracts.py /application.py 
 验证：单一decoder纯函数边界与生成器stop、Runtime /PG提交行为、HTTP/Cookie浏览器草稿测试；frontend types /build /静态 /文档链接；原analysis /query受影响回归，新增bad case加入regression。
 Migration / Rollback: 无新SDK /存储选择，保持现有model /endpoint /temperature /max_tokens /max_retries=0；依赖无需升级，若确需新版本先回设计。
 Done When: 1–5及Review PASS、本地Commit完成，可形成完整R4最终候选。
-Result: 尚未实施。
-Comments: 不能以完成报告字符分割或HTTP chunk数充当真实模型流式证明。
+Result: 本地提交完成。Python 定向回归 99 passed；Docker Chromium `execution.spec.ts` 10 passed；前端 typecheck/build、Ticket05 Python 文件格式、仓库 CI Ruff 规则、模块边界、源码 Bandit、Markdown 本地链接和 Diff 检查通过。开发态 isolated Compose 实际模型报告 `reports/browser-real/container-1791214283-isolated.json` SHA256 `a3eb24f278320d394fc8674f13760a17bbd90d99e0c8f682efc5a8e9d21489a4`：804 个 `text_delta`，首个序号 18、`succeeded` 序号 823，4 个分析任务与独立业务参考匹配，临时账号禁用 / 活跃 Session 0。此报告 `git_dirty=true`，不是最终候选验收；Ticket06 对最终 clean candidate 重跑完整验收。
+Review: PASS；BASE `e1f3f4dff8e5e2c14ee6e601a32a983151950ae4`；commit包含同步 `invoke` 原始 JSON 5MiB 上限、草稿累计线性化，以及成功终态清除未校验草稿。
+Comments: 不能以完成报告字符分割或HTTP chunk数充当真实模型流式证明；实际模型验收以SSE中的模型文字增量先于成功终态为准。

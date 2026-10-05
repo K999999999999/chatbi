@@ -21,7 +21,7 @@ HTTP 请求
 ## 运行方式
 
 - 本文定义的 `/api/v1/query` 与分析查询接口仍是同步 JSON、每次请求/响应；每次下游执行仍然只处理一条有效查询。
-- R4 网页执行接口采用异步受理与 GET/SSE 观察；SSE 只推送已确认的执行状态，不改变下游查询规则。当前不使用 WebSocket（双向实时连接）。
+- R4 网页执行接口采用异步受理与 GET/SSE 观察；SSE 观察已受理执行状态，也可以携带标明尚未校验的报告文字候选，不改变下游查询规则。当前不使用 WebSocket（双向实时连接）。
 - `mode=query` 通过 `AuthorizedQueryService.authorize()` 完成身份与数据授权；已有会话在授权通过后完成语义修订，再由 `execute_authorized()` 调用下游 `OnlineQueryService.execute()`。
 - `mode=analysis` 只调用被注入的 Business Analysis Application Workflow；Task 的授权、执行和报告生成不下沉到 API Adapter。
 - API 不改变 Online Query 的业务规则、超时和结果行数上限；短期会话边界使用本 Spec 定义的 Application 错误码。
@@ -42,7 +42,7 @@ GET  /api/v1/executions/{execution_id}/events
 POST /api/v1/executions/{execution_id}/cancel
 ```
 
-执行创建路由返回 `202` 受理身份；取消路由接受空 JSON body，返回 `202 stopping` 或 `200` 已有终态，重复请求幂等且不会改写成功终态。读取路由以只读身份检查现有 Session 和当前权限。`events` 使用版本化 SSE snapshot / progress / terminal 帧与心跳，响应设为 `no-store`，身份失效时以不含私有字段的 `auth_lost` 帧关闭。网页重连只重新 GET，不重放业务 POST。阶段名称、缓冲上限、停止与草稿行为以 R4 Spec 为准；R4 最终验收后再将完整事件 Contract 固化于本文。
+执行创建路由返回 `202` 受理身份；取消路由接受空 JSON body，返回 `202 stopping` 或 `200` 已有终态，重复请求幂等且不会改写成功终态。读取路由以只读身份检查现有 Session 和当前权限。`events` 使用版本化 SSE `snapshot` / `progress` / `text_delta` / `draft_reset` / `terminal` 帧与心跳，响应设为 `no-store`，身份失效时以不含私有字段的 `auth_lost` 帧关闭。分析报告生成期间仅发布六个白名单文字字段，并在快照中携带当前 generation 的完整未校验草稿；正式报告仍须经过原结构、证据引用与业务校验，并成功保存后才交付。网页重连只重新 GET，不重放业务 POST。其余阶段名称、缓冲上限、停止与草稿行为以 R4 Spec 为准；R4 最终验收后再将完整事件 Contract 固化于本文。
 
 ### 查询
 

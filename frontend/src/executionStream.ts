@@ -28,6 +28,7 @@ export async function observeExecution(
   userId: number,
   signal: AbortSignal,
   onProgress: (state: ExecutionState) => void,
+  onDisconnect?: (state: ExecutionState | null) => void,
 ): Promise<ExecutionState> {
   const backoff = [250, 500, 1000, 2000, 4000, 8000];
   let state: ExecutionState | null = null;
@@ -66,6 +67,7 @@ export async function observeExecution(
         throw new ExecutionStreamError(422, '执行状态数据无效');
       }
     }
+    onDisconnect?.(state);
     await delay(backoff[Math.min(failures, backoff.length - 1)], signal);
     failures += 1;
   }

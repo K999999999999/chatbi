@@ -32,6 +32,26 @@ _DEFAULT_PERIOD = AnalysisTimeRange("2025年2月", TimeGranularity.MONTH)
 
 
 class BusinessAnalysisApplicationTest(unittest.TestCase):
+    def test_report_observer_reaches_only_the_controlled_summary_path(self) -> None:
+        observer = _ReportDraftObserver()
+        summarizer = _ObservedSummarizer()
+        application = _application(
+            _AuthorizedService(_BoundService()),
+            _Decomposer(_candidate()),
+            summarizer,
+        )
+
+        result = application.analyze(
+            "2025年3月毛利为什么比2月下降？",
+            request_id="analysis-report-observer",
+            auth_context="auth-context",
+            report_observer=observer,
+        )
+
+        self.assertIsInstance(result, BusinessAnalysisSuccess)
+        self.assertIs(summarizer.report_observer, observer)
+        self.assertEqual(len(summarizer.controlled_calls), 1)
+
     def test_progress_observer_reports_stages_and_actual_task_count(self) -> None:
         observer = _ProgressObserver()
         bound = _BoundService()
@@ -319,6 +339,28 @@ class _Summarizer:
             incomplete_tasks=(),
             attribution=attribution,
         )
+
+
+class _ObservedSummarizer(_Summarizer):
+    def __init__(self) -> None:
+        super().__init__()
+        self.report_observer = None
+        self.controlled_calls = []
+
+    def summarize_with_control(
+        self, question, task_results, attribution, execution_control, report_observer
+    ):
+        self.controlled_calls.append(execution_control)
+        self.report_observer = report_observer
+        return self.summarize(question, task_results, attribution)
+
+
+class _ReportDraftObserver:
+    def text_delta(self, field, index, offset, text):
+        pass
+
+    def reset(self, reason):
+        pass
 
 
 class _AuthorizedService:

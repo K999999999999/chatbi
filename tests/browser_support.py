@@ -77,8 +77,9 @@ class BrowserAnalysisFixture:
         analysis_run_id,
         progress_observer=None,
         execution_control=None,
+        report_observer=None,
     ):
-        del progress_observer
+        del progress_observer, report_observer
         if execution_control is not None:
             execution_control.checkpoint()
         return BusinessAnalysisSuccess(

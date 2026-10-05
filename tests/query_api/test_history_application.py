@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 import pytest
 
 from src.authorization.contracts import AuthContext
-from src.online_query.contracts import QuerySuccess
+from src.online_query.contracts import QueryErrorCode, QueryFailure, QuerySuccess
 from src.query_api.history import HistoryApplication
 from src.query_api.history_contracts import (
     AcceptedAttempt,
@@ -181,3 +181,46 @@ def test_completed_analysis_snapshot_reads_after_checkpoint_expiry_without_execu
         AUTH, "r", "h", "op", 0, reauthenticate=lambda: AUTH
     )
     assert result == TURN and entry.executions == 0 and store.finish_calls == 0
+
+
+def test_history_passes_report_stream_port_only_for_a_capable_r4_observer():
+    class AnalysisService:
+        def __init__(self):
+            self.options = None
+
+        def analyze(self, question, **options):
+            self.options = options
+            return QueryFailure("r", QueryErrorCode.CANNOT_ANSWER, "no result")
+
+    class ProgressAndDraftObserver:
+        def set_stage(self, stage):
+            pass
+
+        def set_task_progress(self, completed, total):
+            pass
+
+        def text_delta(self, field, index, offset, text):
+            pass
+
+        def reset(self, reason):
+            pass
+
+    service = AnalysisService()
+    store = ScriptedStore()
+    app = HistoryApplication(store, Runtime(), QueryEntry(), analysis_service=service)
+    observer = ProgressAndDraftObserver()
+
+    app._execute_attempt(
+        AUTH,
+        "r",
+        "h",
+        "分析毛利",
+        store.begin_attempt(),
+        reauthenticate=lambda: AUTH,
+        kind="analysis",
+        analysis_run_id="analysis-run",
+        progress_observer=observer,
+    )
+
+    assert service.options["progress_observer"] is observer
+    assert service.options["report_observer"] is observer

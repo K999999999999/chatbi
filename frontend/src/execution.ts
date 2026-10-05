@@ -4,11 +4,16 @@ export type ExecutionStage = 'query_understanding' | 'retrieval' | 'sql_generati
   | 'analysis_report_generation' | 'result_saving';
 
 export type ExecutionIdentity = { executionId: string; historyId: string; turnId: string };
+export type ReportDraft = Partial<{
+  title: string; executive_summary: string; key_findings: string[]; trend_judgment: string;
+  root_causes: string[]; action_suggestions: string[];
+}>;
 export type ExecutionState = ExecutionIdentity & { sequence: number; draftGeneration: number; status: ExecutionStatus;
   stage: ExecutionStage | null; completedTasks: number; totalTasks: number | null; stopReason: string | null;
+  draft: ReportDraft | null;
   publicError?: { error_code?: string; error_message?: string } };
 export type ExecutionEvent = { version: 1; execution_id: string; history_id?: string; turn_id?: string; sequence: number;
-  draft_generation?: number; type: 'snapshot' | 'progress' | 'terminal' | 'auth_lost'; payload: Record<string, unknown> };
+  draft_generation?: number; type: 'snapshot' | 'progress' | 'text_delta' | 'draft_reset' | 'terminal' | 'auth_lost'; payload: Record<string, unknown> };
 export type ReducedExecution = { state: ExecutionState | null; resnapshot: boolean; authLost: boolean };
 
 const stages: ExecutionStage[] = ['query_understanding', 'retrieval', 'sql_generation', 'sql_validation', 'query_execution',
@@ -28,6 +33,43 @@ function safeCount(value: unknown): value is number { return Number.isSafeIntege
 function validStatus(value: unknown): value is ExecutionStatus { return statuses.includes(value as ExecutionStatus); }
 function validStage(value: unknown): value is ExecutionStage | null { return value === null || stages.includes(value as ExecutionStage); }
 function onlyKeys(value: Record<string, unknown>, allowed: string[]): boolean { return Object.keys(value).every(key => allowed.includes(key)); }
+const draftTextFields = new Set(['title', 'executive_summary', 'trend_judgment']);
+const draftListFields = new Set(['key_findings', 'root_causes', 'action_suggestions']);
+const draftFields = new Set([...draftTextFields, ...draftListFields]);
+function validUnicode(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(i + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return false;
+      i += 1;
+    } else if (code >= 0xdc00 && code <= 0xdfff) return false;
+  }
+  return true;
+}
+function unicodeLength(value: string): number { return Array.from(value).length; }
+function reportDraft(value: unknown): ReportDraft | null {
+  if (value === null) return null;
+  const draft = record(value);
+  if (!onlyKeys(draft, [...draftFields])) throw new Error('报告草稿字段无效');
+  let bytes = 0;
+  const result: ReportDraft = {};
+  for (const [field, item] of Object.entries(draft)) {
+    if (draftTextFields.has(field)) {
+      if (typeof item !== 'string' || !validUnicode(item)) throw new Error('报告草稿文字无效');
+      bytes += new TextEncoder().encode(item).length;
+      Object.assign(result, { [field]: item });
+    } else {
+      if (!draftListFields.has(field) || !Array.isArray(item)
+          || item.some(line => typeof line !== 'string' || !validUnicode(line))) throw new Error('报告草稿列表无效');
+      const lines = item as string[];
+      bytes += lines.reduce((sum, line) => sum + new TextEncoder().encode(line).length, 0);
+      Object.assign(result, { [field]: [...lines] });
+    }
+  }
+  if (bytes > 5 * 1024 * 1024) throw new Error('报告草稿超过网页接收上限');
+  return result;
+}
 
 export function decodeExecutionEvent(value: unknown, expected: ExecutionIdentity, frameType?: string): ExecutionEvent {
   const event = record(value);
@@ -43,13 +85,15 @@ export function decodeExecutionEvent(value: unknown, expected: ExecutionIdentity
   if (Object.keys(event).some(key => !['version', 'execution_id', 'history_id', 'turn_id', 'sequence', 'draft_generation', 'type', 'payload'].includes(key))) throw new Error('执行事件字段无效');
   const payload = record(event.payload);
   if (event.type === 'snapshot') {
-    if (!onlyKeys(payload, ['status', 'stage', 'completed_tasks', 'total_tasks', 'stop_reason', 'draft_generation'])
+    if (!onlyKeys(payload, ['status', 'stage', 'completed_tasks', 'total_tasks', 'stop_reason', 'draft_generation', 'draft'])
         || !validStatus(payload.status) || !validStage(payload.stage) || !safeCount(payload.completed_tasks)
         || !(payload.total_tasks === null || (safeCount(payload.total_tasks) && Number(payload.total_tasks) > 0))
         || !(payload.stop_reason === null || stopReasons.includes(String(payload.stop_reason)))
         || payload.status === 'stopping' && !stopReasons.includes(String(payload.stop_reason))
+        || terminal.has(payload.status as ExecutionStatus) && payload.draft !== null
         || payload.draft_generation !== event.draft_generation
         || (payload.total_tasks !== null && Number(payload.completed_tasks) > Number(payload.total_tasks))) throw new Error('执行快照字段无效');
+    reportDraft(payload.draft);
   } else if (event.type === 'progress') {
     if (!onlyKeys(payload, ['status', 'stop_reason', 'stage', 'completed_tasks', 'total_tasks'])
         || payload.status !== undefined && !['accepted', 'running', 'stopping'].includes(String(payload.status))) throw new Error('执行状态无效');
@@ -67,6 +111,14 @@ export function decodeExecutionEvent(value: unknown, expected: ExecutionIdentity
       if (Object.keys(error).some(key => !['error_code', 'error_message'].includes(key))
           || Object.values(error).some(item => typeof item !== 'string')) throw new Error('公开错误字段无效');
     }
+  } else if (event.type === 'text_delta') {
+    if (!onlyKeys(payload, ['field', 'index', 'offset', 'text']) || !draftFields.has(String(payload.field))
+        || !safeCount(payload.offset) || typeof payload.text !== 'string' || !payload.text || !validUnicode(payload.text)
+        || new TextEncoder().encode(payload.text).length > 16 * 1024
+        || draftTextFields.has(String(payload.field)) && payload.index !== null
+        || draftListFields.has(String(payload.field)) && !safeCount(payload.index)) throw new Error('报告文字增量无效');
+  } else if (event.type === 'draft_reset') {
+    if (!onlyKeys(payload, ['reason']) || payload.reason !== 'model_retry') throw new Error('报告草稿重置无效');
   } else throw new Error('未知执行事件类型');
   return event as ExecutionEvent;
 }
@@ -104,11 +156,14 @@ export function reduceExecutionEvent(current: ExecutionState | null, event: Exec
         }
       }
     }
+    let snapshotDraft: ReportDraft | null;
+    try { snapshotDraft = reportDraft(payload.draft); } catch { return { state: current, resnapshot: true, authLost: false }; }
     return { state: {
       executionId: event.execution_id, historyId: event.history_id, turnId: event.turn_id, sequence: event.sequence,
       draftGeneration: Number(event.draft_generation), status: payload.status, stage: payload.stage,
       completedTasks: Number(payload.completed_tasks), totalTasks: payload.total_tasks as number | null,
       stopReason: (payload.stop_reason as string | null),
+      draft: snapshotDraft,
     }, resnapshot: false, authLost: false };
   }
   if (!current) return { state: null, resnapshot: true, authLost: false };
@@ -117,7 +172,12 @@ export function reduceExecutionEvent(current: ExecutionState | null, event: Exec
   if (terminal.has(current.status)) return { state: current, resnapshot: true, authLost: false };
   const payload = event.payload;
   const nextStatus = payload.status as ExecutionStatus | undefined;
-  if (Number(event.draft_generation) < current.draftGeneration) return { state: current, resnapshot: true, authLost: false };
+  const eventGeneration = Number(event.draft_generation);
+  if (event.type === 'draft_reset') {
+    if (eventGeneration !== current.draftGeneration + 1) return { state: current, resnapshot: true, authLost: false };
+  } else if (eventGeneration !== current.draftGeneration) {
+    return { state: current, resnapshot: true, authLost: false };
+  }
   if (nextStatus && statusRank(nextStatus) < statusRank(current.status)) return { state: current, resnapshot: true, authLost: false };
   const nextStage = payload.stage === undefined ? current.stage : payload.stage as ExecutionStage | null;
   const nextCompleted = payload.completed_tasks === undefined ? current.completedTasks : Number(payload.completed_tasks);
@@ -126,9 +186,32 @@ export function reduceExecutionEvent(current: ExecutionState | null, event: Exec
   if (nextCompleted < current.completedTasks || (nextTotal !== null && nextCompleted > nextTotal)) return { state: current, resnapshot: true, authLost: false };
   if (current.totalTasks !== null && nextTotal !== current.totalTasks) return { state: current, resnapshot: true, authLost: false };
   if (current.stage !== null && (nextStage === null || stages.indexOf(nextStage) < stages.indexOf(current.stage))) return { state: current, resnapshot: true, authLost: false };
-  const next: ExecutionState = { ...current, sequence: event.sequence, draftGeneration: Number(event.draft_generation),
+  let nextDraft = current.draft;
+  if (event.type === 'draft_reset' || event.type === 'terminal') nextDraft = null;
+  if (event.type === 'text_delta') {
+    const field = payload.field as string;
+    const text = payload.text as string;
+    const index = payload.index as number | null;
+    const draft: ReportDraft = { ...(current.draft ?? {}) };
+    if (draftTextFields.has(field)) {
+      const previous = (draft as Record<string, unknown>)[field];
+      if (unicodeLength(String(previous ?? '')) !== payload.offset) return { state: current, resnapshot: true, authLost: false };
+      (draft as Record<string, unknown>)[field] = String(previous ?? '') + text;
+    } else {
+      const previous = (draft as Record<string, unknown>)[field];
+      if (previous !== undefined && !Array.isArray(previous)) return { state: current, resnapshot: true, authLost: false };
+      const lines = previous === undefined ? [] : [...previous as string[]];
+      if (index === null || index > lines.length) return { state: current, resnapshot: true, authLost: false };
+      const line = lines[index] ?? '';
+      if (unicodeLength(line) !== payload.offset) return { state: current, resnapshot: true, authLost: false };
+      lines[index] = line + text;
+      (draft as Record<string, unknown>)[field] = lines;
+    }
+    nextDraft = draft;
+  }
+  const next: ExecutionState = { ...current, sequence: event.sequence, draftGeneration: eventGeneration,
     status: nextStatus ?? current.status, stage: nextStage, completedTasks: nextCompleted, totalTasks: nextTotal,
-    stopReason: nextStopReason };
+    stopReason: nextStopReason, draft: nextDraft };
   if (event.type === 'terminal' && payload.public_error) next.publicError = payload.public_error as ExecutionState['publicError'];
   return { state: next, resnapshot: false, authLost: false };
 }

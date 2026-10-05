@@ -5,6 +5,7 @@ from contextlib import nullcontext
 
 from src.authorization.query_entry import AuthorizedQueryService
 from src.business_analysis.application import BusinessAnalysisSuccess
+from src.business_analysis.reporting import ReportDraftObserver
 from src.business_analysis.run_execution import AnalysisExecutionBusy
 from src.online_query.contracts import (
     ExecutionControl,
@@ -371,28 +372,20 @@ class HistoryApplication:
             if kind == "analysis":
                 if self.analysis_service is None:
                     raise HistoryError("CONTEXT_ERROR", "分析服务暂时不可用", 503)
-                analysis_options = (
-                    {"execution_control": execution_control}
-                    if execution_control is not None
-                    else {}
+                analysis_options: dict[str, object] = {}
+                if execution_control is not None:
+                    analysis_options["execution_control"] = execution_control
+                if progress_observer is not None:
+                    analysis_options["progress_observer"] = progress_observer
+                if isinstance(progress_observer, ReportDraftObserver):
+                    analysis_options["report_observer"] = progress_observer
+                result = self.analysis_service.analyze(
+                    question,
+                    request_id=request_id,
+                    auth_context=auth,
+                    analysis_run_id=analysis_run_id,
+                    **analysis_options,
                 )
-                if progress_observer is None:
-                    result = self.analysis_service.analyze(
-                        question,
-                        request_id=request_id,
-                        auth_context=auth,
-                        analysis_run_id=analysis_run_id,
-                        **analysis_options,
-                    )
-                else:
-                    result = self.analysis_service.analyze(
-                        question,
-                        request_id=request_id,
-                        auth_context=auth,
-                        analysis_run_id=analysis_run_id,
-                        progress_observer=progress_observer,
-                        **analysis_options,
-                    )
             else:
                 result = self.query_service.execute_authorized(
                     QueryRequest(
