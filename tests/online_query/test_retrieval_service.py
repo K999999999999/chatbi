@@ -67,7 +67,9 @@ class RetrievalServiceTest(unittest.TestCase):
         self.assertIn("DYNAMIC CONTEXT", prompt)
         self.assertNotIn("STATIC CONTEXT", prompt)
 
-    def test_progress_reports_query_understanding_retrieval_and_execution_stages(self) -> None:
+    def test_progress_reports_query_understanding_retrieval_and_execution_stages(
+        self,
+    ) -> None:
         provider = Mock()
         provider.retrieve.return_value = OnlineRetrievalResult(
             status=RetrievalStatus.SUCCESS,

@@ -16,7 +16,7 @@ ChatBI 是面向业务数据分析的 Domain AI Engine（领域 AI 引擎）。�
 
 ### API、身份与多轮查询
 
-- Query API 提供同步 HTTP JSON 接口，React + TypeScript + Vite 提供电脑端 Web 页面；默认问数，手动切换独立经营分析模式。Streamlit 已移除。
+- Query API 保留同步 HTTP JSON 兼容入口；电脑端 Web 的历史问数、重查和经营分析使用 R4 后台 execution 与 SSE 观察，默认问数并手动切换独立经营分析模式。Streamlit 已移除；完整边界见 [R4 Spec](specs/execution-streaming-v1.md)。
 - 内置账号、Session、固定 RBAC、授权校验及持久化审计已实现；首个管理员必须显式创建。
 - Multi-Turn Query V1 已实现服务端 `conversation_id`、身份绑定、短期结构化状态、TTL、并发控制和失败后保留上一成功状态。
 
@@ -24,7 +24,7 @@ ChatBI 是面向业务数据分析的 Domain AI Engine（领域 AI 引擎）。�
 
 - 指定账号使用，无公众注册；浏览器 HttpOnly Cookie，同源网页 / API 与 CSRF 校验，线上要求 HTTPS；旧 Bearer / SQLAdmin 兼容。
 - 30 分钟无活动 / 8 小时绝对登录期限；无记住我与周期保活。查询权限账号共享同一套业务数据，无部门 / 区域行列隔离。
-- 网页已接入 R3 私人历史与独立成果；刷新按 URL 读取已保存快照，不执行查询；重新登录从新对话开始，可重开历史。问数恢复最后成功完整条件，分析按原问题 / run 和 24 小时 checkpoint 手动恢复。当前实现验收进度见 [R3 Acceptance](acceptance/history-results-v1.md)。query / analysis 草稿与记录分开，失联不自动重发。
+- 网页已接入 R3 私人历史与独立成果；刷新按 URL 读取已保存快照，不执行查询；重新登录从新对话开始，可重开历史。问数恢复最后成功完整条件，分析按原问题 / run 和 24 小时 checkpoint 手动恢复。R4 通过可查询 execution 与 SSE 恢复真实进度；分析草稿明确标记为未校验，只有最终报告校验并保存成功后才展示正式结果。query / analysis 草稿与记录分开，断连不自动重发。当前候选验收状态见 [R3 Acceptance](acceptance/history-results-v1.md)、[R4 Acceptance](acceptance/execution-streaming-v1.md) 与本机实时工作状态。
 - 详细行为见 [Web Spec](specs/web-dialogue-v1.md)，实际候选证据见 [R1 Acceptance](acceptance/web-dialogue-v1-20261003.md)。
 
 ### 经营分析
@@ -58,10 +58,12 @@ ChatBI 是面向业务数据分析的 Domain AI Engine（领域 AI 引擎）。�
 - 任意 PostgreSQL 数据库、多个 Schema 或多租户支持。
 - 超出当前 Semantic Contract 的指标、维度、跨事实表 Join、多跳 Join 或超过 5 个指标的组合。
 - 任意复杂分析 Agent、SQL 自动修复、多模型投票或开放式任务编排。
-- 手机适配、SSE / WebSocket 和导出；当前网页使用同步 HTTP，已支持的图表范围见下方 R2 结果展示及对应 Spec。
+- 手机适配、WebSocket 和导出；当前网页通过同源 HTTP / SSE 提供执行反馈，已支持的图表范围见下方 R2 结果展示及对应 Spec。
 - 生产环境部署方案、容量 / 可用性承诺、生产数据迁移和流量发布流程；这些不由 MVP 本地运行证据自动满足。
 
 ## 生产演进中的当前基线工作
+
+- R4 已在本地分支实现执行受理 / 状态、阶段与报告文字观察、取消和恢复 Contract；当前最终候选的真实浏览器、真实模型和 Evaluation 身份见 [R4 Acceptance](acceptance/execution-streaming-v1.md) 与 Git 公共目录的本机实时状态。此本地状态不代表远端发布或生产部署。
 
 - RAG 来源指纹、PostgreSQL catalog 对比和 production Ready fail-closed 门禁已实现。
 - clean bootstrap 会安装 Control DB migration、LangGraph checkpoint 表和运行权限；healthcheck 验证这些对象。

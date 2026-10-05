@@ -1,6 +1,6 @@
 # Query API Adapter Implementation Design
 
-> 本文记录同步 Query API Adapter 与 R3 History Adapter 的既有设计。R4 在其上增加独立的后台执行 Application / Runtime 和 SSE Adapter；R4 完整设计仍以已确认的 [.scratch Design](../../.scratch/execution-streaming-v1/design.md) 为准，Ticket 06 再统一回填完整 Contract。本文的同步路由行为不代表网页执行路由也同步运行。
+> 本文记录同步 Query API Adapter 与 R3 History Adapter 的既有设计。R4 在其上增加独立的后台执行 Application / Runtime 和 SSE Adapter；完整 Contract 与实现设计分别见 [R4 Spec](execution-streaming-v1.md) 和 [R4 Design](execution-streaming-v1.md)。本文的同步路由行为不代表网页执行路由也同步运行。
 
 ## 结论
 

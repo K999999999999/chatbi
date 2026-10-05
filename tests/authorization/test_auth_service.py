@@ -128,7 +128,9 @@ class AuthServiceTest(TestCase):
         with self.assertRaises(SessionExpired):
             self.service.authenticate_session(second.token)
 
-    def test_readonly_session_check_does_not_extend_idle_or_absolute_expiry(self) -> None:
+    def test_readonly_session_check_does_not_extend_idle_or_absolute_expiry(
+        self,
+    ) -> None:
         result = self.service.login("analyst-1", "analyst-password-123")
         with self.session_factory() as session:
             original = session.scalar(select(UserSession))

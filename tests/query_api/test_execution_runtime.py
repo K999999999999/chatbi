@@ -56,9 +56,7 @@ class AnalysisGuard:
 
 def test_quota_stays_reserved_until_worker_finishes_and_releases_history():
     histories = HistoryRuntime()
-    runtime = ExecutionRuntime(
-        histories, AnalysisGuard(), max_per_user=1, max_total=2
-    )
+    runtime = ExecutionRuntime(histories, AnalysisGuard(), max_per_user=1, max_total=2)
     entered, finish = Event(), Event()
     first = runtime.reserve(7, "history-1")
     future = runtime.submit(first, lambda: (entered.set(), finish.wait(3)))
@@ -91,7 +89,9 @@ def test_process_quota_is_shared_across_query_and_analysis_reservations():
     assert analysis.leases == {}
 
     query.release()
-    accepted = runtime.reserve(2, "analysis-history", auth="owner", analysis_run_id="run")
+    accepted = runtime.reserve(
+        2, "analysis-history", auth="owner", analysis_run_id="run"
+    )
     assert len(analysis.leases) == 1
     accepted.release()
     assert analysis.leases == {}
@@ -116,7 +116,9 @@ def test_analysis_guard_conflict_rolls_back_reserved_history_and_user_capacity()
 
 
 def test_close_stops_new_admissions_and_drains_an_active_worker():
-    runtime = ExecutionRuntime(HistoryRuntime(), AnalysisGuard(), max_per_user=1, max_total=1)
+    runtime = ExecutionRuntime(
+        HistoryRuntime(), AnalysisGuard(), max_per_user=1, max_total=1
+    )
     lease = runtime.reserve(1, "history")
     started, finish, closed = Event(), Event(), Event()
     future = runtime.submit(lease, lambda: (started.set(), finish.wait(3)))
@@ -207,7 +209,11 @@ def test_deadline_monitor_persists_stop_then_signals_stopping_snapshot():
     execution = _execution(now + timedelta(seconds=5))
     runtime.attach_progress(lease, execution)
     control = runtime.bind_stop_control(
-        lease, execution, lease._event_channel, persist_stop=persist, authorize=lambda: None
+        lease,
+        execution,
+        lease._event_channel,
+        persist_stop=persist,
+        authorize=lambda: None,
     )
     try:
         runtime.monitor_once()
@@ -267,7 +273,10 @@ def test_authorization_loss_monitor_fails_closed_and_keeps_worker_lease_until_re
         assert cancelled.wait(2)
         assert runtime.active_total == 1
         assert not lease.released
-        assert runtime.request_stop(execution.id, "user_cancelled").stop_reason == "authorization_revoked"
+        assert (
+            runtime.request_stop(execution.id, "user_cancelled").stop_reason
+            == "authorization_revoked"
+        )
 
         leave_downstream.set()
         future.result(timeout=3)

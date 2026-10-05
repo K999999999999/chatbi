@@ -35,7 +35,9 @@ class Provider:
 
 class Policy:
     def authorize(self, *_args, **_kwargs):
-        return SimpleNamespace(allowed=True, reason_code="AUTHORIZED", policy_version="test")
+        return SimpleNamespace(
+            allowed=True, reason_code="AUTHORIZED", policy_version="test"
+        )
 
 
 class Audit:
@@ -208,9 +210,7 @@ def test_execution_reads_use_readonly_identity_and_return_formal_turn():
     operation_id = execution_app.view.execution.operation_id
     with TestClient(app) as client:
         app.state.execution_application = execution_app
-        by_operation = client.get(
-            f"/api/v1/executions/by-operation/{operation_id}"
-        )
+        by_operation = client.get(f"/api/v1/executions/by-operation/{operation_id}")
         by_id = client.get(f"/api/v1/executions/{execution_id}")
 
     assert by_operation.status_code == 200
@@ -224,9 +224,7 @@ def test_cancel_route_requires_browser_marker_and_returns_stopping_state():
     provider = Provider()
     settings = BrowserSettings("http://127.0.0.1:5173", secure=False)
     app, execution_app = make_app(provider, browser_settings=settings)
-    execution_app.view = execution_view(
-        status="stopping", stop_reason="user_cancelled"
-    )
+    execution_app.view = execution_view(status="stopping", stop_reason="user_cancelled")
     execution_id = execution_app.view.execution.id
     with TestClient(app) as client:
         app.state.execution_application = execution_app
@@ -299,7 +297,9 @@ def test_event_stream_sends_atomic_snapshot_then_events_and_rechecks_permission(
     assert response.headers["content-type"].startswith("text/event-stream")
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["x-accel-buffering"] == "no"
-    assert response.text.index('"type":"snapshot"') < response.text.index('"sequence":1')
+    assert response.text.index('"type":"snapshot"') < response.text.index(
+        '"sequence":1'
+    )
     assert '"stage":"query_execution"' in response.text
     assert '"type":"terminal"' in response.text
     assert execution_app.observer_checks == 3
@@ -364,7 +364,9 @@ def test_event_stream_rechecks_identity_before_heartbeat_after_snapshot():
     assert response.status_code == 200
     assert response.text.count('"type":"snapshot"') == 1
     assert '"type":"auth_lost"' in response.text
-    assert response.text.index('"type":"snapshot"') < response.text.index('"type":"auth_lost"')
+    assert response.text.index('"type":"snapshot"') < response.text.index(
+        '"type":"auth_lost"'
+    )
     assert execution_app.subscription.closed
     assert provider.reads == 3
 
@@ -382,6 +384,7 @@ def test_event_stream_after_channel_cleanup_uses_persisted_terminal_snapshot():
     assert '"type":"snapshot"' in response.text
     assert '"status":"succeeded"' in response.text
     assert '"stage":null' in response.text
+    assert '"draft":null' in response.text
     assert execution_app.observer_checks == 1
 
 

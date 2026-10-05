@@ -23,4 +23,4 @@
 
 ## 事实源维护
 
-R3 Spec / Design、Query API 的显式命名空间、Web 的刷新边界、共享 query bindings、Product Scope、Architecture、Runbook、README 和 Roadmap 同步维护。原 R1 / R2 Acceptance 保持历史身份。业务指标、领域名词、Sales Mart DDL 与 Evaluation 案例集未扩大；既有事实源无需重写业务含义。R4 / R5 / R6 / R7 继续待实施。本地候选不自动授权 Push / PR。
+R3 Spec / Design、Query API 的显式命名空间、Web 的刷新边界、共享 query bindings、Product Scope、Architecture、Runbook、README 和 Roadmap 同步维护。原 R1 / R2 Acceptance 保持历史身份。业务指标、领域名词、Sales Mart DDL 与 Evaluation 案例集未扩大；既有事实源无需重写业务含义。R4 执行状态与流式反馈由独立的 [R4 Spec](../specs/execution-streaming-v1.md)、[Design](../designs/execution-streaming-v1.md) 和 [Acceptance](execution-streaming-v1.md) 定义；R5 / R6 / R7 仍待实施。本地候选不自动授权 Push / PR。

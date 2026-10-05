@@ -405,7 +405,9 @@ class LocalSessionIdentityProvider:
 
             raise IdentityProviderUnavailable("本地 Session 暂时不可用") from exc
 
-    def authenticate_readonly(self, provider_input: object | None = None) -> AuthContext:
+    def authenticate_readonly(
+        self, provider_input: object | None = None
+    ) -> AuthContext:
         headers = getattr(provider_input, "headers", None)
         authorization = headers.get("Authorization", "") if headers is not None else ""
         scheme, separator, token = authorization.partition(" ")

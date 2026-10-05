@@ -39,7 +39,9 @@ def execution_env():
     engine = create_control_engine(config)
     with engine.begin() as connection:
         owner = connection.execute(
-            text("INSERT INTO users(username,password_hash) VALUES (:name,'disabled-test-account') RETURNING id"),
+            text(
+                "INSERT INTO users(username,password_hash) VALUES (:name,'disabled-test-account') RETURNING id"
+            ),
             {"name": "execution-test-" + str(uuid4())},
         ).scalar_one()
     runtime = HistoryRuntime(engine, config.app_connection_kwargs())
@@ -49,18 +51,25 @@ def execution_env():
         runtime.close()
         with engine.begin() as connection:
             connection.execute(
-                text("UPDATE history_records SET active_turn_id=NULL,last_success_turn_id=NULL WHERE owner_user_id=:owner"),
+                text(
+                    "UPDATE history_records SET active_turn_id=NULL,last_success_turn_id=NULL WHERE owner_user_id=:owner"
+                ),
                 {"owner": owner},
             )
             connection.execute(
-                text("DELETE FROM history_turns WHERE history_id IN (SELECT id FROM history_records WHERE owner_user_id=:owner)"),
+                text(
+                    "DELETE FROM history_turns WHERE history_id IN (SELECT id FROM history_records WHERE owner_user_id=:owner)"
+                ),
                 {"owner": owner},
             )
             connection.execute(
                 text("DELETE FROM saved_results WHERE owner_user_id=:owner"),
                 {"owner": owner},
             )
-            connection.execute(text("DELETE FROM history_records WHERE owner_user_id=:owner"), {"owner": owner})
+            connection.execute(
+                text("DELETE FROM history_records WHERE owner_user_id=:owner"),
+                {"owner": owner},
+            )
         with psycopg.connect(**config.migrator_connection_kwargs()) as connection:
             connection.execute("DELETE FROM users WHERE id=%s", (owner,))
         engine.dispose()
@@ -125,9 +134,9 @@ def test_execution_acceptance_and_success_commit_share_history_turn(execution_en
     assert header.last_success_turn_id == turn.id
     assert header.context_revision == 1
 
-    duplicate = begin_query(
-        store, runtime, owner, history.id, operation_id, "销售额"
-    )[1]
+    duplicate = begin_query(store, runtime, owner, history.id, operation_id, "销售额")[
+        1
+    ]
     assert not duplicate.created
     assert duplicate.attempt is None
     assert duplicate.execution.id == finished.id
@@ -158,9 +167,9 @@ def test_execution_acceptance_and_success_commit_share_history_turn(execution_en
     with pytest.raises(HistoryError) as deleted_execution:
         store.execution(owner, finished.id)
     assert deleted_execution.value.status == 404
-    assert store.saved_result(owner, saved.id)[1]["query_state"] == snapshot[
-        "query_state"
-    ]
+    assert (
+        store.saved_result(owner, saved.id)[1]["query_state"] == snapshot["query_state"]
+    )
 
 
 def test_restart_marks_durable_execution_unconfirmed_without_rerunning(execution_env):
@@ -174,7 +183,10 @@ def test_restart_marks_durable_execution_unconfirmed_without_rerunning(execution
     restarted = HistoryRuntime(engine, config.app_connection_kwargs())
     try:
         assert store.execution(owner, accepted.execution.id).status == "unconfirmed"
-        assert store.turn(owner, history.id, accepted.execution.turn_id).status == "unconfirmed"
+        assert (
+            store.turn(owner, history.id, accepted.execution.turn_id).status
+            == "unconfirmed"
+        )
         assert store.header(owner, history.id).active_turn_id is None
     finally:
         restarted.close()
@@ -218,7 +230,10 @@ def test_success_transaction_failure_keeps_turn_execution_and_context_unconfirme
             )
         assert rollback.value.code == "HISTORY_STORAGE_UNAVAILABLE"
         assert store.execution(owner, accepted.execution.id).status == "running"
-        assert store.turn(owner, history.id, accepted.execution.turn_id).status == "accepted"
+        assert (
+            store.turn(owner, history.id, accepted.execution.turn_id).status
+            == "accepted"
+        )
         current = store.header(owner, history.id)
         assert current.context_revision == 0
         assert current.active_turn_id == accepted.execution.turn_id
@@ -233,7 +248,10 @@ def test_success_transaction_failure_keeps_turn_execution_and_context_unconfirme
 
     runtime.reconcile(history.id)
     assert store.execution(owner, accepted.execution.id).status == "unconfirmed"
-    assert store.turn(owner, history.id, accepted.execution.turn_id).status == "unconfirmed"
+    assert (
+        store.turn(owner, history.id, accepted.execution.turn_id).status
+        == "unconfirmed"
+    )
 
 
 def _successful_query_snapshot(question):
@@ -285,14 +303,21 @@ def test_cancel_winner_blocks_late_success_and_preserves_last_success(execution_
         )
     assert late_success.value.reason is ExecutionStopReason.USER_CANCELLED
     assert store.execution(owner, pending.execution.id).status == "stopping"
-    assert store.header(owner, history.id).last_success_turn_id == before.last_success_turn_id
+    assert (
+        store.header(owner, history.id).last_success_turn_id
+        == before.last_success_turn_id
+    )
 
     store.finish_execution_stopped(
         owner,
         pending.attempt.token,
         pending.execution.id,
         "cancelled",
-        {"request_id": "cancel-test", "error_code": "EXECUTION_CANCELLED", "error_message": "执行已取消"},
+        {
+            "request_id": "cancel-test",
+            "error_code": "EXECUTION_CANCELLED",
+            "error_message": "执行已取消",
+        },
     )
     after = store.header(owner, history.id)
     assert after.active_turn_id is None
@@ -323,10 +348,15 @@ def test_success_winner_makes_later_cancel_idempotently_return_success(execution
     assert after_cancel.status == "succeeded"
     assert after_cancel.stop_reason is None
     assert after_cancel.stop_requested_at is None
-    assert store.header(owner, history.id).last_success_turn_id == accepted.execution.turn_id
+    assert (
+        store.header(owner, history.id).last_success_turn_id
+        == accepted.execution.turn_id
+    )
 
 
-def test_analysis_cancel_expires_run_before_old_checkpoint_can_be_claimed(execution_env):
+def test_analysis_cancel_expires_run_before_old_checkpoint_can_be_claimed(
+    execution_env,
+):
     engine, store, runtime, owner, config = execution_env
     question = "分析净销售额变化"
     history = store.create(owner, "analysis", question, str(uuid4()))
@@ -337,7 +367,9 @@ def test_analysis_cancel_expires_run_before_old_checkpoint_can_be_claimed(execut
         history_id=history.id,
         question=question,
         operation_id=operation_id,
-        request_hash=operation_hash({"action": "analysis_resume", "history_id": history.id}),
+        request_hash=operation_hash(
+            {"action": "analysis_resume", "history_id": history.id}
+        ),
         revision=header.context_revision,
         request_id="analysis-cancel-test",
         epoch=runtime.epoch,
@@ -366,7 +398,9 @@ def test_analysis_cancel_expires_run_before_old_checkpoint_can_be_claimed(execut
         assert expired.value.reason == "ANALYSIS_RUN_EXPIRED"
         with engine.connect() as connection:
             row = connection.execute(
-                text("SELECT status,expires_at FROM business_analysis_runs WHERE analysis_run_id=:id"),
+                text(
+                    "SELECT status,expires_at FROM business_analysis_runs WHERE analysis_run_id=:id"
+                ),
                 {"id": header.analysis_run_id},
             ).one()
         assert row.status == "expired"
@@ -377,7 +411,11 @@ def test_analysis_cancel_expires_run_before_old_checkpoint_can_be_claimed(execut
             accepted.attempt.token,
             accepted.execution.id,
             "cancelled",
-            {"request_id": "analysis-cancel-test", "error_code": "EXECUTION_CANCELLED", "error_message": "执行已取消"},
+            {
+                "request_id": "analysis-cancel-test",
+                "error_code": "EXECUTION_CANCELLED",
+                "error_message": "执行已取消",
+            },
         )
         assert store.execution(owner, accepted.execution.id).status == "cancelled"
         assert store.header(owner, history.id).active_turn_id is None
@@ -405,7 +443,9 @@ def test_analysis_cancel_after_completed_checkpoint_preserves_ttl_and_blocks_rec
         run_store.mark_completed(run_id)
         with engine.connect() as connection:
             original_expiry = connection.execute(
-                text("SELECT expires_at FROM business_analysis_runs WHERE analysis_run_id=:id"),
+                text(
+                    "SELECT expires_at FROM business_analysis_runs WHERE analysis_run_id=:id"
+                ),
                 {"id": header.analysis_run_id},
             ).scalar_one()
 
@@ -415,7 +455,9 @@ def test_analysis_cancel_after_completed_checkpoint_preserves_ttl_and_blocks_rec
             history_id=history.id,
             question=question,
             operation_id=operation_id,
-            request_hash=operation_hash({"action": "analysis_resume", "history_id": history.id}),
+            request_hash=operation_hash(
+                {"action": "analysis_resume", "history_id": history.id}
+            ),
             revision=header.context_revision,
             request_id="analysis-checkpoint-cancel-test",
             epoch=runtime.epoch,
@@ -433,7 +475,9 @@ def test_analysis_cancel_after_completed_checkpoint_preserves_ttl_and_blocks_rec
         )
         with engine.connect() as connection:
             status, expiry = connection.execute(
-                text("SELECT status,expires_at FROM business_analysis_runs WHERE analysis_run_id=:id"),
+                text(
+                    "SELECT status,expires_at FROM business_analysis_runs WHERE analysis_run_id=:id"
+                ),
                 {"id": header.analysis_run_id},
             ).one()
         assert status == "expired"
@@ -447,7 +491,11 @@ def test_analysis_cancel_after_completed_checkpoint_preserves_ttl_and_blocks_rec
             accepted.attempt.token,
             accepted.execution.id,
             "cancelled",
-            {"request_id": "analysis-checkpoint-cancel-test", "error_code": "EXECUTION_CANCELLED", "error_message": "执行已取消"},
+            {
+                "request_id": "analysis-checkpoint-cancel-test",
+                "error_code": "EXECUTION_CANCELLED",
+                "error_message": "执行已取消",
+            },
         )
     finally:
         with psycopg.connect(**config.migrator_connection_kwargs()) as admin:
@@ -464,7 +512,9 @@ def test_migration_contains_v4_execution_table_and_runtime_role_grant():
     assert "CREATE TABLE IF NOT EXISTS history_executions" in migration
     assert "UNIQUE (owner_user_id, operation_id)" in migration
     assert "ON DELETE CASCADE" in migration
-    assert "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE history_executions" in migration
+    assert (
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE history_executions" in migration
+    )
 
 
 def test_stop_migration_adds_durable_stop_timestamp():

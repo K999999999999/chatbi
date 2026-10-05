@@ -218,7 +218,9 @@ class ExecutionApplication:
             record = self.store.execution(auth.user_id, execution_id)
         except HistoryError as exc:
             if exc.status == 404:
-                raise HistoryError("EXECUTION_UNAVAILABLE", "执行记录不可用", 404) from None
+                raise HistoryError(
+                    "EXECUTION_UNAVAILABLE", "执行记录不可用", 404
+                ) from None
             raise
         return self._view(auth, request_id, record)
 
@@ -275,11 +277,17 @@ class ExecutionApplication:
                 raise HistoryError(
                     "EXECUTION_LIMIT_REACHED", "已有执行仍在运行", 429
                 ) from None
-            raise HistoryError("EXECUTION_LIMIT_REACHED", "服务繁忙，请稍后再试", 429) from None
+            raise HistoryError(
+                "EXECUTION_LIMIT_REACHED", "服务繁忙，请稍后再试", 429
+            ) from None
         except AnalysisExecutionBusy:
-            raise HistoryError("HISTORY_BUSY", "原分析运行仍在执行，请稍后刷新", 409) from None
+            raise HistoryError(
+                "HISTORY_BUSY", "原分析运行仍在执行，请稍后刷新", 409
+            ) from None
         except ExecutionRuntimeClosed:
-            raise HistoryError("EXECUTION_UNAVAILABLE", "执行服务正在关闭", 503) from None
+            raise HistoryError(
+                "EXECUTION_UNAVAILABLE", "执行服务正在关闭", 503
+            ) from None
 
     def _dispatch(
         self,
@@ -353,7 +361,12 @@ class ExecutionApplication:
                 self._finish_from_persistence(auth.user_id, execution, progress)
             except HistoryError as exc:
                 self._finish_worker_failure(
-                    auth.user_id, execution, accepted, request_id, exc.code, exc.message,
+                    auth.user_id,
+                    execution,
+                    accepted,
+                    request_id,
+                    exc.code,
+                    exc.message,
                     progress,
                 )
             except Exception as exc:  # noqa: BLE001 - worker failure must not leak internals
@@ -382,7 +395,10 @@ class ExecutionApplication:
             )
             self.runtime.submit(lease, work)
         except (RuntimeError, ValueError) as exc:
-            _LOGGER.warning("Background execution dispatch failed: error_type=%s", type(exc).__name__)
+            _LOGGER.warning(
+                "Background execution dispatch failed: error_type=%s",
+                type(exc).__name__,
+            )
             self._persist_worker_failure(
                 auth.user_id,
                 execution,
@@ -403,7 +419,14 @@ class ExecutionApplication:
             ) from None
 
     def _finish_worker_failure(
-        self, owner, execution, accepted, request_id, error_code, error_message, progress
+        self,
+        owner,
+        execution,
+        accepted,
+        request_id,
+        error_code,
+        error_message,
+        progress,
     ):
         try:
             self._persist_worker_failure(
@@ -451,9 +474,17 @@ class ExecutionApplication:
             # PostgreSQL 的首次停止理由是取消、超时和授权失效之间的裁决。
             reason = ExecutionStopReason(current.stop_reason or reason.value)
             if reason is ExecutionStopReason.USER_CANCELLED:
-                status, error_code, message = "cancelled", "EXECUTION_CANCELLED", "执行已取消"
+                status, error_code, message = (
+                    "cancelled",
+                    "EXECUTION_CANCELLED",
+                    "执行已取消",
+                )
             elif reason is ExecutionStopReason.DEADLINE_EXCEEDED:
-                status, error_code, message = "timed_out", "EXECUTION_TIMEOUT", "执行超过服务端时限"
+                status, error_code, message = (
+                    "timed_out",
+                    "EXECUTION_TIMEOUT",
+                    "执行超过服务端时限",
+                )
             elif reason is ExecutionStopReason.AUTHORIZATION_REVOKED:
                 status, error_code, message = (
                     "failed",
@@ -479,7 +510,10 @@ class ExecutionApplication:
             )
         except HistoryError:
             # 无法证明停止终态时保留 stopping，HistoryRuntime 稍后将其回收为 unconfirmed。
-            _LOGGER.warning("Stopped execution persistence unavailable: execution_id=%s", execution.id)
+            _LOGGER.warning(
+                "Stopped execution persistence unavailable: execution_id=%s",
+                execution.id,
+            )
 
     def _finish_from_persistence(self, owner, execution, progress):
         if progress is None:

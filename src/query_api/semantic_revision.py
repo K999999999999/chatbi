@@ -238,9 +238,7 @@ def revise_history_semantic_query(
             response = (
                 controlled(previous, question, execution_control)
                 if callable(controlled)
-                else query_understanding.understand_history_revision(
-                    previous, question
-                )
+                else query_understanding.understand_history_revision(previous, question)
             )
         else:
             response = query_understanding.understand_history_revision(

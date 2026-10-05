@@ -394,7 +394,9 @@ def create_app(
                         authorization_store = _UnavailablePolicyStore()
                         authorized_service = None
                         service = None
-                        auth_service = audit_sink = recorder = query_understanding = None
+                        auth_service = audit_sink = recorder = query_understanding = (
+                            None
+                        )
                         active_analysis_service = None
                         history_store = history_runtime = None
                         browser_settings = None

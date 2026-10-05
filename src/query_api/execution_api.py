@@ -133,13 +133,9 @@ def _reauthenticator(request, initial_auth):
                 "AUTHENTICATION_UNAVAILABLE", "身份认证暂时不可用", 503
             ) from None
         if not isinstance(current, AuthContext):
-            raise HistoryError(
-                "AUTHENTICATION_UNAVAILABLE", "身份认证暂时不可用", 503
-            )
+            raise HistoryError("AUTHENTICATION_UNAVAILABLE", "身份认证暂时不可用", 503)
         if (current.user_id, current.subject_id, current.identity_provider) != expected:
-            raise HistoryError(
-                "AUTHORIZATION_DENIED", "当前身份不可交付该结果", 403
-            )
+            raise HistoryError("AUTHORIZATION_DENIED", "当前身份不可交付该结果", 403)
         return current
 
     return reauthenticate
@@ -191,6 +187,7 @@ def _persisted_snapshot(view):
             "total_tasks": None,
             "stop_reason": execution.stop_reason,
             "draft_generation": 0,
+            "draft": None,
         },
     }
 
@@ -368,7 +365,9 @@ def mount_execution_api(app):
                         try:
                             await authorized_now()
                         except HistoryError:
-                            yield encode_sse(_auth_lost_event(str(execution_id), sequence))
+                            yield encode_sse(
+                                _auth_lost_event(str(execution_id), sequence)
+                            )
                             return
                         yield b": heartbeat\n\n"
                         continue

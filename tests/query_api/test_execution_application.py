@@ -179,9 +179,7 @@ def test_concurrent_same_operation_returns_one_accepted_execution():
     deadline = monotonic() + 2
     while monotonic() < deadline:
         with runtime._condition:
-            operation_state = runtime._operation_locks.get(
-                (auth.user_id, operation_id)
-            )
+            operation_state = runtime._operation_locks.get((auth.user_id, operation_id))
         if operation_state is not None and operation_state[1] == 2:
             break
         Event().wait(0.001)

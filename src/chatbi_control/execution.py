@@ -129,7 +129,9 @@ class PostgresExecutionStore:
             return
         row = (
             connection.execute(
-                text("SELECT status,stop_reason FROM history_executions WHERE id=:id AND owner_user_id=:owner"),
+                text(
+                    "SELECT status,stop_reason FROM history_executions WHERE id=:id AND owner_user_id=:owner"
+                ),
                 {"id": execution_id, "owner": owner},
             )
             .mappings()
@@ -140,7 +142,9 @@ class PostgresExecutionStore:
         if row["status"] == "stopping":
             raise ExecutionStopped(row["stop_reason"])
         if row["status"] != "running":
-            raise HistoryError("HISTORY_SAVE_UNCONFIRMED", "执行状态已变化，请刷新历史", 503)
+            raise HistoryError(
+                "HISTORY_SAVE_UNCONFIRMED", "执行状态已变化，请刷新历史", 503
+            )
 
     def locked_in_transaction(self, connection, owner, execution_id):
         row = (
@@ -191,9 +195,13 @@ class PostgresExecutionStore:
             },
         )
         if result.rowcount != 1:
-            raise HistoryError("HISTORY_SAVE_UNCONFIRMED", "停止结果未确认，请刷新历史", 503)
+            raise HistoryError(
+                "HISTORY_SAVE_UNCONFIRMED", "停止结果未确认，请刷新历史", 503
+            )
 
-    def finish_in_transaction(self, connection, owner, execution_id, status, public_error):
+    def finish_in_transaction(
+        self, connection, owner, execution_id, status, public_error
+    ):
         result = connection.execute(
             text("""UPDATE history_executions SET status=:status,
                 public_error=CAST(:error AS jsonb),finished_at=CURRENT_TIMESTAMP
@@ -206,13 +214,17 @@ class PostgresExecutionStore:
             },
         )
         if result.rowcount != 1:
-            raise HistoryError("HISTORY_SAVE_UNCONFIRMED", "结果未确认，请刷新历史", 503)
+            raise HistoryError(
+                "HISTORY_SAVE_UNCONFIRMED", "结果未确认，请刷新历史", 503
+            )
 
     def get(self, owner, execution_id):
         with self.engine.connect() as connection:
             row = (
                 connection.execute(
-                    text("SELECT * FROM history_executions WHERE id=:id AND owner_user_id=:owner"),
+                    text(
+                        "SELECT * FROM history_executions WHERE id=:id AND owner_user_id=:owner"
+                    ),
                     {"id": execution_id, "owner": owner},
                 )
                 .mappings()

@@ -545,16 +545,18 @@ npm run test:real
 R2默认Chrome用例通过 `cd frontend && npm test` 运行，不调用真实模型。实际容器运行 `scripts/verify_container_dev.sh real`，显式使用真实LLM、现有业务只读数据与RAG，覆盖问数/追问、时间及分类多指标和两期分析；正式验收需clean candidate。专用验收账号结束自动禁用、撤销Session、移除临时凭证，原用户和持久卷保留。全量AI Evaluation仍是单独入口，不能把小范围浏览器验收冒称全套通过。
 
 
-## 13. 历史与成果运行
+## 13. 历史、执行状态与流式反馈运行
 
-新增 `database/control/005_history_results.sql` 与 `006_execution_streaming.sql` 由现有 `./dev migrate` / `src.bootstrap migrate` 显式安装；请求路径不执行 DDL。历史、轮次、固定成果和后台执行身份在独立 Control DB 保存，业务库仍只读。初始化 / 升级 / 重复迁移均保留原账号、Session、RBAC、checkpoint 与业务数据；旧内存记录无法补回。
+历史、轮次、固定成果和后台执行身份存放于独立 Control DB，业务库仍只读。`database/control/005_history_results.sql` 与 `006_execution_streaming.sql` 由现有 `./dev migrate` / `src.bootstrap migrate` 显式安装；请求路径不执行 DDL。初始化 / 升级 / 重复迁移均保留原账号、Session、RBAC、checkpoint 与业务数据；旧内存记录无法补回。R4 执行与事件 Contract 见 [Spec](specs/execution-streaming-v1.md)，模块和运行生命周期设计见 [Design](designs/execution-streaming-v1.md)。
 
 只运行一个 API 应用进程，禁止多 worker。启动持有独立 PG advisory lock 并更新 epoch：遗留 accepted / running 执行和轮次标为结果未确认，保留上一成功状态。正常关闭先停止新受理并等待后台 worker 结束，再释放 guard 与业务资源；进程意外退出后，重启不自动重发未确认请求。
 
 升级前停止旧 API，显式迁移，再启动新版本。回滚先停止新 API 再启动兼容的旧版本，保留 v3 表和数据，不反向执行 DROP、不删除开发卷；旧版本仍识别保留的 v2 marker。再次升级后已保存历史 /成果可读。本地兼容测试不构成 R6 生产回滚承诺。
 
-`scripts/verify_container_dev.sh real` 还会用本次专用账号受理一条真实问数，在验收末尾仅对当前开发 API 容器执行 `docker kill`，随后按 `dev down` / `dev up` 重启并核对该轮进入“结果未确认”、上一成功轮次和历史快照仍可用。该步骤不删除 PostgreSQL / Qdrant named volume；退出清理仍禁用专用账号、撤销 Session 并移除临时凭证。阶段 / 终态证据保存在 ignored 的 `reports/browser-real/`，不代表 R4 最终验收或正式 Evaluation。
+R4 最终真实浏览器 / 模型 / RAG / PostgreSQL 闭环使用 clean candidate 执行 `scripts/verify_container_dev.sh isolated`。该入口创建独立 Compose project 和空数据库卷，运行桌面 Chromium 真实登录、SSE、重连 / 刷新、多页、取消、分析报告与模型链路，并在退出时清理该 project 的卷与临时账号；它不会停止或清除日常开发 Compose project。真实运行报告位于 ignored `reports/browser-real/`，候选 SHA、报告指纹、清理结果和最终状态保存在本机 Git 公共目录的 R4 实时工作状态中。该浏览器闭环与三套正式 AI Evaluation 分开执行，不能相互替代。
+
+`real` 模式会复用指定的现有开发容器 / 数据，并在验收尾段重启当前开发 API；只在明确要对该开发 profile 做重启恢复检查时运行。该步骤保留 PostgreSQL / Qdrant named volume，结束仍会禁用专用账号、撤销 Session 并移除临时凭证。R4 clean 最终验收采用上述 `isolated` profile。
 
 `#history=<UUID>` / `#saved=<UUID>` 定位当前私人记录；新登录保持空白，旧账号私有数据不写浏览器持久存储。历史只读打开；失败分析有效期内手动恢复原 run，过期仅能显式新建分析。完成报告不依赖 checkpoint 存活。删除原历史保留成果，删除成果保留历史。
 
-验收入口与候选身份见 [R3 Acceptance](acceptance/history-results-v1.md)。
+验收入口与候选身份见 [R3 Acceptance](acceptance/history-results-v1.md) 与 [R4 Acceptance](acceptance/execution-streaming-v1.md)。

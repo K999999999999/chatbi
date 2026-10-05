@@ -1,6 +1,6 @@
 # R4 执行状态与流式反馈验收
 
-本文件记录 R4 分阶段验收。Ticket 04 的执行状态 / 结果证据已完成；Ticket 05 真实报告文字流和 Ticket 06 最终候选回归仍未完成，因此此记录不代表 R4 整体交付或生产验收。
+本文件是 R4 的正式验收入口，记录 Ticket 04 / 05 的历史证据与各阶段边界。R4 最终 clean 候选身份、三套正式 Evaluation、真实浏览器报告和门禁即时状态绑定本机候选，保存在 Git 公共目录 `work-items/execution-streaming-v1/status.md`；ignored 原始报告不随仓库发布。不得把此处历史候选重标为当前结果，也不得将本地验收解释为生产部署或远端发布。R4 行为 Contract 与设计分别见 [Spec](../specs/execution-streaming-v1.md) 和 [Design](../designs/execution-streaming-v1.md)。
 
 ## Ticket 04 状态与结果真实验收
 
@@ -34,7 +34,7 @@ Ticket 04 的 clean 候选真实验收通过。
 
 ### 范围边界
 
-该阶段通过证明真实执行状态、结果、取消 / 重连及进程重启恢复，不证明分析报告文字来自模型流式增量，也不代表 R4 最终回归、三套正式 Evaluation、生产容量或部署验收。Ticket 05 和 Ticket 06 按已确认顺序继续完成；R4 发布仍未授权。
+该阶段的证据只覆盖真实执行状态、结果、取消 / 重连及进程重启恢复，不覆盖分析报告文字增量、完整 R4 Regression、三套正式 Evaluation、生产容量或部署验收。Ticket 05 / 06 的后续阶段按已确认顺序分别记录于本文件；R4 发布仍未授权。
 
 ## Ticket 05 分析报告真实流式开发验收
 
@@ -58,7 +58,7 @@ Ticket 05 的实现与定向验证通过；真实模型增量证据来自 Ticket
 
 ### 确定性验证与 Review
 
-- Python 定向回归：`uv run --locked pytest -q tests/business_analysis tests/query_api/test_history_application.py tests/query_api/test_execution_events.py tests/query_api/test_execution_api.py tests/query_api/test_execution_application.py tests/query_api/test_analysis_mode.py`：98 passed。
+- Python 定向回归：`uv run --locked pytest -q tests/business_analysis tests/query_api/test_history_application.py tests/query_api/test_execution_events.py tests/query_api/test_execution_api.py tests/query_api/test_execution_application.py tests/query_api/test_analysis_mode.py`：99 passed。
 - `cd frontend && npm run build`：TypeScript 类型检查与生产构建通过。
 - Docker 浏览器 `execution.spec.ts`：10 passed；覆盖未校验草稿、retry generation 清理、断线快照重连及既有执行交互。
 - Ticket05 触及的 12 个 Python 源码 / 测试文件 `ruff format --check` 通过；仓库 CI 选用的 Ruff `E4` / `E7` / `E9` / `F` 规则、模块边界、Ticket05 源码 Bandit 检查和 Markdown 本地链接检查通过；`git diff --check` 通过。
@@ -66,4 +66,11 @@ Ticket 05 的实现与定向验证通过；真实模型增量证据来自 Ticket
 
 ### 范围边界
 
-此证据证明真实模型报告文字增量先于执行成功事件，并证明该隔离运行的分析结果与独立业务参考一致。由于开发运行 `git_dirty=true`，它不证明最终 clean 候选、完整 R4 Regression 或三套正式 Evaluation；Ticket 06 必须按同一最终 clean commit 重新完成规定的完整验收。
+此证据证明真实模型报告文字增量先于执行成功事件，并证明该隔离运行的分析结果与独立业务参考一致。由于开发运行 `git_dirty=true`，它不证明最终 clean 候选、完整 R4 Regression 或三套正式 Evaluation；Ticket 06 的候选绑定结果单独记录在本机实时工作状态。
+
+
+## Ticket 06 最终候选验收入口
+
+Ticket 06 在全部实现、正式 Contract 与本文件维护提交后，于唯一 clean candidate 上执行适用门禁。确定性 Python 全量回归、隔离 development PostgreSQL、前端 `npm ci` / typecheck / build / Playwright、CI 锁文件 / Ruff / 模块边界 / 安全 / Markdown / Diff 检查按 [Runbook](../runbook.md) §8 和 CI 定义运行；真实 R4 浏览器、模型、RAG、业务 PostgreSQL 与独立参考使用 `scripts/verify_container_dev.sh isolated`。三套正式 single-turn / multi-turn / business-analysis Evaluation 与统一 report identity 检查、三次完整多轮诊断按 [Runbook §9.2](../runbook.md#92-正式三套基线与稳定性诊断) 执行。
+
+这些报告必须指向同一个 clean commit，并满足案例全集、案例 Hash、RAG / 数据 / 模型身份及零 `FAIL` / 零 `INVALID_CASE`。精确命令退出状态、报告路径 / SHA256、实际模型与数据摘要、账号清理和未运行项由本机实时工作状态保存；本段提供可复现门槛，不预填本机结果。单机单进程验收不构成 R6 / R7 生产容量或部署验收。

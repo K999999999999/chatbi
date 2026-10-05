@@ -1,6 +1,6 @@
 # Query API Adapter Spec
 
-当前 Web 长期状态以 [R3 History Spec](history-results-v1.md) 为准：显式 `/api/v1/histories` 与 `/api/v1/saved-results` 保存私人快照，刷新只读，续聊恢复完整条件；旧 `/api/v1/query` 继续原短期 Contract。R4 在这些接口之外增加异步执行受理、正式结果读取和 SSE 状态观察；R4 完整行为仍以已确认的 [R4 Spec](../../.scratch/execution-streaming-v1/spec.md) 为准，Ticket 06 完成前本文只记录其当前路由边界。本文的 R1 / R2 阶段状态描述保留历史边界，不能用来否定 R3 / R4。
+当前 Web 长期状态以 [R3 History Spec](history-results-v1.md) 为准：显式 `/api/v1/histories` 与 `/api/v1/saved-results` 保存私人快照，刷新只读，续聊恢复完整条件；旧 `/api/v1/query` 继续原短期 Contract。网页执行使用 R4 后台执行受理、正式结果读取和 SSE 状态观察；完整行为见 [R4 Spec](execution-streaming-v1.md)，实现设计见 [R4 Design](../designs/execution-streaming-v1.md)。本文的 R1 / R2 阶段状态描述保留历史边界，不能用来否定 R3 / R4。
 ## 目标
 
 使用 FastAPI（Web 框架）把现有 Online Query（在线查询）能力暴露为同步 HTTP JSON 接口，供电脑端 Web、内部应用或 API Gateway（API 网关）调用。
@@ -42,7 +42,7 @@ GET  /api/v1/executions/{execution_id}/events
 POST /api/v1/executions/{execution_id}/cancel
 ```
 
-执行创建路由返回 `202` 受理身份；取消路由接受空 JSON body，返回 `202 stopping` 或 `200` 已有终态，重复请求幂等且不会改写成功终态。读取路由以只读身份检查现有 Session 和当前权限。`events` 使用版本化 SSE `snapshot` / `progress` / `text_delta` / `draft_reset` / `terminal` 帧与心跳，响应设为 `no-store`，身份失效时以不含私有字段的 `auth_lost` 帧关闭。分析报告生成期间仅发布六个白名单文字字段，并在快照中携带当前 generation 的完整未校验草稿；正式报告仍须经过原结构、证据引用与业务校验，并成功保存后才交付。网页重连只重新 GET，不重放业务 POST。其余阶段名称、缓冲上限、停止与草稿行为以 R4 Spec 为准；R4 最终验收后再将完整事件 Contract 固化于本文。
+执行创建路由返回 `202` 受理身份；取消路由接受空 JSON body，返回 `202 stopping` 或 `200` 已有终态，重复请求幂等且不会改写成功终态。读取路由以只读身份检查现有 Session 和当前权限。`events` 使用版本化 SSE `snapshot` / `progress` / `text_delta` / `draft_reset` / `terminal` 帧与心跳，响应设为 `no-store`，身份失效时以不含私有字段的 `auth_lost` 帧关闭。分析报告生成期间仅发布六个白名单文字字段，并在快照中携带当前 generation 的完整未校验草稿；正式报告仍须经过原结构、证据引用与业务校验，并成功保存后才交付。网页重连只重新 GET，不重放业务 POST。完整阶段名称、缓冲上限、停止与草稿行为以正式 R4 Spec 为准；本文说明同步 API 兼容边界与新增网页路由。
 
 ### 查询
 

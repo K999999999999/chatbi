@@ -106,9 +106,7 @@ class PostgresHistoryStore:
     @_database_errors
     def mark_execution_running(self, owner, execution_id):
         with self.engine.begin() as connection:
-            self.executions.mark_running_in_transaction(
-                connection, owner, execution_id
-            )
+            self.executions.mark_running_in_transaction(connection, owner, execution_id)
 
     @_database_errors
     def request_execution_stop(
@@ -147,14 +145,16 @@ class PostgresHistoryStore:
             ).scalar_one_or_none()
             if (
                 str(history["active_turn_id"]) != str(execution["turn_id"])
-                or history["execution_generation"]
-                != execution["execution_generation"]
+                or history["execution_generation"] != execution["execution_generation"]
                 or str(current_epoch) != str(execution["runtime_epoch"])
             ):
                 raise HistoryError(
                     "HISTORY_SAVE_UNCONFIRMED", "执行已改变，请刷新历史", 503
                 )
-            if reason is ExecutionStopReason.USER_CANCELLED and execution["mode"] == "analysis":
+            if (
+                reason is ExecutionStopReason.USER_CANCELLED
+                and execution["mode"] == "analysis"
+            ):
                 self._expire_cancelled_analysis_run(
                     connection,
                     history,
@@ -169,10 +169,10 @@ class PostgresHistoryStore:
     ):
         run_id = history["analysis_run_id"]
         if run_id is None or not analysis_owner_subject:
-            raise HistoryError(
-                "HISTORY_SAVE_UNCONFIRMED", "分析任务身份不可确认", 503
-            )
-        question_hash = sha256(history["first_question"].strip().encode("utf-8")).hexdigest()
+            raise HistoryError("HISTORY_SAVE_UNCONFIRMED", "分析任务身份不可确认", 503)
+        question_hash = sha256(
+            history["first_question"].strip().encode("utf-8")
+        ).hexdigest()
         row = (
             connection.execute(
                 text("""SELECT owner_subject,question_sha256 FROM business_analysis_runs
@@ -199,9 +199,7 @@ class PostgresHistoryStore:
             row["owner_subject"] != analysis_owner_subject
             or row["question_sha256"] != question_hash
         ):
-            raise HistoryError(
-                "HISTORY_SAVE_UNCONFIRMED", "分析任务归属不可确认", 503
-            )
+            raise HistoryError("HISTORY_SAVE_UNCONFIRMED", "分析任务归属不可确认", 503)
         connection.execute(
             text("""UPDATE business_analysis_runs SET status='expired',
                 updated_at=CURRENT_TIMESTAMP WHERE analysis_run_id=:run"""),
@@ -209,9 +207,7 @@ class PostgresHistoryStore:
         )
 
     @_database_errors
-    def finish_execution_stopped(
-        self, owner, token, execution_id, status, error
-    ):
+    def finish_execution_stopped(self, owner, token, execution_id, status, error):
         with self.engine.begin() as connection:
             history = _owned(connection, owner, token.history_id, lock=True, wait=True)
             epoch = connection.execute(
@@ -341,7 +337,9 @@ class PostgresHistoryStore:
                     revision,
                     request_id,
                     epoch,
-                    operation_hash({"question": question, "context_revision": revision}),
+                    operation_hash(
+                        {"question": question, "context_revision": revision}
+                    ),
                 )
             if accepted.token is None:
                 raise HistoryError(
@@ -397,12 +395,12 @@ class PostgresHistoryStore:
                     execution_data["request_hash"],
                 )
                 if execution is not None:
-                    header = _header(
-                        _owned(connection, owner, execution.history_id)
-                    )
+                    header = _header(_owned(connection, owner, execution.history_id))
                     turn = (
                         connection.execute(
-                            text("SELECT * FROM history_turns WHERE id=:turn AND history_id=:history"),
+                            text(
+                                "SELECT * FROM history_turns WHERE id=:turn AND history_id=:history"
+                            ),
                             {
                                 "turn": execution.turn_id,
                                 "history": execution.history_id,
@@ -521,7 +519,9 @@ class PostgresHistoryStore:
                     "run": (
                         execution_data.get("analysis_run_id") or str(uuid4())
                         if kind == "analysis" and execution_data is not None
-                        else str(uuid4()) if kind == "analysis" else None
+                        else str(uuid4())
+                        if kind == "analysis"
+                        else None
                     ),
                 },
             )
@@ -855,9 +855,7 @@ class PostgresHistoryStore:
             # completed business request as unconfirmed.
             header = _owned(connection, owner, token.history_id, lock=True, wait=True)
             execution = (
-                self.executions.locked_in_transaction(
-                    connection, owner, execution_id
-                )
+                self.executions.locked_in_transaction(connection, owner, execution_id)
                 if execution_id is not None
                 else None
             )
@@ -937,9 +935,7 @@ class PostgresHistoryStore:
             return _turn(row)
 
     @_database_errors
-    def finish_execution_attempt(
-        self, owner, token, snapshot, error, execution_id
-    ):
+    def finish_execution_attempt(self, owner, token, snapshot, error, execution_id):
         return self.finish_attempt(
             owner, token, snapshot, error, execution_id=execution_id
         )

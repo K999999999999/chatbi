@@ -1,6 +1,6 @@
 # R1：电脑端 Web 对话与经营分析入口
 
-当前 Web 长期状态以 [R3 History Spec](history-results-v1.md) 为准：显式 `/api/v1/histories` 与 `/api/v1/saved-results` 保存私人快照，刷新只读，续聊恢复完整条件；旧 `/api/v1/query` 继续原短期 Contract。本文保留 R1 的历史行为 Contract；R4 对历史页面增加独立的异步执行与状态观察路径，细节见已确认 [R4 Spec](../../.scratch/execution-streaming-v1/spec.md)。R1 原临时等待边界不代表当前网页执行生命周期。
+当前 Web 长期状态以 [R3 History Spec](history-results-v1.md) 为准：显式 `/api/v1/histories` 与 `/api/v1/saved-results` 保存私人快照，刷新只读，续聊恢复完整条件；旧 `/api/v1/query` 继续原短期 Contract。本文保留 R1 的历史行为 Contract；网页执行生命周期由已确认的 [R4 Spec](execution-streaming-v1.md) 与 [R4 Design](../designs/execution-streaming-v1.md) 定义。R1 原临时等待边界不代表当前网页执行生命周期。
 状态：用户于 2026-10-03 整体确认；实现、旧入口移除和最终候选本地验收完成；验收证据见 [Acceptance](../acceptance/web-dialogue-v1-20261003.md)。技术细化见 [R1 Design](../designs/web-dialogue-v1.md)。
 
 ## Problem Statement
@@ -162,7 +162,7 @@
 
 - 手机适配、手机验收、独立手机应用；其他浏览器的兼容性承诺。
 - 图表、丰富结果语义（R2）；数据库聊天历史、成果保存 / 删除 / 续聊（R3）。
-- SSE / WebSocket、逐步生成、详细执行阶段、取消、通用任务恢复 / 幂等协议（R4）；导出（R5）。
+- R1 阶段未包含 SSE、逐步生成、详细执行阶段、取消与通用任务恢复 / 幂等协议；这些网页执行行为由后续 [R4 Spec](execution-streaming-v1.md) 定义。WebSocket 与导出（R5）仍不在本 Spec 范围内。
 - 公众注册、第三方登录、多租户、区域 / 部门行列隔离、多数据源、仪表板编辑器。
 - 扩展分析指标 / 维度、自动模式路由、继承普通查询条件、SQL 自动修复或改变业务口径。
 - 本次直接购买服务器 / 域名、发布公网服务或承诺生产容量；远端发布仍需独立授权。

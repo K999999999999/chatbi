@@ -201,14 +201,19 @@ def verify_execution_recovery():
     try:
         with engine.connect() as connection:
             versions = set(
-                connection.execute(text("SELECT version FROM schema_migrations")).scalars()
+                connection.execute(
+                    text("SELECT version FROM schema_migrations")
+                ).scalars()
             )
-            required_versions = {f"chatbi-control-v{version}" for version in range(1, 6)}
+            required_versions = {
+                f"chatbi-control-v{version}" for version in range(1, 6)
+            }
             if not required_versions.issubset(versions):
                 raise RuntimeError("重启后Control DB版本标记不完整")
-            row = connection.execute(
-                text(
-                    """SELECT history.last_success_turn_id::text AS last_success_turn_id,
+            row = (
+                connection.execute(
+                    text(
+                        """SELECT history.last_success_turn_id::text AS last_success_turn_id,
                     history.active_turn_id::text AS active_turn_id, turn.status AS turn_status,
                     turn.snapshot IS NULL AS snapshot_absent, execution.status AS execution_status,
                     execution.id::text AS execution_id
@@ -217,13 +222,16 @@ def verify_execution_recovery():
                     JOIN history_executions AS execution ON execution.history_id=history.id
                         AND execution.turn_id=turn.id
                     WHERE history.id=:history AND history.owner_user_id=:owner"""
-                ),
-                {
-                    "history": interrupted["history_id"],
-                    "turn": interrupted["turn_id"],
-                    "owner": account["id"],
-                },
-            ).mappings().one_or_none()
+                    ),
+                    {
+                        "history": interrupted["history_id"],
+                        "turn": interrupted["turn_id"],
+                        "owner": account["id"],
+                    },
+                )
+                .mappings()
+                .one_or_none()
+            )
         if row is None or row["execution_id"] != interrupted["execution_id"]:
             raise RuntimeError("重启后的执行记录身份不匹配")
         if (
@@ -259,7 +267,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "action",
         choices=[
-            "prepare", "cleanup", "admin", "persistence", "expire-analysis",
+            "prepare",
+            "cleanup",
+            "admin",
+            "persistence",
+            "expire-analysis",
             "execution-recovery",
         ],
     )

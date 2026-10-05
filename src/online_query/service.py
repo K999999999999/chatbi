@@ -181,9 +181,7 @@ class OnlineQueryService:
             if request.progress_observer is not None and (
                 self._retrieval_provider is not None or request.require_restorable
             ):
-                request.progress_observer.set_stage(
-                    ExecutionStage.QUERY_UNDERSTANDING
-                )
+                request.progress_observer.set_stage(ExecutionStage.QUERY_UNDERSTANDING)
             semantic_query, understanding_error = self._understand_query(
                 request.question.strip(),
                 request_id,

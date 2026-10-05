@@ -321,9 +321,7 @@ def _verify_history_schema(engine: Engine) -> None:
                 }.issubset(execution_unique):
                     raise ValueError("执行身份唯一约束缺失")
                 execution_fks = inspector.get_foreign_keys("history_executions")
-                execution_fks_by_name = {
-                    item["name"]: item for item in execution_fks
-                }
+                execution_fks_by_name = {item["name"]: item for item in execution_fks}
                 execution_fk_names = {
                     "history_execution_owner_history_fk",
                     "history_execution_history_turn_fk",

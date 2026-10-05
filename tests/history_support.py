@@ -176,14 +176,29 @@ class BrowserHistoryStore:
             if expected_record_revision is None:
                 raise HistoryError("INVALID_REQUEST", "分析恢复版本缺失", 400)
             attempt = self.begin_analysis_attempt(
-                owner, history_id, operation_id, expected_record_revision, request_id, epoch
+                owner,
+                history_id,
+                operation_id,
+                expected_record_revision,
+                request_id,
+                epoch,
             )
         execution = self._create_execution(
-            owner, history_id, attempt.turn.id, operation_id, request_hash, mode,
-            operation_kind, deadline_seconds,
+            owner,
+            history_id,
+            attempt.turn.id,
+            operation_id,
+            request_hash,
+            mode,
+            operation_kind,
+            deadline_seconds,
         )
-        self.turn_data[attempt.turn.id] = replace(attempt.turn, execution_id=execution.id)
-        return ExecutionAcceptance(execution, replace(attempt, turn=self.turn_data[attempt.turn.id]), True)
+        self.turn_data[attempt.turn.id] = replace(
+            attempt.turn, execution_id=execution.id
+        )
+        return ExecutionAcceptance(
+            execution, replace(attempt, turn=self.turn_data[attempt.turn.id]), True
+        )
 
     def begin_execution_requery(
         self,
@@ -207,26 +222,59 @@ class BrowserHistoryStore:
             turn = self.turn(owner, existing.history_id, existing.turn_id)
             return history, AcceptedAttempt(None, turn, None), existing, False
         history, attempt = self.begin_requery(
-            owner, source_kind, source_id, source_turn_id, operation_id, request_id, epoch, new_id
+            owner,
+            source_kind,
+            source_id,
+            source_turn_id,
+            operation_id,
+            request_id,
+            epoch,
+            new_id,
         )
         if analysis_run_id is not None:
             history = replace(history, analysis_run_id=analysis_run_id)
             self.headers[history.id] = (owner, history)
         execution = self._create_execution(
-            owner, history.id, attempt.turn.id, operation_id, request_hash, history.kind,
-            operation_kind, deadline_seconds,
+            owner,
+            history.id,
+            attempt.turn.id,
+            operation_id,
+            request_hash,
+            history.kind,
+            operation_kind,
+            deadline_seconds,
         )
         turn = replace(self.turn_data[attempt.turn.id], execution_id=execution.id)
         self.turn_data[turn.id] = turn
         return history, replace(attempt, turn=turn), execution, True
 
     def _create_execution(
-        self, owner, history_id, turn_id, operation_id, request_hash, mode, operation_kind, deadline_seconds
+        self,
+        owner,
+        history_id,
+        turn_id,
+        operation_id,
+        request_hash,
+        mode,
+        operation_kind,
+        deadline_seconds,
     ):
         now = datetime.now(UTC)
         execution = ExecutionRecord(
-            str(uuid4()), history_id, turn_id, operation_id, mode, operation_kind, "accepted",
-            None, now, None, now + timedelta(seconds=deadline_seconds), None, None, None,
+            str(uuid4()),
+            history_id,
+            turn_id,
+            operation_id,
+            mode,
+            operation_kind,
+            "accepted",
+            None,
+            now,
+            None,
+            now + timedelta(seconds=deadline_seconds),
+            None,
+            None,
+            None,
         )
         self.executions[execution.id] = (owner, request_hash, execution)
         self.operations[(owner, operation_id)] = execution.id
@@ -243,8 +291,13 @@ class BrowserHistoryStore:
         execution_id = self.operations.get((owner, operation_id))
         if execution_id is None:
             return None
-        if request_hash is not None and self.operation_hashes[(owner, operation_id)] != request_hash:
-            raise HistoryError("HISTORY_OPERATION_CONFLICT", "操作编号与原请求不匹配", 409)
+        if (
+            request_hash is not None
+            and self.operation_hashes[(owner, operation_id)] != request_hash
+        ):
+            raise HistoryError(
+                "HISTORY_OPERATION_CONFLICT", "操作编号与原请求不匹配", 409
+            )
         return self.execution(owner, execution_id)
 
     def mark_execution_running(self, owner, execution_id):

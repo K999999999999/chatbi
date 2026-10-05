@@ -252,7 +252,9 @@ class ExecutionRuntime:
                 monotonic_clock=self._monotonic_clock,
             )
             if execution.status == "stopping":
-                control.signal(execution.stop_reason or ExecutionStopReason.USER_CANCELLED)
+                control.signal(
+                    execution.stop_reason or ExecutionStopReason.USER_CANCELLED
+                )
             with self._condition:
                 self._stop_controls[execution.id] = control
                 lease._stop_control = control

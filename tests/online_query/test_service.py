@@ -68,7 +68,9 @@ class ServiceTest(unittest.TestCase):
         self.assertIn("查询已完成订单", prompt)
         self.executor.execute.assert_called_once_with(ValidatedSQL(self.sql))
 
-    def test_execution_stop_after_sql_generator_returns_is_not_mapped_to_failure(self) -> None:
+    def test_execution_stop_after_sql_generator_returns_is_not_mapped_to_failure(
+        self,
+    ) -> None:
         class Control:
             stopped = False
 
