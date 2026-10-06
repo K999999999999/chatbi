@@ -1,8 +1,8 @@
 # 完整 PNG 导出与离线渲染
 
-Status: open
+Status: in-progress
 Owner: 当前主 Agent
-Blocked by: 01-xlsx-export
+Blocked by: None; 01-xlsx-export completed at `111980d`
 
 ## What to build
 
@@ -18,7 +18,7 @@ Blocked by: 01-xlsx-export
 
 ## Result
 
-待实施。
+实施中；Verification 待完成后记录。
 
 ## Comments
 
