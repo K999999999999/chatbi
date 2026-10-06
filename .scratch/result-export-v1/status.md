@@ -2,16 +2,16 @@
 
 Last updated: 2026-10-06
 Status: in-progress
-Stage: Ticket 02 PNG 实现 / 阶段验证完成，候选本地提交处理中；Ticket 03 PDF 为下一项
+Stage: Ticket 03 PDF 实施中；Ticket 01 XLSX 与 Ticket 02 PNG 已完成并提交本地候选
 Authorization: 用户已确认四项 Ticket 拆分与连续完成 01–04 的本地实施，含编码、适用测试 / 真实验收、Review、本地 Commit；未授权 Push / PR / 部署。
 Baseline: `ee92acaa7998749d46b57d85611ec69ab14948b1`
-Branch: `docs/result-export-v1-spec`; Ticket 01 candidate: `111980d`; Ticket 02 baseline HEAD: `3129292`
+Branch: `docs/result-export-v1-spec`; Ticket 01 candidate: `111980d`; Ticket 02 candidate / Ticket 03 baseline HEAD: `88f122c`
 
 ## Ticket progress
 
 - 01 XLSX：实现、独立文件解析、Query API / Runtime / PostgreSQL / 浏览器、build / typecheck / targeted lint / lock 检查与 Code Review PASS；本地候选 `111980d`。
-- 02 PNG：实现、隔离渲染、真实 UI 下载、完整性 / 资源检查与 Code Review PASS；候选本地提交处理中。
-- 03 PDF：依赖 02，下一项，尚未开始。
+- 02 PNG：实现、隔离渲染、真实 UI 下载、完整性 / 资源检查与 Code Review PASS；本地候选 `88f122c`。
+- 03 PDF：依赖 02，正在实施。
 - 04 隔离真实闭环与候选收口：依赖 03，尚未开始。
 
 ## Decisions and boundaries

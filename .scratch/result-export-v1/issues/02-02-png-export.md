@@ -1,6 +1,6 @@
 # 完整 PNG 导出与离线渲染
 
-Status: completed; local candidate commit pending
+Status: completed; local candidate `88f122c`
 Owner: 当前主 Agent
 Blocked by: None; 01-xlsx-export completed at `111980d`
 

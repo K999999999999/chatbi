@@ -1,6 +1,6 @@
 # 完整分析报告 PDF 下载
 
-Status: open
+Status: in-progress
 Owner: 当前主 Agent
 Blocked by: 02-png-export
 
@@ -18,7 +18,7 @@ Blocked by: 02-png-export
 
 ## Result
 
-待实施。
+实施中。
 
 ## Comments
 
