@@ -35,34 +35,44 @@ async function captureExport(page: Page, button: Locator, format: 'xlsx' | 'png'
     return request.method() === 'POST' && new URL(response.url()).pathname === '/api/v1/result-exports';
   }, { timeout: 180000 });
   const downloadReady = page.waitForEvent('download', { timeout: 180000 });
-  await button.click();
-  const [response, download] = await Promise.all([responseReady, downloadReady]);
-  page.off('request', onRequest);
-  expect(executionPosts).toBe(0);
-  expect(response.status()).toBe(200);
-  const mime = { xlsx: 'spreadsheetml.sheet', png: 'image/png', pdf: 'application/pdf' }[format];
-  expect(response.headers()['content-type']).toContain(mime);
-  const body = response.request().postDataJSON() as Record<string, unknown>;
-  expect(body.format).toBe(format);
-  expect(body.source).toEqual(expectedSource);
-  const path = await download.path();
-  if (!path) throw new Error('浏览器没有保留导出下载文件');
-  const bytes = readFileSync(path);
-  expect(bytes.length).toBeGreaterThan(100);
-  if (format === 'xlsx') expect(bytes.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
-  if (format === 'png') expect(bytes.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
-  if (format === 'pdf') expect(bytes.subarray(0, 5).toString('ascii')).toBe('%PDF-');
-  await download.saveAs(`/reports/${file}`);
-  return { format, file, suggested_filename: download.suggestedFilename(), size: bytes.length,
-    sha256: createHash('sha256').update(bytes).digest('hex'), mime: response.headers()['content-type'],
-    source: body.source, selection: { chart_id: body.chart_id, chart_type: body.chart_type,
-      task_id: body.task_id, product_index: body.product_index }, execution_posts_during_export: executionPosts,
-    ...(expectedSnapshot ? { expected_snapshot: expectedSnapshot } : {}) };
+  try {
+    const [response, download] = await Promise.all([responseReady, downloadReady, button.click()]);
+    expect(executionPosts).toBe(0);
+    expect(response.status()).toBe(200);
+    const mime = { xlsx: 'spreadsheetml.sheet', png: 'image/png', pdf: 'application/pdf' }[format];
+    expect(response.headers()['content-type']).toContain(mime);
+    const body = response.request().postDataJSON() as Record<string, unknown>;
+    expect(body.format).toBe(format);
+    expect(body.source).toEqual(expectedSource);
+    const path = await download.path();
+    if (!path) throw new Error('浏览器没有保留导出下载文件');
+    const bytes = readFileSync(path);
+    expect(bytes.length).toBeGreaterThan(100);
+    if (format === 'xlsx') expect(bytes.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+    if (format === 'png') expect(bytes.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    if (format === 'pdf') expect(bytes.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+    await download.saveAs(`/reports/${file}`);
+    return { format, file, suggested_filename: download.suggestedFilename(), size: bytes.length,
+      sha256: createHash('sha256').update(bytes).digest('hex'), mime: response.headers()['content-type'],
+      source: body.source, selection: { chart_id: body.chart_id, chart_type: body.chart_type,
+        task_id: body.task_id, product_index: body.product_index }, execution_posts_during_export: executionPosts,
+      ...(expectedSnapshot ? { expected_snapshot: expectedSnapshot } : {}) };
+  } finally {
+    page.off('request', onRequest);
+  }
 }
 
 function snapshotEvidence(snapshot: ReturnType<typeof querySnapshot>) {
   return { columns: snapshot.columns, rows: snapshot.rows, row_count: snapshot.row_count,
     truncated: snapshot.truncated, result_metadata: snapshot.result_metadata };
+}
+
+function safeErrorMessage(error: unknown) {
+  let message = error instanceof Error ? error.message : String(error);
+  for (const secret of [process.env.CHATBI_REAL_E2E_USERNAME, process.env.CHATBI_REAL_E2E_PASSWORD]) {
+    if (secret) message = message.split(secret).join('[redacted]');
+  }
+  return message.slice(0, 1000);
 }
 
 declare global {
@@ -533,6 +543,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     evidence.status = 'passed';
   } catch (error) {
     evidence.status = 'failed'; evidence.error_type = (error as Error).name;
+    evidence.error_message = safeErrorMessage(error);
     evidence.error_locations = (error as Error).stack?.match(/container-real\.spec\.ts:\d+:\d+/g) ?? [];
     throw new Error('真实容器业务验收失败，见私有报告的步骤与安全定位。');
   } finally {
@@ -563,7 +574,14 @@ test('停止重启后读取长期快照、重登录、续聊与显式重查', as
     expect(body.history.id).toBe(input.ranked_history_id);
     expect(result.rows.map(row => [String(row[0]), Number(row[1])])).toEqual(reference.top_products.slice(0, 2).map((row: unknown[]) => [String(row[0]), Number(row[1])]));
     const recoveredSource = { kind: 'history_turn', history_id: body.history.id, turn_id: body.turn.id };
-    evidence.exports.push(await captureExport(page, page.getByRole('button', { name: '下载 XLSX', exact: true }),
+    const recoveredTurn = page.locator('.turn').filter({ has: page.getByText('只看前2个产品', { exact: true }) }).last();
+    await expect(recoveredTurn).toHaveCount(1);
+    const recoveredTable = recoveredTurn.getByRole('table');
+    await expect(recoveredTable).toBeVisible();
+    await expect(recoveredTable.getByRole('row')).toHaveCount(result.rows.length + 1);
+    const recoveredXlsxButton = recoveredTurn.getByRole('button', { name: '下载 XLSX', exact: true });
+    await expect(recoveredXlsxButton).toBeEnabled();
+    evidence.exports.push(await captureExport(page, recoveredXlsxButton,
       'xlsx', 'r5-restarted-history-query.xlsx', recoveredSource, snapshotEvidence(result)));
     await page.goto(input.analysis_url); await expect(page.locator('.analysis-report h2')).toBeVisible();
     evidence.exports.push(await captureExport(page, page.getByRole('button', { name: '下载 PDF', exact: true }),
@@ -596,6 +614,10 @@ test('停止重启后读取长期快照、重登录、续聊与显式重查', as
       api_process_killed_before_restart: true,
     };
     evidence.status = 'passed';
-  } catch (error) { evidence.status = 'failed'; evidence.step = 'r3-restart'; evidence.error_type = (error as Error).name; throw new Error('R3重启验收未通过，请检查私有报告。'); }
+  } catch (error) {
+    evidence.status = 'failed'; evidence.step = 'r3-restart'; evidence.error_type = (error as Error).name;
+    evidence.error_message = safeErrorMessage(error);
+    throw new Error('R3重启验收未通过，请检查私有报告。');
+  }
   finally { writeFileSync('/reports/browser.json', JSON.stringify(evidence, null, 2)); }
 });
