@@ -22,6 +22,7 @@ mkdir -p "$work/report"
 export CHATBI_DEV_ENV_FILE=${CHATBI_DEV_ENV_FILE:-$root/.env}
 export CHATBI_DEV_COMPOSE_OVERRIDE="$work/compose.yml"
 export CHATBI_DEV_UID=$(id -u) CHATBI_DEV_GID=$(id -g)
+export CHATBI_DEV_SECCOMP_PROFILE=${CHATBI_DEV_SECCOMP_PROFILE:-$root/docker/third-party/playwright-seccomp-profile.json}
 export CHATBI_CONTAINER_REPORT_DIR="$work/report"
 printf 'services:\n' > "$work/compose.yml"
 if [[ "$mode" == isolated ]]; then
