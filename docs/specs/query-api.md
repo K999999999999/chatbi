@@ -44,6 +44,16 @@ POST /api/v1/executions/{execution_id}/cancel
 
 执行创建路由返回 `202` 受理身份；取消路由接受空 JSON body，返回 `202 stopping` 或 `200` 已有终态，重复请求幂等且不会改写成功终态。读取路由以只读身份检查现有 Session 和当前权限。`events` 使用版本化 SSE `snapshot` / `progress` / `text_delta` / `draft_reset` / `terminal` 帧与心跳，响应设为 `no-store`，身份失效时以不含私有字段的 `auth_lost` 帧关闭。分析报告生成期间仅发布六个白名单文字字段，并在快照中携带当前 generation 的完整未校验草稿；正式报告仍须经过原结构、证据引用与业务校验，并成功保存后才交付。网页重连只重新 GET，不重放业务 POST。完整阶段名称、缓冲上限、停止与草稿行为以正式 R4 Spec 为准；本文说明同步 API 兼容边界与新增网页路由。
 
+### R5 成果导出路由（增量接口）
+
+```text
+POST /api/v1/result-exports
+```
+
+请求只指定 owner 可读的 `history_turn`（历史 ID + 成功轮次 ID）或 `saved_result`（成果 ID）和文件格式；不接受 owner、SQL、文件路径或客户端结果值。服务端从持久化成功快照构建文件，不调用模型 / 查询，不改写历史或成果。当前实现 XLSX；PNG / PDF 尚未实现时返回受控 `422`。成功响应为实际文件，使用适用 MIME、`Cache-Control: no-store`、`X-Content-Type-Options: nosniff`；失败遵循现有 `request_id` 和错误 JSON。
+
+导出沿用当前登录 Session、查询权限与 Cookie / CSRF 检查；在生成前和发送前重新核验 owner / 来源。导出 runtime 当前限定单 API 进程并持有私有临时目录锁；来源最多 5 MiB、每账号同时生成 1 个文件、API 同时 2 个、生成预算 60 秒、文件最多 20 MiB。活动和失败路径都会回收临时文件。完整来源、精度、权限竞态与错误 Contract 见 [R5 Spec](result-export-v1.md) 和 [Design](../designs/result-export-v1.md)；R5 尚在分阶段实施，不能把 Ticket 01 状态等同为全格式完成。
+
 ### 查询
 
 ```text

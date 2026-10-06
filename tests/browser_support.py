@@ -29,6 +29,7 @@ from src.online_query.contracts import QueryErrorCode, QueryFailure, QuerySucces
 from src.online_query.query_understanding import QueryType, ValidatedSemanticQuery
 from src.query_api.app import create_app
 from src.query_api.browser import BrowserSettings
+from src.query_api.history_codec import encode_snapshot
 from tests.history_support import BrowserHistoryRuntime, BrowserHistoryStore
 from tests.query_api.history_fixtures import query_state
 from tests.query_api.support import _DefaultRevisionAdapter
@@ -167,6 +168,25 @@ def create_browser_app():
     auth = AuthService(sessions)
     directory = Path(__file__).resolve().parents[1] / "frontend/dist"
     history_store = BrowserHistoryStore()
+    if os.getenv("CHATBI_RESULT_EXPORT_BROWSER_TEST") == "1":
+        question = "导出测试快照问题"
+        snapshot = encode_snapshot(
+            "query",
+            {
+                "request_id": "browser-export-request",
+                "sql": "SELECT 1",
+                "columns": ["月份", "销售额", "空值", "零", "空串"],
+                "rows": [["2026-02", 123.45, None, 0, ""]],
+                "row_count": 1,
+                "truncated": False,
+                "result_metadata": None,
+            },
+            query_state=query_state(),
+            source_question=question,
+        )
+        history_store.seed_successful_query(
+            1, question, snapshot, title="浏览器导出验收历史"
+        )
     return create_app(
         BrowserQueryFixture(),
         analysis_service=BrowserAnalysisFixture(),

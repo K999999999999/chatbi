@@ -180,6 +180,9 @@ class HistoryStore(Protocol):
     def saved_result(
         self, owner: int, result_id: str
     ) -> tuple[SavedResultHeader, dict]: ...
+    def export_snapshot(
+        self, owner: int, source_kind: str, source_id: str, turn_id: str | None
+    ) -> dict: ...
     def list_saved_results(
         self, owner: int, kind: str | None, limit: int, cursor: str | None, q: str = ""
     ) -> tuple[list[SavedResultHeader], str | None]: ...

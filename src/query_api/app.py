@@ -308,23 +308,34 @@ def create_app(
                         history_runtime, analysis_guard
                     )
                 publish_bindings(app)
+                export_runtime = getattr(app.state, "result_export_runtime", None)
+                if export_runtime is not None:
+                    try:
+                        export_runtime.startup()
+                    except (OSError, RuntimeError):
+                        _LOGGER.warning("成果导出运行环境不可用；Query API 继续启动")
                 yield
             finally:
                 try:
-                    if active_execution_runtime is not None:
-                        active_execution_runtime.close()
+                    export_runtime = getattr(app.state, "result_export_runtime", None)
+                    if export_runtime is not None:
+                        export_runtime.shutdown()
                 finally:
-                    active_execution_runtime = None
                     try:
-                        analysis_guard.drain()
+                        if active_execution_runtime is not None:
+                            active_execution_runtime.close()
                     finally:
+                        active_execution_runtime = None
                         try:
-                            close = getattr(active_analysis_service, "close", None)
-                            if callable(close):
-                                close()
+                            analysis_guard.drain()
                         finally:
-                            if owned_recorder is not None:
-                                owned_recorder.shutdown()
+                            try:
+                                close = getattr(active_analysis_service, "close", None)
+                                if callable(close):
+                                    close()
+                            finally:
+                                if owned_recorder is not None:
+                                    owned_recorder.shutdown()
             return
 
         async with AsyncExitStack() as scope:
@@ -375,32 +386,43 @@ def create_app(
                         audit_sink=audit_sink,
                     )
                 publish_bindings(app)
+                export_runtime = getattr(app.state, "result_export_runtime", None)
+                if export_runtime is not None:
+                    try:
+                        export_runtime.startup()
+                    except (OSError, RuntimeError):
+                        _LOGGER.warning("成果导出运行环境不可用；Query API 继续启动")
                 yield
             finally:
                 # 删除本轮挂载与引用，下一轮 lifespan 不复用已关闭资源。
                 try:
-                    if active_execution_runtime is not None:
-                        active_execution_runtime.close()
+                    export_runtime = getattr(app.state, "result_export_runtime", None)
+                    if export_runtime is not None:
+                        export_runtime.shutdown()
                 finally:
-                    active_execution_runtime = None
                     try:
-                        analysis_guard.drain()
+                        if active_execution_runtime is not None:
+                            active_execution_runtime.close()
                     finally:
-                        app.router.routes[:] = list(original_routes)
-                        for attribute in ("sqladmin", "sqladmin_engine"):
-                            if hasattr(app.state, attribute):
-                                delattr(app.state, attribute)
-                        provider = _MissingIdentityProvider()
-                        authorization_store = _UnavailablePolicyStore()
-                        authorized_service = None
-                        service = None
-                        auth_service = audit_sink = recorder = query_understanding = (
-                            None
-                        )
-                        active_analysis_service = None
-                        history_store = history_runtime = None
-                        browser_settings = None
-                        publish_bindings(app)
+                        active_execution_runtime = None
+                        try:
+                            analysis_guard.drain()
+                        finally:
+                            app.router.routes[:] = list(original_routes)
+                            for attribute in ("sqladmin", "sqladmin_engine"):
+                                if hasattr(app.state, attribute):
+                                    delattr(app.state, attribute)
+                            provider = _MissingIdentityProvider()
+                            authorization_store = _UnavailablePolicyStore()
+                            authorized_service = None
+                            service = None
+                            auth_service = audit_sink = recorder = (
+                                query_understanding
+                            ) = None
+                            active_analysis_service = None
+                            history_store = history_runtime = None
+                            browser_settings = None
+                            publish_bindings(app)
 
     app = FastAPI(title="ChatBI Query API", version="0.1.0", lifespan=lifespan)
     publish_bindings(app)
@@ -427,6 +449,7 @@ def create_app(
                 "/api/v1/histories",
                 "/api/v1/saved-results",
                 "/api/v1/executions",
+                "/api/v1/result-exports",
             )
         ):
             response = await call_next(request)
@@ -549,6 +572,15 @@ def create_app(
         request: Request,
         _: RequestValidationError,
     ) -> JSONResponse:
+        if request.url.path.startswith("/api/v1/result-exports"):
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "request_id": _request_id_from_state(request),
+                    "error_code": "INVALID_REQUEST",
+                    "error_message": "导出请求格式无效",
+                },
+            )
         result = QueryFailure(
             request_id=_request_id_from_state(request),
             error_code=QueryErrorCode.INVALID_REQUEST,
@@ -636,6 +668,9 @@ def create_app(
     from .history_api import mount_history_api
 
     mount_history_api(app)
+    from .result_export_api import mount_result_export_api
+
+    mount_result_export_api(app)
     from .execution_api import mount_execution_api
 
     mount_execution_api(app)

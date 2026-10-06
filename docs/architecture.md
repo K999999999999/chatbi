@@ -373,7 +373,7 @@ Online Retrieval V1 已接入 Online Query：实体类、单指标和多指标�
 - BGE-M3：只对离线检索文档正文和检索评测问题生成向量，不决定业务事实。
 - Qdrant：保存版本化 TABLE、COLUMN、METRIC 检索集合，不保存业务真相。
 - 已发布 RAG 资产：当前为 Online Query 默认提供动态结构和指标上下文；静态知识文件只用于显式静态评测/基础模式，不作为在线 RAG 技术故障 fallback。
-- Query API Adapter：保留同步 HTTP JSON 兼容接口，并通过同一 Application 边界提供 R4 后台执行受理 / 停止 / 状态查询与 SSE 观察；业务执行仍复用既有 Online Query / Business Analysis 链路。安全审计和 execution 状态分别由授权 / Control DB Adapter 持久化；当前没有 API 限流。
+- Query API Adapter：保留同步 HTTP JSON 兼容接口，并通过同一 Application 边界提供 R4 后台执行受理 / 停止 / 状态查询与 SSE 观察，以及 R5 成功快照文件导出；业务执行仍复用既有 Online Query / Business Analysis 链路。安全审计和 execution 状态分别由授权 / Control DB Adapter 持久化；导出使用 owner 限定的只读来源投影和隔离 worker，不触发业务查询或持久化导出任务；当前没有 API 限流。
 - Web Frontend：电脑端 React / TypeScript / Vite，仅通过 HTTP 使用既有 API；Cookie / CSRF Adapter 复用现有账号与数据库 Session。
 - API Gateway：如未来部署需要，可放在 ChatBI 外部边界处理网关级流量治理；当前不依赖具体网关产品。
 
@@ -399,9 +399,11 @@ Online Retrieval V1 已接入 Online Query：实体类、单指标和多指标�
 - RAG Offline Build 和 Online Retrieval V1 已实现。新 manifest 记录输入指纹；production 启动时校验 catalog、Metadata 和当前发布资产，不匹配时拒绝 Ready。
 - PostgreSQL 首次初始化需在基础 init 完成后运行 `src.bootstrap migrate`；它通过 `PostgresSaver.setup()` 安装 checkpoint 表和权限，healthcheck / API 启动检查验证其完整性。
 - 日期化 Acceptance 和 ignored reports 是历史证据，不代表当前候选。Evaluation 基线只有在单轮、多轮和 Business Analysis 三套报告均记录同一最终 clean commit、`git_dirty=false`，且各自满足 `0 FAIL`、`0 INVALID_CASE` 后才成立。commit `31a04549924f622777f106d4fe5a758bd2ca2beb` 与 `564343216e4493f832f07efb345c03b058a04eb5` 上的通过结果是历史基线，后者的多轮波动见[验收工作项](../.scratch/engineering-quality-gates/issues/04-current-candidate-evaluation-baseline.md#result)；后续候选需重新评测。
-- 旧同步 Query API 保留兼容，电脑端 Web 的网页执行路径通过 R4 后台 execution、SSE 状态观察、取消 / 恢复与未校验报告草稿完成异步反馈；R3 私人历史、快照恢复和独立成果继续复用。R4 的行为与模块设计见 [Spec](specs/execution-streaming-v1.md) 和 [Design](designs/execution-streaming-v1.md)，最终候选验证状态见 [Acceptance](acceptance/execution-streaming-v1.md) 与本机实时工作状态。R5 导出及生产部署运行保障仍不属于当前 Contract。
+- 旧同步 Query API 保留兼容，电脑端 Web 的网页执行路径通过 R4 后台 execution、SSE 状态观察、取消 / 恢复与未校验报告草稿完成异步反馈；R3 私人历史、快照恢复和独立成果继续复用。R4 的行为与模块设计见 [Spec](specs/execution-streaming-v1.md) 和 [Design](designs/execution-streaming-v1.md)，最终候选验证状态见 [Acceptance](acceptance/execution-streaming-v1.md) 与本机实时工作状态。R5 Ticket 01 XLSX 验证与 Review 已通过，本地提交收尾中；PNG / PDF 与真实完整闭环按已确认 Ticket 后续实施，详见 [Spec](specs/result-export-v1.md) 和 [Design](designs/result-export-v1.md)。生产部署运行保障仍不属于当前 Contract。
 
 
 ## 长期历史与结果边界
 
 History Application 位于现有 query_api Application 边界，通过 HistoryStore Port 使用 Control DB Adapter；HTTP 层处理身份与 DTO，Online Query 负责完整业务条件认证、当前映射、SQL Guard 和执行。历史快照不是业务真相。R2 维度展示与 R3 恢复共享 `src/semantic/query_bindings.json` 的批准映射，当前发布资源仍必须认证该引用。单 API 进程以独立 PG advisory lock 与 epoch 保证恢复和迟到提交隔离，未扩展多副本 / 故障切换。详细行为与设计见 [R3 Spec](specs/history-results-v1.md) 和 [Design](designs/history-results-v1.md)。
+
+Result Export Application 位于同一 `query_api` 边界，通过 History Application 的 owner 限定只读投影读取成功快照，再经文件生成 Port 调用独立 worker；它不连接 Online Query 执行链，不访问 LLM，也不更新 Control DB。HTTP Adapter 负责 Cookie / CSRF、严格来源 DTO、文件响应和断连通知。当前 XLSX Adapter 已显式写入单元格类型；PNG / PDF renderer 尚未交付。

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { APIError, request, type Identity } from './api';
+import { APIError, downloadResultExport, request, type Identity } from './api';
 import { object, querySnapshot, ResultView, type QuerySnapshot } from './results';
 import { analysisResult, AnalysisDraft, AnalysisReport, type AnalysisResult } from './Analysis';
 import { historyHeader, historyTurn, pageItems, savedResult, type HistoryHeader, type HistoryTurn, type SavedResult } from './history';
@@ -32,6 +32,7 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
   const [selected, setSelected] = useState<Partial<Record<Mode, HistoryHeader>>>({});
   const [saved, setSaved] = useState<SavedResult>(); const [savedQuery, setSavedQuery] = useState<QuerySnapshot>(); const [savedAnalysis, setSavedAnalysis] = useState<AnalysisResult>();
   const [saving, setSaving] = useState(false); const savingRef = useRef(false);
+  const [exporting, setExporting] = useState(false);
   const [pending, setPending] = useState(false); const [blocked, setBlocked] = useState(false); const [notice, setNotice] = useState('');
   const [activeExecutionId, setActiveExecutionId] = useState<string | null>(null);
   const [cancelingExecutionId, setCancelingExecutionId] = useState<string | null>(null);
@@ -56,6 +57,19 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
     if (err instanceof APIError && err.status === 401) { onExpired(); return; }
     if (err instanceof APIError && err.status === 403) { clearPrivate('当前账号已无权查看这些记录，私有内容已清除。'); return; }
     setNotice((err as Error).message);
+  }
+  async function exportResult(format: 'xlsx' | 'png' | 'pdf', turnId?: string) {
+    if (exporting) return;
+    const source = saved
+      ? { kind: 'saved_result' as const, saved_result_id: saved.id }
+      : header && turnId
+        ? { kind: 'history_turn' as const, history_id: header.id, turn_id: turnId }
+        : undefined;
+    if (!source) return;
+    setExporting(true); setNotice('正在生成导出文件…');
+    try { await downloadResultExport(source, format, user.user_id); setNotice('文件已下载。'); }
+    catch (err) { fail(err, current.current); }
+    finally { setExporting(false); }
   }
   function entry(t: HistoryTurn, kind: Mode, runId: string | null): Entry {
     const decoded: Entry = { id: t.ordinal, question: t.question, turnId: t.id, saved: t.status === 'succeeded',
@@ -406,7 +420,9 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
     <div className="timeline" aria-live="polite">{notice && <p role="alert">{notice}</p>}
       {uncertainExecution && <p role="alert">受理结果暂未确认。可刷新该历史恢复观察，或明确重试同一请求。
         <button disabled={pending} onClick={() => void retryUncertainExecution()}>明确重试同一请求</button></p>}
-      {saved ? <article className="turn"><p>成果内容固定；重新查询会创建新历史。</p>{savedQuery && <ResultView data={savedQuery}/>}{savedAnalysis && <AnalysisReport result={savedAnalysis}/>}</article> : <>
+      {saved ? <article className="turn"><p>成果内容固定；重新查询会创建新历史。</p>
+        {savedQuery && <button disabled={exporting || !user.permissions.includes('query.execute')} onClick={() => void exportResult('xlsx')}>{exporting ? '正在导出…' : '下载 XLSX'}</button>}
+        {savedQuery && <ResultView data={savedQuery}/>}{savedAnalysis && <AnalysisReport result={savedAnalysis}/>}</article> : <>
         {!entries.length && <section className="welcome"><div className="welcome-mark">BI</div><h2>从一个经营问题开始</h2>
           <p>{mode === 'query' ? '例如：2025年2月的人民币净销售额是多少？' : '例如：分析2025年2月相比2025年1月的人民币毛利变化。'}</p></section>}
         {entries.map(item => <article className="turn" key={item.id}><div className="question"><span>你</span><p>{item.question}</p></div>
@@ -431,6 +447,7 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
           {item.error && <p role="alert">{item.error}</p>}
           {item.saved && !item.result && !item.analysis && <button disabled={pending} onClick={() => void loadTurn(item)}>查看已保存结果</button>}
           {item.saved && <div className="result-actions"><button disabled={saving} onClick={() => setEdit({ action: 'save', title: header?.title ?? item.question.slice(0, 120), turnId: item.turnId })}>另存成果</button>
+            {mode === 'query' && <button disabled={exporting || !user.permissions.includes('query.execute')} onClick={() => void exportResult('xlsx', item.turnId)}>{exporting ? '正在导出…' : '下载 XLSX'}</button>}
             <button disabled={pending || !!activeExecutionId} onClick={() => void requery(item)}>重新查询当前数据</button></div>}
           {(item.requestId || item.traceId) && <details className="diagnostics"><summary>查看请求信息</summary>{item.requestId && <p>请求编号：{item.requestId}</p>}{item.traceId && <p>链路编号：{item.traceId}</p>}</details>}
         </article>)}

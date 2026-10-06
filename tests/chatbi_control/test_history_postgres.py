@@ -579,3 +579,37 @@ def test_failed_analysis_can_explicitly_start_new_independent_run(history_env):
     )
     assert accepted.turn.question == "原分析问题"
     assert store.header(owner, original.id).last_success_turn_id is None
+
+
+def test_export_projection_is_owner_scoped_and_saved_snapshot_outlives_history(
+    history_env,
+):
+    _engine, store, runtime, owner, _ = history_env
+    header, turn, snapshot = committed_query(store, runtime, owner, "完成结果来源问题")
+
+    history_source = store.export_snapshot(owner, "history_turn", header.id, turn.id)
+    assert history_source["kind"] == "query"
+    assert history_source["question"] == "完成结果来源问题"
+    assert history_source["result"] == {
+        key: value for key, value in snapshot["result"].items() if key != "sql"
+    }
+    assert history_source["result_time"] is not None
+    assert "query_state" not in history_source
+    assert "sql" not in history_source["result"]
+    with pytest.raises(HistoryError):
+        store.export_snapshot(owner + 1, "history_turn", header.id, turn.id)
+
+    saved = store.copy_result(owner, header.id, turn.id, "独立成果")
+    saved_source = store.export_snapshot(owner, "saved_result", saved.id)
+    assert saved_source["result"] == history_source["result"]
+    assert saved_source["question"] == "完成结果来源问题"
+    assert saved_source["result_time"] is None
+    assert saved_source["saved_time"] is not None
+
+    store.delete_history(owner, header.id, header.record_revision, "local:test")
+    assert (
+        store.export_snapshot(owner, "saved_result", saved.id)["result"]
+        == history_source["result"]
+    )
+    with pytest.raises(HistoryError):
+        store.export_snapshot(owner, "history_turn", header.id, turn.id)
