@@ -4,6 +4,12 @@
   font-style: normal;
   font-weight: 100 900;
 }
+@font-face {
+  font-family: "ChatBI PDF WenQuanYi Zen Hei";
+  src: local("WenQuanYi Zen Hei");
+  font-style: normal;
+  font-weight: 100 900;
+}
 
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; min-width: 1600px; width: 1600px; background: #fff; color: #17202a; }
@@ -21,7 +27,7 @@ body { font-family: "ChatBI Export Noto CJK SC", sans-serif; }
 .export-data small { display: block; color: #43515d; }
 .export-footer { margin-top: 16px; color: #56636d; font-size: 13px; }
 
-.pdf-report { width: 100%; max-width: 794px; margin: 0 auto; padding: 28px 32px 42px; color: #17202a; font-size: 11px; line-height: 1.55; }
+.pdf-report { width: 100%; max-width: 794px; margin: 0 auto; padding: 28px 32px 42px; color: #17202a; font-family: "ChatBI PDF WenQuanYi Zen Hei", sans-serif; font-size: 11px; line-height: 1.55; }
 .pdf-report h1 { margin: 3px 0 18px; font-size: 25px; line-height: 1.3; overflow-wrap: anywhere; }
 .pdf-report h2 { margin: 20px 0 9px; border-bottom: 1px solid #9aa7b1; padding-bottom: 5px; font-size: 16px; break-after: avoid; }
 .pdf-report h3 { margin: 15px 0 7px; font-size: 12px; break-after: avoid; }

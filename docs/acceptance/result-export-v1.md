@@ -2,7 +2,7 @@
 
 Status: Ticket 01–03 的本地实现证据已记录；Ticket 04 隔离真实闭环尚未完成，R5 整体未验收。
 
-本文件只记录 R5 各阶段可核验的候选和结果。Ticket 04 完成后补充最终 clean candidate 身份及完整业务闭环；此前证据不替代真实 Compose 验收，也不代表发布或生产部署。
+本文件只记录 R5 各阶段可核验的候选和结果。上一 clean candidate `89bc7a6` 的真实浏览器流程通过，但独立 PDF 文本解析发现 Noto 将“民”“长”映射为部首码位，因此该候选没有通过完整验收。用户确认仅修正 PDF 字体；Ticket 04 完成后记录新的 clean candidate 身份及完整业务闭环。此前证据不代表发布或生产部署。
 
 ## Ticket 01–02：XLSX 与 PNG
 
@@ -11,6 +11,8 @@ Status: Ticket 01–03 的本地实现证据已记录；Ticket 04 隔离真实�
 - 两项结果绑定各自提交；不是后续 PDF 候选或最终 R5 候选的验证身份。
 
 ## Ticket 03：PDF renderer 与独立解析
+
+上一 PDF Noto 候选的独立文本层缺陷已导致最终 Compose 验收失败；以下是本次字体修正的证据。最终 clean candidate 和全链路验收待补。
 
 - 查询 API 回归：`uv run --locked pytest tests/query_api -q`，180 passed、2 skipped、14 subtests passed。宿主环境跳过的两项浏览器 renderer 用例在下述固定镜像内单独通过。
 - 代码检查 / 构建：定向 Ruff、`uv lock --check`、`git diff --check`、`npm run typecheck`、`npm run build`、`npm run build:export` 均通过。两个 Vite build 报告既有 ECharts chunk 大于 500 KB 的提示。

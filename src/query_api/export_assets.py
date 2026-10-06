@@ -7,7 +7,21 @@ import importlib.metadata
 import json
 import os
 import stat
+import subprocess
 from pathlib import Path, PurePosixPath
+
+FONT_PROFILES = {
+    "chart": {
+        "family": "Noto Sans CJK SC",
+        "package": "fonts-noto-cjk",
+        "package_version": "1:20220127+repack1-1",
+    },
+    "pdf": {
+        "family": "WenQuanYi Zen Hei",
+        "package": "fonts-wqy-zenhei",
+        "package_version": "0.9.45-8",
+    },
+}
 
 
 def _digest(path: Path) -> str:
@@ -99,7 +113,45 @@ def verify_bundle(asset_root: Path, source_root: Path | None = None) -> dict:
     return manifest
 
 
-def write_runtime_manifest(root: Path, browser_root: Path, font_path: Path) -> None:
+def _fontconfig_file(family: str) -> Path:
+    result = subprocess.run(
+        ["fc-match", "-f", "%{family}\n%{file}", family],
+        capture_output=True,
+        check=True,
+        timeout=5,
+    )
+    resolved_family, path_text = result.stdout.decode("utf-8").splitlines()
+    if resolved_family.split(",", 1)[0].strip() != family:
+        raise ValueError("必需的导出字体不可用")
+    path = Path(path_text.strip())
+    return path.resolve(strict=True)
+
+
+def _font_manifest_entry(path: Path, role: str, package_version: str) -> dict:
+    profile = FONT_PROFILES[role]
+    _regular_file(path, maximum=100 * 1024 * 1024)
+    resolved = path.resolve(strict=True)
+    if _fontconfig_file(profile["family"]) != resolved:
+        raise ValueError("导出字体与 fontconfig 匹配结果不一致")
+    if package_version != profile["package_version"]:
+        raise ValueError("导出字体包版本无效")
+    return {
+        **profile,
+        "package_version": package_version,
+        "path": str(resolved),
+        "sha256": _digest(resolved),
+    }
+
+
+def write_runtime_manifest(
+    root: Path,
+    browser_root: Path,
+    chart_font_path: Path,
+    pdf_font_path: Path,
+    *,
+    chart_font_package_version: str,
+    pdf_font_package_version: str,
+) -> None:
     asset_root = root / "assets"
     bundle = verify_bundle(asset_root)
     if browser_root.is_symlink() or not browser_root.is_dir():
@@ -109,15 +161,20 @@ def write_runtime_manifest(root: Path, browser_root: Path, font_path: Path) -> N
     resolved_executable = executable.resolve(strict=True)
     if resolved_browser_root not in resolved_executable.parents or not os.access(executable, os.X_OK):
         raise ValueError("Playwright Chromium 安装位置无效")
-    _regular_file(font_path, maximum=100 * 1024 * 1024)
     payload = {
         "version": 1,
         "bundle_manifest_sha256": _digest(asset_root / "bundle-manifest.json"),
         "playwright_version": importlib.metadata.version("playwright"),
         "browser_root": str(resolved_browser_root),
         "chromium_executable": str(resolved_executable),
-        "font_path": str(font_path.resolve(strict=True)),
-        "font_sha256": _digest(font_path),
+        "fonts": {
+            "chart": _font_manifest_entry(
+                chart_font_path, "chart", chart_font_package_version
+            ),
+            "pdf": _font_manifest_entry(
+                pdf_font_path, "pdf", pdf_font_package_version
+            ),
+        },
         "frontend_source_sha256": bundle["source_sha256"],
     }
     output = root / "runtime-manifest.json"
@@ -133,7 +190,7 @@ def verify_runtime_manifest(
     runtime = _read_json(root / "runtime-manifest.json")
     browser_root = Path(runtime.get("browser_root", ""))
     executable = Path(runtime.get("chromium_executable", ""))
-    font_path = Path(runtime.get("font_path", ""))
+    fonts = runtime.get("fonts")
     if runtime.get("version") != 1 or runtime.get("bundle_manifest_sha256") != _digest(
         asset_root / "bundle-manifest.json"
     ):
@@ -151,14 +208,33 @@ def verify_runtime_manifest(
         or not os.access(executable, os.X_OK)
     ):
         raise ValueError("Playwright Chromium 不可用")
-    _regular_file(font_path, maximum=100 * 1024 * 1024)
-    if runtime.get("font_sha256") != _digest(font_path):
-        raise ValueError("PNG 中文字体指纹不匹配")
+    if not isinstance(fonts, dict) or set(fonts) != set(FONT_PROFILES):
+        raise ValueError("导出字体运行清单无效")
+    font_paths: dict[str, Path] = {}
+    for role, profile in FONT_PROFILES.items():
+        entry = fonts.get(role)
+        if (
+            not isinstance(entry, dict)
+            or entry.get("family") != profile["family"]
+            or entry.get("package") != profile["package"]
+            or entry.get("package_version") != profile["package_version"]
+            or not isinstance(entry.get("sha256"), str)
+            or len(entry["sha256"]) != 64
+        ):
+            raise ValueError("导出字体运行清单无效")
+        font_path = Path(entry.get("path", ""))
+        _regular_file(font_path, maximum=100 * 1024 * 1024)
+        resolved_font = font_path.resolve(strict=True)
+        if entry["sha256"] != _digest(resolved_font):
+            raise ValueError("导出字体指纹不匹配")
+        if _fontconfig_file(profile["family"]) != resolved_font:
+            raise ValueError("导出字体与 fontconfig 匹配结果不一致")
+        font_paths[role] = resolved_font
     return {
         "asset_root": asset_root,
         "browser_root": browser_root,
         "chromium_executable": executable,
-        "font_path": font_path,
+        "font_paths": font_paths,
     }
 
 
@@ -175,6 +251,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, default=Path("/opt/chatbi-export"))
     parser.add_argument("--browser-root", type=Path, default=Path("/opt/chatbi-export/browsers"))
-    parser.add_argument("--font-path", type=Path, required=True)
+    parser.add_argument("--chart-font-path", type=Path, required=True)
+    parser.add_argument("--pdf-font-path", type=Path, required=True)
+    parser.add_argument("--chart-font-package-version", required=True)
+    parser.add_argument("--pdf-font-package-version", required=True)
     options = parser.parse_args()
-    write_runtime_manifest(options.root, options.browser_root, options.font_path)
+    write_runtime_manifest(
+        options.root,
+        options.browser_root,
+        options.chart_font_path,
+        options.pdf_font_path,
+        chart_font_package_version=options.chart_font_package_version,
+        pdf_font_package_version=options.pdf_font_package_version,
+    )

@@ -298,7 +298,7 @@ export function PdfReport({ request }: { request: PdfRenderRequest }) {
       try {
         await document.fonts.ready;
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-        if (!document.fonts.check('12px "ChatBI Export Noto CJK SC"', '经营分析报告 中文')) throw new Error('中文字体不可用');
+        if (!document.fonts.check('12px "ChatBI PDF WenQuanYi Zen Hei"', '经营分析报告 中文民长')) throw new Error('PDF 中文字体不可用');
         const root = document.querySelector<HTMLElement>('.pdf-report');
         if (!root || root.scrollWidth > root.clientWidth || [...root.querySelectorAll<HTMLElement>('*')].some(item =>
           item.scrollWidth > item.clientWidth + 2 && !item.matches('.pdf-contribution-track'))) throw new Error('PDF 页面存在横向溢出');

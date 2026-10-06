@@ -1,6 +1,6 @@
 # R5 成果导出 Spec
 
-Status: 用户已整体确认完整 Spec、四项 Ticket 拆分和连续本地实施授权（2026-10-06）；Ticket 01 XLSX 候选 `111980d`、Ticket 02 PNG 候选 `88f122c` 已完成，Ticket 03 PDF 实施中，Ticket 04 待开始。未授权 Push / PR / 部署。
+Status: 用户已整体确认完整 Spec、四项 Ticket 拆分和连续本地实施授权（2026-10-06）；用户于 2026-10-07 确认修正 PDF 字体决定；Ticket 01 XLSX、Ticket 02 PNG 已完成，Ticket 03 字体修正与 Ticket 04 隔离真实验收进行中。未授权 Push / PR / 部署。
 Work item: result-export-v1
 Owner: 当前主 Agent
 Baseline: `ee92acaa7998749d46b57d85611ec69ab14948b1`
@@ -114,6 +114,7 @@ Change Profile: 持续维护、跨前后端与运行环境；风险集中于数�
 | Python XlsxWriter | 显式类型与精度策略；禁止默认文本转公式 / 外部链接 | 文件格式或精度要求改变 |
 | Playwright + Chromium 生成 PNG / PDF | 用户确认；复用既有 ECharts 图形规则，专用模板支持完整图表和中文分页 | 运行资源成本或渲染正确性无法满足验收 |
 | 本地资源与中文字体，隔离生成 | 用户确认；不依赖外部字体 / CDN，超时可终止 | 目标运行环境改变 |
+| PNG 使用 Noto CJK SC；PDF 使用 WenQuanYi Zen Hei | 独立 PDF 文本解析发现 Noto 的 Chromium ToUnicode 映射会把“民”“长”导出为部首码位；用户于 2026-10-07 确认只调整 PDF 字体，保留 PNG 字体 | PDF 中文提取或字体许可验收失败 |
 | 只导出快照，不增加全量查询 | 用户确认；保持查询 / SQL Guard 与模型链路 | 用户独立确认全量导出 |
 
 新增依赖及 Chromium / 字体安装纳入锁文件、容器开发和本地 Runbook；锁定版本、许可证与可分发字体、安装路径及验证工具在 Design 中核实，不在本 Spec 预填未经核实的版本。Application 通过 Port 使用文件生成 Adapter，Domain 不依赖文件库 / 浏览器 SDK；保持现有模块化单体，不新增远端渲染服务、通用任务平台或另一条业务查询链。

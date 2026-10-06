@@ -44,6 +44,7 @@ def _analysis_snapshot(*, attribution: bool):
          "中文证据", "完整保留", "金额单位元", f"行{i + 1:03d}-末列"]
         for i in range(100)
     ]
+    rows[0][4] = "居民消费和民生数据"
     rows[0][7] = '<img src="file:///etc/passwd" onerror="throw 1">'
     metadata = {
         "columns": [
@@ -219,6 +220,7 @@ def test_real_pdf_download_extracts_cjk_complete_evidence_and_attribution(tmp_pa
         assert "十月经营分析报告" in text
         assert "原分析问题" in text and "2026-10-06T10:00:00+00:00" in text
         assert "销售额" in text and "订单日期" in text and "2027-01-01" in text
+        assert "居民消费和民生数据" in text
         assert "产品变化贡献图" in text and "归因产品3" in text and "单价因素3" in text
         assert "第8列" in text and "行100-末列" in text
         assert "empty-task" in text and "月份" in text

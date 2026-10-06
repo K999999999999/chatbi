@@ -1,6 +1,6 @@
 # R5 隔离真实闭环验收与候选收口
 
-Status: open
+Status: in-progress
 Owner: 当前主 Agent
 Blocked by: 03-pdf-export
 
@@ -18,7 +18,7 @@ clean candidate、文件 hash / 大小 / content 与快照、模型 / 数据 / R
 
 ## Result
 
-待实施。
+上一 clean candidate `89bc7a6` 的隔离 Compose 浏览器流程、当前 / 历史 / 成果导出、API 重启恢复与资源清理均通过；12 个文件捕获、导出期间没有 executions POST，独立 PDF 文本解析因 Noto ToUnicode 把“民”“长”变成部首而失败。字体修正候选已本地渲染回归通过；需绑定新的 clean candidate 重跑全部真实验收和内容解析。
 
 ## Comments
 

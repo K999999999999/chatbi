@@ -13,7 +13,8 @@ FROM ${PYTHON_BASE}
 USER root
 RUN printf 'Acquire::Retries "3";\n' > /etc/apt/apt.conf.d/80-retries \
     && apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates fontconfig fonts-noto-cjk \
+    && apt-get install -y --no-install-recommends ca-certificates fontconfig \
+        fonts-noto-cjk=1:20220127+repack1-1 fonts-wqy-zenhei=0.9.45-8 \
     && rm -rf /var/lib/apt/lists/*
 RUN /usr/local/bin/python -m pip install --no-cache-dir uv==0.12.2
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
@@ -32,7 +33,10 @@ COPY src/query_api/export_assets.py /opt/chatbi-export/export_assets.py
 RUN uv run python /opt/chatbi-export/export_assets.py \
     --root /opt/chatbi-export \
     --browser-root /opt/chatbi-export/browsers \
-    --font-path "$(fc-match -f '%{file}' 'Noto Sans CJK SC' | head -n 1)" \
+    --chart-font-path "$(fc-match -f '%{file}' 'Noto Sans CJK SC' | head -n 1)" \
+    --pdf-font-path "$(fc-match -f '%{file}' 'WenQuanYi Zen Hei' | head -n 1)" \
+    --chart-font-package-version "$(dpkg-query -W -f='${Version}' fonts-noto-cjk)" \
+    --pdf-font-package-version "$(dpkg-query -W -f='${Version}' fonts-wqy-zenhei)" \
     && chmod -R a-w /opt/chatbi-export
 USER 1000:1000
 CMD ["uvicorn", "src.query_api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/workspace/src", "--reload-dir", "/workspace/scripts"]

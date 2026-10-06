@@ -1,6 +1,6 @@
 # R5 成果导出实现设计
 
-Status: 基于已整体确认 Spec 的实现设计；Design Review PASS；Ticket 01 XLSX 候选 `111980d`、Ticket 02 PNG 本地候选 `88f122c` 已完成，Ticket 03 PDF 实施中，Ticket 04 待开始。
+Status: 基于已整体确认 Spec 的实现设计；Design Review PASS；Ticket 01 XLSX 候选 `111980d`、Ticket 02 PNG 本地候选 `88f122c` 已完成；Ticket 03 PDF 字体修正和 Ticket 04 真实闭环验收进行中。
 Baseline: `ee92acaa7998749d46b57d85611ec69ab14948b1`
 Authority: [Spec](../specs/result-export-v1.md)。本设计落实 Contract 内的机制，不扩大格式、数据范围、部署形态或业务边界。
 
@@ -59,7 +59,7 @@ PDF 使用专用 HTML，A4 自动分页、正文可选取、标题与页码、�
 
 模板在 document.fonts.ready、全部图形 finished、尺寸 / overflow 检查完成后才发布 ready manifest。Manifest 记录输入 hash、所有应展示 block / chart / row 标识及数量；Application / Adapter 校验预期 coverage 再截图 / PDF。任何异常、未 ready 或不满足完整性均失败。最终格式头 / zip / PNG 尺寸 / PDF 可打开检查是必要检查，不能以 manifest 替代独立内容验收。
 
-PDF 中文字体选用随应用安装的 Noto CJK SC，保留许可证；字体缺失、出现无法表达的重要字形或 required asset hash 不匹配则拒绝生成，不依赖系统随机 fallback 或外部网络下载。依赖 / 字体版本与 hash 在安装锁与构建产物 manifest 固化；实施时核对实际包与许可证，不把尚未下载的版本写成已验证。
+PNG 图形继续使用 Noto Sans CJK SC；PDF 正文改用随应用安装的 WenQuanYi Zen Hei。独立 PDF 文本解析在 Noto 输出中发现“民”“长”被映射为部首码位，用户确认只为 PDF 修正字体，以保持可读且可搜索 / 复制的中文文本。Debian Bookworm 锁定 `fonts-noto-cjk=1:20220127+repack1-1` 与 `fonts-wqy-zenhei=0.9.45-8`；Debian copyright 记载 WenQuanYi Zen Hei 使用 GPL-2 with Font embedding exception 和 M+ FONTS License，保留镜像内版权文件。运行 manifest 分角色记录字体包版本、fontconfig 匹配路径和 SHA-256，并在导出时校验路径与 hash；任一字体缺失 / 不匹配时视觉导出受控不可用，不依赖外部网络或静默替代。版本信息见 [Debian Bookworm fonts-noto-cjk](https://packages.debian.org/bookworm/fonts/fonts-noto-cjk)、[fonts-wqy-zenhei](https://packages.debian.org/bookworm/fonts/fonts-wqy-zenhei) 与 [WenQuanYi Debian copyright](https://metadata.ftp-master.debian.org/changelogs//main/f/fonts-wqy-zenhei/fonts-wqy-zenhei_0.9.45-8_copyright)。
 
 ## 6. 进程、额度与清理
 
@@ -79,7 +79,7 @@ Runtime startup 通过单进程服务约束取得临时根清理所有权；只�
 
 Python dependencies 新增 XlsxWriter / Playwright，dev verification 使用独立 XLSX / PDF / PNG 解析工具，uv.lock 固化；Chromium build 与 Playwright 版本配套。
 
-单独 Vite export build 将 HTML / JS / CSS 打包为自包含 / 静态已知资源 bundle，manifest 绑定源码 / 依赖 hash。不新增运行时 Node 服务。Python 开发镜像增加 Node 构建 stage，COPY bundle 到 `/opt/chatbi-export/assets`，安装浏览器到固定只读位置，安装固定中文字体；现有源码挂载不能遮盖这些资产。
+单独 Vite export build 将 HTML / JS / CSS 打包为自包含 / 静态已知资源 bundle，manifest 绑定源码 / 依赖 hash。不新增运行时 Node 服务。Python 开发镜像增加 Node 构建 stage，COPY bundle 到 `/opt/chatbi-export/assets`，安装浏览器到固定只读位置，并按锁定版本安装 Noto 与 WenQuanYi：前者供 PNG 图形使用，后者供 PDF 正文使用；现有源码挂载不能遮盖这些资产。
 
 本地开发增加显式生成 export bundle / 安装 browser 与字体步骤。改共享图形规则后必须重建；manifest 比对失败时只拒绝导出，保留既有 query / history 服务，不能偷偷使用旧图形资产。开发 Compose 给 API 增加 export build 源文件（frontend/src、相关构建配置与 package lock）只读挂载到专用校验位置；运行时 hash 与 bundle manifest 比对，用于检测热更新代码和镜像内资产不一致，不服务这些源码，也不在请求期间运行 npm。非开发装配使用同一打包资产 manifest。当前 XLSX runtime 在 startup 检查私有根和单进程锁；检查失败时记录导出不可用，Query API 仍启动，导出请求受控返回 503 并 fail closed。Runbook 描述新依赖、构建、重建、缺失资源诊断和 rollback。
 
@@ -93,4 +93,4 @@ Python dependencies 新增 XlsxWriter / Playwright，dev verification 使用独�
 
 验证 seam：Application 注入 fake SourceReader / FileGenerator / 当前身份回调和时钟；runtime 用可控子进程故障验证进程组 / 超时；Control DB owner 投影独立 PG 集成；共享 option 两种 profile 与 manifest 固定输入测试；独立文件解析器检查原值 / 中文 / 全部分类 / 页数和引用；Playwright 浏览器实际下载；真实 Compose 检查 sandbox / 字体 / 资产与断连 / 重启清理。最终 Acceptance 按 Spec 覆盖正常 / 边界 / 失败和未运行项。
 
-Reference: [XlsxWriter Worksheet](https://xlsxwriter.readthedocs.io/worksheet.html)、[Workbook](https://xlsxwriter.readthedocs.io/workbook.html)、[Microsoft Excel 规格与限制](https://support.microsoft.com/en-us/excel/excel-specifications-and-limits)、[Playwright Page](https://playwright.dev/python/docs/api/class-page)、[Noto 使用说明](https://notofonts.github.io/noto-docs/website/use/)。文档能力不冒称当前候选运行已验证。
+Reference: [XlsxWriter Worksheet](https://xlsxwriter.readthedocs.io/worksheet.html)、[Workbook](https://xlsxwriter.readthedocs.io/workbook.html)、[Microsoft Excel 规格与限制](https://support.microsoft.com/en-us/excel/excel-specifications-and-limits)、[Playwright Page](https://playwright.dev/python/docs/api/class-page)、[Noto 使用说明](https://notofonts.github.io/noto-docs/website/use/)、[Debian fonts-wqy-zenhei](https://packages.debian.org/bookworm/fonts-wqy-zenhei)、[WenQuanYi Debian copyright](https://metadata.ftp-master.debian.org/changelogs//main/f/fonts-wqy-zenhei/fonts-wqy-zenhei_0.9.45-8_copyright)。文档能力不冒称当前候选运行已验证。
