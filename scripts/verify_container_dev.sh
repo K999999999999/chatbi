@@ -7,6 +7,7 @@ mode=${1:-isolated}
 if [[ "$mode" != isolated && "$mode" != real ]]; then
     echo '用法: scripts/verify_container_dev.sh {isolated|real}' >&2; exit 2
 fi
+browser_image=chatbi-browser-dev:local
 dirty=false
 if [[ -n "$(git status --porcelain)" ]]; then
     dirty=true
@@ -28,9 +29,14 @@ if [[ "$mode" == isolated ]]; then
     export POSTGRES_PUBLISHED_PORT=${CHATBI_VERIFY_PG_PORT:-15433}
     export CHATBI_DEV_API_PORT=${CHATBI_VERIFY_API_PORT:-18080}
     export CHATBI_DEV_WEB_PORT=${CHATBI_VERIFY_WEB_PORT:-18173}
+    browser_image=chatbi-browser-result-export-v1:local
     export RAG_OUTPUT_DIR="$work/rag"
     mkdir -p "$RAG_OUTPUT_DIR"
     cat >> "$work/compose.yml" <<'YAML'
+  api:
+    image: chatbi-result-export-v1:local
+  web:
+    image: chatbi-web-result-export-v1:local
   qdrant:
     ports: !override []
 YAML
@@ -71,8 +77,10 @@ finish() {
         # 只对本次新建project清理；检查project前缀和Compose实际名称，绝不使用日常项目。
         [[ "$COMPOSE_PROJECT_NAME" == chatbi-verify-* ]] || exit 1
         for volume in "${COMPOSE_PROJECT_NAME}_postgres_data" "${COMPOSE_PROJECT_NAME}_qdrant_data"; do
-            label=$(docker volume inspect --format '{{index .Labels "com.docker.compose.project"}}' "$volume")
-            [[ "$label" == "$COMPOSE_PROJECT_NAME" ]] || exit 1
+            if docker volume inspect "$volume" >/dev/null 2>&1; then
+                label=$(docker volume inspect --format '{{index .Labels "com.docker.compose.project"}}' "$volume")
+                [[ "$label" == "$COMPOSE_PROJECT_NAME" ]] || exit 1
+            fi
         done
         "${compose[@]}" down --volumes
     fi
@@ -110,7 +118,7 @@ docker inspect $("${compose[@]}" ps -q api web) --format '{{json .Image}}' > "$w
     'import json,os,hashlib,pathlib,urllib.parse; p=pathlib.Path(os.environ["RAG_MODEL_DIR"])/"config.json"; print(json.dumps({"llm_model":os.environ["LLM_MODEL"],"provider_host":urllib.parse.urlsplit(os.environ["LLM_BASE_URL"]).hostname,"embedding_device":os.environ["RAG_EMBEDDING_DEVICE"],"model_config_sha256":hashlib.sha256(p.read_bytes()).hexdigest()}))' > "$work/report/runtime.json"
 docker build --target browser -f docker/node-dev.Dockerfile \
     --build-arg "NODE_BASE=${CHATBI_DEV_NODE_BASE:-node:24.21.0-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6}" \
-    -t chatbi-browser-dev:local .
+    -t "$browser_image" .
 web_id=$("${compose[@]}" ps -q web)
 run_browser() {
 docker run --rm --network "container:$web_id" --user "$(id -u):$(id -g)" \
@@ -126,7 +134,7 @@ docker run --rm --network "container:$web_id" --user "$(id -u):$(id -g)" \
     -v "$root/src:/workspace/backend-src" \
     -v "$root/frontend/playwright.container.config.ts:/workspace/frontend/playwright.container.config.ts:ro" \
     -v "$root/frontend/playwright.container-reporter.ts:/workspace/frontend/playwright.container-reporter.ts:ro" \
-    chatbi-browser-dev:local npx playwright test --config playwright.container.config.ts
+    "$browser_image" npx playwright test --config playwright.container.config.ts
 }
 "${compose[@]}" exec -T api python -c \
     'import os; assert not any("MIGRATOR" in k for k in os.environ); print("API迁移身份隔离通过。")'
