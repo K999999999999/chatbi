@@ -18,7 +18,7 @@ test('成功问数轮次通过浏览器下载 XLSX 快照', async ({ page }) => 
   const downloadReady = page.waitForEvent('download');
   await page.getByRole('button', { name: '下载 XLSX' }).click();
   const download = await downloadReady;
-  expect(download.suggestedFilename()).toMatch(/^chatbi-query-[0-9a-f-]+\.xlsx$/);
+  expect(download.suggestedFilename()).toMatch(/^浏览器导出验收历史-查询结果-\d{8}T\d{6}Z\.xlsx$/);
   const bytes = await readFile(await download.path());
   expect(bytes.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
   expect(bytes.length).toBeGreaterThan(1000);
