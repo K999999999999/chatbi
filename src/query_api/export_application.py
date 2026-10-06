@@ -47,11 +47,11 @@ class ResultExportApplication:
         format: str,
         selection: dict | None = None,
     ) -> ExportJob:
-        if format not in {"xlsx", "png"}:
+        if format not in {"xlsx", "png", "pdf"}:
             raise ExportFailure(
                 "EXPORT_FORMAT_UNAVAILABLE", "所选导出格式暂不可用", 422
             )
-        if format == "xlsx" and selection is not None or format == "png" and not selection:
+        if (format in {"xlsx", "pdf"} and selection is not None) or (format == "png" and not selection):
             raise ExportFailure(
                 "EXPORT_SELECTION_INVALID", "图表选择无效", 422
             )
@@ -65,6 +65,10 @@ class ResultExportApplication:
         if format == "xlsx" and source.get("kind") != "query":
             raise ExportFailure(
                 "EXPORT_FORMAT_UNAVAILABLE", "XLSX 仅支持成功的查询快照", 422
+            )
+        if format == "pdf" and source.get("kind") != "analysis":
+            raise ExportFailure(
+                "EXPORT_FORMAT_UNAVAILABLE", "PDF 仅支持完成的经营分析快照", 422
             )
         document = {**source, "export_time": datetime.now(UTC).isoformat()}
         return ExportJob(

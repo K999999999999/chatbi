@@ -80,4 +80,4 @@ ChatBI 是面向业务数据分析的 Domain AI Engine（领域 AI 引擎）。�
 
 ## R5 成果导出
 
-按当前身份从已提交的成功快照导出 XLSX 和适用图表 PNG；适用于当前 / 历史成功轮次和独立保存成果，不重新查询、不调用模型、不扩大到全量数据。文件还原精度、NULL / 空字符串和数值的区分、公式文本保护以及临时资源限制见 [R5 Spec](specs/result-export-v1.md)。Ticket 01 XLSX 本地候选 `111980d`、Ticket 02 PNG 本地候选 `88f122c` 已完成；Ticket 03 PDF 实施中，完整真实业务闭环尚未完成。
+按当前身份从已提交的成功快照导出 XLSX、适用图表 PNG 和完整经营分析 PDF；适用于当前 / 历史成功轮次和独立保存成果，不重新查询、不调用模型、不扩大到全量数据。文件还原精度、NULL / 空字符串和数值的区分、公式文本保护以及临时资源限制见 [R5 Spec](specs/result-export-v1.md)。Ticket 01 XLSX 本地候选 `111980d`、Ticket 02 PNG 本地候选 `88f122c` 已完成；Ticket 03 PDF 已完成本地实现与 Review，Ticket 04 隔离 Compose 完整真实业务闭环尚未完成。

@@ -280,6 +280,59 @@ def test_png_export_accepts_analysis_and_passes_server_checked_selection(
     }
 
 
+def test_pdf_export_accepts_only_analysis_and_returns_pdf_headers(monkeypatch, tmp_path):
+    class AnalysisStore(Store):
+        def export_snapshot(self, owner, source_kind, source_id, turn_id):
+            return {
+                "kind": "analysis",
+                "title": "完整分析",
+                "question": "分析十月经营情况",
+                "result_time": datetime(2026, 10, 6, tzinfo=UTC).isoformat(),
+                "saved_time": None,
+                "result": {
+                    "mode": "analysis",
+                    "report": {"title": "完整分析", "task_results": []},
+                    "task_results": [],
+                },
+            }
+
+    client, runtime = make_client(AnalysisStore())
+    artifact_dir = tmp_path / "pdf-artifact"
+    artifact_dir.mkdir(mode=0o700)
+    artifact_path = artifact_dir / "result.pdf"
+    artifact_path.write_bytes(b"%PDF-1.7\nfixture\n%%EOF\n")
+
+    def generate(owner, document, cancelled, *, format, selection):
+        assert owner == 1
+        assert format == "pdf"
+        assert selection is None
+        assert document["kind"] == "analysis"
+        return ExportArtifact(artifact_path, artifact_path.stat().st_size, monotonic() + 60)
+
+    monkeypatch.setattr(runtime, "generate", generate)
+    with client:
+        response = client.post(
+            "/api/v1/result-exports",
+            json={
+                "source": {
+                    "kind": "saved_result",
+                    "saved_result_id": "e53ba3b9-1f11-4024-90f9-a7f2713cd56b",
+                },
+                "format": "pdf",
+            },
+        )
+    assert response.status_code == 200, response.text
+    assert response.content.startswith(b"%PDF-")
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    filename = unquote(
+        response.headers["content-disposition"].split("filename*=UTF-8''", 1)[1]
+    )
+    assert filename.startswith("完整分析-经营分析报告-") and filename.endswith(".pdf")
+    assert runtime._owner_active == set()
+
+
 def test_png_selection_is_required_and_forbidden_for_other_formats():
     client, _ = make_client()
     source = {

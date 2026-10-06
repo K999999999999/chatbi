@@ -4,6 +4,7 @@ import { init } from '../echartsRuntime';
 import { buildChartOption, wrapLabelByMeasurement } from '../chartOptions';
 import { resolveExportChart, type ChartExportSelection, type ChartExportSource } from '../exportPlan';
 import { exportCellValue } from '../exportFormatting';
+import { createPdfManifest, PdfReport, type PdfManifest, type PdfRenderRequest } from './pdfReport';
 import './export.css';
 
 const PNG_WIDTH = 1600;
@@ -18,7 +19,8 @@ type RenderManifest = { version: 1; render_hash: string; chart_id: string; chart
 declare global {
   interface Window {
     __chatbiRenderChart?: (request: RenderRequest) => void;
-    __chatbiRenderState?: { status: 'idle' | 'rendering' | 'ready' | 'failed'; manifest?: RenderManifest; error?: string; code?: string };
+    __chatbiRenderReport?: (request: PdfRenderRequest) => void;
+    __chatbiRenderState?: { status: 'idle' | 'rendering' | 'ready' | 'failed'; manifest?: RenderManifest | PdfManifest; error?: string; code?: string };
   }
 }
 
@@ -183,6 +185,18 @@ window.__chatbiRenderChart = request => {
   }
   root = createRoot(document.getElementById('root')!);
   root.render(<ExportChart request={request}/>);
+};
+window.__chatbiRenderReport = request => {
+  if (root) throw new Error('渲染入口不可重复调用');
+  window.__chatbiRenderState = { status: 'rendering' };
+  try { createPdfManifest(request); }
+  catch (error) {
+    window.__chatbiRenderState = { status: 'failed', code: 'PDF_RENDER_FAILED',
+      error: error instanceof Error ? error.message : 'PDF 快照无效' };
+    return;
+  }
+  root = createRoot(document.getElementById('root')!);
+  root.render(<PdfReport request={request}/>);
 };
 
 export { ORIGIN };

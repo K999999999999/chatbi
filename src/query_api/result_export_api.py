@@ -206,6 +206,7 @@ def mount_result_export_api(app: FastAPI) -> None:
             raise
 
         is_png = job.format == "png"
+        is_pdf = job.format == "pdf"
         filename = _export_filename(job)
         return TemporaryFileResponse(
             artifact.path,
@@ -213,6 +214,8 @@ def mount_result_export_api(app: FastAPI) -> None:
             owner=auth.user_id,
             media_type="image/png"
             if is_png
+            else "application/pdf"
+            if is_pdf
             else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             filename=filename,
             headers={

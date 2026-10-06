@@ -157,7 +157,7 @@ class ExportRuntime:
         format: str = "xlsx",
         selection: dict | None = None,
     ):
-        if format not in {"xlsx", "png"}:
+        if format not in {"xlsx", "png", "pdf"}:
             raise ExportFailure("EXPORT_FORMAT_UNAVAILABLE", "所选导出格式暂不可用", 422)
         if os.geteuid() == 0:
             raise ExportFailure("EXPORT_UNAVAILABLE", "文件导出运行账户配置无效", 503)
@@ -165,7 +165,7 @@ class ExportRuntime:
             raise ExportFailure(
                 "EXPORT_BUSY", "已有文件正在生成或下载，请稍后重试", 429
             )
-        if format == "png":
+        if format in {"png", "pdf"}:
             try:
                 self._render_config = verify_runtime_manifest(
                     self._export_root, self._source_root
@@ -174,7 +174,7 @@ class ExportRuntime:
                 self._render_config = None
             if self._render_config is None:
                 self.release(owner)
-                raise ExportFailure("EXPORT_UNAVAILABLE", "PNG 离线渲染资源不可用", 503)
+                raise ExportFailure("EXPORT_UNAVAILABLE", "离线 Chromium 渲染资源不可用", 503)
         if format == "png" and not selection:
             self.release(owner)
             raise ExportFailure("EXPORT_SELECTION_INVALID", "图表选择无效", 422)
@@ -227,9 +227,9 @@ class ExportRuntime:
 
         workdir.mkdir(mode=0o700)
         os.chmod(workdir, 0o700)
-        output = workdir / ("result.png" if format == "png" else "result.xlsx")
+        output = workdir / {"xlsx": "result.xlsx", "png": "result.png", "pdf": "result.pdf"}[format]
         environment = {"PATH": os.defpath, "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
-        if format == "png":
+        if format in {"png", "pdf"}:
             assert self._render_config is not None
             environment.update(
                 {
@@ -280,11 +280,11 @@ class ExportRuntime:
                     )
                 if process.returncode == 9:
                     raise ExportFailure(
-                        "EXPORT_UNAVAILABLE", "PNG 离线渲染资源不可用", 503
+                        "EXPORT_UNAVAILABLE", "离线 Chromium 渲染资源不可用", 503
                     )
                 if process.returncode == 10:
                     raise ExportFailure(
-                        "EXPORT_TOO_LARGE", "PNG 完整图形超过导出资源限制", 413
+                        "EXPORT_TOO_LARGE", "导出文件超过 20 MiB 限制", 413
                     )
                 raise ExportFailure(
                     "EXPORT_FAILED", "文件无法完整生成，请稍后重试", 422

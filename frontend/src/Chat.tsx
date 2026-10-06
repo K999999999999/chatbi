@@ -422,6 +422,7 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
         <button disabled={pending} onClick={() => void retryUncertainExecution()}>明确重试同一请求</button></p>}
       {saved ? <article className="turn"><p>成果内容固定；重新查询会创建新历史。</p>
         {savedQuery && <button disabled={exporting || !user.permissions.includes('query.execute')} onClick={() => void exportResult('xlsx')}>{exporting ? '正在导出…' : '下载 XLSX'}</button>}
+        {savedAnalysis && <button disabled={exporting || !user.permissions.includes('query.execute')} onClick={() => void exportResult('pdf')}>{exporting ? '正在导出…' : '下载 PDF'}</button>}
         {savedQuery && <ResultView data={savedQuery} exportSource={{ kind: 'saved_result', saved_result_id: saved.id }}
           canExport={user.permissions.includes('query.execute')} userId={user.user_id}/>}
         {savedAnalysis && <AnalysisReport result={savedAnalysis} exportSource={{ kind: 'saved_result', saved_result_id: saved.id }}
@@ -455,6 +456,7 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
           {item.saved && !item.result && !item.analysis && <button disabled={pending} onClick={() => void loadTurn(item)}>查看已保存结果</button>}
           {item.saved && <div className="result-actions"><button disabled={saving} onClick={() => setEdit({ action: 'save', title: header?.title ?? item.question.slice(0, 120), turnId: item.turnId })}>另存成果</button>
             {mode === 'query' && <button disabled={exporting || !user.permissions.includes('query.execute')} onClick={() => void exportResult('xlsx', item.turnId)}>{exporting ? '正在导出…' : '下载 XLSX'}</button>}
+            {mode === 'analysis' && item.analysis && <button disabled={exporting || !user.permissions.includes('query.execute')} onClick={() => void exportResult('pdf', item.turnId)}>{exporting ? '正在导出…' : '下载 PDF'}</button>}
             <button disabled={pending || !!activeExecutionId} onClick={() => void requery(item)}>重新查询当前数据</button></div>}
           {(item.requestId || item.traceId) && <details className="diagnostics"><summary>查看请求信息</summary>{item.requestId && <p>请求编号：{item.requestId}</p>}{item.traceId && <p>链路编号：{item.traceId}</p>}</details>}
         </article>)}

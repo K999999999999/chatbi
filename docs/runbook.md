@@ -563,10 +563,10 @@ R4 最终真实浏览器 / 模型 / RAG / PostgreSQL 闭环使用 clean candidat
 
 ## 14. R5 成果导出运行
 
-R5 只从 owner 当前可读的成功快照生成文件，不调用模型 / Online Query，也不写回历史或成果；不保留下载文件为服务器成果。XLSX 用于查询快照；PNG 用于查询图表和已完成分析快照中的产品、因素与查询任务图。PDF 由后续 Ticket 实施。完整来源、精度、安全与文件内容要求见 [R5 Spec](specs/result-export-v1.md) 和 [Design](designs/result-export-v1.md)。
+R5 只从 owner 当前可读的成功快照生成文件，不调用模型 / Online Query，也不写回历史或成果；不保留下载文件为服务器成果。XLSX 用于查询快照；PNG 用于查询图表和已完成分析快照中的产品、因素与查询任务图；PDF 用于已完成分析报告，包含正文、全部已返回归因、证据任务和限制说明。完整来源、精度、安全与文件内容要求见 [R5 Spec](specs/result-export-v1.md) 和 [Design](designs/result-export-v1.md)。
 
 导出运行时使用当前 API 用户私有的临时根与单进程锁；同一 API 只支持一个进程。快照最多 5 MiB、每账号并发 1 项、API 并发 2 项、每次生成最多 60 秒、文件最多 20 MiB。worker 不接收 Session / 数据库 / 模型凭证；任务目录设为 `0700`，输出文件设为 `0600`，下载成功、失败、断连或 API 关闭后都会清理。导出进程不得以 root 运行；root 下接口受控返回不可用。私有根 / 锁不可用时只有导出端点返回 503，Query API 仍启动。服务意外退出后，下一次启动只清理由此导出服务专用根中的旧任务目录，不扫描其他系统临时文件。
 
-PNG 使用镜像内固定的 Playwright / Chromium、离线图形 bundle 与 Noto CJK 字体；启动和每次 PNG 生成前校验浏览器、字体、bundle 及源码指纹。浏览器启用 sandbox，页面拒绝 CDN / 外部资源和网络连接；worker 环境不继承 API 凭证。API 开发容器通过只读挂载检查 `frontend/src`、导出入口、Vite / TypeScript 构建配置和依赖清单；修改这些源码后先执行 `./dev build` 重建 API 镜像，再执行 `./dev up`。源码与镜像不匹配、字体 / bundle 缺失或 sandbox 不可用时，PNG 端点受控返回不可用，XLSX 继续可用。`./dev` 默认配置仓库内随附的 Chromium seccomp profile；直接调用 Compose 时需设置 `CHATBI_DEV_SECCOMP_PROFILE` 指向 `docker/third-party/playwright-seccomp-profile.json`。
+PNG / PDF 使用镜像内固定的 Playwright / Chromium、离线 bundle 与 Noto CJK 字体；启动和每次图像 / PDF 生成前校验浏览器、字体、bundle 及源码指纹。浏览器启用 sandbox，页面拒绝 CDN / 外部资源和网络连接；worker 环境不继承 API 凭证。PDF 通过独立 HTML 模板生成 A4 可选取文本文件，并校验正文 / 任务 coverage 和页面横向溢出。API 开发容器通过只读挂载检查 `frontend/src`、导出入口、Vite / TypeScript 构建配置和依赖清单；修改这些源码后先执行 `./dev build` 重建 API 镜像，再执行 `./dev up`。源码与镜像不匹配、字体 / bundle 缺失或 sandbox 不可用时，PNG / PDF 端点受控返回不可用，XLSX 继续可用。`./dev` 默认配置仓库内随附的 Chromium seccomp profile；直接调用 Compose 时需设置 `CHATBI_DEV_SECCOMP_PROFILE` 指向 `docker/third-party/playwright-seccomp-profile.json`。
 
-新增 Python 依赖或锁文件变动后，开发容器需执行 `./dev build`，再执行 `./dev up`；宿主方式执行 `uv sync --locked`。不会新增数据库迁移、导出文件卷、后台队列或额外监听端口。Ticket 01 XLSX 与 Ticket 02 PNG 的本地浏览器 / 隔离 renderer 验证已通过；PDF、隔离 Compose 完整业务验收与生产部署仍未完成。
+新增 Python 依赖或锁文件变动后，开发容器需执行 `./dev build`，再执行 `./dev up`；宿主方式执行 `uv sync --locked`。不会新增数据库迁移、导出文件卷、后台队列或额外监听端口。Ticket 01 XLSX、Ticket 02 PNG 和 Ticket 03 PDF 的本地文件解析 / 浏览器 / 隔离 renderer 验证已通过；R5 隔离 Compose 完整业务验收与生产部署仍未完成。

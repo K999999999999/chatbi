@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from src.query_api.export_pdf import ExportFileTooLarge, generate_pdf
 from src.query_api.export_png import (
     ExportPixelLimit,
     ExportRendererUnavailable,
@@ -48,7 +49,7 @@ def main() -> int:
         return 3
     try:
         source = json.loads(raw)
-        if not isinstance(source, dict) or source.get("format") not in {"xlsx", "png"}:
+        if not isinstance(source, dict) or source.get("format") not in {"xlsx", "png", "pdf"}:
             return 4
         if not isinstance(source.get("document"), dict):
             return 4
@@ -56,15 +57,21 @@ def main() -> int:
             if source.get("selection") is not None:
                 return 4
             create_query_workbook(source["document"], destination)
-        else:
+        elif source["format"] == "png":
             if not isinstance(source.get("selection"), dict):
                 return 8
             generate_png(source["document"], source["selection"], destination)
+        else:
+            if source.get("selection") is not None:
+                return 4
+            generate_pdf(source["document"], destination)
     except InvalidChartSelection:
         return 8
     except ExportRendererUnavailable:
         return 9
     except ExportPixelLimit:
+        return 10
+    except ExportFileTooLarge:
         return 10
     except ExportRenderFailure:
         return 5
