@@ -1,6 +1,6 @@
 # R5 成果导出 Spec
 
-Status: 用户已整体确认完整 Spec、四项拆分和连续本地实施（2026-10-06），并于 2026-10-07 确认 PDF 字体调整；Ticket 01–04 与最终 clean local candidate `71d72d2` 验收均已完成。未授权 Push / PR / 部署。
+Status: 用户已整体确认完整 Spec、四项拆分和连续实施（2026-10-06），并于 2026-10-07 确认 PDF 字体调整；Ticket 01–04 与最终 clean local candidate `71d72d2` 验收均已完成；[PR56](https://github.com/K999999999999/chatbi/pull/56) 已合并（`367a42a`），required CI 全部通过。生产部署未包含。
 Work item: result-export-v1
 Owner: 当前主 Agent
 Baseline: `ee92acaa7998749d46b57d85611ec69ab14948b1`
@@ -148,5 +148,5 @@ Change Profile: 持续维护、跨前后端与运行环境；风险集中于数�
 
 - 用户在当前对话依次确认对象、格式、快照范围、PNG、PDF、XLSX、权限、资源限制、技术方案与验收；随后确认进入完整 Spec 固化。
 - 用户已确认本 Spec、Design、四项 Ticket 拆分与整体连续本地实施范围（编码、适用验证、Review、本地 Commit）；Design Review 与 Ticket Readiness 均已完成。细化出的完整性 / 安全检查落实已确认行为；若设计发现需改变范围或关键决定，返回澄清。
-- 当前授权覆盖 Ticket 01–04 连续本地实施、适用验证、Review 与本地 Commit；未授权 Push / PR / 部署。
+- 用户确认 Ticket 01–04 连续实施、适用验证、Review 与本地 Commit；随后于 2026-10-07 授权 R5 范围 Push / PR 跟进，PR56 已合并（`367a42a`）。生产部署未授权。
 - 未决业务需求：None。Design 必须解决的机制：类型保真表示、路由 / DTO、权限及删除竞态、确定性渲染 / 分页、总时限与进程回收、有界缓冲和依赖运行装配；不得降低已确认验收条件。

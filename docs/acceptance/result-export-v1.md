@@ -1,6 +1,6 @@
 # R5 成果导出验收
 
-Status: Ticket 01–04 与 R5 本地候选完整验收通过；最终 clean candidate 为 `71d72d2585306dc50a0b9ecca9ac1679d7ab45ff`。未授权 Push / PR / 部署。
+Status: Ticket 01–04 与 R5 本地候选完整验收通过；最终 clean candidate 为 `71d72d2585306dc50a0b9ecca9ac1679d7ab45ff`；[PR56](https://github.com/K999999999999/chatbi/pull/56) 已合并（merge commit `367a42adf0043356463dce98f6d4976340b0df6f`），required CI 全部通过。生产部署和目标环境运行验收未包含。
 
 本文件记录各阶段候选及最终真实闭环。历史候选证据仍绑定各自提交，不替代最终候选结果；生产部署与 R6 / R7 运行保障不属于此次完成范围。
 
@@ -42,4 +42,4 @@ Status: Ticket 01–04 与 R5 本地候选完整验收通过；最终 clean cand
 
 ## Evaluation 与发布范围
 
-未重跑 AI Evaluation：R5 只从已提交快照导出，不更改模型生成、Retrieval 或 SQL Guard 行为；本次真实问数仅用于端到端验收。历史 Evaluation 仍绑定其原报告候选，不迁移为 `71d72d2` 的新结果。R5 已完成本地候选实现和验收；Push、PR 与部署均未授权。
+未重跑 AI Evaluation：R5 只从已提交快照导出，不更改模型生成、Retrieval 或 SQL Guard 行为；本次真实问数仅用于端到端验收。历史 Evaluation 仍绑定其原报告候选，不迁移为 `71d72d2` 的新结果。R5 本地候选实现和验收完成后，经 PR56 合并至 `master`；这不构成生产部署或目标环境验收。

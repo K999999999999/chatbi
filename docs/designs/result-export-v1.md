@@ -1,6 +1,6 @@
 # R5 成果导出实现设计
 
-Status: 基于已整体确认 Spec 的实现设计；Design Review PASS；Ticket 01–04 与最终 clean candidate `71d72d2` 的实现 / Review / 验收均已完成。本地候选，不代表已发布或部署。
+Status: 基于已整体确认 Spec 的实现设计；Design Review PASS；Ticket 01–04 与最终 clean candidate `71d72d2` 的实现 / Review / 验收均已完成；[PR56](https://github.com/K999999999999/chatbi/pull/56) 已合并（`367a42a`），required CI 全部通过。生产部署未包含。
 Baseline: `ee92acaa7998749d46b57d85611ec69ab14948b1`
 Authority: [Spec](../specs/result-export-v1.md)。本设计落实 Contract 内的机制，不扩大格式、数据范围、部署形态或业务边界。
 

@@ -1,6 +1,6 @@
 # R5 成果导出实现设计
 
-Status: 基于已整体确认 Spec 的实现设计；Design Review PASS；Ticket 01–04 已在最终 clean candidate `71d72d2` 完成实现、Review 与验收；未授权远端发布 / 部署。
+Status: 基于已整体确认 Spec 的实现设计；Design Review PASS；Ticket 01–04 已在最终 clean candidate `71d72d2` 完成实现、Review 与验收；PR #56 已合并（`367a42a`），required CI 全部通过；生产部署未授权。
 Baseline: `ee92acaa7998749d46b57d85611ec69ab14948b1`
 Authority: [Spec](spec.md)。本设计落实 Contract 内的机制，不扩大格式、数据范围、部署形态或业务边界。
 

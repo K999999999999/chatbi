@@ -1,6 +1,6 @@
 # R5 成果导出 Spec
 
-Status: 用户已整体确认完整 Spec 和四项连续本地实施（2026-10-06）；2026-10-07 确认 PDF 改用 WenQuanYi、PNG 保留 Noto；Ticket 01–04 与 R5 clean local candidate `71d72d2` 验收全部完成。未授权 Push / PR / 部署。
+Status: 用户于 2026-10-06 整体确认完整 Spec 和四项连续本地实施；2026-10-07 确认 PDF 改用 WenQuanYi、PNG 保留 Noto。Ticket 01–04 与 R5 clean local candidate `71d72d2` 验收完成后，用户于 2026-10-07 授权提交 PR；PR #56 已合并（`367a42a`），required CI 全部通过。生产部署未授权。
 Work item: result-export-v1
 Owner: 当前主 Agent
 Baseline: `ee92acaa7998749d46b57d85611ec69ab14948b1`

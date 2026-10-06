@@ -2,10 +2,10 @@
 
 Last updated: 2026-10-07
 Status: completed
-Stage: Ticket 01–04 与 R5 本地 clean candidate 完整验收均已完成；最终候选 `71d72d2`；未发布 / 未部署
-Authorization: 用户已确认四项 Ticket 拆分与连续完成 01–04 的本地实施，含编码、适用测试 / 真实验收、Review、本地 Commit；未授权 Push / PR / 部署。
+Stage: Ticket 01–04 与 R5 clean candidate 验收已完成；PR #56 已合并至 master（`367a42a`），required CI 全部通过；未做生产部署
+Authorization: 用户于 2026-10-06 确认四项 Ticket 拆分与连续完成 01–04；2026-10-07 用户指令“提交pr”授权 R5 范围 Push、创建 / 更新 PR 与 CI 修复跟进；未授权生产部署。
 Baseline: `ee92acaa7998749d46b57d85611ec69ab14948b1`
-Branch: `docs/result-export-v1-spec`; final clean code candidate: `71d72d2` (Ticket 01 `111980d`; Ticket 02 `88f122c`)
+Branch: `docs/result-export-v1-spec` (已清理); final clean code candidate: `71d72d2` (Ticket 01 `111980d`; Ticket 02 `88f122c`); PR #56 merge commit: `367a42a`
 
 ## Ticket progress
 
@@ -19,5 +19,5 @@ Branch: `docs/result-export-v1-spec`; final clean code candidate: `71d72d2` (Tic
 - Spec / Design Review PASS / Ticket Readiness READY 均已完成；用户 2026-10-06 确认完整拆分及连续本地实施。
 - 仅既有成功快照导出，不执行业务查询、不调用模型、不请求全量数据；保留当前 owner、权限、CSRF 与导出资源界限。
 - 所有 Ticket 按 01 → 02 → 03 → 04 连续完成；R5 之外的产品 / 架构 / 权限 / 状态变化回到用户确认。
-- 本地 Commit 在授权内；任何 Push、PR 或部署仍需单独明确授权。
-- Ticket 01 验证绑定本地候选 `111980d`，Ticket 02 绑定 `88f122c`；Ticket 03 / 04 和完整 R5 验收绑定 clean candidate `71d72d2`。四项本地完成；未授权 Push / PR / 部署。
+- 发布授权于 2026-10-07 获得并用于 PR #56；PR 已合并，required CI 全部通过。生产部署仍未授权。
+- Ticket 01 验证绑定候选 `111980d`，Ticket 02 绑定 `88f122c`；Ticket 03 / 04 和完整 R5 验收绑定 clean candidate `71d72d2`。四项实现与本地验收完成，PR #56 已合并。
