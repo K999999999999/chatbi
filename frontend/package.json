@@ -7,6 +7,7 @@
     "dev": "vite --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
     "build": "npm run typecheck && vite build",
+    "build:export": "vite build --config vite.export.config.ts",
     "test": "playwright test",
     "test:real": "npm run build && CHATBI_REAL_E2E=1 playwright test --config playwright.real.config.ts",
     "test:dev": "playwright test --config playwright.dev.config.ts"

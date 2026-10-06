@@ -31,12 +31,19 @@ export type ExportSource =
   | { kind: 'history_turn'; history_id: string; turn_id: string }
   | { kind: 'saved_result'; saved_result_id: string };
 
+export type ChartExportSelection = {
+  chart_id: string;
+  chart_type: 'line' | 'bar';
+  task_id?: string;
+  product_index?: number;
+};
+
 export async function downloadResultExport(source: ExportSource,
-  format: 'xlsx' | 'png' | 'pdf', userId: number): Promise<void> {
+  format: 'xlsx' | 'png' | 'pdf', userId: number, chart?: ChartExportSelection): Promise<void> {
   const response = await fetch('/api/v1/result-exports', {
     method: 'POST', credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json', 'X-ChatBI-Request': 'browser', 'X-ChatBI-User-ID': String(userId) },
-    body: JSON.stringify({ source, format }),
+    body: JSON.stringify({ source, format, ...(chart ?? {}) }),
   });
   if (!response.ok) {
     let payload: unknown;

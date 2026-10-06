@@ -25,6 +25,7 @@ dependencies = [
     "langgraph-checkpoint-postgres>=3,<4",
     "itsdangerous>=2.2,<3",
     "xlsxwriter>=3.2.9,<4",
+    "playwright==1.63.0",
 ]
 
 [dependency-groups]

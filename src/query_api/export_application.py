@@ -14,7 +14,9 @@ from .export_runtime import ExportFailure
 
 
 class FileGenerator(Protocol):
-    def generate(self, owner: int, document: dict, cancelled: Event): ...
+    def generate(
+        self, owner: int, document: dict, cancelled: Event, *, format: str = "xlsx", selection: dict | None = None
+    ): ...
 
 
 @dataclass(frozen=True)
@@ -26,6 +28,8 @@ class ExportJob:
     turn_id: str | None
     source: dict
     document: dict
+    format: str
+    selection: dict | None
 
 
 class ResultExportApplication:
@@ -41,15 +45,24 @@ class ResultExportApplication:
         source_id: str,
         turn_id: str | None,
         format: str,
+        selection: dict | None = None,
     ) -> ExportJob:
-        if format != "xlsx":
+        if format not in {"xlsx", "png"}:
             raise ExportFailure(
                 "EXPORT_FORMAT_UNAVAILABLE", "所选导出格式暂不可用", 422
+            )
+        if format == "xlsx" and selection is not None or format == "png" and not selection:
+            raise ExportFailure(
+                "EXPORT_SELECTION_INVALID", "图表选择无效", 422
             )
         source = self._history.export_source(
             auth, request_id, source_kind, source_id, turn_id
         )
-        if not isinstance(source, dict) or source.get("kind") != "query":
+        if not isinstance(source, dict) or source.get("kind") not in {"query", "analysis"}:
+            raise ExportFailure(
+                "EXPORT_SOURCE_UNAVAILABLE", "记录不可用，请刷新后重试", 404
+            )
+        if format == "xlsx" and source.get("kind") != "query":
             raise ExportFailure(
                 "EXPORT_FORMAT_UNAVAILABLE", "XLSX 仅支持成功的查询快照", 422
             )
@@ -62,10 +75,18 @@ class ResultExportApplication:
             turn_id,
             source,
             document,
+            format,
+            selection,
         )
 
     def generate(self, job: ExportJob, cancelled: Event):
-        return self._generator.generate(job.owner, job.document, cancelled)
+        return self._generator.generate(
+            job.owner,
+            job.document,
+            cancelled,
+            format=job.format,
+            selection=job.selection,
+        )
 
     def verify_delivery(self, job: ExportJob, current_auth, artifact) -> None:
         if monotonic() >= artifact.deadline:

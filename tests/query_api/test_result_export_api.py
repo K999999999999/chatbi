@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from io import BytesIO
+from time import monotonic
+from urllib.parse import unquote
 
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 
 from src.authorization.contracts import AuthContext, AuthorizationDecision
 from src.query_api.app import create_app
+from src.query_api.export_runtime import ExportArtifact
 from src.query_api.history_contracts import HistoryError
 
 
@@ -96,6 +99,10 @@ def test_query_snapshot_download_has_safe_file_headers_and_current_source_check(
     )
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["x-content-type-options"] == "nosniff"
+    filename = unquote(
+        response.headers["content-disposition"].split("filename*=UTF-8''", 1)[1]
+    )
+    assert filename.startswith("测试结果 1-查询结果-") and filename.endswith(".xlsx")
     assert runtime._owner_active == set()
 
 
@@ -123,6 +130,34 @@ def test_saved_query_result_download_uses_the_independent_saved_source():
     notes = list(book["结果说明"].values)
     assert ("成果保存时间", "2026-10-06T00:00:00+00:00") in notes
     book.close()
+
+
+def test_export_filename_removes_path_separators_and_header_controls():
+    class UnsafeTitleStore(Store):
+        def export_snapshot(self, owner, source_kind, source_id, turn_id):
+            source = super().export_snapshot(owner, source_kind, source_id, turn_id)
+            source["title"] = "../报告\r\n/X"
+            return source
+
+    client, _ = make_client(UnsafeTitleStore())
+    with client:
+        response = client.post(
+            "/api/v1/result-exports",
+            json={
+                "source": {
+                    "kind": "history_turn",
+                    "history_id": "e53ba3b9-1f11-4024-90f9-a7f2713cd56b",
+                    "turn_id": "6e5e18d9-1d9b-4c6d-a94f-19976814f03f",
+                },
+                "format": "xlsx",
+            },
+        )
+    assert response.status_code == 200, response.text
+    header = response.headers["content-disposition"]
+    filename = unquote(header.split("filename*=UTF-8''", 1)[1])
+    assert filename.startswith("_报告___X-查询结果-") and filename.endswith(".xlsx")
+    assert "/" not in filename and "\\" not in filename
+    assert "\r" not in header and "\n" not in header
 
 
 def test_export_rejects_unknown_fields_and_unimplemented_format():
@@ -182,6 +217,96 @@ def test_xlsx_export_rejects_saved_analysis_before_starting_worker():
     assert response.status_code == 422
     assert response.json()["error_code"] == "EXPORT_FORMAT_UNAVAILABLE"
     assert runtime._owner_active == set()
+
+
+def test_png_export_accepts_analysis_and_passes_server_checked_selection(
+    monkeypatch, tmp_path
+):
+    class AnalysisStore(Store):
+        def export_snapshot(self, owner, source_kind, source_id, turn_id):
+            self.calls += 1
+            return {
+                "kind": "analysis",
+                "title": "经营分析",
+                "question": "分析产品变化",
+                "result_time": datetime(2026, 10, 6, tzinfo=UTC).isoformat(),
+                "saved_time": None,
+                "result": {
+                    "mode": "analysis",
+                    "report": {"attribution": {}},
+                    "task_results": [],
+                },
+            }
+
+    client, runtime = make_client(AnalysisStore())
+    observed = {}
+    artifact_dir = tmp_path / "png-artifact"
+    artifact_dir.mkdir(mode=0o700)
+    artifact_path = artifact_dir / "result.png"
+    artifact_path.write_bytes(b"png-test")
+
+    def generate(owner, document, cancelled, *, format, selection):
+        observed.update(format=format, selection=selection, kind=document["kind"])
+        return ExportArtifact(
+            artifact_path, artifact_path.stat().st_size, monotonic() + 60
+        )
+
+    monkeypatch.setattr(runtime, "generate", generate)
+    with client:
+        response = client.post(
+            "/api/v1/result-exports",
+            json={
+                "source": {
+                    "kind": "saved_result",
+                    "saved_result_id": "e53ba3b9-1f11-4024-90f9-a7f2713cd56b",
+                },
+                "format": "png",
+                "chart_id": "products",
+                "chart_type": "bar",
+            },
+        )
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "image/png"
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    filename = unquote(
+        response.headers["content-disposition"].split("filename*=UTF-8''", 1)[1]
+    )
+    assert filename.startswith("经营分析-图表-") and filename.endswith(".png")
+    assert observed == {
+        "format": "png",
+        "selection": {"chart_id": "products", "chart_type": "bar"},
+        "kind": "analysis",
+    }
+
+
+def test_png_selection_is_required_and_forbidden_for_other_formats():
+    client, _ = make_client()
+    source = {
+        "kind": "history_turn",
+        "history_id": "e53ba3b9-1f11-4024-90f9-a7f2713cd56b",
+        "turn_id": "6e5e18d9-1d9b-4c6d-a94f-19976814f03f",
+    }
+    with client:
+        missing = client.post(
+            "/api/v1/result-exports", json={"source": source, "format": "png"}
+        )
+        extra = client.post(
+            "/api/v1/result-exports",
+            json={
+                "source": source,
+                "format": "xlsx",
+                "chart_id": "CNY",
+                "chart_type": "bar",
+            },
+        )
+        unsupported = client.post(
+            "/api/v1/result-exports", json={"source": source, "format": "pdf"}
+        )
+    assert missing.status_code == 422
+    assert extra.status_code == 422
+    assert unsupported.status_code == 422
+    assert unsupported.json()["error_code"] == "EXPORT_FORMAT_UNAVAILABLE"
 
 
 def test_renaming_source_while_rendering_does_not_change_snapshot_identity():

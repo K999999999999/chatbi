@@ -1,0 +1,22 @@
+@font-face {
+  font-family: "ChatBI Export Noto CJK SC";
+  src: local("Noto Sans CJK SC"), local("Noto Sans SC"), local("Noto Sans CJK TC");
+  font-style: normal;
+  font-weight: 100 900;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; min-width: 1600px; width: 1600px; background: #fff; color: #17202a; }
+body { font-family: "ChatBI Export Noto CJK SC", sans-serif; }
+.export-page { width: 1600px; padding: 42px 56px 48px; background: #fff; }
+.export-page h1 { margin: 0 0 12px; font-size: 30px; line-height: 1.35; overflow-wrap: anywhere; }
+.export-meta { margin: 5px 0; color: #43515d; font-size: 16px; line-height: 1.55; overflow-wrap: anywhere; }
+.export-warning { margin: 12px 0; padding: 10px 14px; border-left: 4px solid #ad4b43; background: #fff7f5; color: #76332e; font-size: 16px; }
+.export-chart { width: 1488px; background: #fff; }
+.export-chart-canvas { width: 1488px; overflow: visible; }
+.export-data { width: 1488px; margin-top: 28px; border-collapse: collapse; table-layout: fixed; font-size: 14px; line-height: 1.45; }
+.export-data th, .export-data td { border: 1px solid #cad3da; padding: 7px 9px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.export-data th { background: #edf2f5; }
+.export-data td:first-child, .export-data th:first-child { width: 34%; }
+.export-data small { display: block; color: #43515d; }
+.export-footer { margin-top: 16px; color: #56636d; font-size: 13px; }

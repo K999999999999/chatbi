@@ -58,3 +58,34 @@ test('成功问数轮次通过浏览器下载 XLSX 快照', async ({ page }) => 
     format: 'xlsx',
   });
 });
+
+test('成功查询图表按当前选择触发浏览器 PNG 下载', async ({ page }) => {
+  const exportBodies: Record<string, unknown>[] = [];
+  await page.route('**/api/v1/result-exports', async route => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    exportBodies.push(body);
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
+    const filename = encodeURIComponent('浏览器导出验收历史-图表-20261006T000000Z.png');
+    await route.fulfill({ status: 200, contentType: 'image/png',
+      headers: { 'Content-Disposition': `attachment; filename="chart.png"; filename*=UTF-8''${filename}` }, body: png });
+  });
+  await page.goto('/');
+  await page.getByLabel('账号', { exact: true }).fill('analyst');
+  await page.getByLabel('密码', { exact: true }).fill('test-password-123');
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await page.getByRole('button', { name: '问数 · 浏览器导出验收历史', exact: true }).click();
+  const pngButton = page.getByRole('button', { name: /下载.*PNG/ }).first();
+  await expect(pngButton).toBeVisible();
+  const downloadReady = page.waitForEvent('download');
+  await pngButton.click();
+  const download = await downloadReady;
+  expect(download.suggestedFilename()).toMatch(/^浏览器导出验收历史-图表-\d{8}T\d{6}Z\.png$/);
+  const bytes = await readFile(await download.path());
+  expect(bytes.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  expect(exportBodies).toHaveLength(1);
+  const body = exportBodies[0];
+  expect(body.source).toEqual({ kind: 'history_turn', history_id: expect.any(String), turn_id: expect.any(String) });
+  expect(body.format).toBe('png');
+  expect(body.chart_type).toBe('bar');
+  expect(body.chart_id).toBe('CNY');
+});

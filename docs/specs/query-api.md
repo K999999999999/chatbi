@@ -50,9 +50,9 @@ POST /api/v1/executions/{execution_id}/cancel
 POST /api/v1/result-exports
 ```
 
-请求只指定 owner 可读的 `history_turn`（历史 ID + 成功轮次 ID）或 `saved_result`（成果 ID）和文件格式；不接受 owner、SQL、文件路径或客户端结果值。服务端从持久化成功快照构建文件，不调用模型 / 查询，不改写历史或成果。当前实现 XLSX；PNG / PDF 尚未实现时返回受控 `422`。成功响应为实际文件，使用适用 MIME、`Cache-Control: no-store`、`X-Content-Type-Options: nosniff`；失败遵循现有 `request_id` 和错误 JSON。
+请求指定 owner 可读的 `history_turn`（历史 ID + 成功轮次 ID）或 `saved_result`（成果 ID）及格式。XLSX 不接受图表选择；PNG 必须带 `chart_id` 和 `chart_type`，分析任务图可带 `task_id`，因素图必须带当前产品的 `product_index`。这些值只选择服务端成功快照中已有的图，不接受 SQL、文件路径、客户端结果值或 ECharts option。服务端从持久化快照构建文件，不调用模型 / 查询，不改写历史或成果。当前实现 XLSX / PNG；PDF 未实施时返回受控 `422`。PNG 不可用、选择无效或完整图形超出资源上限时分别返回受控 `503`、`422` 或 `413`。成功响应为实际文件，使用适用 MIME、`Cache-Control: no-store`、`X-Content-Type-Options: nosniff`；文件名由服务端按安全短标题、格式和 UTC 导出时间生成；失败遵循现有 `request_id` 和错误 JSON。
 
-导出沿用当前登录 Session、查询权限与 Cookie / CSRF 检查；在生成前和发送前重新核验 owner / 来源。导出 runtime 当前限定单 API 进程并持有私有临时目录锁；来源最多 5 MiB、每账号同时生成 1 个文件、API 同时 2 个、生成预算 60 秒、文件最多 20 MiB。活动和失败路径都会回收临时文件。完整来源、精度、权限竞态与错误 Contract 见 [R5 Spec](result-export-v1.md) 和 [Design](../designs/result-export-v1.md)；R5 尚在分阶段实施，不能把 Ticket 01 状态等同为全格式完成。
+导出沿用当前登录 Session、查询权限与 Cookie / CSRF 检查；在生成前和发送前重新核验 owner / 来源。导出 runtime 当前限定单 API 进程并持有私有临时目录锁；来源最多 5 MiB、每账号同时生成 1 个文件、API 同时 2 个、生成预算 60 秒、文件最多 20 MiB。PNG 使用固定离线 bundle、Playwright / Chromium sandbox 与本地中文字体；活动和失败路径都会回收临时文件。完整来源、精度、权限竞态与错误 Contract 见 [R5 Spec](result-export-v1.md) 和 [Design](../designs/result-export-v1.md)；PDF 与 R5 最终真实验收仍待完成。
 
 ### 查询
 

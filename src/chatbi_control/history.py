@@ -1147,7 +1147,7 @@ class PostgresHistoryStore:
         """只读导出来源投影；不读取私有恢复状态或 SQL。"""
         with self.engine.connect() as connection:
             if source_kind == "history_turn":
-                _owned(connection, owner, source_id)
+                history = _owned(connection, owner, source_id)
                 row = (
                     connection.execute(
                         text("""SELECT question,status,snapshot,completed_at
@@ -1165,7 +1165,7 @@ class PostgresHistoryStore:
                     raise unavailable()
                 snapshot = row["snapshot"]
                 completed_at = row["completed_at"]
-                title = None
+                title = history["title"]
                 question = row["question"]
                 saved_time = None
             elif source_kind == "saved_result" and turn_id is None:

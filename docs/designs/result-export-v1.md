@@ -1,6 +1,6 @@
 # R5 成果导出实现设计
 
-Status: 基于已整体确认 Spec 的实现设计；Design Review PASS；Ticket 01 已完成并提交本地候选 `111980d`，Ticket 02 PNG 实施中，Ticket 03–04 按依赖待开始。
+Status: 基于已整体确认 Spec 的实现设计；Design Review PASS；Ticket 01 已提交本地候选 `111980d`，Ticket 02 PNG 实现 / 阶段验证通过、候选提交处理中；Ticket 03–04 按依赖待开始。
 Baseline: `ee92acaa7998749d46b57d85611ec69ab14948b1`
 Authority: [Spec](../specs/result-export-v1.md)。本设计落实 Contract 内的机制，不扩大格式、数据范围、部署形态或业务边界。
 
@@ -20,7 +20,7 @@ POST `/api/v1/result-exports`，同源 Cookie 写请求检查现有 CSRF；新�
 
 - `source` 判别联合：`history_turn` 带 history_id / turn_id；`saved_result` 带 saved_result_id。编号采用 UUID，不能提供 owner、SQL、原始值、HTML、URL、文件路径。
 - `format` 为 xlsx / png / pdf；xlsx 只接受查询快照，pdf 只接受完成分析快照，png 接受合法图形。
-- PNG 的选择为确定性 `chart_id`、适用 line / bar 类型、因素图 product_index；查询 chart_id 对应共享 ChartPlan 生成身份，分析图为 products / factors / task:<task_id>:<chart_id>。索引 / 图形身份从服务端快照派生的图形集合核验，不能直接接受客户端 option。任务图仅在已有 R2 展示规则支持时可用。
+- PNG 的选择为确定性 `chart_id`、适用 line / bar 类型、可选分析 `task_id` 与因素图 `product_index`。查询 chart_id 对应共享 ChartPlan 生成身份；分析归因图使用 products / factors，任务图由 `{task_id, chart_id}` 共同标识。图形身份从成功快照派生并核验，不能直接接受客户端 option。任务图仅在已有 R2 展示规则支持时可用。
 - 非 PNG 请求禁止图形选择字段。默认文件名由服务端安全地生成，采用短标题 / 固定类型与导出时间；剔除路径与控制字符，响应使用规范的 UTF-8 Content-Disposition。
 
 成功响应为一种完整文件，不提前发送文件头 / 文件字节。Content-Type 按格式、`Cache-Control: no-store`、`X-Content-Type-Options: nosniff`。失败使用既有 request_id / error_code / error_message JSON：认证 401、权限 403、不可用来源 404（隐藏不存在 / 他人 / 删除差异）、选择或不支持格式 422、超额 429、文件超限 413、生成超时 504、依赖 / 存储不可用 503；不暴露原异常 / 路径。
@@ -53,7 +53,7 @@ HistoryTurn.completed_at 在只读导出投影从底层列取得，不改变既�
 
 既有 ChartPlan、resultMetadata、numberFormat 与归因图形事实保留为可信快照到展示的规则。提取现有图形 option 生成与归因 plan 为无 React 生命周期的纯函数，提供 web / export 展示配置；网页既有行为回归不变。Export bundle 使用相同 TypeScript 模块与 ECharts，独立入口，不读取 App / Cookie / API，不复制 Python 图形语义。
 
-导出 profile 禁用 dataZoom / scroll legend / animation；所有 series 可见，分类全部包含，长标签按测量换行。单图按完整数据计算画布和说明块，保持图表类型 / factors 产品选择。PNG 标准宽度 1600 CSS px、scale 1；图高动态，像素总量以 4000 万为渲染保护上限；若完整可读图形无法在此上限表达，则明确图形超出导出资源限制，不删除标签 / 分类。缺失时段和 NULL 仍使用既有安全规则。
+导出 profile 禁用 dataZoom / scroll legend / animation；所有 series 可见，分类全部包含，长标签按测量换行。单图按完整数据计算画布和说明块，保持图表类型 / factors 产品选择。PNG 标准宽度 1600 CSS px、scale 1；图高动态，像素总量以 4000 万为渲染保护上限；若完整可读图形无法在此上限表达，则明确图形超出导出资源限制，不删除标签 / 分类。附表将 SQL NULL 标为 `NULL（无数据）`、合成缺失时段标为 `缺失时段`，空字符串标为 `空字符串` 并保留 `""` 原值提示；格式化数值显示与原值不同时同时给出原值。
 
 PDF 使用专用 HTML，A4 自动分页、正文可选取、标题与页码、重复表头；不截屏整页当作 PDF。宽表按列拆分为带原行号 / 列号的连续表块，长单元格可换行 / 分页，不能 CSS overflow 裁切。产品和因素图按可读分组分页，重复上下文 / 范围说明，组合后包含全部已返回归因；仍不获取未返回产品。引用任务附录按引用身份固定排序，failed / skipped 保留适用限制，不冒充有结果。
 
@@ -69,7 +69,7 @@ ExportRuntime 在 API 进程内以线程安全 / async 安全原子计数维护 
 
 Playwright 创建全新 context，不保存登录 / storage_state，加载父进程提供的固定模板 / bundle / 字体；仅内存映射固定内部 origin 资源，不启真实监听端口。route handler 默认拒绝所有 URL，仅固定资源精确白名单由 fulfill 提供；禁 service worker、downloads、WebSocket、弹窗及 file 导航。数据通过固定函数参数传入，以 textContent / React 文本节点写出；禁止输入控制 markup / style / option callback，CSP 只允许应用固定资源。隔离目标是确定性数据渲染和凭证隔离，不把 route 拦截声称为 OS sandbox；保留 Chromium sandbox，具体 Linux 支持在安装和真实容器验收核验，禁止靠 --no-sandbox 绕过未满足的安全条件。
 
-文件输出在任务目录内，父进程验证路径 / 普通文件 / 大小，不允许 symlink 或调用方路径。设置进程文件大小保护和父进程大小检测，输入最多 5 MiB、输出最多 20 MiB、PNG 像素上限和 DOM / 图表数量由源范围控制；不等待无限 stdout，工作进程只输出有界状态 / manifest，不输出业务值或原异常。
+文件输出在任务目录内，父进程验证路径 / 普通文件 / 大小，不允许 symlink 或调用方路径。设置 20 MiB 进程文件大小保护和父进程大小检测；Playwright worker 的文件描述符上限为 256，固定版本 Chromium 在 64 时会使 network service 崩溃。输入最多 5 MiB、输出最多 20 MiB、PNG 像素上限和 DOM / 图表数量由源范围控制；不等待无限 stdout，工作进程只输出有界状态 / manifest，不输出业务值或原异常。
 
 正常完成先关闭 context / browser、等待进程退出。超时 / 断连 / shutdown 由 watchdog 终止整个进程组，必要时强制 kill 并 wait；不能仅取消 await 或释放 semaphore。额度 lease 保留至 worker 确认退出且文件发送 / 失败清理结束，慢下载期间仍占额度，避免已生成文件无限堆积；父进程监听断连并显式关闭响应文件和删除目录，不仅依赖正常发送后的后台回调。活动输出文件总量因而最多 2 × 20 MiB，不计尚在生成过程的有界临时开销。生成 60 秒预算不当作客户端网络性能承诺。当前无持久任务，重启不恢复导出。
 

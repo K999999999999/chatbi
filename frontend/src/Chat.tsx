@@ -422,7 +422,10 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
         <button disabled={pending} onClick={() => void retryUncertainExecution()}>明确重试同一请求</button></p>}
       {saved ? <article className="turn"><p>成果内容固定；重新查询会创建新历史。</p>
         {savedQuery && <button disabled={exporting || !user.permissions.includes('query.execute')} onClick={() => void exportResult('xlsx')}>{exporting ? '正在导出…' : '下载 XLSX'}</button>}
-        {savedQuery && <ResultView data={savedQuery}/>}{savedAnalysis && <AnalysisReport result={savedAnalysis}/>}</article> : <>
+        {savedQuery && <ResultView data={savedQuery} exportSource={{ kind: 'saved_result', saved_result_id: saved.id }}
+          canExport={user.permissions.includes('query.execute')} userId={user.user_id}/>}
+        {savedAnalysis && <AnalysisReport result={savedAnalysis} exportSource={{ kind: 'saved_result', saved_result_id: saved.id }}
+          canExport={user.permissions.includes('query.execute')} userId={user.user_id}/>}</article> : <>
         {!entries.length && <section className="welcome"><div className="welcome-mark">BI</div><h2>从一个经营问题开始</h2>
           <p>{mode === 'query' ? '例如：2025年2月的人民币净销售额是多少？' : '例如：分析2025年2月相比2025年1月的人民币毛利变化。'}</p></section>}
         {entries.map(item => <article className="turn" key={item.id}><div className="question"><span>你</span><p>{item.question}</p></div>
@@ -440,10 +443,14 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
               onClick={() => void cancelExecution(item, mode)}
             >{cancelingExecutionId === item.executionId ? '正在提交取消…' : '取消执行'}</button>}
           </>}
-          {item.result && <div className="answer"><span className="answer-label">ChatBI</span><ResultView data={item.result}/><details><summary>查看经校验 SQL</summary><pre>{item.result.sql}</pre></details></div>}
+          {item.result && <div className="answer"><span className="answer-label">ChatBI</span><ResultView data={item.result}
+            exportSource={header && item.turnId ? { kind: 'history_turn', history_id: header.id, turn_id: item.turnId } : undefined}
+            canExport={user.permissions.includes('query.execute')} userId={user.user_id}/><details><summary>查看经校验 SQL</summary><pre>{item.result.sql}</pre></details></div>}
           {item.reportDraft && !item.analysis && <div className="answer"><span className="answer-label">ChatBI</span>
             <AnalysisDraft draft={item.reportDraft} interrupted={!!item.draftInterrupted}/></div>}
-          {item.analysis && <div className="answer"><span className="answer-label">ChatBI</span><AnalysisReport result={item.analysis}/></div>}
+          {item.analysis && <div className="answer"><span className="answer-label">ChatBI</span><AnalysisReport result={item.analysis}
+            exportSource={header && item.turnId ? { kind: 'history_turn', history_id: header.id, turn_id: item.turnId } : undefined}
+            canExport={user.permissions.includes('query.execute')} userId={user.user_id}/></div>}
           {item.error && <p role="alert">{item.error}</p>}
           {item.saved && !item.result && !item.analysis && <button disabled={pending} onClick={() => void loadTurn(item)}>查看已保存结果</button>}
           {item.saved && <div className="result-actions"><button disabled={saving} onClick={() => setEdit({ action: 'save', title: header?.title ?? item.question.slice(0, 120), turnId: item.turnId })}>另存成果</button>

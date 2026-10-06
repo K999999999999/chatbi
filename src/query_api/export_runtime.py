@@ -17,6 +17,8 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
+from .export_assets import verify_runtime_manifest
+
 MAX_EXPORT_BYTES = 20 * 1024 * 1024
 EXPORT_DEADLINE_SECONDS = 60
 MAX_SNAPSHOT_BYTES = 5 * 1024 * 1024
@@ -40,7 +42,7 @@ class ExportArtifact:
 
 
 class ExportRuntime:
-    def __init__(self, temp_root: Path | None = None):
+    def __init__(self, temp_root: Path | None = None, *, export_root: Path | None = None, source_root: Path | None = None):
         self._root = (
             Path(temp_root)
             if temp_root
@@ -54,6 +56,10 @@ class ExportRuntime:
         self._initialized = False
         self._root_lock_fd: int | None = None
         self._process_root_key: str | None = None
+        self._export_root = Path(export_root or os.environ.get("CHATBI_EXPORT_ROOT", "/opt/chatbi-export"))
+        configured_source = source_root or os.environ.get("CHATBI_EXPORT_SOURCE_DIR")
+        self._source_root = Path(configured_source) if configured_source else None
+        self._render_config: dict | None = None
 
     def startup(self) -> None:
         with self._startup_lock:
@@ -110,6 +116,13 @@ class ExportRuntime:
                 raise
             self._root_lock_fd = lock_fd
             self._process_root_key = process_root_key
+            try:
+                self._render_config = verify_runtime_manifest(
+                    self._export_root, self._source_root
+                )
+            except (OSError, ValueError, TypeError, ImportError, KeyError):
+                # PNG asset drift never disables the existing XLSX renderer.
+                self._render_config = None
             self._initialized = True
 
     def acquire(self, owner: int) -> bool:
@@ -135,17 +148,42 @@ class ExportRuntime:
         with self._lock:
             self._owner_active.discard(owner)
 
-    def generate(self, owner: int, document: dict, cancelled: threading.Event):
+    def generate(
+        self,
+        owner: int,
+        document: dict,
+        cancelled: threading.Event,
+        *,
+        format: str = "xlsx",
+        selection: dict | None = None,
+    ):
+        if format not in {"xlsx", "png"}:
+            raise ExportFailure("EXPORT_FORMAT_UNAVAILABLE", "所选导出格式暂不可用", 422)
         if os.geteuid() == 0:
             raise ExportFailure("EXPORT_UNAVAILABLE", "文件导出运行账户配置无效", 503)
         if not self.acquire(owner):
             raise ExportFailure(
                 "EXPORT_BUSY", "已有文件正在生成或下载，请稍后重试", 429
             )
+        if format == "png":
+            try:
+                self._render_config = verify_runtime_manifest(
+                    self._export_root, self._source_root
+                )
+            except (OSError, ValueError, TypeError, ImportError, KeyError):
+                self._render_config = None
+            if self._render_config is None:
+                self.release(owner)
+                raise ExportFailure("EXPORT_UNAVAILABLE", "PNG 离线渲染资源不可用", 503)
+        if format == "png" and not selection:
+            self.release(owner)
+            raise ExportFailure("EXPORT_SELECTION_INVALID", "图表选择无效", 422)
         workdir = self._root / uuid.uuid4().hex
         deadline = time.monotonic() + EXPORT_DEADLINE_SECONDS
         try:
-            return self._generate(workdir, document, cancelled, deadline)
+            return self._generate(
+                workdir, document, cancelled, deadline, format, selection
+            )
         except BaseException:
             try:
                 _remove_workdir(workdir)
@@ -162,9 +200,11 @@ class ExportRuntime:
         document: dict,
         cancelled: threading.Event,
         deadline: float,
+        format: str,
+        selection: dict | None,
     ):
         payload = json.dumps(
-            {"format": "xlsx", "document": document},
+            {"format": format, "document": document, "selection": selection},
             ensure_ascii=False,
             allow_nan=False,
             separators=(",", ":"),
@@ -187,8 +227,17 @@ class ExportRuntime:
 
         workdir.mkdir(mode=0o700)
         os.chmod(workdir, 0o700)
-        output = workdir / "result.xlsx"
+        output = workdir / ("result.png" if format == "png" else "result.xlsx")
         environment = {"PATH": os.defpath, "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
+        if format == "png":
+            assert self._render_config is not None
+            environment.update(
+                {
+                    "HOME": str(workdir),
+                    "CHATBI_EXPORT_ROOT": str(self._export_root),
+                    "PLAYWRIGHT_BROWSERS_PATH": str(self._render_config["browser_root"]),
+                }
+            )
         process = subprocess.Popen(
             [sys.executable, "-I", str(_WORKER), str(output)],
             stdin=subprocess.PIPE,
@@ -225,6 +274,18 @@ class ExportRuntime:
             if time.monotonic() >= deadline:
                 raise ExportFailure("EXPORT_TIMEOUT", "文件生成超过 60 秒限制", 504)
             if process.returncode != 0:
+                if process.returncode == 8:
+                    raise ExportFailure(
+                        "EXPORT_SELECTION_INVALID", "所选图表不可用", 422
+                    )
+                if process.returncode == 9:
+                    raise ExportFailure(
+                        "EXPORT_UNAVAILABLE", "PNG 离线渲染资源不可用", 503
+                    )
+                if process.returncode == 10:
+                    raise ExportFailure(
+                        "EXPORT_TOO_LARGE", "PNG 完整图形超过导出资源限制", 413
+                    )
                 raise ExportFailure(
                     "EXPORT_FAILED", "文件无法完整生成，请稍后重试", 422
                 )
@@ -312,6 +373,7 @@ class ExportRuntime:
                 if self._process_root_key is not None:
                     _PROCESS_ROOTS.discard(self._process_root_key)
             self._process_root_key = None
+            self._render_config = None
 
 
 def _remove_workdir(path: Path) -> None:

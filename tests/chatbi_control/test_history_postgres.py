@@ -589,6 +589,7 @@ def test_export_projection_is_owner_scoped_and_saved_snapshot_outlives_history(
 
     history_source = store.export_snapshot(owner, "history_turn", header.id, turn.id)
     assert history_source["kind"] == "query"
+    assert history_source["title"] == header.title
     assert history_source["question"] == "完成结果来源问题"
     assert history_source["result"] == {
         key: value for key, value in snapshot["result"].items() if key != "sql"
@@ -601,6 +602,7 @@ def test_export_projection_is_owner_scoped_and_saved_snapshot_outlives_history(
 
     saved = store.copy_result(owner, header.id, turn.id, "独立成果")
     saved_source = store.export_snapshot(owner, "saved_result", saved.id)
+    assert saved_source["title"] == "独立成果"
     assert saved_source["result"] == history_source["result"]
     assert saved_source["question"] == "完成结果来源问题"
     assert saved_source["result_time"] is None

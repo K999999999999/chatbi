@@ -399,11 +399,11 @@ Online Retrieval V1 已接入 Online Query：实体类、单指标和多指标�
 - RAG Offline Build 和 Online Retrieval V1 已实现。新 manifest 记录输入指纹；production 启动时校验 catalog、Metadata 和当前发布资产，不匹配时拒绝 Ready。
 - PostgreSQL 首次初始化需在基础 init 完成后运行 `src.bootstrap migrate`；它通过 `PostgresSaver.setup()` 安装 checkpoint 表和权限，healthcheck / API 启动检查验证其完整性。
 - 日期化 Acceptance 和 ignored reports 是历史证据，不代表当前候选。Evaluation 基线只有在单轮、多轮和 Business Analysis 三套报告均记录同一最终 clean commit、`git_dirty=false`，且各自满足 `0 FAIL`、`0 INVALID_CASE` 后才成立。commit `31a04549924f622777f106d4fe5a758bd2ca2beb` 与 `564343216e4493f832f07efb345c03b058a04eb5` 上的通过结果是历史基线，后者的多轮波动见[验收工作项](../.scratch/engineering-quality-gates/issues/04-current-candidate-evaluation-baseline.md#result)；后续候选需重新评测。
-- 旧同步 Query API 保留兼容，电脑端 Web 的网页执行路径通过 R4 后台 execution、SSE 状态观察、取消 / 恢复与未校验报告草稿完成异步反馈；R3 私人历史、快照恢复和独立成果继续复用。R4 的行为与模块设计见 [Spec](specs/execution-streaming-v1.md) 和 [Design](designs/execution-streaming-v1.md)，最终候选验证状态见 [Acceptance](acceptance/execution-streaming-v1.md) 与本机实时工作状态。R5 Ticket 01 XLSX 已验证、Review 并提交本地候选 `111980d`；Ticket 02 PNG 实施中，PDF 与真实完整闭环仍按已确认 Ticket 待办，详见 [Spec](specs/result-export-v1.md) 和 [Design](designs/result-export-v1.md)。生产部署运行保障仍不属于当前 Contract。
+- 旧同步 Query API 保留兼容，电脑端 Web 的网页执行路径通过 R4 后台 execution、SSE 状态观察、取消 / 恢复与未校验报告草稿完成异步反馈；R3 私人历史、快照恢复和独立成果继续复用。R4 的行为与模块设计见 [Spec](specs/execution-streaming-v1.md) 和 [Design](designs/execution-streaming-v1.md)，最终候选验证状态见 [Acceptance](acceptance/execution-streaming-v1.md) 与本机实时工作状态。R5 Ticket 01 XLSX 已验证、Review 并提交本地候选 `111980d`；Ticket 02 PNG 阶段验证通过、候选本地提交处理中，PDF 与真实完整闭环仍按已确认 Ticket 待办，详见 [Spec](specs/result-export-v1.md) 和 [Design](designs/result-export-v1.md)。生产部署运行保障仍不属于当前 Contract。
 
 
 ## 长期历史与结果边界
 
 History Application 位于现有 query_api Application 边界，通过 HistoryStore Port 使用 Control DB Adapter；HTTP 层处理身份与 DTO，Online Query 负责完整业务条件认证、当前映射、SQL Guard 和执行。历史快照不是业务真相。R2 维度展示与 R3 恢复共享 `src/semantic/query_bindings.json` 的批准映射，当前发布资源仍必须认证该引用。单 API 进程以独立 PG advisory lock 与 epoch 保证恢复和迟到提交隔离，未扩展多副本 / 故障切换。详细行为与设计见 [R3 Spec](specs/history-results-v1.md) 和 [Design](designs/history-results-v1.md)。
 
-Result Export Application 位于同一 `query_api` 边界，通过 History Application 的 owner 限定只读投影读取成功快照，再经文件生成 Port 调用独立 worker；它不连接 Online Query 执行链，不访问 LLM，也不更新 Control DB。HTTP Adapter 负责 Cookie / CSRF、严格来源 DTO、文件响应和断连通知。当前 XLSX Adapter 已显式写入单元格类型；PNG / PDF renderer 尚未交付。
+Result Export Application 位于同一 `query_api` 边界，通过 History Application 的 owner 限定只读投影读取成功快照，再经文件生成 Port 调用独立 worker；它不连接 Online Query 执行链，不访问 LLM，也不更新 Control DB。HTTP Adapter 负责 Cookie / CSRF、严格来源 DTO、文件响应和断连通知。当前 XLSX Adapter 显式写入单元格类型，PNG Adapter 复用共享 ChartPlan 并通过固定离线 Playwright / Chromium renderer 生成；PDF 和 R5 最终真实业务闭环仍待完成。

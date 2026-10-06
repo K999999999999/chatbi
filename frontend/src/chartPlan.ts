@@ -18,6 +18,26 @@ export function plotNumber(value: unknown, column: DisplayColumn): number | null
   return n;
 }
 
+export function buildContributionPlan(
+  id: string,
+  title: string,
+  rows: { label: string; amount: string }[],
+  column: DisplayColumn,
+): ChartPlan | undefined {
+  if (!column.certified || !rows.length) return;
+  const values = rows.map(row => plotNumber(row.amount, column));
+  if (values.some(value => value === undefined)) return;
+  return { id, title, kind: 'contribution', truncated: false, series: [{ column,
+    rawValues: rows.map(row => row.amount),
+    points: rows.map((row, rowIndex) => ({ key: String(rowIndex), label: row.label, rowIndex, value: values[rowIndex]! })),
+  }] };
+}
+
+export function contributionColumn(metric: string): DisplayColumn {
+  return { index: 0, name: metric, role: 'metric', certified: ['人民币毛利', '人民币净销售额'].includes(metric),
+    semantic_name: metric, definition: null, unit: { key: 'CNY', label: '元' }, format: 'money' };
+}
+
 function nextPeriod(key: string, grain: string): string | undefined {
   const date = new Date(key + 'T00:00:00Z');
   if (grain === 'month') date.setUTCMonth(date.getUTCMonth() + 1);

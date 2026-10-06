@@ -6,18 +6,20 @@ import asyncio
 import re
 import subprocess
 import threading
+import unicodedata
+from datetime import UTC, datetime
 from typing import Literal
 from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel, ConfigDict, Field, StrictStr
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, model_validator
 from starlette.concurrency import run_in_threadpool
 
 from src.query_api.history_api import _identity, _request_id
 
-from .export_application import ResultExportApplication
+from .export_application import ExportJob, ResultExportApplication
 from .export_runtime import ExportFailure, ExportRuntime
 
 
@@ -38,6 +40,25 @@ class ResultExportRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     source: HistoryTurnSource | SavedResultSource = Field(discriminator="kind")
     format: StrictStr
+    chart_id: StrictStr | None = Field(default=None, max_length=80)
+    chart_type: Literal["line", "bar"] | None = None
+    task_id: StrictStr | None = Field(default=None, max_length=80)
+    product_index: StrictInt | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def validate_chart_selection(self):
+        selection_values = (
+            self.chart_id,
+            self.chart_type,
+            self.task_id,
+            self.product_index,
+        )
+        if self.format == "png":
+            if self.chart_id is None or self.chart_type is None:
+                raise ValueError("PNG 导出需要指定图表和类型")
+        elif any(value is not None for value in selection_values):
+            raise ValueError("仅 PNG 导出接受图表选择")
+        return self
 
 
 class TemporaryFileResponse(FileResponse):
@@ -59,6 +80,31 @@ class TemporaryFileResponse(FileResponse):
 def _content_disposition(filename: str) -> str:
     fallback = re.sub(r"[^A-Za-z0-9._-]", "_", filename) or "result.xlsx"
     return f"attachment; filename=\"{fallback}\"; filename*=UTF-8''{quote(filename)}"
+
+
+def _export_filename(job: ExportJob) -> str:
+    title = job.source.get("title") or job.source.get("question") or "ChatBI"
+    if not isinstance(title, str):
+        title = "ChatBI"
+    title = unicodedata.normalize("NFKC", title)
+    safe_title = "".join(
+        "_"
+        if character in "/\\" or unicodedata.category(character).startswith("C")
+        else character
+        for character in title
+    )
+    safe_title = (
+        re.sub(r"\s+", " ", safe_title).strip(" .")[:48].strip(" .") or "ChatBI"
+    )
+    try:
+        exported_at = datetime.fromisoformat(job.document["export_time"]).astimezone(
+            UTC
+        )
+    except (KeyError, TypeError, ValueError):
+        exported_at = datetime.now(UTC)
+    timestamp = exported_at.strftime("%Y%m%dT%H%M%SZ")
+    kind = {"xlsx": "查询结果", "png": "图表", "pdf": "经营分析报告"}[job.format]
+    return f"{safe_title}-{kind}-{timestamp}.{job.format}"
 
 
 def mount_result_export_api(app: FastAPI) -> None:
@@ -105,6 +151,20 @@ def mount_result_export_api(app: FastAPI) -> None:
             source_id,
             turn_id,
             body.format,
+            (
+                {
+                    "chart_id": body.chart_id,
+                    "chart_type": body.chart_type,
+                    **({"task_id": body.task_id} if body.task_id is not None else {}),
+                    **(
+                        {"product_index": body.product_index}
+                        if body.product_index is not None
+                        else {}
+                    ),
+                }
+                if body.format == "png"
+                else None
+            ),
         )
         cancelled = threading.Event()
         generate = asyncio.create_task(
@@ -145,12 +205,15 @@ def mount_result_export_api(app: FastAPI) -> None:
             runtime.finish(auth.user_id, artifact.path)
             raise
 
-        filename = f"chatbi-query-{job.source_id}.xlsx"
+        is_png = job.format == "png"
+        filename = _export_filename(job)
         return TemporaryFileResponse(
             artifact.path,
             runtime=runtime,
             owner=auth.user_id,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            media_type="image/png"
+            if is_png
+            else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             filename=filename,
             headers={
                 "Content-Disposition": _content_disposition(filename),
