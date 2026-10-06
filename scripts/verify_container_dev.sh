@@ -133,3 +133,27 @@ tools expire-analysis
 web_id=$("${compose[@]}" ps -q web)
 CHATBI_CONTAINER_RESTART_PHASE=1 run_browser
 tools persistence
+tools verify-exports
+"${compose[@]}" exec -T api python - <<'PY'
+import os
+import pathlib
+import tempfile
+
+root = pathlib.Path(tempfile.gettempdir()) / "chatbi-result-exports"
+entries = sorted(path.name for path in root.iterdir())
+lock = root / ".runtime.lock"
+assert entries == [".runtime.lock"]
+assert lock.is_file() and not lock.is_symlink()
+assert lock.stat().st_mode & 0o777 == 0o600
+workers = []
+for path in pathlib.Path("/proc").glob("[0-9]*/cmdline"):
+    if path.parent.name == str(os.getpid()):
+        continue
+    try:
+        if b"export_worker.py" in path.read_bytes():
+            workers.append(path.parent.name)
+    except OSError:
+        continue
+assert not workers, "导出 worker 仍在运行"
+print("导出临时目录仅保留锁文件，未遗留 worker。")
+PY

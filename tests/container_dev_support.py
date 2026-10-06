@@ -1,14 +1,19 @@
 """容器验收的专用账号与证据；只在一次性工具中执行。"""
 
 import argparse
+import hashlib
 import json
 import os
 import pty
 import secrets
 import select as io_select
+import struct
 import subprocess
 import sys
 import time
+import unicodedata
+import zlib
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from uuid import uuid4
 
@@ -100,6 +105,9 @@ def cleanup():
             recovery = REPORT / "recovery.json"
             if recovery.exists():
                 evidence["execution_recovery"] = json.loads(recovery.read_text())
+            exports = REPORT / "export-verification.json"
+            if exports.exists():
+                evidence["export_verification"] = json.loads(exports.read_text())
             images = REPORT / "images.jsonl"
             if images.exists():
                 evidence["image_ids"] = [
@@ -262,6 +270,201 @@ def verify_execution_recovery():
     print("真实API重启后的未确认执行、上一成功轮次与Schema版本检查通过。")
 
 
+def _compact(value):
+    return "".join(unicodedata.normalize("NFKC", str(value)).split())
+
+
+def _verify_png(path: Path):
+    raw = path.read_bytes()
+    if not raw.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise RuntimeError("PNG 下载文件签名无效")
+    offset = 8
+    compressed = bytearray()
+    width = height = 0
+    ended = False
+    while offset < len(raw):
+        if offset + 12 > len(raw):
+            raise RuntimeError("PNG chunk 被截断")
+        length = struct.unpack(">I", raw[offset : offset + 4])[0]
+        kind = raw[offset + 4 : offset + 8]
+        end = offset + 12 + length
+        if end > len(raw):
+            raise RuntimeError("PNG chunk 长度超出文件")
+        data = raw[offset + 8 : offset + 8 + length]
+        expected_crc = struct.unpack(">I", raw[offset + 8 + length : end])[0]
+        if zlib.crc32(kind + data) & 0xFFFFFFFF != expected_crc:
+            raise RuntimeError("PNG chunk CRC 校验失败")
+        if kind == b"IHDR":
+            width, height, depth, color, compression, filtering, interlace = struct.unpack(
+                ">IIBBBBB", data
+            )
+            if not width or not height or depth != 8 or color not in {2, 6} or compression or filtering or interlace:
+                raise RuntimeError("PNG 尺寸或像素编码不支持")
+        elif kind == b"IDAT":
+            compressed.extend(data)
+        elif kind == b"IEND":
+            ended = True
+            if end != len(raw):
+                raise RuntimeError("PNG IEND 后仍有数据")
+            break
+        offset = end
+    if not ended or not width or not height:
+        raise RuntimeError("PNG 文件缺少完整结束标记")
+    decoded = zlib.decompress(compressed)
+    channels = {2: 3, 6: 4}[color]
+    if len(decoded) != height * (1 + width * channels):
+        raise RuntimeError("PNG 像素流不完整")
+    return {"width": width, "height": height, "decoded_bytes": len(decoded)}
+
+
+def _same_xlsx_value(actual, expected):
+    if expected is None:
+        return actual == "〈NULL〉"
+    if expected == "":
+        return actual == "〈空字符串〉"
+    if isinstance(expected, bool):
+        return actual is expected
+    if isinstance(expected, (int, float)) and not isinstance(expected, bool):
+        try:
+            return Decimal(str(actual)) == Decimal(str(expected))
+        except (InvalidOperation, TypeError, ValueError):
+            return str(actual) == str(expected)
+    return actual == expected
+
+
+def _verify_xlsx(path: Path, capture: dict):
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(path, read_only=True, data_only=False)
+    try:
+        if workbook.sheetnames != ["原始数据", "结果说明"]:
+            raise RuntimeError("XLSX 工作表不符合导出 Contract")
+        data = workbook["原始数据"]
+        formulas = [
+            cell.coordinate
+            for row in data.iter_rows()
+            for cell in row
+            if cell.data_type == "f"
+        ]
+        if formulas:
+            raise RuntimeError("XLSX 数据表包含公式")
+        expected = capture.get("expected_snapshot")
+        if expected:
+            columns = expected["columns"]
+            if [data.cell(1, index + 1).value for index in range(len(columns))] != columns:
+                raise RuntimeError("XLSX 列标题与已保存快照不一致")
+            for row_index, row in enumerate(expected["rows"], start=2):
+                actual = [data.cell(row_index, index + 1).value for index in range(len(columns))]
+                if len(row) != len(actual) or any(
+                    not _same_xlsx_value(value, source)
+                    for value, source in zip(actual, row, strict=True)
+                ):
+                    raise RuntimeError("XLSX 行数据与已保存快照不一致")
+        return {"sheets": workbook.sheetnames, "rows": data.max_row - 1, "columns": data.max_column}
+    finally:
+        workbook.close()
+
+
+def _verify_pdf(path: Path, expected: dict):
+    from pypdf import PdfReader
+
+    reader = PdfReader(path)
+    if reader.is_encrypted or len(reader.pages) < 2:
+        raise RuntimeError("PDF 无法打开或没有多页正文")
+    text = _compact("\n".join(page.extract_text() or "" for page in reader.pages))
+    required = [expected["question"]]
+    report = expected["report"]
+    required.extend([report["title"], report["executive_summary"], report["trend_judgment"]])
+    required.extend(report["key_findings"] + report["root_causes"] + report["action_suggestions"])
+    attribution = report.get("attribution") or {}
+    for key in ("metric_name", "comparison_period", "current_period", "comparison_value", "current_value", "total_change"):
+        if key in attribution:
+            required.append(attribution[key])
+    for product in attribution.get("products", []):
+        required.extend((product["product_name"], product["change"]))
+        required.extend(factor["name"] for factor in product["factors"])
+        required.extend(factor["amount"] for factor in product["factors"])
+    for task in expected["task_results"]:
+        required.append(task["task_id"])
+        required.extend(task["columns"])
+        metadata = task.get("result_metadata") or {}
+        for column in metadata.get("columns", []):
+            required.extend(
+                column[key]
+                for key in ("semantic_name", "name", "definition")
+                if isinstance(column.get(key), str) and column[key]
+            )
+            unit = column.get("unit")
+            if isinstance(unit, dict) and isinstance(unit.get("label"), str):
+                required.append(unit["label"])
+        scope = metadata.get("scope") or {}
+        required.extend(
+            value
+            for value in (scope.get("time") or {}).values()
+            if isinstance(value, str) and value
+        )
+        for row in task["rows"]:
+            required.extend(
+                "NULL（无数据）" if cell is None else "空字符串" if cell == ""
+                else "true" if cell is True else "false" if cell is False else str(cell)
+                for cell in row
+            )
+    missing = [value for value in required if _compact(value) and _compact(value) not in text]
+    if missing:
+        raise RuntimeError(f"PDF 可选取文本缺少快照字段（{len(missing)} 项）")
+    for private in (expected["request_id"], expected["analysis_run_id"]):
+        if _compact(private) in text:
+            raise RuntimeError("PDF 包含私有运行标识")
+    return {"pages": len(reader.pages), "checked_values": len(required), "text_characters": len(text)}
+
+
+def verify_exports():
+    evidence = json.loads((REPORT / "browser.json").read_text())
+    captures = evidence.get("exports")
+    if not isinstance(captures, list) or not captures:
+        raise RuntimeError("浏览器报告没有导出证据")
+    expected_pdf = evidence.get("analysis_pdf_expected")
+    results = []
+    for capture in captures:
+        path = REPORT / capture["file"]
+        if not path.is_file():
+            raise RuntimeError("浏览器下载文件缺失")
+        raw = path.read_bytes()
+        if len(raw) != capture["size"] or hashlib.sha256(raw).hexdigest() != capture["sha256"]:
+            raise RuntimeError("浏览器下载文件 hash / 大小与记录不一致")
+        if capture["format"] == "xlsx":
+            parsed = _verify_xlsx(path, capture)
+        elif capture["format"] == "png":
+            parsed = _verify_png(path)
+        elif capture["format"] == "pdf":
+            if not expected_pdf:
+                raise RuntimeError("PDF 缺少真实分析快照对照值")
+            parsed = _verify_pdf(path, expected_pdf)
+        else:
+            raise RuntimeError("浏览器报告含有未知导出格式")
+        results.append({"file": path.name, "format": capture["format"], "size": len(raw),
+            "sha256": hashlib.sha256(raw).hexdigest(), "source_kind": capture["source"]["kind"],
+            "parsed": parsed})
+    formats = {item["format"] for item in results}
+    if not {"xlsx", "png", "pdf"}.issubset(formats):
+        raise RuntimeError("真实浏览器验收没有覆盖三种文件格式")
+    sources = {item["source_kind"] for item in results}
+    if not {"history_turn", "saved_result"}.issubset(sources):
+        raise RuntimeError("真实浏览器验收没有覆盖历史与独立成果来源")
+    by_format = {
+        file_format: {item["source_kind"] for item in results if item["format"] == file_format}
+        for file_format in ("xlsx", "png", "pdf")
+    }
+    if any(not {"history_turn", "saved_result"}.issubset(kinds) for kinds in by_format.values()):
+        raise RuntimeError("真实浏览器验收没有逐格式覆盖历史与独立成果来源")
+    after_restart = {item["format"] for item in results if item["file"].startswith("r5-restarted-")}
+    if after_restart != {"xlsx", "png", "pdf"}:
+        raise RuntimeError("服务重启后没有重新下载并覆盖三种格式")
+    result = {"status": "passed", "files": results, "formats": sorted(formats)}
+    (REPORT / "export-verification.json").write_text(json.dumps(result, ensure_ascii=False, indent=2))
+    print("隔离 Compose 的 XLSX / PNG / PDF 浏览器下载已由独立解析器核验。")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -273,6 +476,7 @@ if __name__ == "__main__":
             "persistence",
             "expire-analysis",
             "execution-recovery",
+            "verify-exports",
         ],
     )
     args = parser.parse_args()
@@ -286,5 +490,7 @@ if __name__ == "__main__":
         expire_analysis()
     elif args.action == "execution-recovery":
         verify_execution_recovery()
+    elif args.action == "verify-exports":
+        verify_exports()
     else:
         verify_persistence()
