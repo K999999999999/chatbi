@@ -34,11 +34,7 @@ def _digest(path: Path) -> str:
 
 def _regular_file(path: Path, *, maximum: int = 20 * 1024 * 1024) -> os.stat_result:
     info = path.lstat()
-    if (
-        not stat.S_ISREG(info.st_mode)
-        or info.st_size > maximum
-        or info.st_mode & 0o022
-    ):
+    if not stat.S_ISREG(info.st_mode) or info.st_size > maximum or info.st_mode & 0o022:
         raise ValueError("导出资源不是受保护的普通文件")
     return info
 
@@ -56,7 +52,9 @@ def frontend_source_hash(source_root: Path) -> str:
     source_dir = source_root / "src"
     for current, directories, names in os.walk(source_dir, followlinks=False):
         current_path = Path(current)
-        if current_path.is_symlink() or any((current_path / name).is_symlink() for name in directories):
+        if current_path.is_symlink() or any(
+            (current_path / name).is_symlink() for name in directories
+        ):
             raise ValueError("开发图形源码不能包含符号链接")
         files.extend(current_path / name for name in names)
     files.extend(
@@ -88,7 +86,11 @@ def verify_bundle(asset_root: Path, source_root: Path | None = None) -> dict:
     manifest_path = asset_root / "bundle-manifest.json"
     manifest = _read_json(manifest_path)
     files = manifest.get("files")
-    if manifest.get("version") != 1 or not isinstance(files, dict) or "export.html" not in files:
+    if (
+        manifest.get("version") != 1
+        or not isinstance(files, dict)
+        or "export.html" not in files
+    ):
         raise ValueError("PNG bundle 清单版本无效")
     for name, expected in files.items():
         relative = PurePosixPath(name) if isinstance(name, str) else None
@@ -106,9 +108,14 @@ def verify_bundle(asset_root: Path, source_root: Path | None = None) -> dict:
             raise ValueError("PNG bundle 文件清单无效")
         path = asset_root.joinpath(*relative.parts)
         _regular_file(path, maximum=10 * 1024 * 1024)
-        if path.stat().st_size != expected["size"] or _digest(path) != expected["sha256"]:
+        if (
+            path.stat().st_size != expected["size"]
+            or _digest(path) != expected["sha256"]
+        ):
             raise ValueError("PNG bundle 文件指纹不匹配")
-    if source_root is not None and frontend_source_hash(source_root) != manifest.get("source_sha256"):
+    if source_root is not None and frontend_source_hash(source_root) != manifest.get(
+        "source_sha256"
+    ):
         raise ValueError("PNG bundle 与当前开发图形源码不一致，请重建开发镜像")
     return manifest
 
@@ -159,7 +166,9 @@ def write_runtime_manifest(
     executable = Path(_playwright_executable())
     resolved_browser_root = browser_root.resolve(strict=True)
     resolved_executable = executable.resolve(strict=True)
-    if resolved_browser_root not in resolved_executable.parents or not os.access(executable, os.X_OK):
+    if resolved_browser_root not in resolved_executable.parents or not os.access(
+        executable, os.X_OK
+    ):
         raise ValueError("Playwright Chromium 安装位置无效")
     payload = {
         "version": 1,
@@ -171,9 +180,7 @@ def write_runtime_manifest(
             "chart": _font_manifest_entry(
                 chart_font_path, "chart", chart_font_package_version
             ),
-            "pdf": _font_manifest_entry(
-                pdf_font_path, "pdf", pdf_font_package_version
-            ),
+            "pdf": _font_manifest_entry(pdf_font_path, "pdf", pdf_font_package_version),
         },
         "frontend_source_sha256": bundle["source_sha256"],
     }
@@ -182,9 +189,7 @@ def write_runtime_manifest(
     output.chmod(0o644)
 
 
-def verify_runtime_manifest(
-    root: Path, source_root: Path | None = None
-) -> dict:
+def verify_runtime_manifest(root: Path, source_root: Path | None = None) -> dict:
     asset_root = root / "assets"
     bundle = verify_bundle(asset_root, source_root)
     runtime = _read_json(root / "runtime-manifest.json")
@@ -204,7 +209,8 @@ def verify_runtime_manifest(
         or not browser_root.is_dir()
         or executable.is_symlink()
         or not executable.is_file()
-        or browser_root.resolve(strict=True) not in executable.resolve(strict=True).parents
+        or browser_root.resolve(strict=True)
+        not in executable.resolve(strict=True).parents
         or not os.access(executable, os.X_OK)
     ):
         raise ValueError("Playwright Chromium 不可用")
@@ -250,7 +256,9 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, default=Path("/opt/chatbi-export"))
-    parser.add_argument("--browser-root", type=Path, default=Path("/opt/chatbi-export/browsers"))
+    parser.add_argument(
+        "--browser-root", type=Path, default=Path("/opt/chatbi-export/browsers")
+    )
     parser.add_argument("--chart-font-path", type=Path, required=True)
     parser.add_argument("--pdf-font-path", type=Path, required=True)
     parser.add_argument("--chart-font-package-version", required=True)

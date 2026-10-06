@@ -90,7 +90,9 @@ def test_timeout_kills_worker_group_and_releases_owner_slot(tmp_path, monkeypatc
     runtime.shutdown()
 
 
-def test_snapshot_size_limit_releases_slot_without_starting_worker(tmp_path, monkeypatch):
+def test_snapshot_size_limit_releases_slot_without_starting_worker(
+    tmp_path, monkeypatch
+):
     monkeypatch.setattr(export_runtime, "MAX_SNAPSHOT_BYTES", 16)
     runtime = ExportRuntime(tmp_path / "runtime")
     with pytest.raises(ExportFailure, match="5 MiB") as failure:
@@ -158,7 +160,9 @@ def test_shutdown_kills_active_worker_and_cleans_its_workdir(tmp_path, monkeypat
     monkeypatch.setattr(export_runtime, "_WORKER", script)
     runtime = ExportRuntime(tmp_path / "runtime")
     with ThreadPoolExecutor(max_workers=1) as pool:
-        result = pool.submit(runtime.generate, 1, {"result": {"rows": []}}, threading.Event())
+        result = pool.submit(
+            runtime.generate, 1, {"result": {"rows": []}}, threading.Event()
+        )
         deadline = time.monotonic() + 3
         while not pid_file.exists() and time.monotonic() < deadline:
             time.sleep(0.01)
@@ -197,9 +201,8 @@ def test_cancellation_kills_worker_and_releases_owner_slot(tmp_path, monkeypatch
         result = pool.submit(runtime.generate, 1, {"result": {"rows": []}}, cancelled)
         deadline = time.monotonic() + 3
         while (
-            (not pid_file.exists() or not child_pid_file.exists())
-            and time.monotonic() < deadline
-        ):
+            not pid_file.exists() or not child_pid_file.exists()
+        ) and time.monotonic() < deadline:
             time.sleep(0.01)
         assert pid_file.exists() and child_pid_file.exists()
         pid = int(pid_file.read_text())

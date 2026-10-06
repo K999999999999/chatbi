@@ -131,7 +131,9 @@ def _safe_metadata(value: object) -> dict | None:
     warnings = scope.get("warnings", [])
     if not isinstance(warnings, list):
         raise ExportRenderFailure("任务范围提示无效")
-    safe_scope["warnings"] = [_string(item, "任务范围提示") for item in warnings if isinstance(item, str)]
+    safe_scope["warnings"] = [
+        _string(item, "任务范围提示") for item in warnings if isinstance(item, str)
+    ]
     return {"columns": safe_columns, "scope": safe_scope}
 
 
@@ -153,13 +155,20 @@ def _safe_attribution(value: object) -> dict:
                 "product_name": _string(product.get("product_name"), "产品名称"),
                 "change": _decimal(product.get("change"), "产品贡献"),
                 "classification": _string(product.get("classification"), "产品分类"),
-                "effect_on_metric": _string(product.get("effect_on_metric"), "产品贡献方向"),
+                "effect_on_metric": _string(
+                    product.get("effect_on_metric"), "产品贡献方向"
+                ),
                 "factors": [
                     {
-                        "name": _string(_object(factor, "因素归因").get("name"), "因素名称"),
-                        "amount": _decimal(_object(factor, "因素归因").get("amount"), "因素贡献"),
+                        "name": _string(
+                            _object(factor, "因素归因").get("name"), "因素名称"
+                        ),
+                        "amount": _decimal(
+                            _object(factor, "因素归因").get("amount"), "因素贡献"
+                        ),
                         "effect_on_metric": _string(
-                            _object(factor, "因素归因").get("effect_on_metric"), "因素贡献方向"
+                            _object(factor, "因素归因").get("effect_on_metric"),
+                            "因素贡献方向",
                         ),
                     }
                     for factor in factors
@@ -169,18 +178,22 @@ def _safe_attribution(value: object) -> dict:
     omitted = attribution.get("omitted_product_count")
     if type(omitted) is not int or omitted < 0:
         raise ExportRenderFailure("未返回产品数量无效")
-    return {
-        key: _string(attribution.get(key), "归因说明")
-        for key in (
-            "metric_name",
-            "comparison_period",
-            "current_period",
-            "direction",
-        )
-    } | {
-        key: _decimal(attribution.get(key), "归因指标值")
-        for key in ("comparison_value", "current_value", "total_change")
-    } | {"omitted_product_count": omitted, "products": clean_products}
+    return (
+        {
+            key: _string(attribution.get(key), "归因说明")
+            for key in (
+                "metric_name",
+                "comparison_period",
+                "current_period",
+                "direction",
+            )
+        }
+        | {
+            key: _decimal(attribution.get(key), "归因指标值")
+            for key in ("comparison_value", "current_value", "total_change")
+        }
+        | {"omitted_product_count": omitted, "products": clean_products}
+    )
 
 
 def _safe_document(document: object) -> dict:
@@ -193,15 +206,24 @@ def _safe_document(document: object) -> dict:
         key: _string(raw_report.get(key), "分析报告")
         for key in ("title", "executive_summary", "trend_judgment")
     }
-    for key in ("key_findings", "root_causes", "action_suggestions", "evidence_task_ids"):
+    for key in (
+        "key_findings",
+        "root_causes",
+        "action_suggestions",
+        "evidence_task_ids",
+    ):
         report[key] = _strings(raw_report.get(key), "分析报告")
     raw_incomplete = raw_report.get("incomplete_tasks")
     if not isinstance(raw_incomplete, list):
         raise ExportRenderFailure("证据限制列表无效")
     report["incomplete_tasks"] = [
         {
-            "task_id": _string(_object(item, "证据限制").get("task_id"), "证据限制任务"),
-            "reasons": _strings(_object(item, "证据限制").get("reasons"), "证据限制原因"),
+            "task_id": _string(
+                _object(item, "证据限制").get("task_id"), "证据限制任务"
+            ),
+            "reasons": _strings(
+                _object(item, "证据限制").get("reasons"), "证据限制原因"
+            ),
         }
         for item in raw_incomplete
     ]
@@ -229,12 +251,14 @@ def _safe_document(document: object) -> dict:
             if not isinstance(row, list) or len(row) != len(columns):
                 raise ExportRenderFailure("查询任务行列数不一致")
             if any(
-                cell is not None
-                and type(cell) not in {str, int, float, bool}
+                cell is not None and type(cell) not in {str, int, float, bool}
                 for cell in row
             ):
                 raise ExportRenderFailure("查询任务单元格类型无效")
-            if any(isinstance(cell, float) and not __import__("math").isfinite(cell) for cell in row):
+            if any(
+                isinstance(cell, float) and not __import__("math").isfinite(cell)
+                for cell in row
+            ):
                 raise ExportRenderFailure("查询任务包含非有限数值")
             rows.append(row)
         row_count = task.get("row_count")
@@ -252,7 +276,9 @@ def _safe_document(document: object) -> dict:
         error = task.get("error")
         error_message = None
         if error is not None:
-            error_message = _string(_object(error, "查询任务错误").get("message"), "查询任务错误")
+            error_message = _string(
+                _object(error, "查询任务错误").get("message"), "查询任务错误"
+            )
         clean_tasks.append(
             {
                 "task_id": task_id,
@@ -374,8 +400,12 @@ def generate_pdf(document: dict, destination: str | Path) -> None:
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=True, chromium_sandbox=True)
             try:
-                executable = Path(playwright.chromium.executable_path).resolve(strict=True)
-                if executable != Path(runtime["chromium_executable"]).resolve(strict=True):
+                executable = Path(playwright.chromium.executable_path).resolve(
+                    strict=True
+                )
+                if executable != Path(runtime["chromium_executable"]).resolve(
+                    strict=True
+                ):
                     raise ExportRendererUnavailable("Chromium 版本与固定运行清单不匹配")
                 context = browser.new_context(
                     viewport=PDF_VIEWPORT,
@@ -384,15 +414,23 @@ def generate_pdf(document: dict, destination: str | Path) -> None:
                     accept_downloads=False,
                 )
                 try:
+
                     def fulfill_local_resources(route):
                         request = route.request
                         parsed = urlsplit(request.url)
-                        if request.method != "GET" or parsed.scheme != "http" or parsed.netloc != "localhost":
+                        if (
+                            request.method != "GET"
+                            or parsed.scheme != "http"
+                            or parsed.netloc != "localhost"
+                        ):
                             blocked.append(request.url[:512])
                             route.abort()
                             return
                         relative = unquote(parsed.path).lstrip("/") or "export.html"
-                        if relative not in files or ".." in PurePosixPath(relative).parts:
+                        if (
+                            relative not in files
+                            or ".." in PurePosixPath(relative).parts
+                        ):
                             blocked.append(request.url[:512])
                             route.abort()
                             return
@@ -410,27 +448,43 @@ def generate_pdf(document: dict, destination: str | Path) -> None:
                                 if relative.endswith(".woff2")
                                 else "application/octet-stream"
                             ),
-                            headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "no-store"},
+                            headers={
+                                "X-Content-Type-Options": "nosniff",
+                                "Cache-Control": "no-store",
+                            },
                         )
 
                     context.route("**/*", fulfill_local_resources)
                     page = context.new_page()
                     page.set_default_timeout(45_000)
-                    page.on("websocket", lambda socket: blocked.append(socket.url[:512]))
+                    page.on(
+                        "websocket", lambda socket: blocked.append(socket.url[:512])
+                    )
                     page.goto(RENDER_ORIGIN + "/", wait_until="load")
-                    page.evaluate("request => window.__chatbiRenderReport(request)", payload)
+                    page.evaluate(
+                        "request => window.__chatbiRenderReport(request)", payload
+                    )
                     render_deadline = time.monotonic() + 45
                     state = None
                     while time.monotonic() < render_deadline:
                         state = page.evaluate("() => window.__chatbiRenderState")
-                        if isinstance(state, dict) and state.get("status") in {"ready", "failed"}:
+                        if isinstance(state, dict) and state.get("status") in {
+                            "ready",
+                            "failed",
+                        }:
                             break
                         time.sleep(0.05)
                     else:
                         raise ExportRendererUnavailable("PDF 页面未在时限内完成")
                     if not isinstance(state, dict) or state.get("status") != "ready":
-                        diagnostic = state.get("error") if isinstance(state, dict) else None
-                        cause = RuntimeError(diagnostic) if isinstance(diagnostic, str) else None
+                        diagnostic = (
+                            state.get("error") if isinstance(state, dict) else None
+                        )
+                        cause = (
+                            RuntimeError(diagnostic)
+                            if isinstance(diagnostic, str)
+                            else None
+                        )
                         raise ExportRenderFailure("PDF 内容未能完整渲染") from cause
                     _validate_manifest(state.get("manifest"), expected)
                     if blocked:

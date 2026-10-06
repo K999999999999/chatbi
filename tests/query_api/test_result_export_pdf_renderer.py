@@ -40,8 +40,16 @@ class Audit:
 def _analysis_snapshot(*, attribution: bool):
     columns = [f"经营指标第{i + 1}列" for i in range(8)]
     rows = [
-        [f"2026-{i + 1:03d}", f"销售额-{i + 1:03d}", "北区", str(i * 100 + 25),
-         "中文证据", "完整保留", "金额单位元", f"行{i + 1:03d}-末列"]
+        [
+            f"2026-{i + 1:03d}",
+            f"销售额-{i + 1:03d}",
+            "北区",
+            str(i * 100 + 25),
+            "中文证据",
+            "完整保留",
+            "金额单位元",
+            f"行{i + 1:03d}-末列",
+        ]
         for i in range(100)
     ]
     rows[0][4] = "居民消费和民生数据"
@@ -99,11 +107,20 @@ def _analysis_snapshot(*, attribution: bool):
                     "product_name": f"归因产品{i}",
                     "change": str(20 - i * 7),
                     "classification": "continuing",
-                    "effect_on_metric": "increases_target_metric" if i < 2 else "decreases_target_metric",
+                    "effect_on_metric": "increases_target_metric"
+                    if i < 2
+                    else "decreases_target_metric",
                     "factors": [
-                        {"name": f"销量因素{i}", "amount": str(24 - i * 7),
-                         "effect_on_metric": "increases_target_metric"},
-                        {"name": f"单价因素{i}", "amount": "-4", "effect_on_metric": "decreases_target_metric"},
+                        {
+                            "name": f"销量因素{i}",
+                            "amount": str(24 - i * 7),
+                            "effect_on_metric": "increases_target_metric",
+                        },
+                        {
+                            "name": f"单价因素{i}",
+                            "amount": "-4",
+                            "effect_on_metric": "decreases_target_metric",
+                        },
                     ],
                 }
                 for i in range(4)
@@ -149,7 +166,10 @@ def _analysis_snapshot(*, attribution: bool):
                     "rows": [],
                     "row_count": 0,
                     "truncated": False,
-                    "error": {"code": "DATABASE_ERROR", "message": "任务失败，保留公开说明"},
+                    "error": {
+                        "code": "DATABASE_ERROR",
+                        "message": "任务失败，保留公开说明",
+                    },
                 },
                 {
                     "task_id": "skipped-task",
@@ -215,7 +235,9 @@ def test_real_pdf_download_extracts_cjk_complete_evidence_and_attribution(tmp_pa
         if output:
             Path(output).write_bytes(response.content)
         reader = PdfReader(BytesIO(response.content))
-        text = unicodedata.normalize("NFKC", "\n".join(page.extract_text() or "" for page in reader.pages))
+        text = unicodedata.normalize(
+            "NFKC", "\n".join(page.extract_text() or "" for page in reader.pages)
+        )
         assert len(reader.pages) >= 4
         assert "十月经营分析报告" in text
         assert "原分析问题" in text and "2026-10-06T10:00:00+00:00" in text
@@ -225,7 +247,11 @@ def test_real_pdf_download_extracts_cjk_complete_evidence_and_attribution(tmp_pa
         assert "第8列" in text and "行100-末列" in text
         assert "empty-task" in text and "月份" in text
         assert "file:///etc/passwd" in text
-        assert "任务失败" in text and "保留公开说明" in text and "查询任务结果已截断" in text
+        assert (
+            "任务失败" in text
+            and "保留公开说明" in text
+            and "查询任务结果已截断" in text
+        )
         assert "internal-request-id-must-not-print" not in text
         assert "internal-analysis-id-must-not-print" not in text
 
@@ -246,7 +272,11 @@ def test_real_pdf_without_attribution_omits_attribution_section():
         )
     assert response.status_code == 200, response.text
     text = unicodedata.normalize(
-        "NFKC", "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(response.content)).pages)
+        "NFKC",
+        "\n".join(
+            page.extract_text() or ""
+            for page in PdfReader(BytesIO(response.content)).pages
+        ),
     )
     assert "两期指标归因与产品因素" not in text
     assert "证据附录" in text

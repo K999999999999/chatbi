@@ -44,7 +44,13 @@ def test_offline_bundle_manifest_verifies_all_file_hashes(tmp_path):
 def test_development_source_hash_binds_the_export_bundle(tmp_path):
     source = tmp_path / "source"
     (source / "src").mkdir(parents=True)
-    for filename in ("export.html", "vite.export.config.ts", "tsconfig.json", "package.json", "package-lock.json"):
+    for filename in (
+        "export.html",
+        "vite.export.config.ts",
+        "tsconfig.json",
+        "package.json",
+        "package-lock.json",
+    ):
         (source / filename).write_text(filename, encoding="utf-8")
     (source / "src" / "chart.ts").write_text("chart", encoding="utf-8")
     expected = frontend_source_hash(source)
@@ -71,8 +77,12 @@ def test_runtime_manifest_binds_separate_chart_and_pdf_fonts(tmp_path, monkeypat
         "Noto Sans CJK SC": chart_font,
         "WenQuanYi Zen Hei": pdf_font,
     }
-    monkeypatch.setattr(export_assets, "_playwright_executable", lambda: str(executable))
-    monkeypatch.setattr(export_assets, "_fontconfig_file", lambda family: matches[family])
+    monkeypatch.setattr(
+        export_assets, "_playwright_executable", lambda: str(executable)
+    )
+    monkeypatch.setattr(
+        export_assets, "_fontconfig_file", lambda family: matches[family]
+    )
     monkeypatch.setattr(export_assets.importlib.metadata, "version", lambda _: "1.0.0")
 
     export_assets.write_runtime_manifest(
@@ -89,7 +99,9 @@ def test_runtime_manifest_binds_separate_chart_and_pdf_fonts(tmp_path, monkeypat
         "chart": chart_font.resolve(),
         "pdf": pdf_font.resolve(),
     }
-    manifest = json.loads((tmp_path / "runtime-manifest.json").read_text(encoding="utf-8"))
+    manifest = json.loads(
+        (tmp_path / "runtime-manifest.json").read_text(encoding="utf-8")
+    )
     assert manifest["fonts"]["chart"]["package_version"] == "1:20220127+repack1-1"
     assert manifest["fonts"]["pdf"]["package_version"] == "0.9.45-8"
 

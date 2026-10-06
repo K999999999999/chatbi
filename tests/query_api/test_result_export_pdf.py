@@ -32,9 +32,7 @@ def analysis_document():
                 "root_causes": [],
                 "action_suggestions": ["继续观察"],
                 "evidence_task_ids": ["current-sales"],
-                "incomplete_tasks": [
-                    {"task_id": "failed-cost", "reasons": ["failed"]}
-                ],
+                "incomplete_tasks": [{"task_id": "failed-cost", "reasons": ["failed"]}],
                 "internal_reason": "must never be rendered",
                 "attribution": {
                     "metric_name": "人民币净销售额",
@@ -74,7 +72,12 @@ def analysis_document():
                     "error": None,
                     "result_metadata": {
                         "columns": [
-                            {"index": 1, "name": "销售额", "definition": "销售额定义", "unit": {"label": "元"}},
+                            {
+                                "index": 1,
+                                "name": "销售额",
+                                "definition": "销售额定义",
+                                "unit": {"label": "元"},
+                            },
                         ],
                         "scope": {
                             "status": "complete",
@@ -85,7 +88,9 @@ def analysis_document():
                                 "time_basis": "订单日期",
                                 "secret": "must never be rendered",
                             },
-                            "filters": [{"label": "区域", "operator": "=", "values": ["北区"]}],
+                            "filters": [
+                                {"label": "区域", "operator": "=", "values": ["北区"]}
+                            ],
                             "grouping": [{"semantic_name": "月份", "kind": "time"}],
                             "warnings": [],
                             "sql": "must never be rendered",
@@ -128,7 +133,9 @@ def test_pdf_document_contains_only_public_report_and_task_fields(analysis_docum
     assert safe["result"]["task_results"][1]["error"] == "成本任务失败"
 
 
-def test_pdf_coverage_accounts_for_report_blocks_all_tables_and_factors(analysis_document):
+def test_pdf_coverage_accounts_for_report_blocks_all_tables_and_factors(
+    analysis_document,
+):
     safe = _safe_document(analysis_document)
     coverage = _expected_coverage(safe, "a" * 64)
 
@@ -164,7 +171,9 @@ def test_pdf_coverage_accounts_for_report_blocks_all_tables_and_factors(analysis
     assert coverage["attribution_chart"] is True
 
 
-def test_pdf_document_fails_closed_on_incomplete_or_invalid_task_shape(analysis_document):
+def test_pdf_document_fails_closed_on_incomplete_or_invalid_task_shape(
+    analysis_document,
+):
     invalid = copy.deepcopy(analysis_document)
     invalid["result"]["task_results"][0]["rows"][0].pop()
 

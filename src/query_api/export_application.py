@@ -15,7 +15,13 @@ from .export_runtime import ExportFailure
 
 class FileGenerator(Protocol):
     def generate(
-        self, owner: int, document: dict, cancelled: Event, *, format: str = "xlsx", selection: dict | None = None
+        self,
+        owner: int,
+        document: dict,
+        cancelled: Event,
+        *,
+        format: str = "xlsx",
+        selection: dict | None = None,
     ): ...
 
 
@@ -51,14 +57,17 @@ class ResultExportApplication:
             raise ExportFailure(
                 "EXPORT_FORMAT_UNAVAILABLE", "所选导出格式暂不可用", 422
             )
-        if (format in {"xlsx", "pdf"} and selection is not None) or (format == "png" and not selection):
-            raise ExportFailure(
-                "EXPORT_SELECTION_INVALID", "图表选择无效", 422
-            )
+        if (format in {"xlsx", "pdf"} and selection is not None) or (
+            format == "png" and not selection
+        ):
+            raise ExportFailure("EXPORT_SELECTION_INVALID", "图表选择无效", 422)
         source = self._history.export_source(
             auth, request_id, source_kind, source_id, turn_id
         )
-        if not isinstance(source, dict) or source.get("kind") not in {"query", "analysis"}:
+        if not isinstance(source, dict) or source.get("kind") not in {
+            "query",
+            "analysis",
+        }:
             raise ExportFailure(
                 "EXPORT_SOURCE_UNAVAILABLE", "记录不可用，请刷新后重试", 404
             )

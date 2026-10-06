@@ -124,9 +124,7 @@ class HistoryApplication:
 
     def export_source(self, auth, request_id, source_kind, source_id, turn_id=None):
         self.authorize(auth, request_id)
-        return self.store.export_snapshot(
-            auth.user_id, source_kind, source_id, turn_id
-        )
+        return self.store.export_snapshot(auth.user_id, source_kind, source_id, turn_id)
 
     def delete(self, auth, request_id, history_id, revision):
         self.authorize(auth, request_id)

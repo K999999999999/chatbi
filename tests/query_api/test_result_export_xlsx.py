@@ -1,8 +1,25 @@
 from __future__ import annotations
 
+from zipfile import ZipFile
+
+import pytest
 from openpyxl import load_workbook
 
-from src.query_api.export_xlsx import create_query_workbook
+from src.query_api.export_xlsx import _verify_workbook, create_query_workbook
+
+
+def test_query_workbook_verifier_rejects_dtd_and_external_entities(tmp_path):
+    destination = tmp_path / "unsafe.xlsx"
+    with ZipFile(destination, "w") as archive:
+        archive.writestr(
+            "xl/workbook.xml",
+            b'<?xml version="1.0"?><!DOCTYPE workbook '
+            b'[<!ENTITY secret SYSTEM "file:///etc/passwd">]>'
+            b"<workbook>&secret;</workbook>",
+        )
+
+    with pytest.raises(ValueError, match="invalid or unsafe XML"):
+        _verify_workbook(destination, data_rows=1, data_columns=1, note_rows=1)
 
 
 def test_query_workbook_preserves_raw_values_and_cell_types(tmp_path):

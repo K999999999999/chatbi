@@ -295,10 +295,18 @@ def _verify_png(path: Path):
         if zlib.crc32(kind + data) & 0xFFFFFFFF != expected_crc:
             raise RuntimeError("PNG chunk CRC 校验失败")
         if kind == b"IHDR":
-            width, height, depth, color, compression, filtering, interlace = struct.unpack(
-                ">IIBBBBB", data
+            width, height, depth, color, compression, filtering, interlace = (
+                struct.unpack(">IIBBBBB", data)
             )
-            if not width or not height or depth != 8 or color not in {2, 6} or compression or filtering or interlace:
+            if (
+                not width
+                or not height
+                or depth != 8
+                or color not in {2, 6}
+                or compression
+                or filtering
+                or interlace
+            ):
                 raise RuntimeError("PNG 尺寸或像素编码不支持")
         elif kind == b"IDAT":
             compressed.extend(data)
@@ -351,16 +359,25 @@ def _verify_xlsx(path: Path, capture: dict):
         expected = capture.get("expected_snapshot")
         if expected:
             columns = expected["columns"]
-            if [data.cell(1, index + 1).value for index in range(len(columns))] != columns:
+            if [
+                data.cell(1, index + 1).value for index in range(len(columns))
+            ] != columns:
                 raise RuntimeError("XLSX 列标题与已保存快照不一致")
             for row_index, row in enumerate(expected["rows"], start=2):
-                actual = [data.cell(row_index, index + 1).value for index in range(len(columns))]
+                actual = [
+                    data.cell(row_index, index + 1).value
+                    for index in range(len(columns))
+                ]
                 if len(row) != len(actual) or any(
                     not _same_xlsx_value(value, source)
                     for value, source in zip(actual, row, strict=True)
                 ):
                     raise RuntimeError("XLSX 行数据与已保存快照不一致")
-        return {"sheets": workbook.sheetnames, "rows": data.max_row - 1, "columns": data.max_column}
+        return {
+            "sheets": workbook.sheetnames,
+            "rows": data.max_row - 1,
+            "columns": data.max_column,
+        }
     finally:
         workbook.close()
 
@@ -374,10 +391,21 @@ def _verify_pdf(path: Path, expected: dict):
     text = _compact("\n".join(page.extract_text() or "" for page in reader.pages))
     required = [expected["question"]]
     report = expected["report"]
-    required.extend([report["title"], report["executive_summary"], report["trend_judgment"]])
-    required.extend(report["key_findings"] + report["root_causes"] + report["action_suggestions"])
+    required.extend(
+        [report["title"], report["executive_summary"], report["trend_judgment"]]
+    )
+    required.extend(
+        report["key_findings"] + report["root_causes"] + report["action_suggestions"]
+    )
     attribution = report.get("attribution") or {}
-    for key in ("metric_name", "comparison_period", "current_period", "comparison_value", "current_value", "total_change"):
+    for key in (
+        "metric_name",
+        "comparison_period",
+        "current_period",
+        "comparison_value",
+        "current_value",
+        "total_change",
+    ):
         if key in attribution:
             required.append(attribution[key])
     for product in attribution.get("products", []):
@@ -405,17 +433,30 @@ def _verify_pdf(path: Path, expected: dict):
         )
         for row in task["rows"]:
             required.extend(
-                "NULL（无数据）" if cell is None else "空字符串" if cell == ""
-                else "true" if cell is True else "false" if cell is False else str(cell)
+                "NULL（无数据）"
+                if cell is None
+                else "空字符串"
+                if cell == ""
+                else "true"
+                if cell is True
+                else "false"
+                if cell is False
+                else str(cell)
                 for cell in row
             )
-    missing = [value for value in required if _compact(value) and _compact(value) not in text]
+    missing = [
+        value for value in required if _compact(value) and _compact(value) not in text
+    ]
     if missing:
         raise RuntimeError(f"PDF 可选取文本缺少快照字段（{len(missing)} 项）")
     for private in (expected["request_id"], expected["analysis_run_id"]):
         if _compact(private) in text:
             raise RuntimeError("PDF 包含私有运行标识")
-    return {"pages": len(reader.pages), "checked_values": len(required), "text_characters": len(text)}
+    return {
+        "pages": len(reader.pages),
+        "checked_values": len(required),
+        "text_characters": len(text),
+    }
 
 
 def verify_exports():
@@ -430,7 +471,10 @@ def verify_exports():
         if not path.is_file():
             raise RuntimeError("浏览器下载文件缺失")
         raw = path.read_bytes()
-        if len(raw) != capture["size"] or hashlib.sha256(raw).hexdigest() != capture["sha256"]:
+        if (
+            len(raw) != capture["size"]
+            or hashlib.sha256(raw).hexdigest() != capture["sha256"]
+        ):
             raise RuntimeError("浏览器下载文件 hash / 大小与记录不一致")
         if capture["format"] == "xlsx":
             parsed = _verify_xlsx(path, capture)
@@ -442,9 +486,16 @@ def verify_exports():
             parsed = _verify_pdf(path, expected_pdf)
         else:
             raise RuntimeError("浏览器报告含有未知导出格式")
-        results.append({"file": path.name, "format": capture["format"], "size": len(raw),
-            "sha256": hashlib.sha256(raw).hexdigest(), "source_kind": capture["source"]["kind"],
-            "parsed": parsed})
+        results.append(
+            {
+                "file": path.name,
+                "format": capture["format"],
+                "size": len(raw),
+                "sha256": hashlib.sha256(raw).hexdigest(),
+                "source_kind": capture["source"]["kind"],
+                "parsed": parsed,
+            }
+        )
     formats = {item["format"] for item in results}
     if not {"xlsx", "png", "pdf"}.issubset(formats):
         raise RuntimeError("真实浏览器验收没有覆盖三种文件格式")
@@ -452,16 +503,25 @@ def verify_exports():
     if not {"history_turn", "saved_result"}.issubset(sources):
         raise RuntimeError("真实浏览器验收没有覆盖历史与独立成果来源")
     by_format = {
-        file_format: {item["source_kind"] for item in results if item["format"] == file_format}
+        file_format: {
+            item["source_kind"] for item in results if item["format"] == file_format
+        }
         for file_format in ("xlsx", "png", "pdf")
     }
-    if any(not {"history_turn", "saved_result"}.issubset(kinds) for kinds in by_format.values()):
+    if any(
+        not {"history_turn", "saved_result"}.issubset(kinds)
+        for kinds in by_format.values()
+    ):
         raise RuntimeError("真实浏览器验收没有逐格式覆盖历史与独立成果来源")
-    after_restart = {item["format"] for item in results if item["file"].startswith("r5-restarted-")}
+    after_restart = {
+        item["format"] for item in results if item["file"].startswith("r5-restarted-")
+    }
     if after_restart != {"xlsx", "png", "pdf"}:
         raise RuntimeError("服务重启后没有重新下载并覆盖三种格式")
     result = {"status": "passed", "files": results, "formats": sorted(formats)}
-    (REPORT / "export-verification.json").write_text(json.dumps(result, ensure_ascii=False, indent=2))
+    (REPORT / "export-verification.json").write_text(
+        json.dumps(result, ensure_ascii=False, indent=2)
+    )
     print("隔离 Compose 的 XLSX / PNG / PDF 浏览器下载已由独立解析器核验。")
 
 

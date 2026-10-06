@@ -45,7 +45,7 @@ HistoryTurn.completed_at 在只读导出投影从底层列取得，不改变既�
 - 原始字符串默认 write_string，不根据数字外观推断类型；已认证 metric 的十进制字符串只有通过相同精度规则才可写 number，并在说明表保留该单元格原字符串和 JSON 类型。高精度 / 长整数 / dimension 编号保持文本，不能浮点预处理后再决定。
 - NULL 与空字符串分别在数据表显示 `〈NULL〉` / `〈空字符串〉`，说明表为每个特殊单元格记录坐标、原 JSON 类型和值；真实同名字串记录 string 类型，避免标记冲突。JSON 零保持数字 0。所有发生文本 / 数字转换的单元格同样记录原类型及原词法值；从文件可确定性还原 JSON 单元格。
 - Workbook 禁用 strings_to_formulas / strings_to_urls / strings_to_numbers；只显式调用类型 writer，不允许客户端公式。数字格式只控制显示，原值保真信息不舍入。
-- UTF-16 单元格长度、行列上限、非法字符与库返回错误逐项检查；说明表自身也受检查。过长文本无法完整写入时返回格式无法完整表达，不利用库自动截断。zip 完整性、关键工作表及行列数量验证后交付；内存外临时文件仍遵守清理。
+- UTF-16 单元格长度、行列上限、非法字符与库返回错误逐项检查；说明表自身也受检查。过长文本无法完整写入时返回格式无法完整表达，不利用库自动截断。zip 完整性、关键工作表及行列数量验证后交付；OOXML 使用 `defusedxml` 严格拒绝 DTD、实体与外部引用，非法或危险 XML fail closed；内存外临时文件仍遵守清理。
 
 精度、NULL 与冲突标记的验证用独立 XLSX 解析器读取类型与说明表还原原值，禁止只复用 writer 内部判断作为 oracle。
 
@@ -77,7 +77,7 @@ Runtime startup 通过单进程服务约束取得临时根清理所有权；只�
 
 ## 7. 构建与运行装配
 
-Python dependencies 新增 XlsxWriter / Playwright，dev verification 使用独立 XLSX / PDF / PNG 解析工具，uv.lock 固化；Chromium build 与 Playwright 版本配套。
+Python dependencies 新增 XlsxWriter / Playwright / `defusedxml`，dev verification 使用独立 XLSX / PDF / PNG 解析工具，uv.lock 固化；Chromium build 与 Playwright 版本配套。
 
 单独 Vite export build 将 HTML / JS / CSS 打包为自包含 / 静态已知资源 bundle，manifest 绑定源码 / 依赖 hash。不新增运行时 Node 服务。Python 开发镜像增加 Node 构建 stage，COPY bundle 到 `/opt/chatbi-export/assets`，安装浏览器到固定只读位置，并按锁定版本安装 Noto 与 WenQuanYi：前者供 PNG 图形使用，后者供 PDF 正文使用；现有源码挂载不能遮盖这些资产。
 

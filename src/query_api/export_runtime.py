@@ -42,7 +42,13 @@ class ExportArtifact:
 
 
 class ExportRuntime:
-    def __init__(self, temp_root: Path | None = None, *, export_root: Path | None = None, source_root: Path | None = None):
+    def __init__(
+        self,
+        temp_root: Path | None = None,
+        *,
+        export_root: Path | None = None,
+        source_root: Path | None = None,
+    ):
         self._root = (
             Path(temp_root)
             if temp_root
@@ -56,7 +62,9 @@ class ExportRuntime:
         self._initialized = False
         self._root_lock_fd: int | None = None
         self._process_root_key: str | None = None
-        self._export_root = Path(export_root or os.environ.get("CHATBI_EXPORT_ROOT", "/opt/chatbi-export"))
+        self._export_root = Path(
+            export_root or os.environ.get("CHATBI_EXPORT_ROOT", "/opt/chatbi-export")
+        )
         configured_source = source_root or os.environ.get("CHATBI_EXPORT_SOURCE_DIR")
         self._source_root = Path(configured_source) if configured_source else None
         self._render_config: dict | None = None
@@ -158,7 +166,9 @@ class ExportRuntime:
         selection: dict | None = None,
     ):
         if format not in {"xlsx", "png", "pdf"}:
-            raise ExportFailure("EXPORT_FORMAT_UNAVAILABLE", "所选导出格式暂不可用", 422)
+            raise ExportFailure(
+                "EXPORT_FORMAT_UNAVAILABLE", "所选导出格式暂不可用", 422
+            )
         if os.geteuid() == 0:
             raise ExportFailure("EXPORT_UNAVAILABLE", "文件导出运行账户配置无效", 503)
         if not self.acquire(owner):
@@ -174,7 +184,9 @@ class ExportRuntime:
                 self._render_config = None
             if self._render_config is None:
                 self.release(owner)
-                raise ExportFailure("EXPORT_UNAVAILABLE", "离线 Chromium 渲染资源不可用", 503)
+                raise ExportFailure(
+                    "EXPORT_UNAVAILABLE", "离线 Chromium 渲染资源不可用", 503
+                )
         if format == "png" and not selection:
             self.release(owner)
             raise ExportFailure("EXPORT_SELECTION_INVALID", "图表选择无效", 422)
@@ -227,7 +239,10 @@ class ExportRuntime:
 
         workdir.mkdir(mode=0o700)
         os.chmod(workdir, 0o700)
-        output = workdir / {"xlsx": "result.xlsx", "png": "result.png", "pdf": "result.pdf"}[format]
+        output = (
+            workdir
+            / {"xlsx": "result.xlsx", "png": "result.png", "pdf": "result.pdf"}[format]
+        )
         environment = {"PATH": os.defpath, "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
         if format in {"png", "pdf"}:
             assert self._render_config is not None
@@ -235,7 +250,9 @@ class ExportRuntime:
                 {
                     "HOME": str(workdir),
                     "CHATBI_EXPORT_ROOT": str(self._export_root),
-                    "PLAYWRIGHT_BROWSERS_PATH": str(self._render_config["browser_root"]),
+                    "PLAYWRIGHT_BROWSERS_PATH": str(
+                        self._render_config["browser_root"]
+                    ),
                 }
             )
         process = subprocess.Popen(
@@ -290,9 +307,7 @@ class ExportRuntime:
                     "EXPORT_FAILED", "文件无法完整生成，请稍后重试", 422
                 )
             try:
-                output_fd = os.open(
-                    output, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC
-                )
+                output_fd = os.open(output, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
             except OSError:
                 raise ExportFailure(
                     "EXPORT_FAILED", "文件无法完整生成，请稍后重试", 422

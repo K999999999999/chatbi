@@ -280,7 +280,9 @@ def test_png_export_accepts_analysis_and_passes_server_checked_selection(
     }
 
 
-def test_pdf_export_accepts_only_analysis_and_returns_pdf_headers(monkeypatch, tmp_path):
+def test_pdf_export_accepts_only_analysis_and_returns_pdf_headers(
+    monkeypatch, tmp_path
+):
     class AnalysisStore(Store):
         def export_snapshot(self, owner, source_kind, source_id, turn_id):
             return {
@@ -307,7 +309,9 @@ def test_pdf_export_accepts_only_analysis_and_returns_pdf_headers(monkeypatch, t
         assert format == "pdf"
         assert selection is None
         assert document["kind"] == "analysis"
-        return ExportArtifact(artifact_path, artifact_path.stat().st_size, monotonic() + 60)
+        return ExportArtifact(
+            artifact_path, artifact_path.stat().st_size, monotonic() + 60
+        )
 
     monkeypatch.setattr(runtime, "generate", generate)
     with client:

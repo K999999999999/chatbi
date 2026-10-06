@@ -177,8 +177,17 @@ def create_browser_app():
                 "sql": "SELECT 1",
                 "columns": ["产品", "销售额", "空值", "零", "空串"],
                 "rows": [
-                    ['<img src="file:///etc/passwd" onerror="fetch(\'https://example.invalid/x\')"> 产品', 123.45, None, 0, ""],
-                    *[[f"产品{i:02d}-完整分类标签", (i + 1) * 10, None, 0, ""] for i in range(1, 18)],
+                    [
+                        '<img src="file:///etc/passwd" onerror="fetch(\'https://example.invalid/x\')"> 产品',
+                        123.45,
+                        None,
+                        0,
+                        "",
+                    ],
+                    *[
+                        [f"产品{i:02d}-完整分类标签", (i + 1) * 10, None, 0, ""]
+                        for i in range(1, 18)
+                    ],
                 ],
                 "row_count": 18,
                 "truncated": False,
@@ -186,15 +195,45 @@ def create_browser_app():
                     "version": 1,
                     "status": "complete",
                     "columns": [
-                        {"index": 0, "name": "产品", "role": "dimension", "certified": True,
-                         "semantic_name": "产品", "definition": None, "unit": None, "format": "raw"},
-                        {"index": 1, "name": "销售额", "role": "metric", "certified": True,
-                         "semantic_name": "人民币净销售额", "definition": "净销售额定义", "unit": {"key": "CNY", "label": "元"}, "format": "money"},
-                        *[{"index": index, "name": name, "certified": False} for index, name in enumerate(("空值", "零", "空串"), 2)],
+                        {
+                            "index": 0,
+                            "name": "产品",
+                            "role": "dimension",
+                            "certified": True,
+                            "semantic_name": "产品",
+                            "definition": None,
+                            "unit": None,
+                            "format": "raw",
+                        },
+                        {
+                            "index": 1,
+                            "name": "销售额",
+                            "role": "metric",
+                            "certified": True,
+                            "semantic_name": "人民币净销售额",
+                            "definition": "净销售额定义",
+                            "unit": {"key": "CNY", "label": "元"},
+                            "format": "money",
+                        },
+                        *[
+                            {"index": index, "name": name, "certified": False}
+                            for index, name in enumerate(("空值", "零", "空串"), 2)
+                        ],
                     ],
-                    "scope": {"status": "complete", "time_status": "unbounded", "time": None,
-                              "filters": [], "grouping": [{"semantic_name": "产品", "kind": "category", "column_indices": [0]}],
-                              "warnings": []},
+                    "scope": {
+                        "status": "complete",
+                        "time_status": "unbounded",
+                        "time": None,
+                        "filters": [],
+                        "grouping": [
+                            {
+                                "semantic_name": "产品",
+                                "kind": "category",
+                                "column_indices": [0],
+                            }
+                        ],
+                        "warnings": [],
+                    },
                     "time_axis": None,
                 },
             },

@@ -49,7 +49,11 @@ def main() -> int:
         return 3
     try:
         source = json.loads(raw)
-        if not isinstance(source, dict) or source.get("format") not in {"xlsx", "png", "pdf"}:
+        if not isinstance(source, dict) or source.get("format") not in {
+            "xlsx",
+            "png",
+            "pdf",
+        }:
             return 4
         if not isinstance(source.get("document"), dict):
             return 4

@@ -8,9 +8,10 @@ import re
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
-from xml.etree import ElementTree
 from zipfile import BadZipFile, ZipFile
 
+from defusedxml import ElementTree
+from defusedxml.common import DefusedXmlException
 import xlsxwriter
 
 EXCEL_MAX_ROWS = 1_048_576
@@ -57,11 +58,7 @@ def _format_cell(workbook, value: Any):
             decimal_value.is_zero()
             or Decimal("2.2251e-308") <= magnitude <= Decimal("9.99999999999999e307")
         )
-        if (
-            math.isfinite(value)
-            and significant_digits <= 15
-            and in_excel_range
-        ):
+        if math.isfinite(value) and significant_digits <= 15 and in_excel_range:
             return value, "number", repr(value)
         return _text(repr(value)), "number-text", repr(value)
     if isinstance(value, str):
@@ -199,7 +196,7 @@ def _verify_workbook(path: Path, data_rows: int, data_columns: int, note_rows: i
     with ZipFile(path) as archive:
         if archive.testzip() is not None:
             raise BadZipFile("XLSX member checksum failed")
-        workbook = ElementTree.fromstring(archive.read("xl/workbook.xml"))
+        workbook = _parse_xml_member(archive, "xl/workbook.xml")
         sheets = workbook.findall("./main:sheets/main:sheet", namespace)
         if [sheet.get("name") for sheet in sheets] != ["原始数据", "结果说明"]:
             raise ValueError("unexpected XLSX worksheet names")
@@ -208,12 +205,22 @@ def _verify_workbook(path: Path, data_rows: int, data_columns: int, note_rows: i
             f"A1:B{note_rows}",
         )
         for index, reference in enumerate(expected, start=1):
-            worksheet = ElementTree.fromstring(
-                archive.read(f"xl/worksheets/sheet{index}.xml")
-            )
+            worksheet = _parse_xml_member(archive, f"xl/worksheets/sheet{index}.xml")
             dimension = worksheet.find("main:dimension", namespace)
             if dimension is None or dimension.get("ref") != reference:
                 raise ValueError("unexpected XLSX worksheet dimensions")
+
+
+def _parse_xml_member(archive: ZipFile, name: str):
+    try:
+        return ElementTree.fromstring(
+            archive.read(name),
+            forbid_dtd=True,
+            forbid_entities=True,
+            forbid_external=True,
+        )
+    except (DefusedXmlException, ElementTree.ParseError) as exc:
+        raise ValueError("XLSX contains invalid or unsafe XML") from exc
 
 
 def _append_metadata(rows: list[tuple[str, str]], metadata: Any) -> None:

@@ -38,7 +38,13 @@ class ExportRenderFailure(RuntimeError):
 
 
 def _json_hash(value: object) -> str:
-    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode()
     return hashlib.sha256(encoded).hexdigest()
 
 
@@ -137,8 +143,12 @@ def generate_png(document: dict, selection: dict, destination: str) -> None:
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=True, chromium_sandbox=True)
             try:
-                executable = Path(playwright.chromium.executable_path).resolve(strict=True)
-                if executable != Path(runtime["chromium_executable"]).resolve(strict=True):
+                executable = Path(playwright.chromium.executable_path).resolve(
+                    strict=True
+                )
+                if executable != Path(runtime["chromium_executable"]).resolve(
+                    strict=True
+                ):
                     raise ExportRendererUnavailable("Chromium 版本与固定运行清单不匹配")
                 context = browser.new_context(
                     viewport={"width": PNG_WIDTH, "height": 1000},
@@ -147,15 +157,23 @@ def generate_png(document: dict, selection: dict, destination: str) -> None:
                     accept_downloads=False,
                 )
                 try:
+
                     def fulfill_local_resources(route):
                         request = route.request
                         parsed = urlsplit(request.url)
-                        if request.method != "GET" or parsed.scheme != "http" or parsed.netloc != "localhost":
+                        if (
+                            request.method != "GET"
+                            or parsed.scheme != "http"
+                            or parsed.netloc != "localhost"
+                        ):
                             blocked.append(request.url[:512])
                             route.abort()
                             return
                         relative = unquote(parsed.path).lstrip("/") or "export.html"
-                        if relative not in files or ".." in PurePosixPath(relative).parts:
+                        if (
+                            relative not in files
+                            or ".." in PurePosixPath(relative).parts
+                        ):
                             blocked.append(request.url[:512])
                             route.abort()
                             return
@@ -163,24 +181,36 @@ def generate_png(document: dict, selection: dict, destination: str) -> None:
                             status=200,
                             body=files[relative],
                             content_type=_content_type(relative),
-                            headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "no-store"},
+                            headers={
+                                "X-Content-Type-Options": "nosniff",
+                                "Cache-Control": "no-store",
+                            },
                         )
 
                     context.route("**/*", fulfill_local_resources)
                     page = context.new_page()
                     page.set_default_timeout(45_000)
-                    page.on("websocket", lambda socket: blocked.append(socket.url[:512]))
+                    page.on(
+                        "websocket", lambda socket: blocked.append(socket.url[:512])
+                    )
                     page.goto(RENDER_ORIGIN + "/", wait_until="load")
-                    page.evaluate("request => window.__chatbiRenderChart(request)", payload)
+                    page.evaluate(
+                        "request => window.__chatbiRenderChart(request)", payload
+                    )
                     render_deadline = time.monotonic() + 45
                     state = None
                     while time.monotonic() < render_deadline:
                         state = page.evaluate("() => window.__chatbiRenderState")
-                        if isinstance(state, dict) and state.get("status") in {"ready", "failed"}:
+                        if isinstance(state, dict) and state.get("status") in {
+                            "ready",
+                            "failed",
+                        }:
                             break
                         time.sleep(0.05)
                     else:
-                        raise ExportRendererUnavailable("固定 PNG renderer 未在时限内完成")
+                        raise ExportRendererUnavailable(
+                            "固定 PNG renderer 未在时限内完成"
+                        )
                     if not isinstance(state, dict) or state.get("status") != "ready":
                         code = state.get("code") if isinstance(state, dict) else None
                         if code == "EXPORT_SELECTION_INVALID":
@@ -188,8 +218,12 @@ def generate_png(document: dict, selection: dict, destination: str) -> None:
                         if code == "EXPORT_PIXEL_LIMIT":
                             raise ExportPixelLimit("完整图表超过 PNG 像素限制")
                         raise ExportRenderFailure("图表未能完整渲染")
-                    manifest = _validate_manifest(state.get("manifest"), render_hash, selection)
-                    actual = page.evaluate("() => ({width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight})")
+                    manifest = _validate_manifest(
+                        state.get("manifest"), render_hash, selection
+                    )
+                    actual = page.evaluate(
+                        "() => ({width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight})"
+                    )
                     if (
                         actual.get("width") != PNG_WIDTH
                         or not isinstance(actual.get("height"), int)
@@ -199,12 +233,23 @@ def generate_png(document: dict, selection: dict, destination: str) -> None:
                         raise ExportPixelLimit("完整图表超过 PNG 像素限制")
                     if blocked:
                         raise ExportRenderFailure("渲染期间尝试访问未批准资源")
-                    page.screenshot(path=output, full_page=True, animations="disabled", scale="css", type="png")
+                    page.screenshot(
+                        path=output,
+                        full_page=True,
+                        animations="disabled",
+                        scale="css",
+                        type="png",
+                    )
                 finally:
                     context.close()
             finally:
                 browser.close()
-    except (InvalidChartSelection, ExportPixelLimit, ExportRendererUnavailable, ExportRenderFailure):
+    except (
+        InvalidChartSelection,
+        ExportPixelLimit,
+        ExportRendererUnavailable,
+        ExportRenderFailure,
+    ):
         raise
     except PlaywrightError as error:
         raise ExportRendererUnavailable("Chromium sandbox 或页面渲染不可用") from error
