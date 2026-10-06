@@ -1,6 +1,6 @@
 # R5 成果导出实现设计
 
-Status: 基于已整体确认 Spec 的实现设计；Design Review PASS；Ticket 01 XLSX 候选 `111980d`、Ticket 02 PNG 本地候选 `88f122c` 已完成；用户确认仅调整 PDF 字体；Ticket 03 修正和 Ticket 04 隔离真实验收进行中。
+Status: 基于已整体确认 Spec 的实现设计；Design Review PASS；Ticket 01–04 已在最终 clean candidate `71d72d2` 完成实现、Review 与验收；未授权远端发布 / 部署。
 Baseline: `ee92acaa7998749d46b57d85611ec69ab14948b1`
 Authority: [Spec](spec.md)。本设计落实 Contract 内的机制，不扩大格式、数据范围、部署形态或业务边界。
 

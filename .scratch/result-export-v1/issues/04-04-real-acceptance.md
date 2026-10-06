@@ -1,6 +1,6 @@
 # R5 隔离真实闭环验收与候选收口
 
-Status: in-progress
+Status: completed
 Owner: 当前主 Agent
 Blocked by: 03-pdf-export
 
@@ -18,10 +18,10 @@ clean candidate、文件 hash / 大小 / content 与快照、模型 / 数据 / R
 
 ## Result
 
-上一 clean candidate `89bc7a6` 的隔离 Compose 浏览器流程、当前 / 历史 / 成果导出、API 重启恢复与资源清理均通过；12 个文件捕获、导出期间没有 executions POST，独立 PDF 文本解析因 Noto ToUnicode 把“民”“长”变成部首而失败。字体修正候选已本地渲染回归通过；需绑定新的 clean candidate 重跑全部真实验收和内容解析。
+最终 clean candidate `71d72d2585306dc50a0b9ecca9ac1679d7ab45ff`：隔离 Compose 真实登录 / 问数 / 追问 / 分析、API/Web 重启恢复、12 个 XLSX / PNG / PDF 下载和独立解析全部 PASS；export execution POST=0。临时账号禁用、active sessions=0、无 worker，隔离容器/卷/网络已清除。Runtime 的 API/Web image ID、模型配置、RAG manifest、PDF 五份 hash 与字体 hash 见 [最终验收](../../../docs/acceptance/result-export-v1.md)。AI Evaluation 未重跑，因导出不改变生成 / Retrieval / Guard；未授权 Push / PR / 部署。
 
 ## Comments
 
-本 Ticket owns final validation / docs of tickets-draft.md §04. Canonical Contract: ../spec.md; design: ../design.md. Local completion only; publication authorization unknown.
+本 Ticket owns final validation / docs of tickets-draft.md §04. Canonical Contract: ../spec.md; design: ../design.md. 本地完成，不包含发布或部署授权。
 
 Migration / Rollback: 无生产 rollout / R6、R7 scope。失败保留报告并重跑受影响检查；不覆盖历史证据或声称 PR 已发布。

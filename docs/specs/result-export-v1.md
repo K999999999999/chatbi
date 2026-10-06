@@ -1,6 +1,6 @@
 # R5 成果导出 Spec
 
-Status: 用户已整体确认完整 Spec、四项 Ticket 拆分和连续本地实施授权（2026-10-06）；Ticket 01 XLSX 候选 `111980d`、Ticket 02 PNG 候选 `88f122c` 已完成，Ticket 03 PDF 实施中，Ticket 04 待开始。未授权 Push / PR / 部署。
+Status: 用户已整体确认完整 Spec、四项拆分和连续本地实施（2026-10-06），并于 2026-10-07 确认 PDF 字体调整；Ticket 01–04 与最终 clean local candidate `71d72d2` 验收均已完成。未授权 Push / PR / 部署。
 Work item: result-export-v1
 Owner: 当前主 Agent
 Baseline: `ee92acaa7998749d46b57d85611ec69ab14948b1`

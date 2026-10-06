@@ -1,6 +1,6 @@
 # R5 实施 Ticket 草案
 
-Status: 用户已确认四项拆分与整体连续本地实施（2026-10-06），并于 2026-10-07 确认仅调整 PDF 字体；01 XLSX、02 PNG 已完成；03 PDF 字体修正与 04 隔离真实验收进行中。
+Status: 用户已确认四项拆分与连续本地实施，且确认 PDF 字体决策修正；Ticket 01–04 与 R5 clean candidate `71d72d2` 的实现和验收均已完成。本地完成，不包含 Push / PR / 部署。
 Canonical Source: 已整体确认 [Spec](spec.md)，实施机制见 [Design](design.md)，[Design Review](design-review.md) PASS。
 Owner: 当前主 Agent；不委派独立 Agent。全部本地切片按 01 → 02 → 03 → 04 执行。
 Change Profile: 持续维护、中等规模、跨模块；身份 / 精度 / 外部渲染与资源清理风险较高；证据为独立文件解析、Application / PG / worker / 浏览器 / 真实 Compose；一个目标一个 branch / worktree，默认本地候选，远端发布另行授权。

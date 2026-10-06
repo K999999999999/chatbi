@@ -1,6 +1,6 @@
 # 完整分析报告 PDF 下载
 
-Status: in-progress
+Status: completed
 Owner: 当前主 Agent
 Blocked by: 02-png-export
 
@@ -18,7 +18,7 @@ Blocked by: 02-png-export
 
 ## Result
 
-原 PDF renderer 通过视觉 / 页数检查，但真实文件独立提取发现 Noto 将“民”“长”映射为部首码位。用户确认仅将 PDF 字体改为 WenQuanYi Zen Hei；字体包版本锁定、运行清单（包版本 / fontconfig 路径 / SHA-256）和 PDF 字体应用已实现。字体清单单测 3 passed，PDF renderer 独立文件回归 2 passed（含“居民消费和民生数据”）；完整 Query API 181 passed、2 skipped、14 subtests；前端 typecheck / Ruff 通过。Review PASS：确认 PNG 字体未变，PDF 字体独立且运行资源按精确 family / 包版本 / 文件 hash fail closed；未发现实现缺陷。待最终 clean candidate Compose 验收。
+Review PASS。PDF renderer 回归 2 passed；Query API 181 passed、2 skipped、14 subtests；完整 Compose 的 5 份 PDF 均为 6 页，可抽取“民”“长”且不含错误部首码位。Noto / WenQuanYi 包版本、许可、字体路径和 SHA-256 见 [最终验收](../../../docs/acceptance/result-export-v1.md)。
 
 ## Comments
 
