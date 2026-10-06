@@ -56,6 +56,7 @@ tools() {
 finish() {
     result=$?
     trap - EXIT
+    evidence_root=
     if [[ -f "$work/report/account.json" ]]; then
         if ! tools cleanup; then
             echo "专用账号清理未通过，保留私有工作目录用于恢复：$work" >&2
@@ -76,8 +77,18 @@ finish() {
         "${compose[@]}" down --volumes
     fi
     rm -f "$work/report/credentials.env"
+    if [[ "$mode" == isolated && "$result" == 0 ]]; then
+        [[ "$work" == /tmp/chatbi-container-verify.* ]] || exit 1
+        evidence_root="reports/browser-real-artifacts/result-export-v1/compose-$(date +%s)"
+        mkdir -p "$evidence_root"
+        for file in browser.json export-verification.json cleanup.json runtime.json images.jsonl; do
+            [[ -f "$work/report/$file" ]] && cp "$work/report/$file" "$evidence_root/$file"
+        done
+        find "$work/report" -maxdepth 1 -type f -name 'r5-*' -exec cp -- {} "$evidence_root/" \;
+        rm -rf -- "$work"
+    fi
     if ((result == 0)); then
-        echo "容器验收通过：$mode；账号清理已核实。运行记录：$work/report"
+        echo "容器验收通过：$mode；账号与资源清理已核实。运行记录：${evidence_root:-$work/report}"
     fi
     exit "$result"
 }
