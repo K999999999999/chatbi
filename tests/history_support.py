@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from src.query_api.execution_contracts import ExecutionAcceptance, ExecutionRecord
+from src.query_api.history_codec import public_snapshot
 from src.query_api.history_contracts import (
     AcceptedAttempt,
     ExecutionToken,
@@ -73,6 +74,7 @@ class BrowserHistoryStore:
     def __init__(self):
         self.headers, self.turn_data, self.results = {}, {}, {}
         self.executions, self.operations, self.operation_hashes = {}, {}, {}
+        self.completed_times = {}
 
     def create(self, owner, kind, question, operation_id, *, id=None, title=None):
         now = datetime.now(UTC)
@@ -329,6 +331,10 @@ class BrowserHistoryStore:
             snapshot=snapshot,
             public_error=error,
         )
+        if snapshot:
+            self.completed_times[t.id] = datetime.now(UTC)
+        else:
+            self.completed_times.pop(t.id, None)
         self.turn_data[t.id] = t
         self.headers[h.id] = (
             owner,
@@ -342,6 +348,33 @@ class BrowserHistoryStore:
             ),
         )
         return t
+
+    def seed_successful_query(self, owner, question, snapshot, *, title):
+        now = datetime.now(UTC)
+        header = self.create(owner, "query", question, str(uuid4()), title=title)
+        turn = HistoryTurn(
+            str(uuid4()),
+            header.id,
+            1,
+            question,
+            "succeeded",
+            str(uuid4()),
+            now,
+            None,
+            snapshot,
+        )
+        self.turn_data[turn.id] = turn
+        self.completed_times[turn.id] = now
+        self.headers[header.id] = (
+            owner,
+            replace(
+                header,
+                context_revision=1,
+                record_revision=1,
+                last_success_turn_id=turn.id,
+            ),
+        )
+        return header, turn
 
     def turn(self, owner, id, turn_id):
         self.header(owner, id)
@@ -411,6 +444,41 @@ class BrowserHistoryStore:
         if row is None or row[0] != owner:
             raise unavailable()
         return row[1], row[2]
+
+    def export_snapshot(self, owner, source_kind, source_id, turn_id=None):
+        if source_kind == "history_turn":
+            header = self.header(owner, source_id)
+            turn = self.turn(owner, source_id, turn_id)
+            if turn.status != "succeeded" or turn.snapshot is None:
+                raise unavailable()
+            envelope = turn.snapshot
+            question = turn.question
+            completed_at = self.completed_times.get(turn.id)
+            result_time = completed_at.isoformat() if completed_at else None
+            saved_time = None
+            title = header.title
+        elif source_kind == "saved_result" and turn_id is None:
+            saved, envelope = self.saved_result(owner, source_id)
+            question = envelope.get("source_question") or envelope.get(
+                "original_question"
+            )
+            result_time = None
+            saved_time = saved.created_at.isoformat()
+            title = saved.title
+        else:
+            raise unavailable()
+        kind = envelope.get("kind")
+        result = public_snapshot(envelope)
+        if kind == "query":
+            result = {key: value for key, value in result.items() if key != "sql"}
+        return {
+            "kind": kind,
+            "title": title,
+            "question": question,
+            "result_time": result_time,
+            "saved_time": saved_time,
+            "result": result,
+        }
 
     def list_saved_results(self, owner, kind, limit, cursor, q=""):
         return [

@@ -51,12 +51,15 @@ x-scripts: &scripts
 services:
   api:
     <<: *python
+    security_opt:
+      - seccomp=${CHATBI_DEV_SECCOMP_PROFILE:?开发环境需要配置 Chromium user namespace seccomp profile}
     environment:
       <<: *common-env
       CHATBI_ENV: development
       CHATBI_ADMIN_SECRET_KEY: ${CHATBI_ADMIN_SECRET_KEY:?CHATBI_ADMIN_SECRET_KEY is required}
       CHATBI_WEB_ORIGIN: http://127.0.0.1:${CHATBI_DEV_WEB_PORT:-5173}
       CHATBI_WEB_DIST_DIR: ""
+      CHATBI_EXPORT_SOURCE_DIR: /workspace/export-source
       LLM_API_KEY: ${LLM_API_KEY:?LLM_API_KEY is required}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
       LLM_MODEL: ${LLM_MODEL:-deepseek-flash}
@@ -76,6 +79,36 @@ services:
     volumes:
       - *source
       - *scripts
+      - type: bind
+        source: ${LOCAL_WORKSPACE_FOLDER:-.}/frontend/src
+        target: /workspace/export-source/src
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${LOCAL_WORKSPACE_FOLDER:-.}/frontend/export.html
+        target: /workspace/export-source/export.html
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${LOCAL_WORKSPACE_FOLDER:-.}/frontend/vite.export.config.ts
+        target: /workspace/export-source/vite.export.config.ts
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${LOCAL_WORKSPACE_FOLDER:-.}/frontend/tsconfig.json
+        target: /workspace/export-source/tsconfig.json
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${LOCAL_WORKSPACE_FOLDER:-.}/frontend/package.json
+        target: /workspace/export-source/package.json
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${LOCAL_WORKSPACE_FOLDER:-.}/frontend/package-lock.json
+        target: /workspace/export-source/package-lock.json
+        read_only: true
+        bind: {create_host_path: false}
       - type: bind
         source: ${RAG_MODEL_DIR:-.model-cache/bge-m3-5617a9f61b02}
         target: ${CHATBI_DEV_MODEL_DIR:-/workspace/.model-cache/model}

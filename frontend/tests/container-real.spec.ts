@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page, type Request } from '@playwright/test';
+import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { login, send, isFinalExecutionResponse } from './helpers';
 import { querySnapshot } from '../src/results';
@@ -21,6 +22,58 @@ type ExecutionStreamEvidence = {
   first_text_delta_sequence: number | null;
   succeeded_sequence: number | null;
 };
+
+async function captureExport(page: Page, button: Locator, format: 'xlsx' | 'png' | 'pdf',
+  file: string, expectedSource: Record<string, unknown>, expectedSnapshot?: Record<string, unknown>) {
+  let executionPosts = 0;
+  const onRequest = (request: Request) => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/v1/executions') executionPosts++;
+  };
+  page.on('request', onRequest);
+  const responseReady = page.waitForResponse(response => {
+    const request = response.request();
+    return request.method() === 'POST' && new URL(response.url()).pathname === '/api/v1/result-exports';
+  }, { timeout: 180000 });
+  const downloadReady = page.waitForEvent('download', { timeout: 180000 });
+  try {
+    const [response, download] = await Promise.all([responseReady, downloadReady, button.click()]);
+    expect(executionPosts).toBe(0);
+    expect(response.status()).toBe(200);
+    const mime = { xlsx: 'spreadsheetml.sheet', png: 'image/png', pdf: 'application/pdf' }[format];
+    expect(response.headers()['content-type']).toContain(mime);
+    const body = response.request().postDataJSON() as Record<string, unknown>;
+    expect(body.format).toBe(format);
+    expect(body.source).toEqual(expectedSource);
+    const path = await download.path();
+    if (!path) throw new Error('浏览器没有保留导出下载文件');
+    const bytes = readFileSync(path);
+    expect(bytes.length).toBeGreaterThan(100);
+    if (format === 'xlsx') expect(bytes.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+    if (format === 'png') expect(bytes.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    if (format === 'pdf') expect(bytes.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+    await download.saveAs(`/reports/${file}`);
+    return { format, file, suggested_filename: download.suggestedFilename(), size: bytes.length,
+      sha256: createHash('sha256').update(bytes).digest('hex'), mime: response.headers()['content-type'],
+      source: body.source, selection: { chart_id: body.chart_id, chart_type: body.chart_type,
+        task_id: body.task_id, product_index: body.product_index }, execution_posts_during_export: executionPosts,
+      ...(expectedSnapshot ? { expected_snapshot: expectedSnapshot } : {}) };
+  } finally {
+    page.off('request', onRequest);
+  }
+}
+
+function snapshotEvidence(snapshot: ReturnType<typeof querySnapshot>) {
+  return { columns: snapshot.columns, rows: snapshot.rows, row_count: snapshot.row_count,
+    truncated: snapshot.truncated, result_metadata: snapshot.result_metadata };
+}
+
+function safeErrorMessage(error: unknown) {
+  let message = error instanceof Error ? error.message : String(error);
+  for (const secret of [process.env.CHATBI_REAL_E2E_USERNAME, process.env.CHATBI_REAL_E2E_PASSWORD]) {
+    if (secret) message = message.split(secret).join('[redacted]');
+  }
+  return message.slice(0, 1000);
+}
 
 declare global {
   interface Window {
@@ -190,6 +243,8 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     username: process.env.CHATBI_REAL_E2E_USERNAME, reference,
     at: new Date().toISOString(), browser: browser.version(), target: 'compose-vite-api',
   };
+  const exportedFiles: Awaited<ReturnType<typeof captureExport>>[] = [];
+  evidence.exports = exportedFiles;
   const streams = await captureExecutionStreams(page);
   const account = JSON.parse(readFileSync('/reports/account.json', 'utf8')) as { id: number };
   try {
@@ -212,6 +267,9 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     expect(firstStream.stages.some(stage => ['sql_validation', 'query_execution'].includes(stage))).toBe(true);
     expect(firstStream.terminal_statuses).toContain('succeeded');
     await expect(page.getByRole('table')).toBeVisible();
+    const firstSource = { kind: 'history_turn', history_id: firstPayload.history.id, turn_id: firstPayload.turn.id };
+    exportedFiles.push(await captureExport(page, page.getByRole('button', { name: '下载 XLSX', exact: true }),
+      'xlsx', 'r5-current-query.xlsx', firstSource, snapshotEvidence(first)));
     const secondResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
     await send(page, '改成2025年3月');
     const secondHttp = await secondResponse;
@@ -259,6 +317,9 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     await expect(page.getByRole('table')).toBeVisible();
     await page.getByLabel('图表类型').first().selectOption('bar');
     await expect(page.locator('[data-chart-kind="bar"] svg')).toHaveCount(1);
+    const monthlySource = { kind: 'history_turn', history_id: trendPayload.history.id, turn_id: trendPayload.turn.id };
+    exportedFiles.push(await captureExport(page, page.getByRole('button', { name: /下载.* PNG/ }).first(),
+      'png', 'r5-current-query-chart.png', monthlySource));
     evidence.monthly_mixed_units = { rows: trend.rows.length, reference_matches: true, money_series: 2, chart_units: trendPlans.plans.map(p => p.id), metadata_status: trendMetadata.status };
     await page.getByRole('button', { name: '新建问数对话' }).click();
     const categoryResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
@@ -312,13 +373,35 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     await page.getByText('查看查询任务证据').click();
     await expect(page.getByText('查看查询任务证据').locator('..').getByRole('table')).toHaveCount(4);
     evidence.analysis = { reference_matches: true, direction: analysis.report.attribution!.direction, tasks_completed: 4, task_metadata: analysis.task_results.map(t => t.result_metadata?.status ?? 'absent'), product_factor_charts: true };
+    evidence.analysis_pdf_expected = {
+      question: analysisPayload.turn.question,
+      report: analysis.report,
+      task_results: analysis.task_results,
+      request_id: analysis.request_id,
+      analysis_run_id: analysis.analysis_run_id,
+      expected_attribution: expectedAttribution,
+    };
+    const analysisSource = { kind: 'history_turn', history_id: analysisPayload.history.id, turn_id: analysisPayload.turn.id };
+    exportedFiles.push(await captureExport(page, page.getByRole('button', { name: '下载 PDF', exact: true }),
+      'pdf', 'r5-current-analysis.pdf', analysisSource));
     evidence.step = 'r3-history';
     const analysisUrl = page.url();
     await page.reload(); await expect(page.locator('.analysis-report h2')).toBeVisible();
+    exportedFiles.push(await captureExport(page, page.getByRole('button', { name: '下载 PDF', exact: true }),
+      'pdf', 'r5-history-analysis.pdf', analysisSource));
     await page.getByRole('button', { name: '另存成果', exact: true }).click();
     await page.getByLabel('成果名称').fill('R3固定分析报告');
     await page.getByRole('button', { name: '保存名称', exact: true }).click();
     await expect(page.getByText('已保存。', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: '已保存成果', exact: true }).click();
+    await page.getByRole('button', { name: '分析 · R3固定分析报告', exact: true }).click();
+    await expect(page.locator('.analysis-report h2')).toBeVisible();
+    const analysisSavedId = new URL(page.url()).hash.match(/^#saved=([0-9a-f-]{36})$/)?.[1];
+    if (!analysisSavedId) throw new Error('已保存分析成果 URL 缺少成果身份');
+    exportedFiles.push(await captureExport(page, page.getByRole('button', { name: '下载 PDF', exact: true }),
+      'pdf', 'r5-saved-analysis.pdf', { kind: 'saved_result', saved_result_id: analysisSavedId }));
+    const analysisSavedUrl = page.url();
+    await page.getByRole('button', { name: '历史记录', exact: true }).click();
     await page.getByRole('button', { name: '问数', exact: true }).click();
     evidence.step = 'history-search-query';
     await page.getByLabel('记录类型').selectOption('query');
@@ -342,13 +425,21 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     await page.getByRole('button', { name: '问数 · R3固定分类成果', exact: true }).click();
     await expect(page.getByRole('table')).toBeVisible();
     const savedUrl = page.url();
+    const savedId = new URL(savedUrl).hash.match(/^#saved=([0-9a-f-]{36})$/)?.[1];
+    if (!savedId) throw new Error('已保存查询成果 URL 缺少成果身份');
+    exportedFiles.push(await captureExport(page, page.getByRole('button', { name: '下载 XLSX', exact: true }),
+      'xlsx', 'r5-saved-query.xlsx', { kind: 'saved_result', saved_result_id: savedId }, snapshotEvidence(category)));
+    exportedFiles.push(await captureExport(page, page.getByRole('button', { name: /下载.* PNG/ }).first(),
+      'png', 'r5-saved-query-chart.png', { kind: 'saved_result', saved_result_id: savedId }));
     await page.getByRole('button', { name: '新建问数对话', exact: true }).click();
     evidence.step = 'top-n-query';
     const rankedResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
     await send(page, '2025年3月按人民币净销售额从高到低列出前3个产品。');
     const rankedPayload = await (await rankedResponse).json(); const ranked = querySnapshot(rankedPayload.turn.snapshot);
     expect(ranked.rows.map(row => [String(row[0]), Number(row[1])])).toEqual(reference.top_products.map((row: unknown[]) => [String(row[0]), Number(row[1])]));
-    evidence.restart_inputs = { ranked_history_id: rankedPayload.history.id, analysis_history_id: analysisPayload.history.id, analysis_run_id: analysisPayload.history.analysis_run_id, saved_url: savedUrl, analysis_url: analysisUrl };
+    evidence.restart_inputs = { ranked_history_id: rankedPayload.history.id, analysis_history_id: analysisPayload.history.id,
+      analysis_turn_id: analysisPayload.turn.id, analysis_run_id: analysisPayload.history.analysis_run_id, saved_url: savedUrl, analysis_url: analysisUrl,
+      analysis_saved_url: analysisSavedUrl };
     evidence.r3_before_restart = { saved_independent: true, refresh_analysis: true, top_n_reference: true };
 
     evidence.step = 'multi-page-disconnect-and-cancel';
@@ -452,6 +543,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     evidence.status = 'passed';
   } catch (error) {
     evidence.status = 'failed'; evidence.error_type = (error as Error).name;
+    evidence.error_message = safeErrorMessage(error);
     evidence.error_locations = (error as Error).stack?.match(/container-real\.spec\.ts:\d+:\d+/g) ?? [];
     throw new Error('真实容器业务验收失败，见私有报告的步骤与安全定位。');
   } finally {
@@ -481,8 +573,31 @@ test('停止重启后读取长期快照、重登录、续聊与显式重查', as
     const body = await (await continued).json(); const result = querySnapshot(body.turn.snapshot);
     expect(body.history.id).toBe(input.ranked_history_id);
     expect(result.rows.map(row => [String(row[0]), Number(row[1])])).toEqual(reference.top_products.slice(0, 2).map((row: unknown[]) => [String(row[0]), Number(row[1])]));
+    const recoveredSource = { kind: 'history_turn', history_id: body.history.id, turn_id: body.turn.id };
+    const recoveredTurn = page.locator('.turn').filter({ has: page.getByText('只看前2个产品', { exact: true }) }).last();
+    await expect(recoveredTurn).toHaveCount(1);
+    const recoveredTable = recoveredTurn.getByRole('table');
+    await expect(recoveredTable).toBeVisible();
+    await expect(recoveredTable.getByRole('row')).toHaveCount(result.rows.length + 1);
+    const recoveredXlsxButton = recoveredTurn.getByRole('button', { name: '下载 XLSX', exact: true });
+    await expect(recoveredXlsxButton).toBeEnabled();
+    evidence.exports.push(await captureExport(page, recoveredXlsxButton,
+      'xlsx', 'r5-restarted-history-query.xlsx', recoveredSource, snapshotEvidence(result)));
     await page.goto(input.analysis_url); await expect(page.locator('.analysis-report h2')).toBeVisible();
+    evidence.exports.push(await captureExport(page, page.getByRole('button', { name: '下载 PDF', exact: true }),
+      'pdf', 'r5-restarted-history-analysis.pdf', { kind: 'history_turn', history_id: input.analysis_history_id, turn_id: input.analysis_turn_id }));
+    await page.goto(input.analysis_saved_url); await expect(page.locator('.analysis-report h2')).toBeVisible();
+    const analysisSavedId = new URL(input.analysis_saved_url).hash.match(/^#saved=([0-9a-f-]{36})$/)?.[1];
+    if (!analysisSavedId) throw new Error('重启后已保存分析成果 URL 缺少成果身份');
+    evidence.exports.push(await captureExport(page, page.getByRole('button', { name: '下载 PDF', exact: true }),
+      'pdf', 'r5-restarted-saved-analysis.pdf', { kind: 'saved_result', saved_result_id: analysisSavedId }));
     await page.goto(input.saved_url); await expect(page.getByRole('table')).toBeVisible();
+    const savedQueryId = new URL(input.saved_url).hash.match(/^#saved=([0-9a-f-]{36})$/)?.[1];
+    if (!savedQueryId) throw new Error('重启后已保存查询成果 URL 缺少成果身份');
+    evidence.exports.push(await captureExport(page, page.getByRole('button', { name: '下载 XLSX', exact: true }),
+      'xlsx', 'r5-restarted-saved-query.xlsx', { kind: 'saved_result', saved_result_id: savedQueryId }));
+    evidence.exports.push(await captureExport(page, page.getByRole('button', { name: /下载.* PNG/ }).first(),
+      'png', 'r5-restarted-saved-query-chart.png', { kind: 'saved_result', saved_result_id: savedQueryId }));
     const requery = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
     await page.getByRole('button', { name: '重新查询当前数据', exact: true }).click();
     const newBody = await (await requery).json(); querySnapshot(newBody.turn.snapshot);
@@ -499,6 +614,10 @@ test('停止重启后读取长期快照、重登录、续聊与显式重查', as
       api_process_killed_before_restart: true,
     };
     evidence.status = 'passed';
-  } catch (error) { evidence.status = 'failed'; evidence.step = 'r3-restart'; evidence.error_type = (error as Error).name; throw new Error('R3重启验收未通过，请检查私有报告。'); }
+  } catch (error) {
+    evidence.status = 'failed'; evidence.step = 'r3-restart'; evidence.error_type = (error as Error).name;
+    evidence.error_message = safeErrorMessage(error);
+    throw new Error('R3重启验收未通过，请检查私有报告。');
+  }
   finally { writeFileSync('/reports/browser.json', JSON.stringify(evidence, null, 2)); }
 });

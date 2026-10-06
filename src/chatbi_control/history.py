@@ -1143,6 +1143,61 @@ class PostgresHistoryStore:
             return _saved_header(row), row["snapshot"]
 
     @_database_errors
+    def export_snapshot(self, owner, source_kind, source_id, turn_id=None):
+        """只读导出来源投影；不读取私有恢复状态或 SQL。"""
+        with self.engine.connect() as connection:
+            if source_kind == "history_turn":
+                history = _owned(connection, owner, source_id)
+                row = (
+                    connection.execute(
+                        text("""SELECT question,status,snapshot,completed_at
+                    FROM history_turns WHERE history_id=:history AND id=:turn"""),
+                        {"history": source_id, "turn": turn_id},
+                    )
+                    .mappings()
+                    .first()
+                )
+                if (
+                    row is None
+                    or row["status"] != "succeeded"
+                    or row["snapshot"] is None
+                ):
+                    raise unavailable()
+                snapshot = row["snapshot"]
+                completed_at = row["completed_at"]
+                title = history["title"]
+                question = row["question"]
+                saved_time = None
+            elif source_kind == "saved_result" and turn_id is None:
+                row = _owned_saved(connection, owner, source_id)
+                snapshot = row["snapshot"]
+                completed_at = None
+                title = row["title"]
+                question = None
+                saved_time = row["created_at"]
+            else:
+                raise unavailable()
+
+        from src.query_api.history_codec import public_snapshot
+
+        public = public_snapshot(snapshot)
+        if snapshot["kind"] == "query":
+            public = {key: value for key, value in public.items() if key != "sql"}
+        envelope = snapshot
+        kind = envelope["kind"]
+        if question is None:
+            question_key = "source_question" if kind == "query" else "original_question"
+            question = envelope.get(question_key)
+        return {
+            "kind": kind,
+            "title": title,
+            "question": question if isinstance(question, str) else None,
+            "result_time": completed_at.isoformat() if completed_at else None,
+            "saved_time": saved_time.isoformat() if saved_time else None,
+            "result": public,
+        }
+
+    @_database_errors
     def rename_saved_result(self, owner, result_id, title, revision):
         with self.engine.begin() as connection:
             row = _owned_saved(connection, owner, result_id, lock=True)

@@ -109,7 +109,7 @@ uv run --python 3.11 --locked python -m pytest -q
 
 ## 电脑端 Web 入口
 
-当前默认入口为 React + TypeScript + Vite 网页。开发 / 打包入口见 [Runbook](docs/runbook.md#web-开发与打包)，行为见 [Web Spec](docs/specs/web-dialogue-v1.md) 和 [R4 Spec](docs/specs/execution-streaming-v1.md)，R4 最终候选记录见 [Acceptance](docs/acceptance/execution-streaming-v1.md)。Streamlit 已移除。有效登录下刷新可按 URL 只读恢复已保存快照；重新登录默认空白，通过私人列表重开历史。R2 图表与结果表已交付；R4 网页执行可观察真实阶段与分析报告生成中的未校验文字草稿，成功后读取正式结果；R5 导出仍按后续路线推进。
+当前默认入口为 React + TypeScript + Vite 网页。开发 / 打包入口见 [Runbook](docs/runbook.md#web-开发与打包)，行为见 [Web Spec](docs/specs/web-dialogue-v1.md) 和 [R4 Spec](docs/specs/execution-streaming-v1.md)，R4 最终候选记录见 [Acceptance](docs/acceptance/execution-streaming-v1.md)。Streamlit 已移除。有效登录下刷新可按 URL 只读恢复已保存快照；重新登录默认空白，通过私人列表重开历史。R2 图表与结果表已交付；R4 网页执行可观察真实阶段与分析报告生成中的未校验文字草稿，成功后读取正式结果；R5 XLSX / PNG / PDF 已完成 Ticket 01–03 本地实现和 Review，隔离 Compose 完整真实验收仍待完成。
 
 ### 结果图表与表格（R2）
 

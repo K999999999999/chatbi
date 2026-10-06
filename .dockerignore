@@ -11,3 +11,6 @@
 !frontend/src/**
 !docker/
 !docker/*.Dockerfile
+!src/
+!src/query_api/
+!src/query_api/export_assets.py

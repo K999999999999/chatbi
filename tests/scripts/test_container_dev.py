@@ -122,6 +122,9 @@ def test_compose_config_excludes_secrets_and_migration_identity_from_api(tmp_pat
         env={
             "PATH": os.environ["PATH"],
             "CHATBI_DEV_MODEL_DIR": str(ROOT / ".model-cache/bge-m3-5617a9f61b02"),
+            "CHATBI_DEV_SECCOMP_PROFILE": str(
+                ROOT / "docker/third-party/playwright-seccomp-profile.json"
+            ),
         },
         capture_output=True,
         text=True,
@@ -130,6 +133,9 @@ def test_compose_config_excludes_secrets_and_migration_identity_from_api(tmp_pat
     services = json.loads(result.stdout)["services"]
     api = services["api"]
     assert not any("MIGRATOR" in key for key in api["environment"])
+    assert api["security_opt"] == [
+        f"seccomp={ROOT}/docker/third-party/playwright-seccomp-profile.json"
+    ]
     assert api["environment"]["POSTGRES_HOST"] == "postgres"
     assert api["environment"]["RAG_EMBEDDING_DEVICE"] == "cpu"
     assert any(

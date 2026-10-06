@@ -1,0 +1,80 @@
+@font-face {
+  font-family: "ChatBI Export Noto CJK SC";
+  src: local("Noto Sans CJK SC"), local("Noto Sans SC"), local("Noto Sans CJK TC");
+  font-style: normal;
+  font-weight: 100 900;
+}
+@font-face {
+  font-family: "ChatBI PDF WenQuanYi Zen Hei";
+  src: local("WenQuanYi Zen Hei");
+  font-style: normal;
+  font-weight: 100 900;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; min-width: 1600px; width: 1600px; background: #fff; color: #17202a; }
+body { font-family: "ChatBI Export Noto CJK SC", sans-serif; }
+.export-page { width: 1600px; padding: 42px 56px 48px; background: #fff; }
+.export-page h1 { margin: 0 0 12px; font-size: 30px; line-height: 1.35; overflow-wrap: anywhere; }
+.export-meta { margin: 5px 0; color: #43515d; font-size: 16px; line-height: 1.55; overflow-wrap: anywhere; }
+.export-warning { margin: 12px 0; padding: 10px 14px; border-left: 4px solid #ad4b43; background: #fff7f5; color: #76332e; font-size: 16px; }
+.export-chart { width: 1488px; background: #fff; }
+.export-chart-canvas { width: 1488px; overflow: visible; }
+.export-data { width: 1488px; margin-top: 28px; border-collapse: collapse; table-layout: fixed; font-size: 14px; line-height: 1.45; }
+.export-data th, .export-data td { border: 1px solid #cad3da; padding: 7px 9px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.export-data th { background: #edf2f5; }
+.export-data td:first-child, .export-data th:first-child { width: 34%; }
+.export-data small { display: block; color: #43515d; }
+.export-footer { margin-top: 16px; color: #56636d; font-size: 13px; }
+
+.pdf-report { width: 100%; max-width: 794px; margin: 0 auto; padding: 28px 32px 42px; color: #17202a; font-family: "ChatBI PDF WenQuanYi Zen Hei", sans-serif; font-size: 11px; line-height: 1.55; }
+.pdf-report h1 { margin: 3px 0 18px; font-size: 25px; line-height: 1.3; overflow-wrap: anywhere; }
+.pdf-report h2 { margin: 20px 0 9px; border-bottom: 1px solid #9aa7b1; padding-bottom: 5px; font-size: 16px; break-after: avoid; }
+.pdf-report h3 { margin: 15px 0 7px; font-size: 12px; break-after: avoid; }
+.pdf-report p, .pdf-report li, .pdf-report dd { white-space: pre-wrap; overflow-wrap: anywhere; }
+.pdf-kicker { margin: 0; color: #43515d; font-size: 10px; letter-spacing: .08em; }
+.pdf-cover dl { display: grid; grid-template-columns: 115px 1fr; gap: 4px 12px; margin: 0; padding: 12px; background: #f3f6f8; }
+.pdf-cover dt { color: #43515d; font-weight: 700; }
+.pdf-cover dd { margin: 0; }
+.pdf-section { margin: 10px 0 18px; }
+.pdf-section ul { margin: 6px 0; padding-left: 22px; }
+.pdf-section li { margin: 5px 0; }
+.pdf-muted { color: #56636d; }
+.pdf-warning { color: #76332e; }
+.pdf-document-footer { margin-top: 24px; border-top: 1px solid #cad3da; padding-top: 8px; color: #56636d; font-size: 9px; }
+.pdf-contribution-chart { margin: 12px 0 18px; padding: 10px 12px; border: 1px solid #cad3da; break-inside: avoid; }
+.pdf-contribution-row { display: grid; grid-template-columns: minmax(170px, 42%) 1fr; gap: 10px; align-items: center; margin: 8px 0; break-inside: avoid; }
+.pdf-contribution-label { overflow-wrap: anywhere; }
+.pdf-contribution-label small { display: block; color: #56636d; }
+.pdf-contribution-track { position: relative; height: 12px; overflow: hidden; background: #edf2f5; border-left: 2px solid #43515d; }
+.pdf-contribution-track span { display: block; height: 100%; }
+.pdf-contribution-track .positive { background: #23805e; }
+.pdf-contribution-track .negative { background: #b35048; }
+.pdf-data-table { width: 100%; margin: 10px 0 16px; border-collapse: collapse; table-layout: fixed; font-size: 9px; line-height: 1.4; }
+.pdf-data-table th, .pdf-data-table td { border: 1px solid #cad3da; padding: 5px 6px; text-align: left; vertical-align: top; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+.pdf-data-table th { background: #edf2f5; }
+.pdf-data-table th:first-child, .pdf-data-table td:first-child { width: 48px; }
+.pdf-attribution-table th:nth-child(1) { width: 19%; }
+.pdf-attribution-table th:nth-child(2) { width: 18%; }
+.pdf-attribution-table th:nth-child(3) { width: 22%; }
+.pdf-attribution-table th:nth-child(4) { width: 16%; }
+.pdf-attribution-table th:nth-child(5) { width: 25%; }
+.pdf-task { margin: 14px 0 20px; }
+.pdf-task h3 { break-after: avoid; }
+.pdf-task-metadata { margin: 7px 0; padding: 7px 9px; background: #f7f9fa; }
+.pdf-task-metadata p { margin: 2px 0; }
+.pdf-evidence-table { break-inside: auto; }
+.pdf-evidence-table thead { display: table-header-group; }
+.pdf-evidence-table tr { break-inside: avoid; }
+.pdf-evidence { break-before: page; }
+
+@page { size: A4; margin: 14mm 13mm 17mm; }
+@media print {
+  html, body, #root { width: auto; min-width: 0; margin: 0; }
+  body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .pdf-report { max-width: none; width: auto; margin: 0; padding: 0; font-size: 10pt; }
+  .pdf-section { orphans: 3; widows: 3; }
+  .pdf-cover, .pdf-contribution-row, .pdf-task-metadata, .pdf-data-table tr { break-inside: avoid; }
+  .pdf-data-table { font-size: 8pt; }
+  .pdf-document-footer { break-inside: avoid; }
+}

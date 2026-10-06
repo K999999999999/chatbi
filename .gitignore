@@ -8,6 +8,7 @@
 .uv-cache/
 node_modules/
 frontend/dist/
+frontend/dist-export/
 frontend/test-results/
 frontend/playwright-report/
 .pytest_cache/

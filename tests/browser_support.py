@@ -29,6 +29,7 @@ from src.online_query.contracts import QueryErrorCode, QueryFailure, QuerySucces
 from src.online_query.query_understanding import QueryType, ValidatedSemanticQuery
 from src.query_api.app import create_app
 from src.query_api.browser import BrowserSettings
+from src.query_api.history_codec import encode_snapshot
 from tests.history_support import BrowserHistoryRuntime, BrowserHistoryStore
 from tests.query_api.history_fixtures import query_state
 from tests.query_api.support import _DefaultRevisionAdapter
@@ -167,6 +168,81 @@ def create_browser_app():
     auth = AuthService(sessions)
     directory = Path(__file__).resolve().parents[1] / "frontend/dist"
     history_store = BrowserHistoryStore()
+    if os.getenv("CHATBI_RESULT_EXPORT_BROWSER_TEST") == "1":
+        question = "导出测试快照问题"
+        snapshot = encode_snapshot(
+            "query",
+            {
+                "request_id": "browser-export-request",
+                "sql": "SELECT 1",
+                "columns": ["产品", "销售额", "空值", "零", "空串"],
+                "rows": [
+                    [
+                        '<img src="file:///etc/passwd" onerror="fetch(\'https://example.invalid/x\')"> 产品',
+                        123.45,
+                        None,
+                        0,
+                        "",
+                    ],
+                    *[
+                        [f"产品{i:02d}-完整分类标签", (i + 1) * 10, None, 0, ""]
+                        for i in range(1, 18)
+                    ],
+                ],
+                "row_count": 18,
+                "truncated": False,
+                "result_metadata": {
+                    "version": 1,
+                    "status": "complete",
+                    "columns": [
+                        {
+                            "index": 0,
+                            "name": "产品",
+                            "role": "dimension",
+                            "certified": True,
+                            "semantic_name": "产品",
+                            "definition": None,
+                            "unit": None,
+                            "format": "raw",
+                        },
+                        {
+                            "index": 1,
+                            "name": "销售额",
+                            "role": "metric",
+                            "certified": True,
+                            "semantic_name": "人民币净销售额",
+                            "definition": "净销售额定义",
+                            "unit": {"key": "CNY", "label": "元"},
+                            "format": "money",
+                        },
+                        *[
+                            {"index": index, "name": name, "certified": False}
+                            for index, name in enumerate(("空值", "零", "空串"), 2)
+                        ],
+                    ],
+                    "scope": {
+                        "status": "complete",
+                        "time_status": "unbounded",
+                        "time": None,
+                        "filters": [],
+                        "grouping": [
+                            {
+                                "semantic_name": "产品",
+                                "kind": "category",
+                                "column_indices": [0],
+                            }
+                        ],
+                        "warnings": [],
+                    },
+                    "time_axis": None,
+                },
+            },
+            query_state=query_state(),
+            source_question=question,
+        )
+        history_store.seed_successful_query(
+            1, question, snapshot, title="浏览器导出验收历史"
+        )
     return create_app(
         BrowserQueryFixture(),
         analysis_service=BrowserAnalysisFixture(),

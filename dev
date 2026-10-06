@@ -18,6 +18,7 @@ if [[ ! -f "$env_file" ]]; then
 fi
 export CHATBI_DEV_UID=${CHATBI_DEV_UID:-$(id -u)}
 export CHATBI_DEV_GID=${CHATBI_DEV_GID:-$(id -g)}
+export CHATBI_DEV_SECCOMP_PROFILE=${CHATBI_DEV_SECCOMP_PROFILE:-$root/docker/third-party/playwright-seccomp-profile.json}
 compose=(docker compose --project-directory "$root" --env-file "$env_file"
     -f "$root/docker-compose.yml" -f "$root/docker-compose.dev.yml")
 if [[ -n "${CHATBI_DEV_COMPOSE_OVERRIDE:-}" ]]; then

@@ -4,6 +4,7 @@ import { DataChart } from './Chart';
 import { buildChartPlans } from './chartPlan';
 import { decodeMetadata, type ResultMetadata } from './resultMetadata';
 import { displayValue, roundedToZero } from './numberFormat';
+import type { ExportSource } from './api';
 export { object } from './parse';
 
 export type Cell = string | number | boolean | null;
@@ -70,7 +71,8 @@ export function ResultExplanation({ data }: { data: TableData }) {
   </section>;
 }
 
-export function ResultView({ data }: { data: TableData }) {
+export function ResultView({ data, exportSource, canExport = false, userId, taskId }:
+  { data: TableData; exportSource?: ExportSource; canExport?: boolean; userId?: number; taskId?: string }) {
   const meta = data.result_metadata;
   const charts = useMemo(() => buildChartPlans(data), [data]);
   const metrics = meta?.columns.filter(c => c.certified && c.role === 'metric') ?? [];
@@ -84,7 +86,8 @@ export function ResultView({ data }: { data: TableData }) {
       </div>)}
     </div></details>}
     {charts.plans.length > 0 && <details open className="result-visual"><summary>图表</summary>
-      {charts.plans.map(plan => <DataChart key={plan.id} plan={plan}/>)}</details>}
+      {charts.plans.map(plan => <DataChart key={plan.id} plan={plan} exportSource={exportSource}
+        canExport={canExport} userId={userId} taskId={taskId}/>)}</details>}
     {charts.reason && <p className="result-meta">{charts.reason}</p>}
     <details open><summary>表格</summary><ResultTable data={data}/></details>
   </section>;

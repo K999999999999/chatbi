@@ -58,7 +58,7 @@ ChatBI 是面向业务数据分析的 Domain AI Engine（领域 AI 引擎）。�
 - 任意 PostgreSQL 数据库、多个 Schema 或多租户支持。
 - 超出当前 Semantic Contract 的指标、维度、跨事实表 Join、多跳 Join 或超过 5 个指标的组合。
 - 任意复杂分析 Agent、SQL 自动修复、多模型投票或开放式任务编排。
-- 手机适配、WebSocket 和导出；当前网页通过同源 HTTP / SSE 提供执行反馈，已支持的图表范围见下方 R2 结果展示及对应 Spec。
+- 手机适配和 WebSocket；当前网页通过同源 HTTP / SSE 提供执行反馈。成功快照文件导出属于 R5，范围与阶段状态见下方 R5。
 - 生产环境部署方案、容量 / 可用性承诺、生产数据迁移和流量发布流程；这些不由 MVP 本地运行证据自动满足。
 
 ## 生产演进中的当前基线工作
@@ -77,3 +77,7 @@ ChatBI 是面向业务数据分析的 Domain AI Engine（领域 AI 引擎）。�
 ## R3 历史与成果
 
 已接入网页自动历史、列表 / 搜索 / 重命名 / 删除、固定成果副本、完整条件续聊与显式重查。Control DB 管理长期状态，旧 Bearer 短期会话不强制保存。完整边界见 [R3 Spec](specs/history-results-v1.md)；候选验收进度见本机实时工作状态，本地验收不构成生产运行就绪或发布。
+
+## R5 成果导出
+
+按当前身份从已提交的成功快照导出 XLSX、适用图表 PNG 和完整经营分析 PDF；适用于当前 / 历史成功轮次和独立保存成果，不重新查询、不调用模型、不扩大到全量数据。文件还原精度、NULL / 空字符串和数值的区分、公式文本保护以及临时资源限制见 [R5 Spec](specs/result-export-v1.md)。Ticket 01 XLSX 本地候选 `111980d`、Ticket 02 PNG 本地候选 `88f122c` 已完成；最终 clean local candidate `71d72d2` 上 Ticket 01–04 与完整隔离 Compose / 浏览器 / 文件解析验收全部完成；PDF 使用锁定的 WenQuanYi 字体，PNG 继续使用 Noto。未授权 Push / PR / 部署。

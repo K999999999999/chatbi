@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { object, strings, tableData, text, ResultView, type TableData } from './results';
 import { DataChart } from './Chart';
-import { plotNumber, type ChartPlan } from './chartPlan';
-import { displayValue, roundedToZero, type DisplayColumn } from './numberFormat';
+import { buildContributionPlan, contributionColumn } from './chartPlan';
+import { displayValue, roundedToZero } from './numberFormat';
 import type { ReportDraft } from './execution';
+import type { ExportSource } from './api';
 
 type Task = TableData & { task_id: string; status: string; error: string | null };
 type Product = { product_name: string; change: string; classification: string; effect_on_metric: string; factors: { name: string; amount: string; effect_on_metric: string }[] };
@@ -59,24 +60,14 @@ function Lines({ title, lines }: { title: string; lines: string[] }) {
 }
 const effects: Record<string, string> = { increase: '增加目标指标', decrease: '降低目标指标', unchanged: '目标指标无变化', increases_target_metric: '增加目标指标', decreases_target_metric: '降低目标指标', no_change_to_target_metric: '目标指标无变化' };
 
-// 已确认经营归因Contract仅支持这两个人民币金额指标。
-function moneyColumn(metric: string): DisplayColumn {
-  return { index: 0, name: metric, role: 'metric', certified: ['人民币毛利', '人民币净销售额'].includes(metric),
-    semantic_name: metric, definition: null, unit: { key: 'CNY', label: '元' }, format: 'money' };
-}
-function contributionPlan(id: string, title: string, rows: { label: string; amount: string }[], column: DisplayColumn): ChartPlan | undefined {
-  if (!column.certified || !rows.length) return;
-  const values = rows.map(row => plotNumber(row.amount, column));
-  if (values.some(value => value === undefined)) return;
-  return { id, title, kind: 'contribution', truncated: false, series: [{ column,
-    rawValues: rows.map(row => row.amount), points: rows.map((row, rowIndex) => ({ key: String(rowIndex), label: row.label, rowIndex, value: values[rowIndex]! })) }] };
-}
-function AttributionView({ data: a }: { data: Attribution }) {
+function AttributionView({ data: a, exportSource, canExport, userId }: {
+  data: Attribution; exportSource?: ExportSource; canExport: boolean; userId?: number;
+}) {
   const [selected, setSelected] = useState(0);
   const product = a.products[selected];
-  const column = useMemo(() => moneyColumn(a.metric_name), [a.metric_name]);
-  const products = useMemo(() => contributionPlan('products', '主要产品变化贡献', a.products.map(p => ({ label: p.product_name, amount: p.change })), column), [a, column]);
-  const factors = useMemo(() => contributionPlan('factors', `${product?.product_name ?? ''} · 因素贡献`, product?.factors.map(f => ({ label: f.name, amount: f.amount })) ?? [], column), [product, column]);
+  const column = useMemo(() => contributionColumn(a.metric_name), [a.metric_name]);
+  const products = useMemo(() => buildContributionPlan('products', '主要产品变化贡献', a.products.map(p => ({ label: p.product_name, amount: p.change })), column), [a, column]);
+  const factors = useMemo(() => buildContributionPlan('factors', `${product?.product_name ?? ''} · 因素贡献`, product?.factors.map(f => ({ label: f.name, amount: f.amount })) ?? [], column), [product, column]);
   const hasRoundedContribution = [a.comparison_value, a.current_value, a.total_change,
     ...a.products.flatMap(p => [p.change, ...p.factors.map(f => f.amount)])].some(value => roundedToZero(value, column));
   return <section className="attribution"><h3>{a.metric_name} · 两期归因</h3>
@@ -84,11 +75,13 @@ function AttributionView({ data: a }: { data: Attribution }) {
       <div key={label}><span>{label}</span><strong>{displayValue(value, column)}</strong><details className="raw-value"><summary>查看原始值</summary><code>{value}</code></details></div>)}</div>
     <p>期间变化方向：{effects[a.direction]}；对账已通过。</p>
     {hasRoundedContribution && <p className="result-meta">微小非零贡献按两位小数显示为0.00；请核对原始值，变化方向仍采用后端结论。</p>}
-    {products && <details open><summary>产品贡献图</summary><DataChart plan={products}/></details>}
+    {products && <details open><summary>产品贡献图</summary><DataChart plan={products} exportSource={exportSource}
+      canExport={canExport} userId={userId}/></details>}
     {a.omitted_product_count > 0 && <p>另有 {a.omitted_product_count} 个产品未在主要贡献列表中展示。</p>}
     {a.products.length > 0 && <label>查看产品因素 <select value={selected} onChange={e => setSelected(Number(e.target.value))}>
       {a.products.map((p, i) => <option key={i} value={i}>{p.product_name}</option>)}</select></label>}
-    {factors && <details open><summary>因素贡献图</summary><DataChart plan={factors}/></details>}
+    {factors && <details open><summary>因素贡献图</summary><DataChart plan={factors} exportSource={exportSource}
+      canExport={canExport} userId={userId} productIndex={selected}/></details>}
     {product && <p>{classifications[product.classification]}：{product.product_name}</p>}
     {product && !product.factors.length && <p>没有可用因素，不补造价格或成本贡献。</p>}
     <details open><summary>贡献表格</summary><div className="table-scroll"><table><thead><tr><th>产品</th><th>分类</th><th>变化贡献</th><th>方向</th></tr></thead><tbody>
@@ -96,16 +89,19 @@ function AttributionView({ data: a }: { data: Attribution }) {
     </tbody></table></div>{product && <ul>{product.factors.map((f, i) => <li key={i}><span>{f.name}：{displayValue(f.amount, column)} · {effects[f.effect_on_metric]}</span><details className="raw-value"><summary>查看原始值</summary><code>{f.amount}</code></details></li>)}</ul>}</details>
   </section>;
 }
-export function AnalysisReport({ result }: { result: AnalysisResult }) {
+export function AnalysisReport({ result, exportSource, canExport = false, userId }: {
+  result: AnalysisResult; exportSource?: ExportSource; canExport?: boolean; userId?: number;
+}) {
   const r = result.report; const a = r.attribution;
   return <div className="analysis-report"><h2>{r.title}</h2><p>{r.executive_summary}</p>
     <Lines title="关键发现" lines={r.key_findings}/><h3>趋势判断</h3><p>{r.trend_judgment}</p>
     <Lines title="原因分析" lines={r.root_causes}/><Lines title="行动建议" lines={r.action_suggestions}/>
-    {a && <AttributionView data={a}/>}
+    {a && <AttributionView data={a} exportSource={exportSource} canExport={canExport} userId={userId}/>}
     {r.incomplete_tasks.length > 0 && <section role="alert"><h3>证据不完整</h3>{r.incomplete_tasks.map((t, i) => <p key={i}>{t.task_id}：{t.reasons.join('；')}</p>)}</section>}
     <details><summary>查看查询任务证据</summary><p>报告引用：{r.evidence_task_ids.join('、')}</p>
       {result.task_results.map(task => <section key={task.task_id}><h3>{task.task_id} · {statuses[task.status]}</h3>
-        {task.error && <p role="alert">{task.error}</p>}{task.status === 'completed' && <ResultView data={task}/>}</section>)}
+        {task.error && <p role="alert">{task.error}</p>}{task.status === 'completed' && <ResultView data={task}
+          exportSource={exportSource} canExport={canExport} userId={userId} taskId={task.task_id}/>}</section>)}
     </details>
   </div>;
 }

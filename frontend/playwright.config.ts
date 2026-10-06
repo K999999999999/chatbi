@@ -7,5 +7,6 @@ export default defineConfig({
     launchOptions: process.env.CHATBI_CHROME_PATH ? { executablePath: process.env.CHATBI_CHROME_PATH } : {},
     viewport: { width: 1440, height: 1000 }, trace: 'off', video: 'off', screenshot: 'off' },
   webServer: { command: 'uv run --locked uvicorn tests.browser_support:create_browser_app --factory --host 127.0.0.1 --port 18001',
-    cwd: '..', url: 'http://127.0.0.1:18001/health', reuseExistingServer: false },
+    cwd: '..', url: 'http://127.0.0.1:18001/health', reuseExistingServer: false,
+    env: { CHATBI_RESULT_EXPORT_BROWSER_TEST: '1' } },
 });
