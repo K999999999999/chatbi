@@ -9,6 +9,7 @@ RELEASE_DIR="$ROOT/.local/releases"
 PROJECT_NAME="chatbi-stable"
 source "$ROOT/scripts/local_port.sh"
 source "$ROOT/scripts/local_build_cache.sh"
+source "$ROOT/scripts/local_deployment_state.sh"
 
 # Compose reads only the dedicated stable files; developer-shell variables must not
 # override them or leak development credentials into this independent project.
@@ -473,25 +474,16 @@ record_deployment_state() {
         --runtime-status "$runtime_status"
     )
     [[ "$target" == - ]] || state_args+=(--target-commit "$target")
-    if (( $# >= 5 )); then
-        state_args+=(
-            --active-source-commit "$1"
-            --active-api-image "$2"
-            --active-api-image-id "$3"
-            --active-database-runtime-image "$4"
-            --active-database-runtime-image-id "$5"
-        )
-        shift 5
+    local release_role=active
+    if [[ "${1:-}" == --baseline ]]; then
+        release_role=baseline
+        shift
     fi
-    if (( $# >= 5 )); then
-        state_args+=(
-            --baseline-source-commit "$1"
-            --baseline-api-image "$2"
-            --baseline-api-image-id "$3"
-            --baseline-database-runtime-image "$4"
-            --baseline-database-runtime-image-id "$5"
-        )
+    if (( $# == 5 )); then
+        append_deployment_release_arguments state_args "$release_role" "$@"
         shift 5
+    elif (( $# != 0 )); then
+        fail '部署状态 release 身份必须提供五个字段。'
     fi
     (( $# == 0 )) || fail '部署状态参数数量错误。'
     compose run --rm -T --no-deps verify record-state "${state_args[@]}"
@@ -677,7 +669,7 @@ upgrade_release() {
             "$RUNNING_DATABASE_IMAGE" "$RUNNING_DATABASE_IMAGE_ID"
         )
     fi
-    record_deployment_state begin "$operation" "$source_commit" stopping-api transitioning "${previous[@]}"
+    record_deployment_state begin "$operation" "$source_commit" stopping-api transitioning --baseline "${previous[@]}"
     if ! compose stop api; then
         mark_operation_failed "$operation" "$source_commit" stopping-api unknown
         fail '无法确认当前 API 已停止；数据库和数据卷未清理。'
