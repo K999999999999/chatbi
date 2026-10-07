@@ -638,3 +638,7 @@ uv run --frozen python -m scripts.verify_local_deployment
 ```
 
 验收入口新建带 run ID 的空 PostgreSQL / Qdrant 卷和 RAG 目录，完成 Windows Edge 业务 / 导出 / 重启恢复与失败检查；通过账号和资源归属校验后清理本次临时资源。它会进行少量真实模型调用，证据与验证限制见 [R6 Acceptance](acceptance/local-deployment-v1.md)。电脑 / Docker 重启需另选维护窗口，按同页步骤手动核验。
+
+### 本机下载接管导致 PDF 空响应
+
+若网页提示“导出文件大小无效”，浏览器收到 PDF 的 204 / 空内容而 API 访问日志为 200，先做客户端对照，不把它直接归因于服务器生成失败。本机下载管理器可能接管文件；检查 IDM 等软件的浏览器集成与文件类型设置。IDM 官方提供按站点排除自动接管和关闭浏览器集成的设置，见 [IDM Options](https://www.internetdownloadmanager.com/support/using_idm/options.html)。如需临时修改，先记录原设置、确认对其他下载的影响，验收后恢复。Agent 不自动修改本机下载管理器或用户浏览器配置。当前R6的实际对照与未完成项见 [本地部署Acceptance](acceptance/local-deployment-v1.md)。

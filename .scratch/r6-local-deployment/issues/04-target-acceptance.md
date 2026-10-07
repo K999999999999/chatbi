@@ -26,3 +26,7 @@ Implementation review: PASS；基线 `995440b`，Scope为当前Ticket owned file
 2026-10-08 首次完整运行：clean候选 `e4f83aca437d1824db0f8c2045b33cae8231ed0e`，run `20261007T190056Z-9b5b8021`。空卷Seed / migration / 管理员 / RAG / 兼容前置与五项失败检查通过；Windows Edge真实问数和XLSX下载成功，随后PNG返回503，原浏览器用例等待不存在的下载导致180秒超时。诊断保存在ignored `.local/acceptance/<run>/`，未改称通过。专用账号已禁用、活跃Session为0；本次容器/卷/网络及Windows workspace已清理，临时配置凭据已删除。
 
 根因与修复：稳定Compose遗漏R5 renderer所需seccomp配置，启用sandbox的Chromium namespace启动失败；相同固定镜像加入既有profile后sandbox启动实测通过。新增Compose security_opt回归先Red（缺少security_opt），修复后66项软件检查、类型/Ruff/Bash/链接/Diff检查通过。增加实际sandbox前置检查与浏览器导出非200快速失败；Review基线`e4f83ac`，PASS。下一步新clean候选完整复验。
+
+2026-10-08 第二次正式验收：clean `9f01de2`，run `20261007T191015Z-8582c456`。sandbox、问数 / 追问 / 多指标 / XLSX / PNG及经营分析参考值通过；PDF浏览器204空响应使完整运行失败，后续重启及成果检查未执行。专用资源与凭据已清理，失败报告保留。
+
+诊断run `20261007T191852Z-9ffb13b7` 的测试副本已修改，仅用于诊断：API导出200，Edge收到204；有效PDF最小对照Linux/Windows PowerShell200且78,427 bytes，Edge204且0 bytes。IDMan运行、advanced integration与PDF监控已核实；疑似下载接管，等待用户授权临时调整并恢复，未修改本机配置。下一步先完成暂停接管前后最小对照，再运行同一clean候选正式完整验收。正式结果仍为未完成。

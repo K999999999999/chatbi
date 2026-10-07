@@ -86,3 +86,7 @@
 ## Ticket 04 验收入口候选准备
 
 隔离配置、资源归属保护、Windows Edge配置及报告目录已实现。TDD记录：报告模块缺失和隔离配置模块缺失均先产生Red；Compose真实解析发现project名称大写不合法后修复。定向软件63项与报告路径3项通过；随后新增容器身份拒绝回归，目前隔离配置/Compose/身份10项通过。类型、Ruff与Diff检查通过。完整真实验收尚未运行；下一步形成clean candidate构建固定镜像。
+
+## Ticket 04 PDF传输诊断停点（2026-10-08）
+
+9f01de2正式运行已通过sandbox、问数 / 追问 / 多指标 / XLSX / PNG、经营分析参考值，但PDF在Edge收到204空响应；完整验收失败。诊断与有效PDF最小对照确认API/Linux/Windows PowerShell200，Edge204。IDM运行且监控PDF，接管原因待暂停后的对照确认。用户已收到临时调整 / 恢复IDM的确认请求，尚未修改本机配置。失败资源已清理，Stable仍995440b；Ticket04未完成，无发布授权。详见正式Acceptance当前失败记录。

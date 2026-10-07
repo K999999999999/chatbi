@@ -23,3 +23,13 @@ Windows Node 在临时目录安装锁定的浏览器测试依赖，Microsoft Edg
 完整脚本只停止专用验收项目。电脑 / Docker daemon 重启需要无其他项目活动的维护窗口，尚未执行；窗口中先记录账号、历史、成果和 Seed / 卷身份，再重启，显式执行 `./local up` 并重新读取和导出已有成果。未预定具体时间，也不以容器 stop / up 替代电脑重启证据。
 
 R1–R5 原 Acceptance 和 Evaluation 报告保留原候选身份。R6 部署及验收代码没有改变模型、Prompt、Domain、SQL Guard、业务资产或查询 / 分析应用行为，因此已有正式 AI Evaluation 作为原候选行为基线复用；完整 Edge 业务验收提供新运行环境证据，不等于重跑三套正式 AI Evaluation。动态 readiness、备份恢复、容量 / 可用性及监控告警归后续 R7。
+
+## Ticket 04 当前失败与诊断（2026-10-08）
+
+clean candidate `9f01de29ca12094c4447bbe241672d6260927725` 的正式 run `20261007T191015Z-8582c456` 已通过空环境初始化、RAG / 兼容前置、五项失败检查、Windows Edge 真实问数 / 追问、多指标、XLSX 与 PNG；经营分析的任务及程序归因与独立参考值一致。PDF 下载时 Edge 收到 204 空响应，完整验收失败，重启 / 保存成果及最终导出内容检查尚未执行，不能标记 Ticket 04 完成。
+
+诊断 run `20261007T191852Z-9ffb13b7` 在临时浏览器测试副本增加安全响应字段，**不是正式验收**。PDF 服务端访问日志返回 200，Edge 收到 204、无文件内容；独立最小复现对同一份有效 PDF，Linux / Windows PowerShell 均返回 200 和 78,427 bytes，Edge 返回 204 / 0 bytes。headed / headless 和关闭浏览器代理的复现结果一致。本机确认运行 IDMan，IDM advanced integration 开启且监控 PDF；其接管为当前待验证原因，尚未通过暂停后的对照实验证实。未自动修改 IDM、本机代理或用户浏览器配置。
+
+两次 run 的临时账号、Session、配置凭据、Windows workspace 和专用 Compose 容器 / 卷 / 网络均已清理；失败报告保留于 ignored `.local/acceptance/<run-id>/`。稳定 API 仍运行 `995440b`，未因此被替换；开发环境保持运行。
+
+AI Evaluation 的复用边界还包括运行依赖变化：R6 将 PyPI `torch 2.14.0` 改为 CPU 索引 `torch 2.14.1+cpu`（非 Darwin）。已有正式报告只提供原候选的软件行为基线，不证明本次 CPU runtime 已取得新的正式 Evaluation 基线。新环境 RAG 构建和真实业务参考值检查已有证据，完整部署验收仍待 PDF 链路恢复；三套正式 AI Evaluation 未在本次候选重新执行。
