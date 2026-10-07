@@ -16,7 +16,7 @@
 假设: None
 未决 / 阻塞项: None
 留给Ticket / 实施阶段的决定: 在Design中确定Compose/命令组织、固定版本标识、兼容性检查、缓存与发布资产路径、验收版本对；不得改变已确认边界。
-下一步: 本地提交Ticket 02的Docker layer缓存修复，以clean commit重建并核对镜像来源；随后完成空卷数据库、模型与RAG集成，再进入管理员 / LLM 浏览器验收。
+下一步: 用户完成本机管理员密码与LLM密钥配置；随后执行稳定环境up、Windows浏览器登录和真实问数，再验证down-up持久性；Ticket 02验收完成后连续实施03→04。
 
 ## 本次文档整理检查
 
@@ -44,3 +44,9 @@
 - `5ffe0b2e9512fdd64797c58e888847a53b3e73ab`的首次`./local build`约111分钟后因锁定`pyarrow==25.0.1`从`files.pythonhosted.org`下载超时而失败；未生成可用新镜像或release记录，未启动稳定容器，开发PostgreSQL / Qdrant未改动。锁文件保持不变。
 - 为复用已有干净祖先镜像的Docker依赖层、同时将最终镜像revision和release JSON绑定当前clean commit，已加入末层release身份覆盖与祖先缓存选择；该修复的定向测试和Dockerfile检查通过，尚待本地提交及重新构建。
 - 尚未完成空卷真实初始化、稳定RAG构建、隐藏密码管理员创建、真实LLM浏览器问数、关闭终端 / down-up持久性验收；不能据此标记Ticket完成。
+
+## R6 Ticket 02 集成进度（2026-10-07）
+
+- 缓存修复已提交为clean source commit `0a9f5aa287d87f648cb71ab31b234d77d07fc15b`，本地API / PostgreSQL镜像构建成功，ID分别为 `sha256:211550d04ab2524cf329fb5eb9bef341108a61314ba11e7a6b1ecaeba7cb6637` / `sha256:77379c207ef8345a2d5430cf6b283bcfd072cc4f7fb7308193632ec79bae3c78`；OCI revision与镜像内release JSON均匹配该提交。
+- 独立稳定PostgreSQL / Qdrant空卷启动、Sales初始化与应用/RBAC migration通过；固定BGE-M3 revision `5617a9f61b028005a4858fdac845db406aefb181`准备完成。RAG build `20261007T153620Z-52a4cdfae6ea`已发布，包含7个table、69个column、7个metric文档和9条relationship edges，failure_count=0。
+- 开发PostgreSQL / Qdrant持续运行且未修改。稳定PG / Qdrant运行中；管理员尚未创建，`.env.local` 的 `LLM_API_KEY` 当前为空，因此API未启动。下一步由用户在本机交互创建隐藏密码管理员、填写本地LLM密钥；随后继续up、Windows浏览器真实问数与down-up历史持久性验收。
