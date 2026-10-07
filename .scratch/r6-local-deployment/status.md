@@ -16,7 +16,7 @@
 假设: None
 未决 / 阻塞项: None
 留给Ticket / 实施阶段的决定: 在Design中确定Compose/命令组织、固定版本标识、兼容性检查、缓存与发布资产路径、验收版本对；不得改变已确认边界。
-下一步: 用户完成本机管理员密码与LLM密钥配置；随后执行稳定环境up、Windows浏览器登录和真实问数，再验证down-up持久性；Ticket 02验收完成后连续实施03→04。
+下一步: 收尾Ticket 02新发现的端口冲突误报修复，提交并重建clean候选；在该候选上复验启动、Windows Edge问数和down-up持久性，然后连续实施Ticket 03→04。
 
 ## 本次文档整理检查
 
@@ -50,3 +50,10 @@
 - 缓存修复已提交为clean source commit `0a9f5aa287d87f648cb71ab31b234d77d07fc15b`，本地API / PostgreSQL镜像构建成功，ID分别为 `sha256:211550d04ab2524cf329fb5eb9bef341108a61314ba11e7a6b1ecaeba7cb6637` / `sha256:77379c207ef8345a2d5430cf6b283bcfd072cc4f7fb7308193632ec79bae3c78`；OCI revision与镜像内release JSON均匹配该提交。
 - 独立稳定PostgreSQL / Qdrant空卷启动、Sales初始化与应用/RBAC migration通过；固定BGE-M3 revision `5617a9f61b028005a4858fdac845db406aefb181`准备完成。RAG build `20261007T153620Z-52a4cdfae6ea`已发布，包含7个table、69个column、7个metric文档和9条relationship edges，failure_count=0。
 - 开发PostgreSQL / Qdrant持续运行且未修改。稳定PG / Qdrant运行中；管理员尚未创建，`.env.local` 的 `LLM_API_KEY` 当前为空，因此API未启动。下一步由用户在本机交互创建隐藏密码管理员、填写本地LLM密钥；随后继续up、Windows浏览器真实问数与down-up历史持久性验收。
+
+## R6 Ticket 02 端口冲突修复进度（2026-10-08）
+
+- 用户本机已完成管理员创建和LLM密钥配置。Linux Chromium真实登录 / 问数结果与独立只读SQL一致；稳定环境down/up后，同一测试账号的历史和快照可重新打开、刷新，未触发新执行。Windows Edge 154.0.4258.53也完成同源登录和真实问数，返回值与只读SQL一致；临时账号已禁用并撤销会话，临时凭据与Edge profile已清理。
+- 为验证Ticket02的端口冲突边界，先用隔离回环HTTP进程占用8080。复现`./local up`误报成功：容器内健康检查通过，但HTTP请求实际落到占用进程；稳定API没有有效发布映射。已按TDD记录Red（占用端口探测测试1失败/1通过），修复增加host回环端口探测、运行API映射识别、`/health`外部路由检查和失败时只停止本稳定API的恢复路径。
+- 修复后定向测试24项通过；端口冲突集成验收返回非零和明确诊断，临时占用进程仍返回HTTP 200且未被停止；释放端口后`./local up`成功，API回环HTTP健康，重复`up`也通过。
+- 当前端口修复代码尚待本地Commit与clean镜像重建；因此Ticket02仍in-progress，需在新候选上复验浏览器和持久性，再收尾文档。稳定环境服务现已恢复运行。

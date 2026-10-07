@@ -6,6 +6,7 @@ CONFIG_FILE="$ROOT/.env.local"
 SECRET_FILE="$ROOT/.env.local.secrets"
 RELEASE_FILE="$ROOT/.local/release.env"
 PROJECT_NAME="chatbi-stable"
+source "$ROOT/scripts/local_port.sh"
 
 # Compose reads only the dedicated stable files; developer-shell variables must not
 # override them or leak development credentials into this independent project.
@@ -397,6 +398,36 @@ wait_for_api() {
     return 1
 }
 
+stable_api_serves_configured_port() {
+    local port="$1" container running published_port
+    container="$(compose ps -q api)"
+    [[ -n "$container" ]] || return 1
+    running="$(docker inspect --format '{{.State.Running}}' "$container" 2>/dev/null || true)"
+    [[ "$running" == true ]] || return 1
+    published_port="$(docker port "$container" 8000/tcp 2>/dev/null || true)"
+    [[ "$published_port" == "127.0.0.1:$port" ]] || return 1
+    local_loopback_http_health_ok "$port"
+}
+
+ensure_local_api_port_available() {
+    local port container running
+    port="$(read_config_value CHATBI_LOCAL_HTTP_PORT)"
+    container="$(compose ps -q api)"
+    if [[ -n "$container" ]]; then
+        running="$(docker inspect --format '{{.State.Running}}' "$container" 2>/dev/null || true)"
+        if [[ "$running" == true ]] && stable_api_serves_configured_port "$port"; then
+            return 0
+        fi
+        if [[ "$running" == true ]]; then
+            compose stop api >/dev/null \
+                || fail '无法停止本稳定环境中未正确发布的 API 容器；未处理其他进程。'
+        fi
+    fi
+    if ! local_loopback_port_is_free "$port"; then
+        fail "本机回环端口 ${port} 已被占用；请修改 .env.local 中的 CHATBI_LOCAL_HTTP_PORT 后重试。未停止占用进程。"
+    fi
+}
+
 main() {
     local command_name="${1:-help}"
     acquire_operation_lock "$command_name"
@@ -460,6 +491,7 @@ main() {
                     ;;
                 up)
                     [[ -z "${1:-}" ]] || fail './local up 不接受额外参数。'
+                    ensure_local_api_port_available
                     start_infrastructure
                     compose run --rm -T --no-deps verify verify-runtime \
                         || fail '稳定环境前置检查未通过；按诊断完成显式初始化后重试。'
@@ -468,8 +500,14 @@ main() {
                         exit 1
                     fi
                     if wait_for_api; then
+                        local port
+                        port="$(read_config_value CHATBI_LOCAL_HTTP_PORT)"
+                        if ! stable_api_serves_configured_port "$port"; then
+                            compose stop api >/dev/null || true
+                            fail "API 容器健康，但 Docker 未将稳定服务正确发布到 http://127.0.0.1:${port}/；已停止本稳定环境 API，未处理其他进程。请检查端口冲突后重试。"
+                        fi
                         printf 'ChatBI 稳定环境已启动：http://127.0.0.1:%s/\n版本：%s\n' \
-                            "$(read_config_value CHATBI_LOCAL_HTTP_PORT)" "$CHATBI_SOURCE_COMMIT"
+                            "$port" "$CHATBI_SOURCE_COMMIT"
                     else
                         fail 'API 未在等待期内通过 HTTP liveness 检查；数据未清理，请运行 ./local status 和 ./local logs api。'
                     fi
