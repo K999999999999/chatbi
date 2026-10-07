@@ -58,6 +58,11 @@ EXPOSE 8000
 CMD ["uvicorn", "src.query_api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
 
 FROM ${POSTGRES_BASE} AS database
+ARG CHATBI_SOURCE_COMMIT
+RUN test -n "${CHATBI_SOURCE_COMMIT}" \
+    && printf '%s' "${CHATBI_SOURCE_COMMIT}" | grep -Eq '^[0-9a-f]{40}$' \
+    && printf '{"format":1,"source_commit":"%s"}\n' "${CHATBI_SOURCE_COMMIT}" > /opt/chatbi-release.json
+LABEL org.opencontainers.image.revision=${CHATBI_SOURCE_COMMIT}
 COPY database/control /workspace/database/control
 COPY database/sales_mart /workspace/database/sales_mart
 COPY database/grants.sql /workspace/database/grants.sql
