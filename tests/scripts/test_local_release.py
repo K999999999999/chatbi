@@ -180,7 +180,11 @@ def test_accepts_only_fully_declared_compatible_state(
 @pytest.mark.parametrize(
     ("field", "value", "message"),
     [
-        ("control_migrations", ["chatbi-control-v1", "chatbi-control-v2", "unknown"], "control migration"),
+        (
+            "control_migrations",
+            ["chatbi-control-v1", "chatbi-control-v2", "unknown"],
+            "control migration",
+        ),
         ("checkpoint_migrations", [0, 1, 2], "checkpoint migration"),
         ("business_seed_version", "unknown-seed", "Sales Mart Seed"),
         ("catalog_verified", False, "catalog"),
@@ -210,7 +214,9 @@ def test_rejects_unknown_or_unverified_compatibility_state(
         validate_compatibility_state(compatibility_profile, compatible_state)
 
 
-def test_rejects_incomplete_compatibility_declaration(compatibility_profile: dict) -> None:
+def test_rejects_incomplete_compatibility_declaration(
+    compatibility_profile: dict,
+) -> None:
     compatibility_profile["control_migrations"]["allowed"].pop()
 
     with pytest.raises(LocalReleaseError, match="required control migrations"):
@@ -251,7 +257,9 @@ def test_image_compatibility_declaration_matches_repository_contracts() -> None:
                 r"chatbi-control-v[0-9]+",
                 "\n".join(
                     path.read_text(encoding="utf-8")
-                    for path in sorted((repository / "database" / "control").glob("*.sql"))
+                    for path in sorted(
+                        (repository / "database" / "control").glob("*.sql")
+                    )
                 ),
             )
         )
@@ -279,9 +287,10 @@ def test_image_compatibility_declaration_matches_repository_contracts() -> None:
         devices="cpu",
     )
     provenance = build_provenance(load_facts(), embedding.config)
-    assert profile["business_catalog_schema_metadata_sha256"] == provenance[
-        "schema_metadata_sha256"
-    ]
+    assert (
+        profile["business_catalog_schema_metadata_sha256"]
+        == provenance["schema_metadata_sha256"]
+    )
     assert profile["rag_provenance"] == provenance
 
 

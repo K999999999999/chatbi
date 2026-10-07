@@ -32,7 +32,7 @@ def run_cache_selector(
     *,
     current_cache_commit: str = "",
 ) -> subprocess.CompletedProcess[str]:
-    script = r'''
+    script = r"""
 set -Eeuo pipefail
 source "$1"
 repository="$2"
@@ -52,7 +52,7 @@ docker() {
     fi
 }
 select_build_cache_commit "$current_commit" "$repository"
-'''
+"""
     environment = os.environ | {
         "CURRENT_COMMIT": current_commit,
         "BASE_COMMIT": base_commit,
@@ -77,9 +77,7 @@ select_build_cache_commit "$current_commit" "$repository"
 
 def make_repository(path: Path) -> tuple[str, str]:
     subprocess.run(["git", "init", "--quiet", str(path)], check=True)
-    subprocess.run(
-        ["git", "-C", str(path), "config", "user.name", "Test"], check=True
-    )
+    subprocess.run(["git", "-C", str(path), "config", "user.name", "Test"], check=True)
     subprocess.run(
         ["git", "-C", str(path), "config", "user.email", "test@example.invalid"],
         check=True,

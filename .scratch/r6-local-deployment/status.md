@@ -98,3 +98,7 @@
 ## Ticket 04 最终本地收尾（2026-10-08）
 
 完整clean候选2b4a8c8与run20261007T200251Z-e8ea09aa通过；12份导出独立解析、Windows完整业务/专用服务恢复、五项失败/隔离/清理通过；IDM原设置恢复。稳定API升级到同一候选，4用户/3历史/3turn/0成果完整行指纹不变，PG/Qdrant与卷身份不变，sandbox通过。正式Contract/Design/Acceptance/Runbook/产品范围/路线图已同步。四Tickets done，但R6实时工作项保留in-progress、待发布授权，不把本地完成冒称已发布交付。电脑/Docker重启与三套正式AI Evaluation未执行，限制及证据位置见正式Acceptance；历史失败记录保留。
+
+## PR 阶段格式门禁修复（2026-10-08）
+
+用户已明确授权本目标PR发布及同范围收尾。最终文档候选4e3a672的远端Code quality发现两份R6测试文件格式不合规；此前定向格式检查未覆盖这两份文件。按CI固定Ruff0.16.8格式化，仅修改引号/换行，不改变测试或产品行为。全量`ruff format --check src evaluation tests`及CI相同lint通过；两份测试44 PASS，Diff检查及当前上下文Review PASS。正式运行验收仍绑定2b4a8c8，未冒称新运行候选。CI及交付实时状态以Git公共目录主记录为准。
