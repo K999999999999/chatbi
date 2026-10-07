@@ -55,6 +55,11 @@ RUN /opt/venv/bin/python src/query_api/export_assets.py \
     --chart-font-package-version "$(dpkg-query -W -f='${Version}' fonts-noto-cjk)" \
     --pdf-font-package-version "$(dpkg-query -W -f='${Version}' fonts-wqy-zenhei)" \
     && chmod -R a-w /opt/chatbi-export /opt/chatbi-web /opt/chatbi-release.json
+ARG CHATBI_RELEASE_COMMIT
+RUN test -n "${CHATBI_RELEASE_COMMIT}" \
+    && printf '%s' "${CHATBI_RELEASE_COMMIT}" | grep -Eq '^[0-9a-f]{40}$' \
+    && printf '{"format":1,"source_commit":"%s"}\n' "${CHATBI_RELEASE_COMMIT}" > /opt/chatbi-release.json
+LABEL org.opencontainers.image.revision=${CHATBI_RELEASE_COMMIT}
 USER 1000:1000
 EXPOSE 8000
 CMD ["uvicorn", "src.query_api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
@@ -74,3 +79,8 @@ COPY database/init/wait_for_base_initialization.sh /workspace/database/init/wait
 COPY database/init/healthcheck.sh /workspace/database/init/healthcheck.sh
 COPY database/init/10_chatbi_dev_environment.sh /docker-entrypoint-initdb.d/10_chatbi_dev_environment.sh
 RUN chmod 0555 /docker-entrypoint-initdb.d/10_chatbi_dev_environment.sh
+ARG CHATBI_RELEASE_COMMIT
+RUN test -n "${CHATBI_RELEASE_COMMIT}" \
+    && printf '%s' "${CHATBI_RELEASE_COMMIT}" | grep -Eq '^[0-9a-f]{40}$' \
+    && printf '{"format":1,"source_commit":"%s"}\n' "${CHATBI_RELEASE_COMMIT}" > /opt/chatbi-release.json
+LABEL org.opencontainers.image.revision=${CHATBI_RELEASE_COMMIT}

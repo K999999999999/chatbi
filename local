@@ -239,37 +239,65 @@ verify_release_images() {
         || fail 'PostgreSQL 镜像内嵌来源身份与本地发布记录不一致。'
 }
 
+select_build_cache_commit() {
+    local source_commit="$1" image revision candidate
+    local -A cached_commits=()
+    while IFS= read -r image; do
+        [[ -n "$image" ]] || continue
+        revision="$(docker image inspect \
+            --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' \
+            "$image" 2>/dev/null || true)"
+        [[ "$revision" =~ ^[0-9a-f]{40}$ ]] || continue
+        cached_commits["$revision"]=1
+    done < <(docker image ls \
+        --filter 'reference=chatbi-local-api:*' \
+        --format '{{.Repository}}:{{.Tag}}')
+
+    while IFS= read -r candidate; do
+        if [[ -n "${cached_commits[$candidate]:-}" ]]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done < <(git -C "$ROOT" rev-list "$source_commit")
+    printf '%s\n' "$source_commit"
+}
+
 build_images() {
     require_docker
-    local dirty source_commit api_build_tag database_build_tag
+    local dirty source_commit cache_commit api_build_tag database_build_tag
     dirty="$(git -C "$ROOT" status --porcelain --untracked-files=all)"
     [[ -z "$dirty" ]] || fail '固定版本构建要求 clean worktree；先提交当前目标改动。'
     source_commit="$(git -C "$ROOT" rev-parse HEAD)"
     [[ "$source_commit" =~ ^[0-9a-f]{40}$ ]] || fail '无法识别当前 Git commit。'
+    cache_commit="$(select_build_cache_commit "$source_commit")"
 
     docker build --check \
         --file "$ROOT/docker/local.Dockerfile" \
         --target api \
-        --build-arg "CHATBI_SOURCE_COMMIT=$source_commit" \
+        --build-arg "CHATBI_SOURCE_COMMIT=$cache_commit" \
+        --build-arg "CHATBI_RELEASE_COMMIT=$source_commit" \
         "$ROOT"
     api_build_tag="chatbi-local-api:build-${source_commit}"
     docker build \
         --file "$ROOT/docker/local.Dockerfile" \
         --target api \
-        --build-arg "CHATBI_SOURCE_COMMIT=$source_commit" \
+        --build-arg "CHATBI_SOURCE_COMMIT=$cache_commit" \
+        --build-arg "CHATBI_RELEASE_COMMIT=$source_commit" \
         --tag "$api_build_tag" \
         "$ROOT"
 
     docker build --check \
         --file "$ROOT/docker/local.Dockerfile" \
         --target database \
-        --build-arg "CHATBI_SOURCE_COMMIT=$source_commit" \
+        --build-arg "CHATBI_SOURCE_COMMIT=$cache_commit" \
+        --build-arg "CHATBI_RELEASE_COMMIT=$source_commit" \
         "$ROOT"
     database_build_tag="chatbi-local-postgres:build-${source_commit}"
     docker build \
         --file "$ROOT/docker/local.Dockerfile" \
         --target database \
-        --build-arg "CHATBI_SOURCE_COMMIT=$source_commit" \
+        --build-arg "CHATBI_SOURCE_COMMIT=$cache_commit" \
+        --build-arg "CHATBI_RELEASE_COMMIT=$source_commit" \
         --tag "$database_build_tag" \
         "$ROOT"
 
@@ -296,8 +324,8 @@ EOF
     chmod 600 "$release_tmp"
     mv -f "$release_tmp" "$RELEASE_FILE"
     verify_release_images
-    printf '固定版本构建完成。source commit: %s\nAPI: %s (%s, %s bytes)\nPostgreSQL: %s (%s, %s bytes)\n' \
-        "$source_commit" "$api_tag" "$api_id" "$api_size" \
+    printf '固定版本构建完成。release source commit: %s\nDocker layer cache source commit: %s\nAPI: %s (%s, %s bytes)\nPostgreSQL: %s (%s, %s bytes)\n' \
+        "$source_commit" "$cache_commit" "$api_tag" "$api_id" "$api_size" \
         "$database_tag" "$database_id" "$database_size"
 }
 

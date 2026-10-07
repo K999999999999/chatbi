@@ -16,7 +16,7 @@
 假设: None
 未决 / 阻塞项: None
 留给Ticket / 实施阶段的决定: 在Design中确定Compose/命令组织、固定版本标识、兼容性检查、缓存与发布资产路径、验收版本对；不得改变已确认边界。
-下一步: 本地提交已通过Review与确定性检查的Ticket 02实现，以clean commit构建固定镜像；随后完成空卷数据库、模型与RAG集成，再进入管理员 / LLM 浏览器验收。
+下一步: 本地提交Ticket 02的Docker layer缓存修复，以clean commit重建并核对镜像来源；随后完成空卷数据库、模型与RAG集成，再进入管理员 / LLM 浏览器验收。
 
 ## 本次文档整理检查
 
@@ -41,4 +41,6 @@
 
 - 独立`chatbi-stable` Compose、配置模板、`./local`操作入口、环境前置检查、写操作锁及Runbook安装 / 启停章节已实现；正式本地稳定部署Contract初稿已建立。
 - 基于`eba02b0251c00cfcf169bf09bae63e8d02c9bd42`的实现Review PASS；本地发布入口20项测试通过，Ruff、Bash语法、Markdown本地链接、Compose资源隔离约束和Diff检查通过。
-- 尚未以当前Ticket 02 clean commit构建镜像，也未完成空卷真实初始化、稳定RAG构建、隐藏密码管理员创建、真实LLM浏览器问数、关闭终端 / down-up持久性验收；不能据此标记Ticket完成。
+- `5ffe0b2e9512fdd64797c58e888847a53b3e73ab`的首次`./local build`约111分钟后因锁定`pyarrow==25.0.1`从`files.pythonhosted.org`下载超时而失败；未生成可用新镜像或release记录，未启动稳定容器，开发PostgreSQL / Qdrant未改动。锁文件保持不变。
+- 为复用已有干净祖先镜像的Docker依赖层、同时将最终镜像revision和release JSON绑定当前clean commit，已加入末层release身份覆盖与祖先缓存选择；该修复的定向测试和Dockerfile检查通过，尚待本地提交及重新构建。
+- 尚未完成空卷真实初始化、稳定RAG构建、隐藏密码管理员创建、真实LLM浏览器问数、关闭终端 / down-up持久性验收；不能据此标记Ticket完成。
