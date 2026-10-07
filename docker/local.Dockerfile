@@ -19,6 +19,7 @@ RUN npm run build:export
 
 FROM ${PYTHON_BASE} AS api
 ARG CHATBI_SOURCE_COMMIT
+LABEL org.opencontainers.image.revision=${CHATBI_SOURCE_COMMIT}
 USER root
 RUN test -n "${CHATBI_SOURCE_COMMIT}" \
     && printf '%s' "${CHATBI_SOURCE_COMMIT}" | grep -Eq '^[0-9a-f]{40}$' \
