@@ -1,4 +1,4 @@
-# 本地验收与 Review
+# 本地验收与 Review：79067e0 候选阶段快照
 
 基线：`3f24bbf2ac90da6d568053553bff67d916cfb6d0`。范围为同提交的检查脚本、确定性测试、Harness 入口 / 文档及 R3 历史补记；最终候选 SHA 和提交后 clean 核实保存在本工作项的 Git 公共目录实时记录。软件证据不构成产品 Evaluation 或生产验收。
 
@@ -30,6 +30,14 @@
 
 正式事实源更新：AGENTS、Harness 说明、Issue Tracker、Git / PR 流程适用并已更新。业务 Spec、Design、Runbook、日期化 Acceptance 不适用：产品行为与运行入口不变。已复核 Roadmap R1–R5 完成、R6→R7 及作品交付顺序；本修复不改变产品目标、依赖或完成事实，路线图无需改动。R3 历史 Ticket 与状态补记不重新建立产品验收候选。
 
-未运行全量产品软件测试、AI Evaluation、浏览器与数据库验收：改动仅工具 / 文档，无产品运行代码、依赖或 Contract 变化。托管 CI 尚未运行，未发布。
+未运行全量产品软件测试、AI Evaluation、浏览器与数据库验收：改动仅工具 / 文档，无产品运行代码、依赖或 Contract 变化。此候选阶段尚未运行托管 CI、尚未发布；后续交付事实见下节。
 
 Harness 反馈：本目标已处理同类重复的状态 / 交付漏检；沉淀于本机只读入口、关联字段及恢复 / 收尾检查。不增加无证据的 Plugin 或架构改动。Remaining：独立发布、替代交付后旧 R3 分支处置与记录关闭。
+
+## PR #58 交付事实与文档同步
+
+PR #58 于 2026-10-07T05:32:21Z 自动 Squash 合并为 `84318c02b54d8a8e91c1bf47940ff32d14f55f9c`；head `79067e0` 的 8/8 required checks SUCCESS。合并后复盘记录在 PR 正文。功能修复 / R3有效补记与旧Spec已进入主干，旧本地R3候选及本地 / 远端修复分支已在归档核对后清理，原候选bundle保存在Git公共目录。
+
+本次追加为同目标的交付事实同步：把R3当前记录的未发布描述更新为已合入，把原验收 / 授权段标记为规划与候选阶段历史。未改变脚本、测试或产品行为，复用79067e0的相关软件证据；新文档候选另执行Markdown links / Diff与当前上下文Code Review，CI身份与最后清理结果保存在本机实时记录。Roadmap产品顺序 / 状态不变；主记录及产品汇总 / R3关联记录逐项同步，不将此次文档提交改称原测试或Evaluation报告候选。
+
+纯文档同步的当前上下文 Code Review：PASS（base `84318c0`，上述五份长期记录）；Markdown local links 与 `git diff --check` PASS。仅修正已核实交付事实和历史标签，未引入新行为、权限、数据或授权范围；原软件 / Evaluation 身份不变。

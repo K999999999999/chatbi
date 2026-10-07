@@ -39,6 +39,6 @@ Result:
 Comments: 真实API凭证与.env只在本地，报告不得泄露Secret；失败必须保留并修复，不通过回退验收门槛完成。
 
 Status: done
-Documentation closeout: 本次历史补记由 harness-delivery-consistency 承接，本地整理不代表文档修复已远端发布。
+Documentation closeout: 本次历史补记已随 harness-delivery-consistency 的 PR #58 合入主干（84318c0）；原始验收报告身份不变。
 Canonical Source: ../spec.md、../design.md、../restoration-semantics.md
 Authorization: 原六项整体本地实施已确认；2026-10-05 用户另行授权 R3 发布并已完成。具体授权 / PR / 清理进度见本机实时状态，不扩展到后续需求。
