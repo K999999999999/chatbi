@@ -73,6 +73,34 @@ Next: <唯一、可执行的下一步>
 
 关联仓库记录使用相同的 ID，并在 `Primary record` 指向主仓库身份及相对于主仓库 `git-common-dir` 的状态路径；可附当前机器上的绝对路径用于定位，但它不是稳定身份。其授权字段只能写“见主记录”，不能复制成独立授权。每个 Git 公共目录单独保存本仓库状态，因此关联记录不得被误认为整个目标已完成。
 
+### 同仓库关联与本机检查
+
+产品总目标与功能子工作项用以下可选字段明确引用，ID 指向同一 Git 公共目录的当前记录：
+
+```md
+Related work items: result-export-v1, harness-delivery-consistency
+Active work item: harness-delivery-consistency
+Follow-up work item: None
+Ticket files: .scratch/example/issues/01-example.md
+```
+
+`Related work items` / `Ticket files` 使用逗号分隔；另外两项只接受一个 ID 或 `None`。字段放在当前部分，历史正文使用 `## 历史…` 或 `## History…` 标题；字段示例放在代码块。旧记录无需批量迁移。产品汇总引用子工作项的 Ticket、PR、验证及授权证据，避免复制成另一份可独立过期的进度；产品总体状态与产品级决定仍由总目标保存。关联只用于发现与交接，不继承或扩大授权。显式暂缓 / 被后续工作接手的候选保留其独立生命周期、原因及 `Follow-up work item`，直到替代交付与归档核实完成。
+
+会话恢复、PR 合并收尾和新目标实施前运行：
+
+```bash
+python -m scripts.check_harness_state
+python -m scripts.check_harness_state --json
+```
+
+入口只读本机 Git、Git common-dir 的 `work-items/*/status.md` 及显式 Ticket；支持 linked worktree，不读取同目录历史快照，不访问远端、不更新记录、不清理分支。`--repo` 可指定目标 worktree。Git 命令关闭可选写锁。
+
+- `ERROR`：当前字段无效 / 重复、引用缺失、active 子工作项已完成、done 工作项声明的 Ticket 未完成、Ticket 越出仓库，或检查未完成；退出码 1，修复后才能宣称收尾完整。
+- `REVIEW`：未完成目标、工作区有修改、保留分支有 master 不可达提交，或缺少本机记录 / master。逐项结合授权、真实 PR、归属与保留原因核对；明确处置或后续引用，不能默默忽略，也不自动阻止其他无冲突目标。
+- 仅含 `INFO` / `REVIEW` 时退出 0；这只表示没有发现可确定错误，不表示所有工作完成。时间较旧或文档出现历史关键词不构成错误；不可达提交不能单独证明未合并，Squash 后仍可能不可达。
+
+新 clone 缺少本机记录时必须依据长期记录和 Git / PR 恢复；工具不会生成记录。GitHub CI 无法读取开发机 `.git/harness`，既有确定性测试验证工具行为，本机实际检查由会话 / 交付执行。工具不判断任意自然语言状态矛盾，也不能替代产品文档语义 Review。
+
 写入与恢复规则：
 
 - 一个目标同一时间由一个主 Agent / 会话写实时状态；不能同时由两个未协调的 writer 更新。交接时先读取最新记录，再明确由新的 writer 接手。

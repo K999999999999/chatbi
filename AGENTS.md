@@ -29,6 +29,7 @@
 
 - 每个进入本仓库的新会话，在首条回复前检查当前仓库、branch / worktree、`git status`、`.scratch/` 长期工作记录和 Git 公共目录中的本机实时进度；回复开头用一行状态栏说明阶段、工作项、工作区状态、上次停点和下一步。只读咨询标明“只读咨询 / 无实施阶段”。
 - 通过 `git rev-parse --path-format=absolute --git-common-dir` 定位当前仓库及所有 linked worktree 共享的 Git 公共目录；检查其中活动状态及工作项关联的其他仓库记录。`.git` 内容属于本机状态，不加入 Commit。记录发现流程见 [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md)。
+- 会话恢复、合并收尾和新目标实施前运行 `python -m scripts.check_harness_state`；处理相关 ERROR，说明 REVIEW 的归属、授权与处置。产品汇总引用子工作项进度；clean 工作区、工具退出 0 和 CI 全绿均不能单独证明全部收尾完成。字段和检查边界见 [`本机检查说明`](docs/agents/issue-tracker.md#同仓库关联与本机检查)。
 - 以工作项 ID、仓库身份和记录里的 branch / worktree / PR 身份核实活动工作；不要求当前 branch 必须匹配，也不因位于 `master` 就忽略已发布的未完成交付。`.scratch/<feature>/status.md` 是长期规划与历史依据，本机记录是实时进度；前者过期时检查实时 Git / 远端后继续修正，不能直接要求用户辨认旧候选。
 - 自动继续可由明确记录的授权范围覆盖的同一工作项，尤其是已经发布的 PR 跟进与收尾。归属或授权无法核实、多个工作互相冲突、发现用户修改阻碍写入 / 清理，才停下来说明事实并询问最关键的问题。没有相关未完成工作时，正常处理当前请求。
 - 工作区有修改时先列明并判断归属。能由当前活动工作记录确认属于正在继续的任务时，可以恢复该任务；归属不明或属于其他任务时，暂停新的写入操作并请用户决定。不得自动 stash、reset、checkout、commit、覆盖或移动改动。
