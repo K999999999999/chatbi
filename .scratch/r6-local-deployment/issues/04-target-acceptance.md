@@ -30,3 +30,7 @@ Implementation review: PASS；基线 `995440b`，Scope为当前Ticket owned file
 2026-10-08 第二次正式验收：clean `9f01de2`，run `20261007T191015Z-8582c456`。sandbox、问数 / 追问 / 多指标 / XLSX / PNG及经营分析参考值通过；PDF浏览器204空响应使完整运行失败，后续重启及成果检查未执行。专用资源与凭据已清理，失败报告保留。
 
 诊断run `20261007T191852Z-9ffb13b7` 的测试副本已修改，仅用于诊断：API导出200，Edge收到204；有效PDF最小对照Linux/Windows PowerShell200且78,427 bytes，Edge204且0 bytes。IDMan运行、advanced integration与PDF监控已核实；疑似下载接管，等待用户授权临时调整并恢复，未修改本机配置。下一步先完成暂停接管前后最小对照，再运行同一clean候选正式完整验收。正式结果仍为未完成。
+
+2026-10-08 IDM对照与后续测试修复：用户确认临时调整并恢复后，通过原生IDM配置界面仅取消PDF文件类型接管；同一有效PDF由Edge204/0bytes恢复200/78,427bytes，根因确认。正式clean `1bebea5334596ac876d64b00fbb6b26d18f1b0f4`，run `20261007T194018Z-5cecc97d`，当前与历史分析PDF均下载成功；随后测试在打开保存成果请求尚未完成时立即读取旧URL，产生“成果URL缺少身份”的Red。现场记录显示读取期间UI仍busy，应用只有完成读取后才切换hash。修复测试改为等待saved URL与已保存成果标题，再读取ID / 导出；保持全部原业务断言，未修改应用行为。该run账号/资源已清理，IDM原配置已恢复；完整验收仍未完成，待新clean候选重跑。
+
+等待修复Review：PASS，BASE `1bebea5`，仅container-real测试和本Ticket记录。用saved URL与成果专属标题观察完成状态，保留导出来源、内容与业务断言；不增加sleep或重试、不变更Domain/应用。TypeScript typecheck与Diff检查通过；历史/成果确定性回归在Windows Edge（临时frontend+隔离stub）3 passed。宿主Linux尝试因缺少Chrome及libnspr4无法启动，未计为通过；随后使用已确认目标浏览器完成回归。实际完整链Green仍待新clean候选复验。

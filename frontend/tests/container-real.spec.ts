@@ -399,6 +399,8 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     await expect(page.getByText('已保存。', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: '已保存成果', exact: true }).click();
     await page.getByRole('button', { name: '分析 · R3固定分析报告', exact: true }).click();
+    await expect(page).toHaveURL(/#saved=[0-9a-f-]{36}$/);
+    await expect(page.getByRole('heading', { name: 'R3固定分析报告', exact: true })).toBeVisible();
     await expect(page.locator('.analysis-report h2')).toBeVisible();
     const analysisSavedId = new URL(page.url()).hash.match(/^#saved=([0-9a-f-]{36})$/)?.[1];
     if (!analysisSavedId) throw new Error('已保存分析成果 URL 缺少成果身份');
@@ -427,6 +429,8 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     await page.getByRole('button', { name: '已保存成果', exact: true }).click();
     evidence.step = 'open-saved-copy';
     await page.getByRole('button', { name: '问数 · R3固定分类成果', exact: true }).click();
+    await expect(page).toHaveURL(/#saved=[0-9a-f-]{36}$/);
+    await expect(page.getByRole('heading', { name: 'R3固定分类成果', exact: true })).toBeVisible();
     await expect(page.getByRole('table')).toBeVisible();
     const savedUrl = page.url();
     const savedId = new URL(savedUrl).hash.match(/^#saved=([0-9a-f-]{36})$/)?.[1];
