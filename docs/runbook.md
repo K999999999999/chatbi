@@ -6,7 +6,7 @@
 
 推荐使用 WSL / Linux 的容器开发入口：Compose 管理四个常驻服务及一次性初始化工具，不要求宿主安装 Python、uv 或 Node。宿主调试入口仍保留；Dev Container 配置保留，不作为本次支持或验收入口。
 
-ChatBI 当前处于 MVP 向生产演进阶段。本 Runbook 覆盖本地开发 / 内部验证及 R6 本地稳定运行流程；R6 的版本升级 / 兼容回滚和完整 Windows 浏览器验收仍在实施，不代表生产部署或生产就绪。自动测试使用隔离 PostgreSQL 和 CI Fixture；黄金评测复用开发库 `chatbi_mvp`；云端生产数据库不属于本文档范围。
+ChatBI 当前处于 MVP 向生产演进阶段。本 Runbook 覆盖本地开发 / 内部验证及 R6 本地稳定运行流程；R6 的版本升级 / 兼容回滚及完整 Windows 浏览器 / 专用服务恢复验收已通过，见 [Acceptance](acceptance/local-deployment-v1.md)；电脑 / Docker重启待维护窗口，不代表公网生产部署或完整生产就绪。自动测试使用隔离 PostgreSQL 和 CI Fixture；黄金评测复用开发库 `chatbi_mvp`；云端生产数据库不属于本文档范围。
 
 按目标选择流程：
 
@@ -63,7 +63,7 @@ Vite Web（开发容器 / 宿主调试；宿主回环端口 5173；打包后由 
 
 构建镜像使用明确版本 / digest。受网络限制时，可通过 `CHATBI_DEV_PYTHON_BASE` / `CHATBI_DEV_NODE_BASE` 指向可信镜像地址，保持相同版本 / digest；不关闭 TLS 校验或修改系统证书。原生依赖随 `uv.lock` 安装，CPU执行不意味着镜像中不含锁定的CUDA包。
 
-运行语义见[开发环境 Contract](specs/container-dev-environment.md)。R6 §15 提供当前电脑上的固定版本本地稳定环境；正式公网生产镜像、HTTPS 与云部署不在 R6 范围内。R6 本地版本升级 / 兼容回滚由 Ticket 03 实施；容量、动态 readiness、备份恢复和监控验收属于后续 R7。
+运行语义见[开发环境 Contract](specs/container-dev-environment.md)。R6 §15 提供当前电脑上的固定版本本地稳定环境；正式公网生产镜像、HTTPS 与云部署不在 R6 范围内。R6 本地版本升级 / 兼容回滚已由 Ticket 03 实施和验收；容量、动态 readiness、备份恢复和监控验收属于后续 R7。
 
 容器运行验收使用以下入口，要求干净候选提交和可用的真实 LLM 配置，会产生少量模型调用费用。隔离模式需 Compose ≥2.24.4：
 
@@ -506,7 +506,7 @@ curl --fail http://127.0.0.1:8000/health
 
 安装 Node 24 和 npm，进入 `frontend` 执行 `npm ci`。在本地 `.env` 显式设置 `CHATBI_WEB_ORIGIN=http://127.0.0.1:5173`，启动 FastAPI 后运行 `npm run dev`；浏览器打开该地址。真实凭证仅填入本地配置和登录表单，不写入仓库。
 
-打包使用 `npm run build`。以 FastAPI 同源提供打包网页时，设置 `CHATBI_WEB_DIST_DIR=frontend/dist`，并将 `CHATBI_WEB_ORIGIN` 设置为实际网页地址（本地如 `http://127.0.0.1:8000`）。API-only 运行可同时留空这两个配置。线上 Origin 必须为 HTTPS；完整生产部署验收仍属于 R6。
+打包使用 `npm run build`。以 FastAPI 同源提供打包网页时，设置 `CHATBI_WEB_DIST_DIR=frontend/dist`，并将 `CHATBI_WEB_ORIGIN` 设置为实际网页地址（本地如 `http://127.0.0.1:8000`）。API-only 运行可同时留空这两个配置。线上 Origin 必须为 HTTPS；R6 当前范围是 §15 的本地固定版本部署，公网生产部署不在首版范围内。
 
 浏览器使用独立 Cookie 登录接口，旧 Bearer 和管理后台继续兼容。当前仅电脑端；刷新保持登录并按 URL 只读 R3 已保存快照；重新登录默认新对话，通过私人列表重开历史。
 
@@ -552,7 +552,7 @@ R2默认Chrome用例通过 `cd frontend && npm test` 运行，不调用真实模
 
 只运行一个 API 应用进程，禁止多 worker。启动持有独立 PG advisory lock 并更新 epoch：遗留 accepted / running 执行和轮次标为结果未确认，保留上一成功状态。正常关闭先停止新受理并等待后台 worker 结束，再释放 guard 与业务资源；进程意外退出后，重启不自动重发未确认请求。
 
-本段仅描述开发环境：升级前停止旧 API，显式迁移，再启动新版本；回滚保留数据库表和开发卷，不反向执行 DROP。R6 本地稳定环境使用的独立命令与资源见 §15；其兼容升级 / 回滚由 Ticket 03 实施和验收。
+本段仅描述开发环境：升级前停止旧 API，显式迁移，再启动新版本；回滚保留数据库表和开发卷，不反向执行 DROP。R6 本地稳定环境使用的独立命令与资源见 §15；其兼容升级 / 回滚已由 Ticket 03 实施和验收。
 
 R4 最终真实浏览器 / 模型 / RAG / PostgreSQL 闭环使用 clean candidate 执行 `scripts/verify_container_dev.sh isolated`。该入口创建独立 Compose project 和空数据库卷，运行桌面 Chromium 真实登录、SSE、重连 / 刷新、多页、取消、分析报告与模型链路，并在退出时清理该 project 的卷与临时账号；它不会停止或清除日常开发 Compose project。真实运行报告位于 ignored `reports/browser-real/`，候选 SHA、报告指纹、清理结果和最终状态保存在本机 Git 公共目录的 R4 实时工作状态中。该浏览器闭环与三套正式 AI Evaluation 分开执行，不能相互替代。
 
@@ -570,7 +570,7 @@ R5 只从 owner 当前可读的成功快照生成文件，不调用模型 / Onli
 
 PNG / PDF 使用镜像内固定的 Playwright / Chromium 与离线 bundle；PNG 使用 Noto Sans CJK SC，PDF 正文使用 WenQuanYi Zen Hei。字体包按 Debian Bookworm 版本锁定，运行 manifest 记录各字体包版本、fontconfig 匹配路径与 SHA-256；启动和每次图像 / PDF 生成前校验浏览器、字体、bundle 及源码指纹。浏览器启用 sandbox，页面拒绝 CDN / 外部资源和网络连接；worker 环境不继承 API 凭证。PDF 通过独立 HTML 模板生成 A4 可选取文本文件，并校验正文 / 任务 coverage 和页面横向溢出。API 开发容器通过只读挂载检查 `frontend/src`、导出入口、Vite / TypeScript 构建配置和依赖清单；修改这些源码后先执行 `./dev build` 重建 API 镜像，再执行 `./dev up`。源码与镜像不匹配、字体 / bundle 缺失或 sandbox 不可用时，PNG / PDF 端点受控返回不可用，XLSX 继续可用。`./dev` 默认配置仓库内随附的 Chromium seccomp profile；直接调用 Compose 时需设置 `CHATBI_DEV_SECCOMP_PROFILE` 指向 `docker/third-party/playwright-seccomp-profile.json`。
 
-新增 Python 依赖或锁文件变动后，开发容器需执行 `./dev build`，再执行 `./dev up`；宿主方式执行 `uv sync --locked`。不会新增数据库迁移、导出文件卷、后台队列或额外监听端口。Ticket 01 XLSX、Ticket 02 PNG 和 Ticket 03 PDF 的本地文件解析 / 浏览器 / 隔离 renderer 验证已通过；R5 隔离 Compose 完整业务验收与生产部署仍未完成。
+新增 Python 依赖或锁文件变动后，开发容器需执行 `./dev build`，再执行 `./dev up`；宿主方式执行 `uv sync --locked`。不会新增数据库迁移、导出文件卷、后台队列或额外监听端口。Ticket 01 XLSX、Ticket 02 PNG 和 Ticket 03 PDF 的本地文件解析 / 浏览器 / 隔离 renderer 验证已通过；R5 clean candidate `71d72d2` 的隔离 Compose 完整业务验收已通过，身份与证据见 [R5 Acceptance](acceptance/result-export-v1.md)；R6 本地运行验收独立记录于 §15，公网生产部署不在首版范围。
 
 ## 15. R6 本地稳定环境
 
@@ -626,7 +626,7 @@ PNG / PDF 使用镜像内固定的 Playwright / Chromium 与离线 bundle；PNG 
 
 稳定数据库与 Qdrant 数据使用命名卷 `chatbi_stable_postgres_data` / `chatbi_stable_qdrant_data`，RAG 发布目录独立于 `data/rag` 开发目录；API 对模型缓存和 RAG 目录只读。开发、验收、稳定环境使用独立 Compose 身份与配置。
 
-`./local create-admin` 将账号写入稳定 PostgreSQL 的 `chatbi_control`，不会生成 `.local/create` 文件，也不保存明文密码。`.local/` 保存发布身份、部署状态、操作锁与 RAG 资产。
+`.local/` 保存发布身份、部署状态、操作锁与 RAG 资产；管理员保存在数据库中。
 
 `./local` 固定设置 `CHATBI_LOCAL_SECCOMP_PROFILE` 指向仓库随附的 Chromium profile，以支持 PNG / PDF renderer 的 sandbox。直接调用本地 Compose 时也需显式设置该配置；导出渲染器不能通过关闭 sandbox 恢复。
 
@@ -641,4 +641,4 @@ uv run --frozen python -m scripts.verify_local_deployment
 
 ### 本机下载接管导致 PDF 空响应
 
-若网页提示“导出文件大小无效”，浏览器收到 PDF 的 204 / 空内容而 API 访问日志为 200，先做客户端对照，不把它直接归因于服务器生成失败。本机下载管理器可能接管文件；检查 IDM 等软件的浏览器集成与文件类型设置。IDM 官方提供按站点排除自动接管和关闭浏览器集成的设置，见 [IDM Options](https://www.internetdownloadmanager.com/support/using_idm/options.html)。如需临时修改，先记录原设置、确认对其他下载的影响，验收后恢复。Agent 不自动修改本机下载管理器或用户浏览器配置。当前R6的实际对照与未完成项见 [本地部署Acceptance](acceptance/local-deployment-v1.md)。
+若网页提示“导出文件大小无效”，浏览器收到 PDF 的 204 / 空内容而 API 访问日志为 200，先做客户端对照，不把它直接归因于服务器生成失败。本机下载管理器可能接管文件；检查 IDM 等软件的浏览器集成与文件类型设置。IDM 官方提供按站点排除自动接管和关闭浏览器集成的设置，见 [IDM Options](https://www.internetdownloadmanager.com/support/using_idm/options.html)。如需临时修改，先记录原设置、确认对其他下载的影响，验收后恢复。Agent 未获用户明确授权时不得调整本机下载管理器或用户浏览器配置。本机实测已确认IDM的PDF接管可导致该现象；完整R6验收在临时取消PDF接管的条件下通过，随后已恢复原设置。日常PDF下载需暂停接管或由用户明确设置本机站点例外。R6证据与验证限制见 [本地部署Acceptance](acceptance/local-deployment-v1.md)。

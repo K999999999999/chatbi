@@ -1,6 +1,6 @@
 # R6 本地稳定交付实现设计
 
-Status: 基于2026-10-07已确认[R6 Spec](../../.scratch/r6-local-deployment/spec.md)；Design Review PASS。Ticket 01–03完成；Ticket 04完整验收进行中。
+Status: 基于2026-10-07已确认[R6 Spec](../../.scratch/r6-local-deployment/spec.md)；Design Review PASS。Ticket 01–04本地实施与适用验收完成；最终运行候选与限制见 [Acceptance](../acceptance/local-deployment-v1.md)。
 Owner: 当前主Agent；后续维护由交付配置、bootstrap和所属模块维护者承接。
 
 ## 事实与方案选择
@@ -67,3 +67,5 @@ Ticket 03已完成真实 clean 版本对升级 / 兼容回滚 / 再升级，兼�
 完整验收使用 `scripts/verify_local_deployment.py` 和 `scripts/local_acceptance.py` 生成隔离 Compose override、独立随机凭据和 run ID 标签。API仍只挂载固定模型和临时RAG只读目录；测试支持源码仅挂入一次性admin工具。Windows Edge在临时Node workspace中运行既有业务用例，配置化报告目录在权限受限的WSL目录内共享；源码热更新用例明确排除。清理前检查容器、卷及网络项目身份；原开发与稳定项目状态前后核对。
 
 API 通过 `CHATBI_LOCAL_SECCOMP_PROFILE` 使用随附 Chromium profile；`./local` 固定设置为当前仓库绝对路径，隔离验收生成相同路径。没有关闭 Chromium sandbox。首次完整验收发现稳定 Compose 遗漏该配置，导致 PNG 返回受控 503；已补 Compose 解析回归与实际 sandbox 前置启动检查。浏览器导出收到非 200 响应时立即失败，避免继续等待不存在的下载事件。
+
+独立下载文件解析在启动入口的宿主 dev 环境执行，使用锁定的 openpyxl / pypdf；在创建 Docker 资源前检查依赖，不向非 root 生产运行镜像加入测试依赖。保存成果的浏览器用例等待 saved URL 与成果专属标题再读取身份，避免旧内容在异步读取期间仍可见造成竞态。完整验收绑定clean `2b4a8c8`；IDM暂停与恢复、稳定环境升级、电脑重启未执行及Evaluation复用边界见Acceptance。

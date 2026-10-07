@@ -1,9 +1,9 @@
 # Ticket 04：目标环境完整验收与交付证据
 
-Status: in-progress
+Status: done
 Owner: 当前主Agent
 Blocked by: 03
-Result: Ticket 03版本往返已通过，最终稳定候选 D `995440bfd448f6057f5152431d17dff012f8bd5c` 正在运行。当前开始隔离环境完整目标验收；浏览器 / 导出 / 重启恢复、失败场景和最终交付文档尚待完成。
+Result: clean runtime candidate `2b4a8c811713adb663d22cdac4108e13e731165f`，run `20261007T200251Z-e8ea09aa` 的正式完整隔离入口通过。Windows Edge 154.0.4258.53 真实业务、历史/成果、停止恢复、12份实际下载与独立解析、五项失败场景、Secret/挂载/资源隔离及清理通过；IDM临时PDF接管设置按用户授权调整并恢复。稳定API已upgrade到相同候选，数据指纹与PG/Qdrant资源不变，sandbox实测通过。正式Contract/Design/Acceptance/Runbook/产品范围/路线图已同步；CPU依赖的Evaluation复用适用性已说明，未重跑三套正式AI Evaluation。电脑或Docker重启维护步骤已记录，具体窗口待用户择时，未执行重启。无远端发布，候选、报告及验证边界见 `docs/acceptance/local-deployment-v1.md`。
 Comments: 本地实施授权于2026-10-07取得；发布授权未取得。
 
 
@@ -38,3 +38,5 @@ Implementation review: PASS；基线 `995440b`，Scope为当前Ticket owned file
 2026-10-08 完整浏览器与恢复通过、解析环境修复：clean `7c5a5fa` run `20261007T194953Z-b342096a` 的Windows业务/成果/三格式导出、停止恢复、续聊/重查、执行unconfirmed恢复均通过；恢复前后2用户/5历史/8turn/2成果/1,166业务行与Seed v3一致。随后生产镜像admin工具执行独立文件解析时缺少dev group的openpyxl，故完整runner仍失败，保留原身份。相同12份文件随后由宿主锁定dev环境解析全部通过（补充证据，未冒称原runner通过）。修复将解析移到宿主解释器，并在任何Docker安装前检查openpyxl/pypdf；不向生产镜像安装测试依赖。资源及IDM原设置已恢复，待新clean候选完整复验。
 
 解析环境修复Review：PASS，BASE `7c5a5fa`，Scope仅验收入口与本Ticket记录。使用入口的宿主sys.executable执行既有独立解析器，报告路径以argv传入；启动Docker资源前检查dev解析依赖，不改变API依赖或业务。Red为生产工具缺少dev依赖；同一12份真实下载文件在宿主解析Green。定向66项软件回归、Ruff与Diff检查通过；新候选完整复验待执行。
+
+最终收尾Review：PASS，BASE `2b4a8c8`，Scope为本Ticket适用正式文档与长期记录。核对实际成功runner、候选 / image ID、浏览器 / 文件 / 失败 / 持久化 / 清理及IDM恢复，保留所有旧失败身份。稳定运行候选仍2b4a8c8；随后本地证据提交只有文档，不冒称新的运行验收身份。电脑重启与正式AI Evaluation未运行明确保留；远端发布授权未取得，R6工作项阶段为待发布授权。

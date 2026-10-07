@@ -2,9 +2,9 @@
 
 - 2026-10-07：首版范围、目标环境、安装 / 初始化、启停、升级回滚、运行边界与验收标准逐项确认，需求澄清完成。
 - [完整 Spec](spec.md) 已整体确认，Design Review PASS，四项Ticket拆分与完整本地实施已获用户确认和授权。
-- 当前实施分支 `feature/r6-local-deployment`，起始于已同步的 `master` / `origin/master` `2a7600d`；Ticket 01、02、03已完成，稳定API候选`995440b`，Ticket 04完整隔离验收实施中；未发布。
+- 当前实施分支 `feature/r6-local-deployment`，起始于已同步的 `master` / `origin/master` `2a7600d`；Ticket 01–04本地实施与适用验收完成，最终运行与稳定API候选`2b4a8c8`；待发布授权，未发布。
 - 本机实时状态位于 Git 公共目录 `harness/work-items/r6-local-deployment/status.md`，本文件为规划历史，不作为实时状态副本。
-- R1–R5 历史证据不改写；R6 Ticket 02安装与Ticket 03版本往返验收已完成，Ticket 04完整目标环境验收实施中。R7完整运行保障不纳入本地首版部署范围。
+- R1–R5 历史证据不改写；R6 Ticket 02安装与Ticket 03版本往返验收已完成，Ticket 04完整Windows / 专用服务恢复验收已完成，电脑 / Docker重启待维护窗口。R7完整运行保障不纳入本地首版部署范围。
 
 ## 需求澄清完成记录
 
@@ -16,7 +16,11 @@
 假设: None
 未决 / 阻塞项: None
 留给Ticket / 实施阶段的决定: 在Design中确定Compose/命令组织、固定版本标识、兼容性检查、缓存与发布资产路径、验收版本对；不得改变已确认边界。
-下一步: Ticket 01–03已完成；完成Ticket 04同一clean候选的完整Windows Edge隔离验收与文档收尾。
+下一步: 四项本地实现与适用验收完成；R6待发布授权，电脑 / Docker重启按已记录维护计划择时，R7待澄清。
+
+## 阶段历史
+
+以下章节保留各次停点与失败当时的状态；当前本地完成事实见文件开头及末尾最终收尾记录，实时进度以Git公共目录记录为准。
 
 ## 本次文档整理检查
 
@@ -89,4 +93,8 @@
 
 ## Ticket 04 PDF传输诊断停点（2026-10-08）
 
-9f01de2正式运行已通过sandbox、问数 / 追问 / 多指标 / XLSX / PNG、经营分析参考值，但PDF在Edge收到204空响应；完整验收失败。诊断与有效PDF最小对照确认API/Linux/Windows PowerShell200，Edge204。IDM运行且监控PDF，接管原因待暂停后的对照确认。用户已收到临时调整 / 恢复IDM的确认请求，尚未修改本机配置。失败资源已清理，Stable仍995440b；Ticket04未完成，无发布授权。详见正式Acceptance当前失败记录。
+9f01de2正式运行已通过sandbox、问数 / 追问 / 多指标 / XLSX / PNG、经营分析参考值，但PDF在Edge收到204空响应；完整验收失败。诊断与有效PDF最小对照确认API/Linux/Windows PowerShell200，Edge204。IDM运行且监控PDF，接管原因待暂停后的对照确认。用户已收到临时调整 / 恢复IDM的确认请求，尚未修改本机配置。失败资源已清理，Stable仍995440b；Ticket04未完成，无发布授权。详见正式Acceptance的失败历史与最终收尾记录。
+
+## Ticket 04 最终本地收尾（2026-10-08）
+
+完整clean候选2b4a8c8与run20261007T200251Z-e8ea09aa通过；12份导出独立解析、Windows完整业务/专用服务恢复、五项失败/隔离/清理通过；IDM原设置恢复。稳定API升级到同一候选，4用户/3历史/3turn/0成果完整行指纹不变，PG/Qdrant与卷身份不变，sandbox通过。正式Contract/Design/Acceptance/Runbook/产品范围/路线图已同步。四Tickets done，但R6实时工作项保留in-progress、待发布授权，不把本地完成冒称已发布交付。电脑/Docker重启与三套正式AI Evaluation未执行，限制及证据位置见正式Acceptance；历史失败记录保留。

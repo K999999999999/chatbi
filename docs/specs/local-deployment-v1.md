@@ -1,6 +1,6 @@
-# R6 本地稳定部署 Contract（初稿）
+# R6 本地稳定部署 Contract
 
-Status: 用户确认的行为范围已记录；Ticket 01 / 02 / 03 实施与适用验收完成，Ticket 04 完整目标环境验收仍进行中。本初稿将在 R6 Ticket 04 根据最终实现与验收证据定稿。
+Status: 用户确认的行为范围已实施；Ticket 01–04 本地实现与适用运行验收完成，最终 clean runtime candidate `2b4a8c8`。事实与限制见 [Acceptance](../acceptance/local-deployment-v1.md)，未发布远端，电脑 / Docker daemon 重启待维护窗口。
 
 需求来源：[R6 完整 Spec](../../.scratch/r6-local-deployment/spec.md)。本文件固化当前已确认的本地稳定运行行为，不构成云端生产部署、容量或可用性承诺。
 
@@ -52,8 +52,8 @@ Status: 用户确认的行为范围已记录；Ticket 01 / 02 / 03 实施与适�
 
 指定版本升级允许短暂停机，必须显式检查目标镜像与数据库 / RAG 资产兼容性；回滚只启动经过验证兼容的旧版本，不执行反向 migration、DROP 或卷删除。不兼容状态必须拒绝并保留数据。每个 API 镜像内嵌 `scripts/local_compatibility.json` 声明可接受状态；检查 Control DB migration marker、checkpoint migration、实际历史快照列与 JSON envelope 版本、Sales Mart Seed、Structure Metadata 指纹、RAG current / manifest 格式、Embedding revision 与来源 provenance。只读 catalog 或兼容状态未知时 fail closed。升级 / 回滚持有同一环境操作锁；`.local/deployment-state.json` 原子记录 active API、PostgreSQL 实际 image ID、运行状态及最后成功或失败阶段。失败不回退已成功的 active 记录，也不伪报 API 仍在运行；migration / 启动失败后保留数据，由用户显式选择兼容版本恢复。
 
-真实版本对的升级、兼容回滚、再次升级及账号 / 历史 / 成果读取验收见 [R6 Ticket 03记录](../../.scratch/r6-local-deployment/issues/03-compatible-upgrade-rollback.md)。Ticket 04 的 Windows 浏览器完整业务验收完成前，不宣称完整本机目标环境验收通过。
+真实版本对的升级、兼容回滚、再次升级及账号 / 历史 / 成果读取验收见 [R6 Ticket 03记录](../../.scratch/r6-local-deployment/issues/03-compatible-upgrade-rollback.md)。Ticket 04 的 Windows Edge 完整业务与专用服务停止恢复验收已通过，见 [Acceptance](../acceptance/local-deployment-v1.md)；不替代电脑 / Docker daemon 重启或 R7 保障验收。
 
-Ticket 02 的独立环境安装、空卷初始化、持久性、端口冲突与真实问数验收已完成；clean 候选和证据身份见 [Ticket 02记录](../../.scratch/r6-local-deployment/issues/02-isolated-local-runtime.md)。Ticket 03 的真实版本对兼容升级 / 回滚 / 再升级与持久状态指纹验收已完成，证据见 [Ticket 03记录](../../.scratch/r6-local-deployment/issues/03-compatible-upgrade-rollback.md)。Ticket 04 的 Windows 浏览器完整业务验收仍未完成。任何本地 smoke、`/health` 或单元测试都不单独代表完整验收通过。
+Ticket 02 的独立环境安装、空卷初始化、持久性、端口冲突与真实问数验收已完成；clean 候选和证据身份见 [Ticket 02记录](../../.scratch/r6-local-deployment/issues/02-isolated-local-runtime.md)。Ticket 03 的真实版本对兼容升级 / 回滚 / 再升级与持久状态指纹验收已完成，证据见 [Ticket 03记录](../../.scratch/r6-local-deployment/issues/03-compatible-upgrade-rollback.md)。Ticket 04 的 Windows Edge 完整业务、三格式下载 / 内容及专用服务恢复验收已完成，最终运行身份和 IDM 下载条件见 [Acceptance](../acceptance/local-deployment-v1.md)。任何本地 smoke、`/health` 或单元测试都不单独代表完整验收通过。
 
 完整验收范围见 [R6 Spec 的 Testing Decisions](../../.scratch/r6-local-deployment/spec.md)；本地操作见 [Runbook](../runbook.md) §15。

@@ -2,7 +2,7 @@
 
 ## 产品定位
 
-ChatBI 是面向业务数据分析的 Domain AI Engine（领域 AI 引擎）。当前处于 **MVP 向生产演进** 阶段：核心用户链路已经实现，当前工程重点是资源一致性、全新环境初始化、正确性证据和生产运行准备。R6 提供当前 Windows + WSL2 + Docker 电脑上的固定版本本地部署，范围见 [本地部署 Contract](specs/local-deployment-v1.md)，当前验证状态见 [Acceptance](acceptance/local-deployment-v1.md)。仓库中的本地开发 Runbook 和历史 Acceptance 不构成生产部署证明。
+ChatBI 是面向业务数据分析的 Domain AI Engine（领域 AI 引擎）。当前处于 **MVP 向生产演进** 阶段：核心用户链路已经实现，当前工程重点是资源一致性、全新环境初始化、正确性证据和生产运行准备。R6 提供当前 Windows + WSL2 + Docker 电脑上的固定版本本地部署，范围见 [本地部署 Contract](specs/local-deployment-v1.md)，四项本地实施与适用运行验收已完成（runtime `2b4a8c8`），验证条件、电脑重启未执行等限制见 [Acceptance](acceptance/local-deployment-v1.md)；未发布远端。仓库中的本地开发 Runbook 和历史 Acceptance 不构成生产部署证明。
 
 ## 当前 MVP Contract
 
