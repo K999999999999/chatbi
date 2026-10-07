@@ -1,6 +1,7 @@
 import { test, expect, type Locator, type Page, type Request } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { reportPath } from '../test-support/report-path';
 import { login, send, isFinalExecutionResponse } from './helpers';
 import { querySnapshot } from '../src/results';
 import { analysisResult } from '../src/Analysis';
@@ -51,7 +52,7 @@ async function captureExport(page: Page, button: Locator, format: 'xlsx' | 'png'
     if (format === 'xlsx') expect(bytes.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
     if (format === 'png') expect(bytes.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
     if (format === 'pdf') expect(bytes.subarray(0, 5).toString('ascii')).toBe('%PDF-');
-    await download.saveAs(`/reports/${file}`);
+    await download.saveAs(reportPath(file));
     return { format, file, suggested_filename: download.suggestedFilename(), size: bytes.length,
       sha256: createHash('sha256').update(bytes).digest('hex'), mime: response.headers()['content-type'],
       source: body.source, selection: { chart_id: body.chart_id, chart_type: body.chart_type,
@@ -217,7 +218,7 @@ test('源码挂载实际触发 Python 重载与 Vite 热更新', async ({ page }
     writeFileSync(css, changedCss);
     await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--chatbi-hot-check').trim()),
       { timeout: 30000 }).toBe('1');
-    writeFileSync('/reports/hot-reload.json', JSON.stringify({
+    writeFileSync(reportPath('hot-reload.json'), JSON.stringify({
       commit: process.env.CHATBI_CONTAINER_COMMIT, experiment_dirty: true,
       python_reload: true, vite_hmr: true,
     }));
@@ -241,12 +242,13 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
   const evidence: Record<string, unknown> = {
     commit: process.env.CHATBI_CONTAINER_COMMIT, git_dirty: process.env.CHATBI_CONTAINER_GIT_DIRTY === 'true',
     username: process.env.CHATBI_REAL_E2E_USERNAME, reference,
-    at: new Date().toISOString(), browser: browser.version(), target: 'compose-vite-api',
+    at: new Date().toISOString(), browser: browser.version(),
+    target: process.env.CHATBI_CONTAINER_TARGET ?? 'compose-vite-api',
   };
   const exportedFiles: Awaited<ReturnType<typeof captureExport>>[] = [];
   evidence.exports = exportedFiles;
   const streams = await captureExecutionStreams(page);
-  const account = JSON.parse(readFileSync('/reports/account.json', 'utf8')) as { id: number };
+  const account = JSON.parse(readFileSync(reportPath('account.json'), 'utf8')) as { id: number };
   try {
     await login(page, process.env.CHATBI_REAL_E2E_USERNAME!, process.env.CHATBI_REAL_E2E_PASSWORD!);
     await page.evaluate(() => { window.__chatbiCaptureExecutionStreams = true; });
@@ -547,14 +549,14 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     evidence.error_locations = (error as Error).stack?.match(/container-real\.spec\.ts:\d+:\d+/g) ?? [];
     throw new Error('真实容器业务验收失败，见私有报告的步骤与安全定位。');
   } finally {
-    writeFileSync('/reports/browser.json', JSON.stringify(evidence, null, 2));
+    writeFileSync(reportPath('browser.json'), JSON.stringify(evidence, null, 2));
   }
 });
 
 
 test('停止重启后读取长期快照、重登录、续聊与显式重查', async ({ page }) => {
   test.skip(process.env.CHATBI_CONTAINER_RESTART_PHASE !== '1');
-  const evidence = JSON.parse(readFileSync('/reports/browser.json', 'utf8'));
+  const evidence = JSON.parse(readFileSync(reportPath('browser.json'), 'utf8'));
   const input = evidence.restart_inputs; const reference = evidence.reference;
   try {
     await login(page, process.env.CHATBI_REAL_E2E_USERNAME!, process.env.CHATBI_REAL_E2E_PASSWORD!);
@@ -619,5 +621,5 @@ test('停止重启后读取长期快照、重登录、续聊与显式重查', as
     evidence.error_message = safeErrorMessage(error);
     throw new Error('R3重启验收未通过，请检查私有报告。');
   }
-  finally { writeFileSync('/reports/browser.json', JSON.stringify(evidence, null, 2)); }
+  finally { writeFileSync(reportPath('browser.json'), JSON.stringify(evidence, null, 2)); }
 });

@@ -576,7 +576,7 @@ PNG / PDF 使用镜像内固定的 Playwright / Chromium 与离线 bundle；PNG 
 
 本节只操作当前 WSL2 仓库对应的 `chatbi-stable` Compose 项目。容器从本地固定版本镜像启动，API 仅绑定 `127.0.0.1`；PostgreSQL 和 Qdrant 不发布宿主端口。开发环境使用 `./dev`，不要将本节命令与开发 Compose 混用。
 
-已确认的本地稳定部署行为见 [R6 Contract 初稿](specs/local-deployment-v1.md)；升级 / 回滚和完整验收仍待后续 Ticket 完成。
+已确认的本地稳定部署行为见 [R6 Contract](specs/local-deployment-v1.md)；升级 / 兼容回滚已验收，完整目标环境验收见 [R6 Acceptance](acceptance/local-deployment-v1.md)。
 
 首次安装需要 WSL/Linux 的 Bash、Git、Docker Engine / Compose v2、OpenSSL 和 `flock`（util-linux）；无需宿主 Python 或 Node。写操作使用本地非阻塞锁，避免初始化、日常操作与后续版本切换并发。先确保仓库处于 clean commit，然后执行：
 
@@ -624,4 +624,15 @@ PNG / PDF 使用镜像内固定的 Playwright / Chromium 与离线 bundle；PNG 
 
 如果端口被占用，命令会失败并保留未知进程；可编辑 `.env.local` 中的 `CHATBI_LOCAL_HTTP_PORT` 后重试。`down` 只停止带有固定 `chatbi-stable` 项目标签的 API / PostgreSQL / Qdrant 容器，即使配置或镜像记录损坏也可用于止停；它保留所有数据库卷、模型缓存和 RAG 资产。`status` / `logs` 同样只定位该项目。Docker 或电脑重启后不会自动启动稳定服务；手动执行 `./local up`。
 
-稳定数据库与 Qdrant 数据使用命名卷 `chatbi_stable_postgres_data` / `chatbi_stable_qdrant_data`，RAG 发布目录独立于 `data/rag` 开发目录；API 对模型缓存和 RAG 目录只读。开发、验收、稳定环境使用独立 Compose 身份与配置。Ticket 03 的版本升级 / 兼容回滚及 Ticket 04 的完整 Windows 浏览器业务验收完成前，不把当前本地服务描述为已验收交付。
+稳定数据库与 Qdrant 数据使用命名卷 `chatbi_stable_postgres_data` / `chatbi_stable_qdrant_data`，RAG 发布目录独立于 `data/rag` 开发目录；API 对模型缓存和 RAG 目录只读。开发、验收、稳定环境使用独立 Compose 身份与配置。
+
+`./local create-admin` 将账号写入稳定 PostgreSQL 的 `chatbi_control`，不会生成 `.local/create` 文件，也不保存明文密码。`.local/` 保存发布身份、部署状态、操作锁与 RAG 资产。
+
+完整隔离验收要求 WSL 的 uv、Compose ≥2.24.4、Windows Node / npm 与 Microsoft Edge，以及 `.env.local` 中可用的真实 LLM 配置和已准备的固定模型缓存。先完成相关改动与 Review，再在 clean candidate 上执行：
+
+```bash
+./local build
+uv run --frozen python -m scripts.verify_local_deployment
+```
+
+验收入口新建带 run ID 的空 PostgreSQL / Qdrant 卷和 RAG 目录，完成 Windows Edge 业务 / 导出 / 重启恢复与失败检查；通过账号和资源归属校验后清理本次临时资源。它会进行少量真实模型调用，证据与验证限制见 [R6 Acceptance](acceptance/local-deployment-v1.md)。电脑 / Docker 重启需另选维护窗口，按同页步骤手动核验。

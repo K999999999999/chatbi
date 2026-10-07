@@ -1,9 +1,9 @@
 # Ticket 04：目标环境完整验收与交付证据
 
-Status: open
+Status: in-progress
 Owner: 当前主Agent
 Blocked by: 03
-Result: 未开始
+Result: Ticket 03版本往返已通过，最终稳定候选 D `995440bfd448f6057f5152431d17dff012f8bd5c` 正在运行。当前开始隔离环境完整目标验收；浏览器 / 导出 / 重启恢复、失败场景和最终交付文档尚待完成。
 Comments: 本地实施授权于2026-10-07取得；发布授权未取得。
 
 
@@ -20,3 +20,5 @@ Acceptance Criteria:
 Evidence: 最终受影响软件回归、容器集成、真实模型Windows浏览器/Business Acceptance、目标机运行证据及资源清理核对；报告绑定最终候选，无结果预填。
 Migration / Rollback: 只在专用验收资源构造失败状态，不写开发数据；稳定环境重启需维护窗口。已有长期记录保留，验收结束只清理临时项目。
 Done When: 正式Contract/Design/Runbook/Acceptance/产品范围/路线图全部一致，最终Code Review与Diff检查完成，未运行项与限制明确；产品/R6实时状态同步，无远端发布。发布另需明确授权。
+
+Implementation review: PASS；基线 `995440b`，Scope为当前Ticket owned files与现有容器浏览器支持。检查Correctness / Comprehension / Consistency / Testability / Architecture / Security：运行资产API无源码或迁移身份；清理验证run ID / project / 卷 / 网络身份；Docker inspect敏感值仅内存核验；账号禁用并撤销Session、报告扫描已知凭据。定向软件66项、报告路径3项、TypeScript / Ruff / Markdown link / Diff检查通过。完整真实验收待clean candidate执行，尚未宣称通过。

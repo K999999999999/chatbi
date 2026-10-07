@@ -91,7 +91,12 @@ def reference():
         AnalysisTimeRange("2025年2月", TimeGranularity.MONTH),
     )
     attribution = calculate_product_attribution(request, tuple(tasks)).to_payload()
-    manifest = Path(__file__).resolve().parents[1] / "data/rag/current.json"
+    manifest = Path(
+        os.environ.get(
+            "CHATBI_CONTAINER_RAG_MANIFEST_PATH",
+            str(Path(__file__).resolve().parents[1] / "data/rag/current.json"),
+        )
+    )
     runtime_identity = {
         "model": os.environ.get("LLM_MODEL"),
         "provider_host": urlsplit(os.environ.get("LLM_BASE_URL", "")).hostname,

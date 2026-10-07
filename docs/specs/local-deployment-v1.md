@@ -1,6 +1,6 @@
 # R6 本地稳定部署 Contract（初稿）
 
-Status: 用户确认的行为范围已记录；Ticket 01 / 02 实施与适用验收完成，Ticket 03 版本兼容和 Ticket 04 完整目标环境验收仍进行中。本初稿将在 R6 Ticket 04 根据最终实现与验收证据定稿。
+Status: 用户确认的行为范围已记录；Ticket 01 / 02 / 03 实施与适用验收完成，Ticket 04 完整目标环境验收仍进行中。本初稿将在 R6 Ticket 04 根据最终实现与验收证据定稿。
 
 需求来源：[R6 完整 Spec](../../.scratch/r6-local-deployment/spec.md)。本文件固化当前已确认的本地稳定运行行为，不构成云端生产部署、容量或可用性承诺。
 
@@ -53,6 +53,6 @@ Status: 用户确认的行为范围已记录；Ticket 01 / 02 实施与适用验
 
 真实版本对的升级、兼容回滚、再次升级及账号 / 历史 / 成果读取验收见 [R6 Ticket 03记录](../../.scratch/r6-local-deployment/issues/03-compatible-upgrade-rollback.md)。Ticket 04 的 Windows 浏览器完整业务验收完成前，不宣称完整本机目标环境验收通过。
 
-Ticket 02 的独立环境安装、空卷初始化、持久性、端口冲突与真实问数验收已完成；clean 候选和证据身份见 [Ticket 02记录](../../.scratch/r6-local-deployment/issues/02-isolated-local-runtime.md)。Ticket 03 的真实版本对兼容验证、Ticket 04 的 Windows 浏览器完整业务验收仍未完成。任何本地 smoke、`/health` 或单元测试都不单独代表完整验收通过。
+Ticket 02 的独立环境安装、空卷初始化、持久性、端口冲突与真实问数验收已完成；clean 候选和证据身份见 [Ticket 02记录](../../.scratch/r6-local-deployment/issues/02-isolated-local-runtime.md)。Ticket 03 的真实版本对兼容升级 / 回滚 / 再升级与持久状态指纹验收已完成，证据见 [Ticket 03记录](../../.scratch/r6-local-deployment/issues/03-compatible-upgrade-rollback.md)。Ticket 04 的 Windows 浏览器完整业务验收仍未完成。任何本地 smoke、`/health` 或单元测试都不单独代表完整验收通过。
 
 完整验收范围见 [R6 Spec 的 Testing Decisions](../../.scratch/r6-local-deployment/spec.md)；本地操作见 [Runbook](../runbook.md) §15。

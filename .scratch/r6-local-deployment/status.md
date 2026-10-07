@@ -2,9 +2,9 @@
 
 - 2026-10-07：首版范围、目标环境、安装 / 初始化、启停、升级回滚、运行边界与验收标准逐项确认，需求澄清完成。
 - [完整 Spec](spec.md) 已整体确认，Design Review PASS，四项Ticket拆分与完整本地实施已获用户确认和授权。
-- 当前实施分支 `feature/r6-local-deployment`，起始于已同步的 `master` / `origin/master` `2a7600d`；Ticket 01、02已完成，最终候选`733b074`，Ticket 03开始实施；未发布。
+- 当前实施分支 `feature/r6-local-deployment`，起始于已同步的 `master` / `origin/master` `2a7600d`；Ticket 01、02、03已完成，稳定API候选`995440b`，Ticket 04完整隔离验收实施中；未发布。
 - 本机实时状态位于 Git 公共目录 `harness/work-items/r6-local-deployment/status.md`，本文件为规划历史，不作为实时状态副本。
-- R1–R5 历史证据不改写；R6 Ticket 02的安装、端口、真实问数与持久性验收已完成，Ticket 03版本兼容和Ticket 04完整目标环境验收仍在范围内。R7完整运行保障不纳入本地首版部署范围。
+- R1–R5 历史证据不改写；R6 Ticket 02安装与Ticket 03版本往返验收已完成，Ticket 04完整目标环境验收实施中。R7完整运行保障不纳入本地首版部署范围。
 
 ## 需求澄清完成记录
 
@@ -16,7 +16,7 @@
 假设: None
 未决 / 阻塞项: None
 留给Ticket / 实施阶段的决定: 在Design中确定Compose/命令组织、固定版本标识、兼容性检查、缓存与发布资产路径、验收版本对；不得改变已确认边界。
-下一步: Ticket 02已完成；按既有Design与Readiness开始Ticket 03真实版本升级、兼容回滚和失败恢复实现，完成后连续实施Ticket 04。
+下一步: Ticket 01–03已完成；完成Ticket 04同一clean候选的完整Windows Edge隔离验收与文档收尾。
 
 ## 本次文档整理检查
 
@@ -71,3 +71,18 @@
 - 该候选下8080占用测试非零拒绝、未停止外部HTTP服务，随后候选启动健康；Windows Edge真实查询为`171010.14355`，与稳定Sales库只读SQL一致。`down/up`后两持久卷`CreatedAt`不变，重新登录可打开历史与快照，刷新不触发新execution。
 - 空卷Seed、migration、模型及RAG初始化证据绑定先前clean候选`0a9f5aa`；其后的候选改动限于回环启动冲突保护和缓存/镜像身份元数据，并已在`733b074`复验受影响链路。最终ignored浏览器报告为`reports/browser-real/r6-ticket02-candidate-733b074.json`，mode 600。
 - 验收临时账号已禁用且会话全部撤销，临时凭据和隔离Windows Edge profile已删除。Stable API/PG/Qdrant运行于`733b074`；开发PG/Qdrant仍运行未修改。Ticket 02完成；依赖满足，下一步Ticket 03。
+
+## R6 Ticket 03 真实版本对验收完成（2026-10-08）
+
+- 实现 Review PASS；候选 C `9ae32ef6900030af15c38ac9a059e3086b5dde1c`、D `995440bfd448f6057f5152431d17dff012f8bd5c` clean build，并在稳定资源完成 `733b074 → C upgrade → D upgrade → C rollback → D re-upgrade`。所有兼容预检、migration、API健康与部署状态记录通过；回滚未运行migration。
+- 往返前后只读数据指纹一致：4个用户、1个管理员；3条历史、3个turn、3个成功快照；saved_results为空集。Control DB用户与历史 / 快照指纹见Ticket 03记录。PostgreSQL容器`cb18b903d8bd`（原733b074运行镜像）与Qdrant容器`f54cf28e0543`、命名卷均未重建。
+- 最终Stable API运行候选D；`.local/deployment-state.json`为`running/succeeded`，权限600。开发PG/Qdrant未修改。无Push/PR/云部署。Ticket03已完成，进入Ticket04。
+
+## R6 Ticket 04 目标环境完整验收实施中（2026-10-08）
+
+- 起始BASE为clean candidate `995440bfd448f6057f5152431d17dff012f8bd5c`；工作区仅有Ticket03验收关闭、正式Contract与路线图状态同步改动，Stable API仍运行该候选，部署配置 / Secret仅留本机。
+- 下一步：为最终clean候选建立独立空卷验收资源，完成Windows浏览器问数 / 追问 / 经营分析 / 历史 / 保存成果 / XLSX、PNG、PDF内容验收，服务恢复与Ticket04失败场景检查，随后形成Acceptance / Design / Runbook / Product Scope / Roadmap最终证据；电脑或Docker重启安排维护窗口，不擅自重启共享服务。
+
+## Ticket 04 验收入口候选准备
+
+隔离配置、资源归属保护、Windows Edge配置及报告目录已实现。TDD记录：报告模块缺失和隔离配置模块缺失均先产生Red；Compose真实解析发现project名称大写不合法后修复。定向软件63项与报告路径3项通过；随后新增容器身份拒绝回归，目前隔离配置/Compose/身份10项通过。类型、Ruff与Diff检查通过。完整真实验收尚未运行；下一步形成clean candidate构建固定镜像。
