@@ -1,9 +1,9 @@
 # Ticket 02：独立环境安装与日常启停闭环
 
-Status: open
+Status: in-progress
 Owner: 当前主Agent
-Blocked by: 01
-Result: 未开始
+Blocked by: 01（done）
+Result: 已开始：实现独立 Compose、`.env.local` 模板和 `./local` 操作入口；尚未完成或验收。
 Comments: 本地实施授权于2026-10-07取得；发布授权未取得。
 
 

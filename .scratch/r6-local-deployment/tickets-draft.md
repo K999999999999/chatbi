@@ -1,6 +1,6 @@
 # R6 本地稳定交付 Ticket 草案
 
-Status: 草案；非正式Ticket，待用户确认粒度和整体实施范围。
+Status: 四项Ticket已于2026-10-07获用户确认并正式写入；完整本地实施范围已授权，按依赖连续推进。
 Canonical Source: [已确认Spec](spec.md)、[设计](design.md)、[Design Review PASS](design-review.md)。
 全体Owner: 当前主Agent；持续维护Owner为交付配置与所属模块维护者。无跨团队变更，不设虚构Backup Owner；涉及安全/Contract变更返回用户澄清与Design Review。
 Delivery: 同一目标分支/worktree，按直接依赖连续实施，每项包含验证/Review/文档并按仓库规则本地提交；无Push/PR授权。

@@ -1,10 +1,10 @@
 # R6 本地稳定部署规划记录
 
 - 2026-10-07：首版范围、目标环境、安装 / 初始化、启停、升级回滚、运行边界与验收标准逐项确认，需求澄清完成。
-- [完整 Spec](spec.md) 已整理，待用户整体确认；尚未设计审查、拆 Ticket 或实施。
-- 当前分支 `docs/r6-local-deployment-spec` 基于已 fetch 且同步的 `master` / `origin/master` `2a7600d`，仅整理 Spec 与规划事实；无提交或发布。
+- [完整 Spec](spec.md) 已整体确认，Design Review PASS，四项Ticket拆分与完整本地实施已获用户确认和授权。
+- 当前实施分支 `feature/r6-local-deployment`，起始于已同步的 `master` / `origin/master` `2a7600d`；Ticket 01已有三个本地提交，HEAD `4d4732b`，未发布。
 - 本机实时状态位于 Git 公共目录 `harness/work-items/r6-local-deployment/status.md`，本文件为规划历史，不作为实时状态副本。
-- R1–R5 历史证据不改写；R6 当前无运行验收结果。R7 完整运行保障不纳入本地首版部署范围。
+- R1–R5 历史证据不改写；R6 尚无完整稳定环境验收。R7 完整运行保障不纳入本地首版部署范围。
 
 ## 需求澄清完成记录
 
@@ -14,9 +14,9 @@
 范围与关键边界: 合成销售数据、当前电脑、独立固定版本稳定运行；仅本机同源HTTP、单进程CPU/FP32；云部署和R7全面运行保障不在首版范围。
 验收与验证方向: 空环境安装、真实浏览器业务闭环、重启持久化、升级与兼容回滚、安全失败与环境隔离；候选和资源身份需关联。
 假设: None
-未决 / 阻塞项: None（完整Spec整体确认及后续设计审查仍是阶段门禁）
+未决 / 阻塞项: None
 留给Ticket / 实施阶段的决定: 在Design中确定Compose/命令组织、固定版本标识、兼容性检查、缓存与发布资产路径、验收版本对；不得改变已确认边界。
-下一步: 用户确认完整Spec后进入Design Review；通过后整理Ticket草案、当前上下文Readiness并取得拆分与实施范围确认。
+下一步: 完成Ticket 01记录收尾并实施Ticket 02独立本地环境与命令闭环。
 
 ## 本次文档整理检查
 
@@ -27,4 +27,12 @@
 
 ## 完整Spec确认后的规划结果（2026-10-07）
 
-用户整体确认Spec；实现设计已整理并经当前主Agent只读Design Review PASS。四项Ticket草案已生成，当前上下文只读Readiness READY；待用户确认拆分及整体本地实施范围，尚未正式写Ticket或编码。设计保留production/Cookie安全规则，本地development配置通过独立交付入口追加资产校验；不构成放宽安全Contract。
+用户整体确认Spec；实现设计经当前主Agent只读Design Review PASS。四项Ticket Readiness READY；用户随后确认Ticket拆分并授权完整本地实施和验证。设计保留production/Cookie安全规则，本地development配置通过独立交付入口追加资产校验；不构成放宽安全Contract。
+
+## R6 Ticket 01 完成记录（2026-10-07）
+
+- clean source commit：`4d4732b7896a46b231a4a3437c703e74b5ae513f`。
+- API镜像：`sha256:dfe36e7aa5927bd2334f2fd406a257837e7079ef8e07f168dd2ffca9aa01961b`，1,909,212,440 bytes。
+- PostgreSQL镜像：`sha256:e9605804df9016d702ee575220cd27ab7a40441a07f44846931fe9ca952fdbfc`，116,049,593 bytes。
+- 两镜像OCI revision label与`/opt/chatbi-release.json`均匹配source commit。Dockerfile check、构建、前端build/typecheck、锁文件、CPU模型、网页及导出资源、PostgreSQL初始化脚本/DDL/合成Seed定向检查通过。
+- 未完成完整稳定环境、Embedding/RAG构建实测或浏览器业务验收；这些仍在Ticket 02 / 04范围。

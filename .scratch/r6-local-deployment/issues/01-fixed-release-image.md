@@ -3,7 +3,7 @@
 Status: done
 Owner: 当前主Agent
 Blocked by: None
-Result: Ticket01实现和定向镜像验收通过；最终commit后需重建并记录该commit对应API/PostgreSQL image ID。
+Result: 完成并于 `4d4732b7896a46b231a4a3437c703e74b5ae513f` 重新构建；API 与 PostgreSQL 镜像均记录该 clean source commit，镜像身份及定向运行检查通过。
 Comments: 本地实施授权于2026-10-07取得；发布授权未取得。
 
 
@@ -21,6 +21,6 @@ Evidence: uv lock check与torch依赖树、构建定义确定性检查、镜像�
 Migration / Rollback: 不修改DB Schema；不替换开发镜像或开发入口。失败只保留本目标构建诊断，不自动prune镜像。
 Done When: 构建证据关联clean候选与image ID，软件/资产检查和Code Review完成；Runbook打包入口说明同步，未执行项如实记录。
 
-Verification (pre-commit build): `docker build --check` PASS；API与PostgreSQL database目标均真实构建成功；Web `npm run build`包含typecheck且PASS；`uv lock --check` PASS，锁定CPU torch且CUDA/NVIDIA/Triton依赖移除；容器检查确认非root单worker无reload、镜像内网页/R5 bundle/Chromium/font manifest有效、CPU torch可导入且CUDA不可用，pytest/ruff未安装，R5 export runtime manifest校验PASS；数据库目标PostgreSQL 16.14，SQL迁移和合成Seed均已打包。初步API image ID `sha256:e019fa9e002e4f707f0ee79cddc48727c0159e5de935d7a3ee99e35940e6894b`、大小1,909,249,304 bytes；因built source commit仍为base，提交后重建身份。未运行模型Embedding Evaluation、完整API/浏览器E2E；属于Ticket02/04。
+Verification: `docker build --check` PASS；API与PostgreSQL database目标均真实构建成功；Web `npm run build`（含typecheck）PASS；`uv lock --check` PASS，锁定CPU torch且CUDA/NVIDIA/Triton依赖移除。最终 clean source commit `4d4732b7896a46b231a4a3437c703e74b5ae513f`：API image ID `sha256:dfe36e7aa5927bd2334f2fd406a257837e7079ef8e07f168dd2ffca9aa01961b`（1,909,212,440 bytes）；PostgreSQL image ID `sha256:e9605804df9016d702ee575220cd27ab7a40441a07f44846931fe9ca952fdbfc`（116,049,593 bytes）。两镜像OCI revision label与`/opt/chatbi-release.json`均等于该commit。严格 smoke 确认API非root、单worker、无reload，网页/R5 bundle/Chromium/font manifest有效，CPU torch可导入且CUDA不可用，pytest/ruff未安装，R5 export runtime manifest校验PASS；PostgreSQL镜像含PostgreSQL 16.14、`/docker-entrypoint-initdb.d/10_chatbi_dev_environment.sh`、迁移DDL和合成Seed。未运行模型Embedding Evaluation、完整API/浏览器E2E；Ticket02/04负责相应运行闭环。
 
 实现补充：PostgreSQL目标同样要求40位commit输入，并写入`/opt/chatbi-release.json`及OCI revision label，确保两镜像源提交可核验。检查：改后`docker build --check`无告警。
