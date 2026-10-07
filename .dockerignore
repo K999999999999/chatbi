@@ -20,6 +20,8 @@ src/streamlit_app.py
 **/*.pyc
 !src/query_api/export_assets.py
 !scripts/
+!scripts/__init__.py
+!scripts/local_release.py
 !scripts/metadata/
 !scripts/metadata/*.py
 !database/

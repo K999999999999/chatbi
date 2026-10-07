@@ -30,6 +30,14 @@ Owner: 当前主Agent；后续维护由交付配置、bootstrap和所属模块�
 - up检查发布描述、环境身份、配置和资产后后台启动；超时失败报告阶段与恢复命令，不自动删除已创建资源。down只stop当前项目服务，不提供隐式down -v或reset。
 - 状态/日志输出脱敏；不输出Compose完整配置。port冲突保留未知进程。所有写操作按环境加本地锁，升级/回滚与初始化不能并发。
 
+### Ticket 02 实施选择（验收仍进行中）
+
+- `./local init-config` 只从 `.env.local.example` 创建独立 `.env.local`，另行生成 `.env.local.secrets`；两文件权限要求为 `600`，已存在时拒绝覆盖。数据库、Control DB、管理员签名及 Qdrant 密钥由 `openssl` 生成；LLM Key 保持空值，需用户自行填入。命令不读取开发 `.env`。
+- `./local build` 仅接受 clean worktree，以完整 source commit 构建 API / PostgreSQL 目标，并记录 commit、tag 与实际 image ID 到 ignored `.local/release.env`。Compose 使用固定 `chatbi-stable` project；数据卷显式命名为 `chatbi_stable_postgres_data` 和 `chatbi_stable_qdrant_data`，Qdrant 使用固定版本 digest。
+- `docker-compose.local.yml` 将 API、PostgreSQL、Qdrant 与 `tools` profile 下的一次性工具分开。API 只发布 `127.0.0.1`，单进程、无迁移凭据；数据库与 Qdrant 不发布宿主端口。API 对已准备的模型缓存和 `.local/rag` 只读，准备工具按宿主 UID/GID 写入；RAG 资产不共用 `data/rag`。
+- 空稳定 PostgreSQL 卷沿用镜像内初始化脚本建立专用数据库、角色、Sales Mart 结构和确定性合成 Seed；后续 `migrate`、创建管理员、准备模型、构建索引均由用户显式执行，`up` 不代替这些操作。启动前执行既有导出 manifest、管理员、Control DB、catalog 和生产来源 RAG 检查，并额外要求 LLM、CPU/FP32、回环 Origin、固定镜像身份。
+- `down`、`status` 和 `logs` 直接按 `com.docker.compose.project=chatbi-stable` 及服务标签定位容器，因此配置 / 发布文件损坏时仍可诊断或停止本项目；它们不删除数据卷。该行为已有本地无容器路径检查，真实隔离环境安装和运行验收尚待本 Ticket 完成。
+
 ## 兼容性与失败恢复
 
 兼容性不是仅检查某个v2 marker存在：现有migration采用加法marker，旧marker保留不能证明旧版本支持新表/快照。每个发布显式声明已验证的兼容状态：Control migration marker集合、关键catalog结构投影、checkpoint migration版本、业务Schema/Seed版本、历史快照版本与RAG manifest格式/来源输入。范围从本目标验证过的状态开始；未知状态默认拒绝，不创建通用迁移平台。

@@ -3,7 +3,7 @@
 Status: in-progress
 Owner: 当前主Agent
 Blocked by: 01（done）
-Result: 已开始：实现独立 Compose、`.env.local` 模板和 `./local` 操作入口；尚未完成或验收。
+Result: 已实现独立 Compose、`.env.local` 模板、`./local` 操作入口与运行前置检查；Runbook 安装 / 启停章节及正式 Contract 初稿已同步。静态 Review 和确定性检查通过；clean 候选构建、真实空卷安装、模型 / RAG 初始化及管理员 / Windows 浏览器问数和持久性验收仍待完成。
 Comments: 本地实施授权于2026-10-07取得；发布授权未取得。
 
 
@@ -20,3 +20,7 @@ Acceptance Criteria:
 Evidence: 命令分支/权限/挂载确定性检查，独立真实PG/Qdrant初始化与重试集成，真实LLM浏览器登录问数；记录环境/提交/镜像/资产身份。
 Migration / Rollback: 只在新独立实例应用现有migration，不导入开发数据；失败保留稳定数据，恢复按显式初始化步骤重试。工具锁阻止并发写操作。
 Done When: 已确认安装/启停边界全部有证据，正式行为说明与Runbook同步，Code Review完成；形成可用于后续真实升级对的clean release候选。
+
+Review: PASS（base `eba02b0251c00cfcf169bf09bae63e8d02c9bd42`；Ticket 02 owned files）。复审修复了遗漏的写操作锁，并收紧 Qdrant 检查 URL；当前无未解决实现发现。Correctness / Comprehension / Consistency / Testability / Architecture / Security 均通过。20 个本地发布入口确定性测试通过；Ruff、Bash 语法、Markdown 本地链接、Compose 隔离约束与 `git diff --check` 通过。该 Review 不代表真实容器安装、LLM 浏览器验收或 Ticket 完成。
+
+Verification: `uv run --frozen pytest tests/scripts/test_local_release.py -q`（20 passed）；`uv run --frozen ruff check scripts/local_release.py tests/scripts/test_local_release.py`；`bash -n local`；`python3 -m scripts.check_markdown_links`；Compose JSON 检查仅有 API 回环端口、数据库 / Qdrant 无宿主端口、API 无 migrator 环境变量、应用资产只读、所有服务手动 restart、Qdrant 固定 digest；`git diff --check`。clean 镜像构建与真实隔离运行待本地 Commit 后执行。
