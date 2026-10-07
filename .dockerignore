@@ -22,6 +22,7 @@ src/streamlit_app.py
 !scripts/
 !scripts/__init__.py
 !scripts/local_release.py
+!scripts/local_compatibility.json
 !scripts/metadata/
 !scripts/metadata/*.py
 !database/

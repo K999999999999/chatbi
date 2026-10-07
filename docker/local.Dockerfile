@@ -43,6 +43,7 @@ RUN uv sync --locked --no-dev --no-install-project \
     && /opt/venv/bin/playwright install --with-deps chromium
 COPY src ./src
 COPY scripts/__init__.py scripts/local_release.py ./scripts/
+COPY scripts/local_compatibility.json /opt/chatbi-compatibility.json
 COPY scripts/metadata ./scripts/metadata
 COPY database ./database
 COPY --from=web-builder /workspace/frontend/dist /opt/chatbi-web
@@ -54,7 +55,7 @@ RUN /opt/venv/bin/python src/query_api/export_assets.py \
     --pdf-font-path "$(fc-match -f '%{file}' 'WenQuanYi Zen Hei' | head -n 1)" \
     --chart-font-package-version "$(dpkg-query -W -f='${Version}' fonts-noto-cjk)" \
     --pdf-font-package-version "$(dpkg-query -W -f='${Version}' fonts-wqy-zenhei)" \
-    && chmod -R a-w /opt/chatbi-export /opt/chatbi-web /opt/chatbi-release.json
+    && chmod -R a-w /opt/chatbi-export /opt/chatbi-web /opt/chatbi-release.json /opt/chatbi-compatibility.json
 ARG CHATBI_RELEASE_COMMIT
 RUN test -n "${CHATBI_RELEASE_COMMIT}" \
     && printf '%s' "${CHATBI_RELEASE_COMMIT}" | grep -Eq '^[0-9a-f]{40}$' \

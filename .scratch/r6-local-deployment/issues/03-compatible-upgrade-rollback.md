@@ -1,9 +1,9 @@
 # Ticket 03：指定版本升级与兼容回滚
 
-Status: open
+Status: in-progress
 Owner: 当前主Agent
 Blocked by: 02
-Result: 未开始
+Result: Ticket 02已在clean candidate `733b074`完成最终安装 / 启停 / 端口 / 浏览器 / 持久性验收。兼容声明、只读状态核验、指定版本 upgrade / rollback 编排和原子部署状态已实现；以 `d48307e` 为基线的本地实现 Review PASS，覆盖当前 Ticket owned files；local deployment 定向测试 48 项通过，Ruff、Bash / Compose / Dockerfile / Markdown link 检查通过。两个clean release候选的实际升级 / 回滚 / 再升级、持久账号 / 历史 / 成果核对仍待完成；不引入反向migration、自动删卷或公网发布。
 Comments: 本地实施授权于2026-10-07取得；发布授权未取得。
 
 

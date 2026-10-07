@@ -189,10 +189,14 @@ services:
     profiles: [tools]
     restart: "no"
     labels: *stable-labels
+    user: "${CHATBI_LOCAL_UID:-1000}:${CHATBI_LOCAL_GID:-1000}"
     entrypoint: ["python", "-m", "scripts.local_release"]
     command: ["verify-runtime"]
     environment: *runtime-environment
     volumes:
+      - type: bind
+        source: .local
+        target: /opt/chatbi-state
       - type: bind
         source: ${CHATBI_LOCAL_MODEL_DIR:-.model-cache/bge-m3-5617a9f61b02}
         target: /opt/chatbi-model/bge-m3-5617a9f61b02

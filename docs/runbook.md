@@ -592,7 +592,7 @@ PNG / PDF 使用镜像内固定的 Playwright / Chromium 与离线 bundle；PNG 
 ./local build
 ```
 
-命令先检查 Dockerfile，再构建镜像并记录 source commit、镜像标签和 image ID 到 ignored 的 `.local/release.env`。标签包含 commit 和镜像 ID；稳定环境按该记录核验身份。工作区有未提交改动时构建会拒绝，提交相关改动后再运行。
+命令先检查 Dockerfile，再构建镜像并记录 source commit、镜像标签和 image ID 到 ignored 的 `.local/release.env`。标签包含 commit 和镜像 ID；稳定环境按该记录核验身份。工作区有未提交改动时构建会拒绝，提交相关改动后再运行。每个 source commit 的不可变本地镜像记录另外保存在 `.local/releases/<完整 SHA>.env`，供显式升级 / 回滚按版本选择；`release.env` 只指向最近一次构建。
 
 首次显式初始化和准备稳定环境：
 
@@ -606,6 +606,8 @@ PNG / PDF 使用镜像内固定的 Playwright / Chromium 与离线 bundle；PNG 
 
 空 PostgreSQL 稳定数据卷首次启动时，镜像初始化脚本建立独立业务库、运行角色、Sales Mart Schema 并播种确定性合成销售数据。已有数据卷不会重播 Seed；不要删除或重建卷来“重试”。`migrate` 单独安装应用库、RBAC、历史 /成果和 checkpoint Schema；模型下载到配置指定的 revision 缓存；`build-rag` 写入独立 `.local/rag` 与稳定 Qdrant 数据。模型 / RAG 准备可重复执行，但应用启动不会代替这些步骤。`create-admin` 在容器内交互，管理员密码通过隐藏输入提供，不写入配置文件或命令参数。
 
+`create-admin` 将管理员记录写入稳定 PostgreSQL 的独立 `chatbi_control` 数据库，不会在 `.local` 生成 `create` 文件。成功执行 `./local up` 后，部署入口会在 `.local/deployment-state.json` 原子记录 active API 版本、最近操作阶段和运行状态；该状态文件不包含 Secret。
+
 启动、查看和停止：
 
 ```bash
@@ -616,7 +618,9 @@ PNG / PDF 使用镜像内固定的 Playwright / Chromium 与离线 bundle；PNG 
 ./local down
 ```
 
-默认 Windows 浏览器地址为 `http://127.0.0.1:8080/`。`up` 会核对镜像 source commit / image ID、配置、管理员、网页和导出资源、模型、RAG manifest、Qdrant 与 PostgreSQL catalog，然后后台启动单个 API 进程。启动前检查失败时按诊断执行对应显式步骤；不会自动迁移、下载模型、重建索引、创建管理员或删除数据。应用 `/health` 只表示 HTTP liveness，不代表业务请求成功或动态依赖就绪。
+版本切换必须指定本机 `.local/releases` 中登记的完整 40 位 source commit：`./local upgrade <完整 SHA>` 先只读检查目标兼容声明、Control / checkpoint migration、历史快照、Sales Mart catalog / Seed 和 RAG 来源；检查通过后才停止 API、运行 migration 并再次检查。`./local rollback <完整 SHA>` 先完成同类只读检查，再停止当前 API 并启动指定版本，不执行 migration。未知版本 / marker、资产来源不匹配或镜像身份不符都会拒绝切换。失败时 `.local/deployment-state.json` 保留上次成功 API 版本、当前运行状态和失败阶段；不会自动做反向 migration 或删除数据。
+
+默认 Windows 浏览器地址为 `http://127.0.0.1:8080/`。`up` 会核对镜像 source commit / image ID、配置、管理员、网页和导出资源、模型、RAG manifest、Qdrant、migration marker、历史快照版本、Sales Mart Seed 与 PostgreSQL catalog，然后后台启动单个 API 进程。启动前检查失败时按诊断执行对应显式步骤；不会自动迁移、下载模型、重建索引、创建管理员或删除数据。应用 `/health` 只表示 HTTP liveness，不代表业务请求成功或动态依赖就绪。
 
 如果端口被占用，命令会失败并保留未知进程；可编辑 `.env.local` 中的 `CHATBI_LOCAL_HTTP_PORT` 后重试。`down` 只停止带有固定 `chatbi-stable` 项目标签的 API / PostgreSQL / Qdrant 容器，即使配置或镜像记录损坏也可用于止停；它保留所有数据库卷、模型缓存和 RAG 资产。`status` / `logs` 同样只定位该项目。Docker 或电脑重启后不会自动启动稳定服务；手动执行 `./local up`。
 
