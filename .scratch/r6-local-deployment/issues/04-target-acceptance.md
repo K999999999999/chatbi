@@ -34,3 +34,7 @@ Implementation review: PASS；基线 `995440b`，Scope为当前Ticket owned file
 2026-10-08 IDM对照与后续测试修复：用户确认临时调整并恢复后，通过原生IDM配置界面仅取消PDF文件类型接管；同一有效PDF由Edge204/0bytes恢复200/78,427bytes，根因确认。正式clean `1bebea5334596ac876d64b00fbb6b26d18f1b0f4`，run `20261007T194018Z-5cecc97d`，当前与历史分析PDF均下载成功；随后测试在打开保存成果请求尚未完成时立即读取旧URL，产生“成果URL缺少身份”的Red。现场记录显示读取期间UI仍busy，应用只有完成读取后才切换hash。修复测试改为等待saved URL与已保存成果标题，再读取ID / 导出；保持全部原业务断言，未修改应用行为。该run账号/资源已清理，IDM原配置已恢复；完整验收仍未完成，待新clean候选重跑。
 
 等待修复Review：PASS，BASE `1bebea5`，仅container-real测试和本Ticket记录。用saved URL与成果专属标题观察完成状态，保留导出来源、内容与业务断言；不增加sleep或重试、不变更Domain/应用。TypeScript typecheck与Diff检查通过；历史/成果确定性回归在Windows Edge（临时frontend+隔离stub）3 passed。宿主Linux尝试因缺少Chrome及libnspr4无法启动，未计为通过；随后使用已确认目标浏览器完成回归。实际完整链Green仍待新clean候选复验。
+
+2026-10-08 完整浏览器与恢复通过、解析环境修复：clean `7c5a5fa` run `20261007T194953Z-b342096a` 的Windows业务/成果/三格式导出、停止恢复、续聊/重查、执行unconfirmed恢复均通过；恢复前后2用户/5历史/8turn/2成果/1,166业务行与Seed v3一致。随后生产镜像admin工具执行独立文件解析时缺少dev group的openpyxl，故完整runner仍失败，保留原身份。相同12份文件随后由宿主锁定dev环境解析全部通过（补充证据，未冒称原runner通过）。修复将解析移到宿主解释器，并在任何Docker安装前检查openpyxl/pypdf；不向生产镜像安装测试依赖。资源及IDM原设置已恢复，待新clean候选完整复验。
+
+解析环境修复Review：PASS，BASE `7c5a5fa`，Scope仅验收入口与本Ticket记录。使用入口的宿主sys.executable执行既有独立解析器，报告路径以argv传入；启动Docker资源前检查dev解析依赖，不改变API依赖或业务。Red为生产工具缺少dev依赖；同一12份真实下载文件在宿主解析Green。定向66项软件回归、Ruff与Diff检查通过；新候选完整复验待执行。

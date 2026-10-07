@@ -447,6 +447,13 @@ class Acceptance:
         passed = False
         cleanup_done = False
         try:
+            self.run(
+                [
+                    sys.executable,
+                    "-c",
+                    "import openpyxl, pypdf; print('独立文件解析依赖已就绪。')",
+                ]
+            )
             self.phase(f"空环境安装：{self.project}；API 回环端口 {self.port}。")
             self.dc("up", "-d", "postgres", "qdrant")
             self.dc(
@@ -513,7 +520,18 @@ class Acceptance:
             self.support("expire-analysis")
             self.edge(frontend, 1)
             self.support("persistence")
-            self.support("verify-exports")
+            # Independent parsers belong to the host dev environment, not the runtime image.
+            self.run(
+                [
+                    sys.executable,
+                    "-c",
+                    (
+                        "import sys; from pathlib import Path; from tests import container_dev_support as support; "
+                        "support.REPORT = Path(sys.argv[1]); support.verify_exports()"
+                    ),
+                    str(self.report),
+                ]
+            )
             self.dc(
                 "exec",
                 "-T",
