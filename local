@@ -7,6 +7,7 @@ SECRET_FILE="$ROOT/.env.local.secrets"
 RELEASE_FILE="$ROOT/.local/release.env"
 PROJECT_NAME="chatbi-stable"
 source "$ROOT/scripts/local_port.sh"
+source "$ROOT/scripts/local_build_cache.sh"
 
 # Compose reads only the dedicated stable files; developer-shell variables must not
 # override them or leak development credentials into this independent project.
@@ -240,29 +241,6 @@ verify_release_images() {
         || fail 'PostgreSQL 镜像内嵌来源身份与本地发布记录不一致。'
 }
 
-select_build_cache_commit() {
-    local source_commit="$1" image revision candidate
-    local -A cached_commits=()
-    while IFS= read -r image; do
-        [[ -n "$image" ]] || continue
-        revision="$(docker image inspect \
-            --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' \
-            "$image" 2>/dev/null || true)"
-        [[ "$revision" =~ ^[0-9a-f]{40}$ ]] || continue
-        cached_commits["$revision"]=1
-    done < <(docker image ls \
-        --filter 'reference=chatbi-local-api:*' \
-        --format '{{.Repository}}:{{.Tag}}')
-
-    while IFS= read -r candidate; do
-        if [[ -n "${cached_commits[$candidate]:-}" ]]; then
-            printf '%s\n' "$candidate"
-            return 0
-        fi
-    done < <(git -C "$ROOT" rev-list "$source_commit")
-    printf '%s\n' "$source_commit"
-}
-
 build_images() {
     require_docker
     local dirty source_commit cache_commit api_build_tag database_build_tag
@@ -270,7 +248,7 @@ build_images() {
     [[ -z "$dirty" ]] || fail '固定版本构建要求 clean worktree；先提交当前目标改动。'
     source_commit="$(git -C "$ROOT" rev-parse HEAD)"
     [[ "$source_commit" =~ ^[0-9a-f]{40}$ ]] || fail '无法识别当前 Git commit。'
-    cache_commit="$(select_build_cache_commit "$source_commit")"
+    cache_commit="$(select_build_cache_commit "$source_commit" "$ROOT")"
 
     docker build --check \
         --file "$ROOT/docker/local.Dockerfile" \

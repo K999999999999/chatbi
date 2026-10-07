@@ -59,7 +59,8 @@ ARG CHATBI_RELEASE_COMMIT
 RUN test -n "${CHATBI_RELEASE_COMMIT}" \
     && printf '%s' "${CHATBI_RELEASE_COMMIT}" | grep -Eq '^[0-9a-f]{40}$' \
     && printf '{"format":1,"source_commit":"%s"}\n' "${CHATBI_RELEASE_COMMIT}" > /opt/chatbi-release.json
-LABEL org.opencontainers.image.revision=${CHATBI_RELEASE_COMMIT}
+LABEL org.opencontainers.image.revision=${CHATBI_RELEASE_COMMIT} \
+    com.chatbi.build-cache-commit=${CHATBI_SOURCE_COMMIT}
 USER 1000:1000
 EXPOSE 8000
 CMD ["uvicorn", "src.query_api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
@@ -83,4 +84,5 @@ ARG CHATBI_RELEASE_COMMIT
 RUN test -n "${CHATBI_RELEASE_COMMIT}" \
     && printf '%s' "${CHATBI_RELEASE_COMMIT}" | grep -Eq '^[0-9a-f]{40}$' \
     && printf '{"format":1,"source_commit":"%s"}\n' "${CHATBI_RELEASE_COMMIT}" > /opt/chatbi-release.json
-LABEL org.opencontainers.image.revision=${CHATBI_RELEASE_COMMIT}
+LABEL org.opencontainers.image.revision=${CHATBI_RELEASE_COMMIT} \
+    com.chatbi.build-cache-commit=${CHATBI_SOURCE_COMMIT}

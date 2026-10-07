@@ -57,3 +57,9 @@
 - 为验证Ticket02的端口冲突边界，先用隔离回环HTTP进程占用8080。复现`./local up`误报成功：容器内健康检查通过，但HTTP请求实际落到占用进程；稳定API没有有效发布映射。已按TDD记录Red（占用端口探测测试1失败/1通过），修复增加host回环端口探测、运行API映射识别、`/health`外部路由检查和失败时只停止本稳定API的恢复路径。
 - 修复后定向测试24项通过；端口冲突集成验收返回非零和明确诊断，临时占用进程仍返回HTTP 200且未被停止；释放端口后`./local up`成功，API回环HTTP健康，重复`up`也通过。
 - 当前端口修复代码尚待本地Commit与clean镜像重建；因此Ticket02仍in-progress，需在新候选上复验浏览器和持久性，再收尾文档。稳定环境服务现已恢复运行。
+
+## R6 Ticket 02 构建缓存选择修复（2026-10-08）
+
+- 端口修复提交后尝试clean build时发现，旧选择器只读最终镜像`org.opencontainers.image.revision`，会把发布提交误当成依赖层实际缓存键，导致apt及后续昂贵层重新构建；在apt下载阶段中止，未改写release记录或容器。
+- 新增`com.chatbi.build-cache-commit`镜像标签，仍由当前source commit构建发布身份，同时记录早期依赖层实际cache commit；选择器先按该身份取最近可达祖先，旧镜像无该标签时才选择最早可达OCI revision。针对新标签和legacy回退新增TDD，旧实现2项失败，修复后与端口 / release测试合计26项通过；Ruff、Bash语法、API / database Dockerfile check和Diff检查通过。现有本机镜像上选择器实测返回`4d4732b`。
+- 当前这些修复尚未Commit；下一步本地Commit后确认昂贵依赖层命中缓存、构建新clean候选，并在该候选复验端口保护、Windows Edge问数和down-up持久性，再完成Ticket02并连续实施03→04。稳定数据卷和开发服务保持原状。

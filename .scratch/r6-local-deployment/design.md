@@ -35,6 +35,7 @@ Owner: 当前主Agent；后续维护由交付配置、bootstrap和所属模块�
 - `./local init-config` 只从 `.env.local.example` 创建独立 `.env.local`，另行生成 `.env.local.secrets`；两文件权限要求为 `600`，已存在时拒绝覆盖。数据库、Control DB、管理员签名及 Qdrant 密钥由 `openssl` 生成；LLM Key 保持空值，需用户自行填入。命令不读取开发 `.env`。
 - `./local build` 仅接受 clean worktree，以完整 source commit 构建 API / PostgreSQL 目标，并记录 commit、tag 与实际 image ID 到 ignored `.local/release.env`。Compose 使用固定 `chatbi-stable` project；数据卷显式命名为 `chatbi_stable_postgres_data` 和 `chatbi_stable_qdrant_data`，Qdrant 使用固定版本 digest。
 - 为复用本机 Docker layer cache，构建从当前 source commit 的最近祖先镜像 commit 作为早期依赖层的 cache key；API / PostgreSQL 最终层重新写入当前 clean source commit 的 OCI revision 和 `/opt/chatbi-release.json`。无祖先镜像时以当前 commit 完整构建；缓存不改变发布身份或运行资产。
+- 镜像额外记录`com.chatbi.build-cache-commit`，构建时按该标签选择最近可达祖先；旧镜像没有此标签时才按最早的可达OCI revision回退，避免把旧发布的source身份误当成它实际使用的依赖层缓存键。
 - `docker-compose.local.yml` 将 API、PostgreSQL、Qdrant 与 `tools` profile 下的一次性工具分开。API 只发布 `127.0.0.1`，单进程、无迁移凭据；数据库与 Qdrant 不发布宿主端口。API 对已准备的模型缓存和 `.local/rag` 只读，准备工具按宿主 UID/GID 写入；RAG 资产不共用 `data/rag`。
 - 空稳定 PostgreSQL 卷沿用镜像内初始化脚本建立专用数据库、角色、Sales Mart 结构和确定性合成 Seed；后续 `migrate`、创建管理员、准备模型、构建索引均由用户显式执行，`up` 不代替这些操作。启动前执行既有导出 manifest、管理员、Control DB、catalog 和生产来源 RAG 检查，并额外要求 LLM、CPU/FP32、回环 Origin、固定镜像身份。
 - `down`、`status` 和 `logs` 直接按 `com.docker.compose.project=chatbi-stable` 及服务标签定位容器，因此配置 / 发布文件损坏时仍可诊断或停止本项目；它们不删除数据卷。该行为已有本地无容器路径检查，真实隔离环境安装和运行验收尚待本 Ticket 完成。
