@@ -65,3 +65,5 @@ Domain/Application业务行为不变；部署脚本复用bootstrap、catalog及R
 Ticket 03已完成真实 clean 版本对升级 / 兼容回滚 / 再升级，兼容状态与部署记录行为见 [Contract](../specs/local-deployment-v1.md)，具体身份见 [Acceptance](../acceptance/local-deployment-v1.md)。
 
 完整验收使用 `scripts/verify_local_deployment.py` 和 `scripts/local_acceptance.py` 生成隔离 Compose override、独立随机凭据和 run ID 标签。API仍只挂载固定模型和临时RAG只读目录；测试支持源码仅挂入一次性admin工具。Windows Edge在临时Node workspace中运行既有业务用例，配置化报告目录在权限受限的WSL目录内共享；源码热更新用例明确排除。清理前检查容器、卷及网络项目身份；原开发与稳定项目状态前后核对。
+
+API 通过 `CHATBI_LOCAL_SECCOMP_PROFILE` 使用随附 Chromium profile；`./local` 固定设置为当前仓库绝对路径，隔离验收生成相同路径。没有关闭 Chromium sandbox。首次完整验收发现稳定 Compose 遗漏该配置，导致 PNG 返回受控 503；已补 Compose 解析回归与实际 sandbox 前置启动检查。浏览器导出收到非 200 响应时立即失败，避免继续等待不存在的下载事件。

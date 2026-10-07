@@ -628,6 +628,8 @@ PNG / PDF 使用镜像内固定的 Playwright / Chromium 与离线 bundle；PNG 
 
 `./local create-admin` 将账号写入稳定 PostgreSQL 的 `chatbi_control`，不会生成 `.local/create` 文件，也不保存明文密码。`.local/` 保存发布身份、部署状态、操作锁与 RAG 资产。
 
+`./local` 固定设置 `CHATBI_LOCAL_SECCOMP_PROFILE` 指向仓库随附的 Chromium profile，以支持 PNG / PDF renderer 的 sandbox。直接调用本地 Compose 时也需显式设置该配置；导出渲染器不能通过关闭 sandbox 恢复。
+
 完整隔离验收要求 WSL 的 uv、Compose ≥2.24.4、Windows Node / npm 与 Microsoft Edge，以及 `.env.local` 中可用的真实 LLM 配置和已准备的固定模型缓存。先完成相关改动与 Review，再在 clean candidate 上执行：
 
 ```bash

@@ -42,6 +42,7 @@ Status: 用户确认的行为范围已记录；Ticket 01 / 02 / 03 实施与适�
 - 项目身份固定为 `chatbi-stable`；稳定 PostgreSQL、Qdrant 使用各自命名卷。数据库与 Qdrant 不发布宿主端口，只有 API 发布到配置的 `127.0.0.1` 端口。
 - API 不挂载源码或迁移凭据。数据库迁移器凭据只交给一次性迁移工具；API 只读运行账号访问业务库与 Control DB。
 - API 对模型缓存和稳定 RAG 发布目录只读；显式准备工具按当前 WSL 用户身份写入目标目录。
+- PNG / PDF renderer 保留 Chromium sandbox；本地 API 配置仓库随附的 Chromium seccomp profile，沿用 R5 已确认的导出隔离要求。
 - Secret 使用独立权限受限配置；启动失败诊断不得输出完整 Compose 配置、Secret 或未经授权的数据内容。
 - 端口冲突不终止未知进程；启动、资产或依赖检查失败时保留已创建数据和资源，返回非零结果及可操作的恢复提示。
 - 手动停止保留所有持久数据。电脑或 Docker 重启后不承诺自动启动，用户可显式执行 `./local up`。

@@ -22,3 +22,7 @@ Migration / Rollback: 只在专用验收资源构造失败状态，不写开发�
 Done When: 正式Contract/Design/Runbook/Acceptance/产品范围/路线图全部一致，最终Code Review与Diff检查完成，未运行项与限制明确；产品/R6实时状态同步，无远端发布。发布另需明确授权。
 
 Implementation review: PASS；基线 `995440b`，Scope为当前Ticket owned files与现有容器浏览器支持。检查Correctness / Comprehension / Consistency / Testability / Architecture / Security：运行资产API无源码或迁移身份；清理验证run ID / project / 卷 / 网络身份；Docker inspect敏感值仅内存核验；账号禁用并撤销Session、报告扫描已知凭据。定向软件66项、报告路径3项、TypeScript / Ruff / Markdown link / Diff检查通过。完整真实验收待clean candidate执行，尚未宣称通过。
+
+2026-10-08 首次完整运行：clean候选 `e4f83aca437d1824db0f8c2045b33cae8231ed0e`，run `20261007T190056Z-9b5b8021`。空卷Seed / migration / 管理员 / RAG / 兼容前置与五项失败检查通过；Windows Edge真实问数和XLSX下载成功，随后PNG返回503，原浏览器用例等待不存在的下载导致180秒超时。诊断保存在ignored `.local/acceptance/<run>/`，未改称通过。专用账号已禁用、活跃Session为0；本次容器/卷/网络及Windows workspace已清理，临时配置凭据已删除。
+
+根因与修复：稳定Compose遗漏R5 renderer所需seccomp配置，启用sandbox的Chromium namespace启动失败；相同固定镜像加入既有profile后sandbox启动实测通过。新增Compose security_opt回归先Red（缺少security_opt），修复后66项软件检查、类型/Ruff/Bash/链接/Diff检查通过。增加实际sandbox前置检查与浏览器导出非200快速失败；Review基线`e4f83ac`，PASS。下一步新clean候选完整复验。

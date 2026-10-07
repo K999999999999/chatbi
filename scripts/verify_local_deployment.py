@@ -477,6 +477,17 @@ class Acceptance:
             self.dc("run", "--rm", "--no-deps", "-T", "verify")
             self.failure_checks()
             self.dc("up", "-d", "--wait", "--wait-timeout", "180", "api")
+            self.phase("验证 Chromium sandbox 后开始真实业务，渲染失败会立即停止。")
+            self.dc(
+                "exec",
+                "-T",
+                "api",
+                "python",
+                "-c",
+                "import os; from playwright.sync_api import sync_playwright; "
+                "p=sync_playwright().start(); b=p.chromium.launch(headless=True,chromium_sandbox=True, "
+                "env={'PATH':os.environ['PATH'],'HOME':'/tmp'}); b.close(); p.stop(); print('sandbox启动通过。')",
+            )
             self.support("prepare")
             frontend = self.edge_workspace()
             self.phase(
@@ -579,6 +590,7 @@ class Acceptance:
                     "external_resources_unchanged": True,
                     "api_readonly_asset_mounts": True,
                     "api_has_no_migrator_identity": True,
+                    "chromium_sandbox_launch": True,
                     "export_temporary_resources_clean": True,
                     "logs_no_known_secrets": True,
                     "host_docker_reboot": "维护窗口手动验证，未执行",
@@ -593,6 +605,8 @@ class Acceptance:
                 "resource-cleanup.json",
                 {"project": self.project, "volumes_removed": True},
             )
+            (self.work / "acceptance.env").unlink(missing_ok=True)
+            (self.work / "acceptance.secrets.env").unlink(missing_ok=True)
             if (
                 self.windows_workspace
                 and (self.windows_workspace / "run-id").read_text() == self.run_id
@@ -609,8 +623,6 @@ class Acceptance:
                 / f"{self.commit[:12]}-{self.run_id}"
             )
             shutil.copytree(self.report, target)
-            (self.work / "acceptance.env").unlink()
-            (self.work / "acceptance.secrets.env").unlink()
             self.phase(f"完整隔离验收通过，专用账号和资源已清理。证据：{target}")
 
 

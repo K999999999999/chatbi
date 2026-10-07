@@ -120,6 +120,9 @@ def write_acceptance_env_files(
         "CHATBI_LOCAL_MODEL_DIR": str(model_dir.resolve()),
         "CHATBI_LOCAL_UID": str(uid),
         "CHATBI_LOCAL_GID": str(gid),
+        "CHATBI_LOCAL_SECCOMP_PROFILE": str(
+            base / "docker/third-party/playwright-seccomp-profile.json"
+        ),
         "POSTGRES_DB": local_values.get("POSTGRES_DB", "chatbi_mvp"),
         "POSTGRES_MIGRATOR_USER": local_values.get(
             "POSTGRES_MIGRATOR_USER", "chatbi_migrator"

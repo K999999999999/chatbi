@@ -191,6 +191,9 @@ def test_docker_compose_resolves_isolation_without_starting_resources(
     }
     assert all(v["read_only"] for v in resolved["services"]["api"]["volumes"])
     assert resolved["services"]["api"]["ports"][0]["host_ip"] == "127.0.0.1"
+    assert resolved["services"]["api"]["security_opt"] == [
+        f"seccomp={root}/docker/third-party/playwright-seccomp-profile.json"
+    ]
 
 
 @pytest.mark.parametrize(

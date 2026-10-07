@@ -36,10 +36,12 @@ async function captureExport(page: Page, button: Locator, format: 'xlsx' | 'png'
     return request.method() === 'POST' && new URL(response.url()).pathname === '/api/v1/result-exports';
   }, { timeout: 180000 });
   const downloadReady = page.waitForEvent('download', { timeout: 180000 });
+  void downloadReady.catch(() => undefined);
   try {
-    const [response, download] = await Promise.all([responseReady, downloadReady, button.click()]);
+    const [response] = await Promise.all([responseReady, button.click()]);
     expect(executionPosts).toBe(0);
     expect(response.status()).toBe(200);
+    const download = await downloadReady;
     const mime = { xlsx: 'spreadsheetml.sheet', png: 'image/png', pdf: 'application/pdf' }[format];
     expect(response.headers()['content-type']).toContain(mime);
     const body = response.request().postDataJSON() as Record<string, unknown>;

@@ -37,6 +37,8 @@ services:
     image: ${CHATBI_API_IMAGE:?run ./local build first}
     restart: "no"
     init: true
+    security_opt:
+      - seccomp=${CHATBI_LOCAL_SECCOMP_PROFILE:?local entry must set the Chromium seccomp profile}
     labels: *stable-labels
     environment: &runtime-environment
       CHATBI_ENV: development
