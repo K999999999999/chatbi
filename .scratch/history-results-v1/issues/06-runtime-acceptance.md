@@ -31,9 +31,14 @@ Done When: 全部01–05与上述适用门禁 /真实验收通过，正式证据
 Result:
 - Candidate A `d6041af45bf4f69bb7b60053e0a404d754dc23fc` 的 R3 Compose 真实链路通过：`reports/browser-real/container-1791144563-real.json`，`git_dirty=false`，两阶段均通过，独立业务参考一致，临时账号已禁用且活跃 Session 为 0。
 - Candidate A 正式报告在 `reports/evaluation/baseline-20261005T041046Z-d6041af/formal/`：single-turn 29/29、multi-turn 7/7（15/15 轮）、business-analysis 10/10，均 0 FAIL / 0 INVALID_CASE；`real_e2e_acceptance` 确认三套报告同一 clean commit 与 RAG 身份。三次独立 multi-turn 诊断均 7/7（15/15 轮），退出码均 0，报告分别位于 `diagnostic-1/`、`diagnostic-2/`、`diagnostic-3/`。
-- 本 Result、其他 Ticket Result 与路线图同步将形成 Candidate B，因此 Candidate A 是预验收证据而非最终身份。Candidate B 必须再运行 R3 Compose 真实闭环、三套正式 Evaluation、统一身份验收和三次诊断；最终身份、退出状态与结果由 Git 公共目录实时状态记录，随后不再改 tracked 文件回填“当前通过”。
+- 上述 Candidate A 为预验收历史。Candidate B `9f24a85482bb126cad13e5954e1eb60b78323602` 已完成最终复验：R3 Compose 报告 `reports/browser-real/container-1791146790-real.json` 的 status / suite_status 为 passed、git_dirty=false，临时账号禁用且活跃 Session=0。
+- Candidate B 正式报告位于 `reports/evaluation/baseline-20261004T204639Z-9f24a85/formal/`：single-turn 29/29、multi-turn 7/7（15/15 轮）、business-analysis 10/10，均 0 FAIL / 0 INVALID_CASE，统一身份验收退出 0。三次独立多轮诊断均 7/7（15/15 轮），汇总见同目录 `execution-summary.json`；报告 commit 均为 `9f24a85`、git_dirty=false、RAG=`provenance-20260929`。目录名为实际本机路径，不用于推定先后，核对报告内身份。
+- 确定性检查：Python 685 passed / 29 skipped / 139 subtests；隔离 PG 33 passed；Playwright 36 passed；TypeScript / build、Ruff、锁文件、模块边界、Markdown 链接与 Diff 检查通过，Code Review PASS。skip 不视为通过；ECharts chunk >500 kB 为非阻断提示。
+- 已获独立发布授权并完成交付：PR #54 最终 head `6512091990bd92b09a1bf6784f188fc74c33345f`，8 项必需 CI 通过，于 2026-10-05T04:31:40Z 自动 Squash 合并为 `2019443020bb7a20a8c3d1a578a613544ad8148b`。相对 Candidate B 仅增加 Bandit B608 注释与安全边界说明，无行为变化；真实验收报告继续绑定 Candidate B，不冒称合并提交的新成绩。
+- R3 功能分支清理与 Harness 复盘已完成；本次补齐已合并 R3 的历史交付记录，不重新建立 R3 验收候选，不修改原始报告。该候选形成时 R4–R7 尚未完成；当前 R4 / R5 已交付，R6 / R7 状态以 docs/roadmap.md 为准，生产部署仍未完成。
 Comments: 真实API凭证与.env只在本地，报告不得泄露Secret；失败必须保留并修复，不通过回退验收门槛完成。
 
-Status: in-progress
+Status: done
+Documentation closeout: 本次历史补记由 harness-delivery-consistency 承接，本地整理不代表文档修复已远端发布。
 Canonical Source: ../spec.md、../design.md、../restoration-semantics.md
-Authorization: 用户本轮确认六项拆分及整体本地实施（编码、适用真实验收、Review、本地Commit）；未授权Push /PR
+Authorization: 原六项整体本地实施已确认；2026-10-05 用户另行授权 R3 发布并已完成。具体授权 / PR / 清理进度见本机实时状态，不扩展到后续需求。

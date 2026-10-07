@@ -1,4 +1,10 @@
-# R3 规划状态
+# R3 交付状态与历史规划快照
+
+当前功能交付事实（2026-10-07 历史补记）：六项 Ticket 已完成；最终行为候选 `9f24a85` 的真实浏览器、三套正式 Evaluation 与三次多轮诊断通过。最终 head `6512091` 仅增加安全扫描注释；PR #54 已合并为 `2019443`，8 项必需 CI 通过，分支清理与复盘完成。证据身份见 [Ticket 06](issues/06-runtime-acceptance.md)，不改标为本次文档提交成绩。实时状态以 Git 公共目录记录为准。产品 R4 / R5 已交付，下一项 R6 待需求与技术澄清，见 docs/roadmap.md。本次文档补记由 harness-delivery-consistency 承接，本地整理尚未发布。
+
+## 历史快照：Candidate A 后、Candidate B 验收前
+
+以下正文保留当时计划和授权状态，不代表当前未完成或未获 R3 发布授权。
 
 工作项：`history-results-v1`。基线 `afad5ac18452566199bfcfdcceb1585115576a77`，branch `feat/history-results-v1`；本仓库唯一 worktree。当前全部代码、Contract、验收入口和路线图改动均属于 R3。
 

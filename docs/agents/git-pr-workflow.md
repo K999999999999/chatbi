@@ -43,6 +43,8 @@
 3. 更新并确认 `master` 是当前可用基线；
 4. 从 `master` 创建一个命名清晰的 Feature branch，例如 `feat/<slug>`、`fix/<slug>`、`refactor/<slug>` 或 `docs/<slug>`。
 
+同时运行 `python -m scripts.check_harness_state`。先处理当前目标相关 ERROR；逐项记录 REVIEW 的归属、授权、暂缓 / 接手决定。存在其他独立待发布候选时，可以推进无冲突工作，但须保留其可发现的下一步，不能把 Git clean 表述为所有目标均完成。
+
 如果发现已有同目标 branch，先判断它是否是当前 candidate、已被主干吸收、已被其他 branch supersede，或只是 backup；不得仅根据 branch 名称继续追加提交。
 
 ### 2. Define the work
@@ -133,6 +135,8 @@ gh pr view <PR> --json number,url,state,isDraft,mergedAt,mergeStateStatus,headRe
 PR 确认已 `MERGED` 后，每个交付都必须完成一次简短 Harness 复盘，再清理 Feature branch。即使自动清理因工作区修改或其他依赖而暂停，也要完成复盘。
 
 同时核对合并事实是否影响路线图状态；沿用 [路线图维护规则](agent-harness.md#路线图读取与维护) 复核受影响能力的当前描述，记录核对位置与结果或不适用理由，并同步主工作项及关联实时记录的顶部当前字段和下一步，不能只追加末尾收尾记录。不将合并或 CI 通过视为真实 Evaluation 或生产验收通过。
+
+列出本次交付涉及的工作项记录和关联产品汇总，逐项同步后运行 `python -m scripts.check_harness_state`，记录 ERROR 数及每项 REVIEW 的处置。无法核对的事项如实保留；存在未解释的相关发现时不得写“无新增缺口”或“全部收尾完成”。工具无 ERROR 不替代路线图 / 产品范围 / Spec 的语义核对，也不自动授权发布其他候选。
 
 检查本次 Agent 工作是否因项目背景、规则、工具或验证方式不足而发生误解、漏验、返工或需要用户纠正：
 
