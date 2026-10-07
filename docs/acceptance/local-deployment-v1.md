@@ -1,6 +1,6 @@
 # R6 本地固定版本部署验收
 
-Status: Ticket 01–04 本地实施与适用验收完成；最终 clean runtime candidate `2b4a8c8` 的完整隔离入口通过，稳定环境已升级到该候选。未发布远端；电脑 / Docker daemon 重启未执行，仍按维护窗口计划验证。
+Status: Ticket 01–04 本地实施与适用验收完成；最终 clean runtime candidate `2b4a8c8` 的完整隔离入口通过，稳定环境已升级到该候选。已获远端发布授权，交付状态见 [PR60](https://github.com/K999999999999/chatbi/pull/60)；电脑 / Docker daemon 重启未执行，仍按维护窗口计划验证。
 
 范围以 [Contract](../specs/local-deployment-v1.md)、[实现设计](../designs/local-deployment-v1.md) 和 [R6 Spec](../../.scratch/r6-local-deployment/spec.md) 为准。
 
