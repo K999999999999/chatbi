@@ -6,7 +6,7 @@ ChatBI 的 MVP 核心能力已经形成：自然语言查询、Online Retrieval�
 
 生产准备基线已在 clean commit `6a5e6ccc6504ebc0947a6addb4abb02d87b566d3` 核验：正式单轮 29/29、多轮 7/7（15 个轮次）、Business Analysis 10/10，均 `0 FAIL`、`0 INVALID_CASE`，三次独立多轮诊断各 7/7 通过。原始报告保存在本机 ignored 目录 `reports/evaluation/baseline-20261003T6a5e6cc/{formal,diagnostic-1,diagnostic-2,diagnostic-3}`；它们绑定该提交、案例集和运行资源，后续提交不自动继承通过身份，报告也不保证在新 clone 中存在。
 
-产品 V1 的需求方向和优先顺序已确认。R1 / R2 和本地容器开发已交付（PR49 / PR51 / PR50）。R3 历史与成果管理已合并 [PR54](https://github.com/K999999999999/chatbi/pull/54)（2019443），见 [Contract](specs/history-results-v1.md) 和 [Acceptance](acceptance/history-results-v1.md)。R4 六项实现、Review 和本地验收已完成，[PR55](https://github.com/K999999999999/chatbi/pull/55) 已合并（ee92aca），见 [Spec](specs/execution-streaming-v1.md)、[Design](designs/execution-streaming-v1.md) 和 [Acceptance](acceptance/execution-streaming-v1.md)。Evaluation 仍绑定报告候选，不自动迁移到 merge commit。R5 导出的行为、技术与验收已逐项确认，[完整 Spec](specs/result-export-v1.md) 已整体确认，Design Review PASS、四项 Ticket Readiness READY；用户于 2026-10-06 确认拆分并授权连续完成四项本地实施。Ticket 01 XLSX 本地候选 `111980d`、Ticket 02 PNG 本地候选 `88f122c` 均已完成验证和 Code Review；R5 clean candidate `71d72d2` 的本地实现与完整隔离验收通过；Ticket 01–04 完成，[PR56](https://github.com/K999999999999/chatbi/pull/56) 已合并（`367a42a`），required CI 全部通过。生产部署和运行验收仍不属于本次交付。R6 / R7 部署和运行保障仍待细化。
+产品 V1 的需求方向和优先顺序已确认。R1 / R2 和本地容器开发已交付（PR49 / PR51 / PR50）。R3 历史与成果管理已合并 [PR54](https://github.com/K999999999999/chatbi/pull/54)（2019443），见 [Contract](specs/history-results-v1.md) 和 [Acceptance](acceptance/history-results-v1.md)。R4 六项实现、Review 和本地验收已完成，[PR55](https://github.com/K999999999999/chatbi/pull/55) 已合并（ee92aca），见 [Spec](specs/execution-streaming-v1.md)、[Design](designs/execution-streaming-v1.md) 和 [Acceptance](acceptance/execution-streaming-v1.md)。Evaluation 仍绑定报告候选，不自动迁移到 merge commit。R5 导出的行为、技术与验收已逐项确认，[完整 Spec](specs/result-export-v1.md) 已整体确认，Design Review PASS、四项 Ticket Readiness READY；用户于 2026-10-06 确认拆分并授权连续完成四项本地实施。Ticket 01 XLSX 本地候选 `111980d`、Ticket 02 PNG 本地候选 `88f122c` 均已完成验证和 Code Review；R5 clean candidate `71d72d2` 的本地实现与完整隔离验收通过；Ticket 01–04 完成，[PR56](https://github.com/K999999999999/chatbi/pull/56) 已合并（`367a42a`），required CI 全部通过。生产部署和运行验收仍不属于本次交付。R6 本地首版的目标环境、安装 / 初始化、启停、升级回滚与验收已逐项确认，[完整 Spec](../.scratch/r6-local-deployment/spec.md) 已整体确认，Design Review PASS，四项Ticket草案Readiness READY；待用户确认拆分与整体实施范围，尚未实施。R7 运行保障仍待细化。
 
 历史完整 Evaluation 基线包括 commit `31a04549924f622777f106d4fe5a758bd2ca2beb` 和较新的 `564343216e4493f832f07efb345c03b058a04eb5`；后者的三套通过证据及此前多轮失败见[工作项验收记录](../.scratch/engineering-quality-gates/issues/04-current-candidate-evaluation-baseline.md#result)。历史通过结果不代表当前 HEAD 或模型稳定性。当前候选只有在三套正式报告均指向同一最终 clean commit、`git_dirty=false` 且各自 `0 FAIL`、`0 INVALID_CASE` 后才能标记为已核验。
 
@@ -28,7 +28,7 @@ ChatBI 的 MVP 核心能力已经形成：自然语言查询、Online Retrieval�
 
 | 阶段 | 目标 | 状态 |
 | --- | --- | --- |
-| 1. 目标细化 | 明确用户、核心流程、支持边界和验收标准；提前澄清部署、身份、结果语义、历史与执行状态 | R1–R5 Spec 已确认；R5 Design Review PASS、四项 Ticket Readiness READY；R6 / R7 待细化 |
+| 1. 目标细化 | 明确用户、核心流程、支持边界和验收标准；提前澄清部署、身份、结果语义、历史与执行状态 | R1–R5 Spec 已确认；R5 Design Review PASS、四项 Ticket Readiness READY；R6完整Spec已确认，Design PASS / Ticket草案READY，待拆分与实施范围确认；R7待细化 |
 | 2. 用户闭环 | 按 R1 → R2 → R3 → R4 → R5 推进；部署基础 R6 在目标环境确定后提前准备 | R1–R4 已交付；R5 Ticket 01 XLSX 候选 `111980d`、Ticket 02 PNG 候选 `88f122c` 已完成，R5 clean candidate `71d72d2` 的本地实现与完整隔离验收通过；Ticket 01–04 完成，PR56 已合并（`367a42a`） |
 | 3. 生产准备 | 完成 R6 的部署交付验收及 R7 的安全、监控、容量与恢复验收 | 方向已确认，具体运行 Contract 与指标待确认 |
 | 4. 作品交付 | 演示、架构说明及可复现评测和运行证据 | 阶段目标已确认，交付验收待细化 |
@@ -68,7 +68,7 @@ flowchart TD
 | R3 | 历史与成果管理 | 私人历史、快照重开、完整条件续聊、显式重查、独立成果与删除；检查当前身份及权限 | 六项实现与本地验收已完成；PR54 已合并（2019443）；见 [Acceptance](acceptance/history-results-v1.md) |
 | R4 | 执行状态与流式反馈 | 后台受理与幂等、真实执行阶段、SSE 观察与恢复、取消 / 超时 / 授权停止、报告草稿与正式结果门槛 | 六项实现与本地验收已完成；PR55 已合并（ee92aca）；见 [Acceptance](acceptance/execution-streaming-v1.md)，不代表生产部署 |
 | R5 | 成果导出 | 成功快照导出 XLSX / PNG / PDF；保留精度、口径、截断与证据；不重查或获取全量数据，最多 100 行；当前身份 / owner / 权限检查；每账号 1 / API 2 个并发、60 秒、20 MiB | 需求逐项确认；[完整 Spec](specs/result-export-v1.md) 已整体确认，四项拆分与整体本地实施已授权；Ticket 01 XLSX 候选 `111980d`、Ticket 02 PNG 候选 `88f122c` 已完成，R5 clean candidate `71d72d2` 本地实现与完整隔离验收通过；Ticket 01–04 完成；[PR56](https://github.com/K999999999999/chatbi/pull/56) 已合并（`367a42a`），required CI 全部通过；生产部署和目标环境验收未包含 |
-| R6 | 部署交付 | 提前确定目标环境、浏览器访问与身份方式、配置和初始化；交付完整应用打包、升级 / 回滚流程，并在目标环境验收 | 正式部署待澄清；R2 前本地容器开发 Spec 已确认，设计 / Readiness 与拆分已确认；本地容器开发已通过clean candidate验收，PR50已合并 |
+| R6 | 部署交付 | 当前 Windows + WSL2 + Docker 电脑上的固定版本应用；销售合成数据；隔离配置与持久资源；显式初始化和手动启停；短暂停机升级与兼容回滚、真实浏览器验收 | 本地首版需求已逐项确认，[完整 Spec](../.scratch/r6-local-deployment/spec.md) 已确认，[Design Review](../.scratch/r6-local-deployment/design-review.md) PASS、[四项草案](../.scratch/r6-local-deployment/tickets-draft.md) Readiness READY；待拆分与整体实施范围确认，尚未实施。PR50 是已交付开发环境，不代表 R6 完成；公网部署和金丝雀发布不在首版范围 |
 | R7 | 运行保障 | 动态 readiness、并发与资源限制、监控告警、备份恢复及容量证据；按目标确定延迟、恢复和访问规模要求 | 待澄清 |
 
 ### 跨需求设计与验证要求
@@ -76,7 +76,7 @@ flowchart TD
 - 普通多轮查询与经营分析当前使用独立状态。R1 必须明确入口与切换行为；不默认自动路由或继承查询条件。经营分析继续遵守两个时期、人民币净销售额 / 毛利及产品因素归因范围；扩展分析行为需要单独确认。
 - 短期多轮状态、分析 checkpoint 和长期历史分别定义生命周期。当前多轮状态为进程内 30 分钟 Idle TTL，checkpoint 为 24 小时恢复期限；R3 不直接延长现有 TTL 来替代历史，R4 不把 checkpoint 当作完整执行状态 Contract。
 - R4 Contract 见正式 [Spec](specs/execution-streaming-v1.md)：只显示真实执行阶段；草稿未校验，最终报告须通过适用校验。结果有效后展示表格 / 图表，SQL 校验完成后提供查看入口。六项实现和验收完成、PR55 已合并；见 [Acceptance](acceptance/execution-streaming-v1.md)，Evaluation 仍绑定原报告候选。
-- 已确认初始场景为单台 Linux / 云服务器供指定账号使用，同时支持本地开发；同源网页 / API、Cookie 登录、线上 HTTPS 和 CSRF 防护。所有有查询权限的指定用户共享同一套业务数据，历史按账号隔离；首版不新增区域 / 部门行列隔离。多 worker / 多副本的会话可见性未获承诺；流式、历史、并发与执行状态的关键 Contract 在相关实现前确定。
+- 原初始场景为单台 Linux / 云服务器；用户于 2026-10-07 确认 R6 首版改为当前 Windows + WSL2 + Docker 电脑，指定账号仅本机同源 HTTP 访问，保留 Cookie 登录与 CSRF 防护；暂不需要公网 / 局域网访问。后续线上访问仍要求 HTTPS，不属于本地首版验收。所有有查询权限的指定用户共享同一套业务数据，历史按账号隔离；首版不新增区域 / 部门行列隔离。多 worker / 多副本的会话可见性未获承诺；流式、历史、并发与执行状态的关键 Contract 在相关实现前确定。
 - 每项需求交付同步完成适用 Software Test、浏览器验收、AI Evaluation 或运行验收。已有进程内多轮评测不覆盖真实浏览器登录、刷新、流式网络连接和长期历史；相应链路须新增验收证据。
 - 作品交付汇总各阶段证据，并提供可复现入口；原始本机报告不是新 clone 自动具备的证据。报告继续绑定提交、案例集和运行资源，不将历史通过结果改称新候选已通过。
 
@@ -84,7 +84,7 @@ flowchart TD
 
 多数据库、多 Schema、多租户、仪表板编辑器、任意复杂 Agent、SQL 自动修复和 MCP 集成不作为产品 V1 的默认实施项。细粒度数据权限是否进入第一版，取决于确认的用户与数据范围；不能把固定 RBAC 宣称为行列级隔离。
 
-此处确认目标和阶段路线，不代表自动获得功能实施授权。R1–R4 已按各自授权交付。R5 完整 Spec、Design Review 和 Ticket Readiness 已完成；用户于 2026-10-06 确认四项拆分及整体本地实施，Ticket 01 XLSX 候选 `111980d`、Ticket 02 PNG 候选 `88f122c` 已完成，R5 clean candidate `71d72d2` 的本地实现与完整隔离验收通过；Ticket 01–04 完成，PR56 已合并（`367a42a`），required CI 全部通过；未包含生产部署。R6 / R7 按相同门禁推进。
+此处确认目标和阶段路线，不代表自动获得功能实施授权。R1–R4 已按各自授权交付。R5 完整 Spec、Design Review 和 Ticket Readiness 已完成；用户于 2026-10-06 确认四项拆分及整体本地实施，Ticket 01 XLSX 候选 `111980d`、Ticket 02 PNG 候选 `88f122c` 已完成，R5 clean candidate `71d72d2` 的本地实现与完整隔离验收通过；Ticket 01–04 完成，PR56 已合并（`367a42a`），required CI 全部通过；未包含生产部署。R6完整Spec已确认，Design Review PASS，Ticket草案Readiness READY；待用户确认拆分与整体实施范围后推进。R7 仍待澄清。
 
 ## 基线工作与适用证据
 
@@ -107,7 +107,7 @@ flowchart TD
 
 ## 后续生产工作
 
-在明确目标运行环境和业务要求后，再为生产部署、Secret 注入、可用性 / 容量、备份恢复、监控告警、发布和回滚设计独立 Contract 与验收。此路线图不预先承诺具体平台或实现方案。
+R6 本地首版目标和验收已逐项确认，见[已确认完整 Spec](../.scratch/r6-local-deployment/spec.md)：本机固定版本构建、隔离环境、显式初始化、手动后台启停、长期数据保留与兼容回滚。它不等于云部署或生产运行就绪；R7 的可用性 / 容量、备份恢复、动态 readiness 与监控告警仍需独立澄清、Contract 和验收。
 
 R6 / R7 设计需显式处理以下现有运行边界；需求层交付顺序已确认，具体方案、指标及需求内顺序待确认：
 
