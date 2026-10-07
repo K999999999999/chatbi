@@ -62,4 +62,4 @@
 
 - 端口修复提交后尝试clean build时发现，旧选择器只读最终镜像`org.opencontainers.image.revision`，会把发布提交误当成依赖层实际缓存键，导致apt及后续昂贵层重新构建；在apt下载阶段中止，未改写release记录或容器。
 - 新增`com.chatbi.build-cache-commit`镜像标签，仍由当前source commit构建发布身份，同时记录早期依赖层实际cache commit；选择器先按该身份取最近可达祖先，旧镜像无该标签时才选择最早可达OCI revision。针对新标签和legacy回退新增TDD，旧实现2项失败，修复后与端口 / release测试合计26项通过；Ruff、Bash语法、API / database Dockerfile check和Diff检查通过。现有本机镜像上选择器实测返回`4d4732b`。
-- 当前这些修复尚未Commit；下一步本地Commit后确认昂贵依赖层命中缓存、构建新clean候选，并在该候选复验端口保护、Windows Edge问数和down-up持久性，再完成Ticket02并连续实施03→04。稳定数据卷和开发服务保持原状。
+- 端口与缓存选择修复及进度证据已本地提交为`df5c9e1`；本机稳定Stack仍运行旧候选`0a9f5aa`，开发PostgreSQL / Qdrant保持运行。下一步从clean提交构建新候选，确认昂贵依赖层命中缓存，并在新候选复验端口保护、Windows Edge问数和down-up持久性，再完成Ticket02并连续实施03→04。
