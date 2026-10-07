@@ -2,16 +2,17 @@
 
 ## 1. 用途与边界
 
-本文档说明 WSL / Linux 本地开发环境的新 clone 首次准备、日常开发、数据库和索引重建、测试与评测。命令从仓库根目录执行；流程不依赖固定电脑路径，也不使用旧项目的数据目录。
+本文档说明 WSL / Linux 本地开发环境的新 clone 首次准备、日常开发、数据库和索引重建、测试与评测，以及 R6 独立本地稳定环境的配置和启停。命令从仓库根目录执行；流程不依赖固定电脑路径，也不使用旧项目的数据目录。
 
 推荐使用 WSL / Linux 的容器开发入口：Compose 管理四个常驻服务及一次性初始化工具，不要求宿主安装 Python、uv 或 Node。宿主调试入口仍保留；Dev Container 配置保留，不作为本次支持或验收入口。
 
-ChatBI 当前处于 MVP 向生产演进阶段。本 Runbook 覆盖本地开发 / 内部验证流程，不代表已经完成生产部署。自动测试使用隔离 PostgreSQL 和 CI Fixture；黄金评测复用开发库 `chatbi_mvp`；生产数据库不属于本文档范围。
+ChatBI 当前处于 MVP 向生产演进阶段。本 Runbook 覆盖本地开发 / 内部验证及 R6 本地稳定运行流程；R6 的版本升级 / 兼容回滚及完整 Windows 浏览器 / 专用服务恢复验收已通过，见 [Acceptance](acceptance/local-deployment-v1.md)；电脑 / Docker重启待维护窗口，不代表公网生产部署或完整生产就绪。自动测试使用隔离 PostgreSQL 和 CI Fixture；黄金评测复用开发库 `chatbi_mvp`；云端生产数据库不属于本文档范围。
 
 按目标选择流程：
 
 - **新 clone 首次初始化：** 推荐按 §3 容器命令完成；宿主方式按 §3 选择入口 → §4.1–4.3 配置并初始化 PostgreSQL、显式创建首个管理员 → §5 启动 Qdrant → §7 准备模型并构建索引 → §6 启动 ChatBI → §8 确定性验证；真实 LLM 评测见 §9。空 PostgreSQL volume 会自动创建数据库、Schema、固定 RBAC 和 Seed；空 Qdrant 需单独构建索引。
 - **日常开发：** 推荐执行 `./dev up`；宿主方式按 §5 启动服务 → §6 启动 ChatBI。PostgreSQL 数据和已发布 Qdrant 索引都会保留；不重播 Seed，也不自动重建索引。
+- **本地稳定运行：** 使用 §15 的 `./local` 独立入口；不叠加开发 Compose，不读取开发 `.env`，也不复用开发数据库或 Qdrant 数据。
 - **重置开发数据库：** 执行 §4.4，只删除当前 Compose 项目的 PostgreSQL volume；账号也会清空，需重新创建管理员。
 - **重建 Qdrant 索引：** 按 §7 操作，只处理当前 Compose 项目的 Qdrant volume，不清除 PostgreSQL。
 
@@ -62,7 +63,7 @@ Vite Web（开发容器 / 宿主调试；宿主回环端口 5173；打包后由 
 
 构建镜像使用明确版本 / digest。受网络限制时，可通过 `CHATBI_DEV_PYTHON_BASE` / `CHATBI_DEV_NODE_BASE` 指向可信镜像地址，保持相同版本 / digest；不关闭 TLS 校验或修改系统证书。原生依赖随 `uv.lock` 安装，CPU执行不意味着镜像中不含锁定的CUDA包。
 
-运行语义见[开发环境 Contract](specs/container-dev-environment.md)。正式生产镜像、HTTPS、升级 / 回滚和容量验收由 R6 / R7 完成。
+运行语义见[开发环境 Contract](specs/container-dev-environment.md)。R6 §15 提供当前电脑上的固定版本本地稳定环境；正式公网生产镜像、HTTPS 与云部署不在 R6 范围内。R6 本地版本升级 / 兼容回滚已由 Ticket 03 实施和验收；容量、动态 readiness、备份恢复和监控验收属于后续 R7。
 
 容器运行验收使用以下入口，要求干净候选提交和可用的真实 LLM 配置，会产生少量模型调用费用。隔离模式需 Compose ≥2.24.4：
 
@@ -505,7 +506,7 @@ curl --fail http://127.0.0.1:8000/health
 
 安装 Node 24 和 npm，进入 `frontend` 执行 `npm ci`。在本地 `.env` 显式设置 `CHATBI_WEB_ORIGIN=http://127.0.0.1:5173`，启动 FastAPI 后运行 `npm run dev`；浏览器打开该地址。真实凭证仅填入本地配置和登录表单，不写入仓库。
 
-打包使用 `npm run build`。以 FastAPI 同源提供打包网页时，设置 `CHATBI_WEB_DIST_DIR=frontend/dist`，并将 `CHATBI_WEB_ORIGIN` 设置为实际网页地址（本地如 `http://127.0.0.1:8000`）。API-only 运行可同时留空这两个配置。线上 Origin 必须为 HTTPS；完整生产部署验收仍属于 R6。
+打包使用 `npm run build`。以 FastAPI 同源提供打包网页时，设置 `CHATBI_WEB_DIST_DIR=frontend/dist`，并将 `CHATBI_WEB_ORIGIN` 设置为实际网页地址（本地如 `http://127.0.0.1:8000`）。API-only 运行可同时留空这两个配置。线上 Origin 必须为 HTTPS；R6 当前范围是 §15 的本地固定版本部署，公网生产部署不在首版范围内。
 
 浏览器使用独立 Cookie 登录接口，旧 Bearer 和管理后台继续兼容。当前仅电脑端；刷新保持登录并按 URL 只读 R3 已保存快照；重新登录默认新对话，通过私人列表重开历史。
 
@@ -551,7 +552,7 @@ R2默认Chrome用例通过 `cd frontend && npm test` 运行，不调用真实模
 
 只运行一个 API 应用进程，禁止多 worker。启动持有独立 PG advisory lock 并更新 epoch：遗留 accepted / running 执行和轮次标为结果未确认，保留上一成功状态。正常关闭先停止新受理并等待后台 worker 结束，再释放 guard 与业务资源；进程意外退出后，重启不自动重发未确认请求。
 
-升级前停止旧 API，显式迁移，再启动新版本。回滚先停止新 API 再启动兼容的旧版本，保留 v3 表和数据，不反向执行 DROP、不删除开发卷；旧版本仍识别保留的 v2 marker。再次升级后已保存历史 /成果可读。本地兼容测试不构成 R6 生产回滚承诺。
+本段仅描述开发环境：升级前停止旧 API，显式迁移，再启动新版本；回滚保留数据库表和开发卷，不反向执行 DROP。R6 本地稳定环境使用的独立命令与资源见 §15；其兼容升级 / 回滚已由 Ticket 03 实施和验收。
 
 R4 最终真实浏览器 / 模型 / RAG / PostgreSQL 闭环使用 clean candidate 执行 `scripts/verify_container_dev.sh isolated`。该入口创建独立 Compose project 和空数据库卷，运行桌面 Chromium 真实登录、SSE、重连 / 刷新、多页、取消、分析报告与模型链路，并在退出时清理该 project 的卷与临时账号；它不会停止或清除日常开发 Compose project。真实运行报告位于 ignored `reports/browser-real/`，候选 SHA、报告指纹、清理结果和最终状态保存在本机 Git 公共目录的 R4 实时工作状态中。该浏览器闭环与三套正式 AI Evaluation 分开执行，不能相互替代。
 
@@ -569,4 +570,75 @@ R5 只从 owner 当前可读的成功快照生成文件，不调用模型 / Onli
 
 PNG / PDF 使用镜像内固定的 Playwright / Chromium 与离线 bundle；PNG 使用 Noto Sans CJK SC，PDF 正文使用 WenQuanYi Zen Hei。字体包按 Debian Bookworm 版本锁定，运行 manifest 记录各字体包版本、fontconfig 匹配路径与 SHA-256；启动和每次图像 / PDF 生成前校验浏览器、字体、bundle 及源码指纹。浏览器启用 sandbox，页面拒绝 CDN / 外部资源和网络连接；worker 环境不继承 API 凭证。PDF 通过独立 HTML 模板生成 A4 可选取文本文件，并校验正文 / 任务 coverage 和页面横向溢出。API 开发容器通过只读挂载检查 `frontend/src`、导出入口、Vite / TypeScript 构建配置和依赖清单；修改这些源码后先执行 `./dev build` 重建 API 镜像，再执行 `./dev up`。源码与镜像不匹配、字体 / bundle 缺失或 sandbox 不可用时，PNG / PDF 端点受控返回不可用，XLSX 继续可用。`./dev` 默认配置仓库内随附的 Chromium seccomp profile；直接调用 Compose 时需设置 `CHATBI_DEV_SECCOMP_PROFILE` 指向 `docker/third-party/playwright-seccomp-profile.json`。
 
-新增 Python 依赖或锁文件变动后，开发容器需执行 `./dev build`，再执行 `./dev up`；宿主方式执行 `uv sync --locked`。不会新增数据库迁移、导出文件卷、后台队列或额外监听端口。Ticket 01 XLSX、Ticket 02 PNG 和 Ticket 03 PDF 的本地文件解析 / 浏览器 / 隔离 renderer 验证已通过；R5 隔离 Compose 完整业务验收与生产部署仍未完成。
+新增 Python 依赖或锁文件变动后，开发容器需执行 `./dev build`，再执行 `./dev up`；宿主方式执行 `uv sync --locked`。不会新增数据库迁移、导出文件卷、后台队列或额外监听端口。Ticket 01 XLSX、Ticket 02 PNG 和 Ticket 03 PDF 的本地文件解析 / 浏览器 / 隔离 renderer 验证已通过；R5 clean candidate `71d72d2` 的隔离 Compose 完整业务验收已通过，身份与证据见 [R5 Acceptance](acceptance/result-export-v1.md)；R6 本地运行验收独立记录于 §15，公网生产部署不在首版范围。
+
+## 15. R6 本地稳定环境
+
+本节只操作当前 WSL2 仓库对应的 `chatbi-stable` Compose 项目。容器从本地固定版本镜像启动，API 仅绑定 `127.0.0.1`；PostgreSQL 和 Qdrant 不发布宿主端口。开发环境使用 `./dev`，不要将本节命令与开发 Compose 混用。
+
+已确认的本地稳定部署行为见 [R6 Contract](specs/local-deployment-v1.md)；升级 / 兼容回滚已验收，完整目标环境验收见 [R6 Acceptance](acceptance/local-deployment-v1.md)。
+
+首次安装需要 WSL/Linux 的 Bash、Git、Docker Engine / Compose v2、OpenSSL 和 `flock`（util-linux）；无需宿主 Python 或 Node。写操作使用本地非阻塞锁，避免初始化、日常操作与后续版本切换并发。先确保仓库处于 clean commit，然后执行：
+
+```bash
+./local init-config
+```
+
+该命令创建独立 `.env.local` 和权限为 `600` 的 `.env.local.secrets`，首次随机生成 PostgreSQL、管理员签名和 Qdrant 凭据，不覆盖已有配置。它不会读取或复制开发 `.env`。编辑 `.env.local`，填写外部 LLM 的 `LLM_API_KEY`，确认 `LLM_BASE_URL` 与 `LLM_MODEL`；真实值不要写进 Git。默认模型目录复用 `.model-cache/bge-m3-5617a9f61b02`，也可在配置中指定其他路径。
+
+构建当前 clean commit 对应的 API / PostgreSQL 镜像：
+
+```bash
+./local build
+```
+
+命令先检查 Dockerfile，再构建镜像并记录 source commit、镜像标签和 image ID 到 ignored 的 `.local/release.env`。标签包含 commit 和镜像 ID；稳定环境按该记录核验身份。工作区有未提交改动时构建会拒绝，提交相关改动后再运行。每个 source commit 的不可变本地镜像记录另外保存在 `.local/releases/<完整 SHA>.env`，供显式升级 / 回滚按版本选择；`release.env` 只指向最近一次构建。
+
+首次显式初始化和准备稳定环境：
+
+```bash
+./local infra
+./local migrate
+./local prepare-model
+./local build-rag
+./local create-admin
+```
+
+空 PostgreSQL 稳定数据卷首次启动时，镜像初始化脚本建立独立业务库、运行角色、Sales Mart Schema 并播种确定性合成销售数据。已有数据卷不会重播 Seed；不要删除或重建卷来“重试”。`migrate` 单独安装应用库、RBAC、历史 /成果和 checkpoint Schema；模型下载到配置指定的 revision 缓存；`build-rag` 写入独立 `.local/rag` 与稳定 Qdrant 数据。模型 / RAG 准备可重复执行，但应用启动不会代替这些步骤。`create-admin` 在容器内交互，管理员密码通过隐藏输入提供，不写入配置文件或命令参数。
+
+`create-admin` 将管理员记录写入稳定 PostgreSQL 的独立 `chatbi_control` 数据库，不会在 `.local` 生成 `create` 文件。成功执行 `./local up` 后，部署入口会在 `.local/deployment-state.json` 原子记录 active API 版本、最近操作阶段和运行状态；该状态文件不包含 Secret。
+
+启动、查看和停止：
+
+```bash
+./local up
+./local status
+./local logs
+./local logs api
+./local down
+```
+
+版本切换必须指定本机 `.local/releases` 中登记的完整 40 位 source commit：`./local upgrade <完整 SHA>` 先只读检查目标兼容声明、Control / checkpoint migration、历史快照、Sales Mart catalog / Seed 和 RAG 来源；检查通过后才停止 API、运行 migration 并再次检查。`./local rollback <完整 SHA>` 先完成同类只读检查，再停止当前 API 并启动指定版本，不执行 migration。未知版本 / marker、资产来源不匹配或镜像身份不符都会拒绝切换。失败时 `.local/deployment-state.json` 保留上次成功 API 版本、当前运行状态和失败阶段；不会自动做反向 migration 或删除数据。
+
+默认 Windows 浏览器地址为 `http://127.0.0.1:8080/`。`up` 会核对镜像 source commit / image ID、配置、管理员、网页和导出资源、模型、RAG manifest、Qdrant、migration marker、历史快照版本、Sales Mart Seed 与 PostgreSQL catalog，然后后台启动单个 API 进程。启动前检查失败时按诊断执行对应显式步骤；不会自动迁移、下载模型、重建索引、创建管理员或删除数据。应用 `/health` 只表示 HTTP liveness，不代表业务请求成功或动态依赖就绪。
+
+如果端口被占用，命令会失败并保留未知进程；可编辑 `.env.local` 中的 `CHATBI_LOCAL_HTTP_PORT` 后重试。`down` 只停止带有固定 `chatbi-stable` 项目标签的 API / PostgreSQL / Qdrant 容器，即使配置或镜像记录损坏也可用于止停；它保留所有数据库卷、模型缓存和 RAG 资产。`status` / `logs` 同样只定位该项目。Docker 或电脑重启后不会自动启动稳定服务；手动执行 `./local up`。
+
+稳定数据库与 Qdrant 数据使用命名卷 `chatbi_stable_postgres_data` / `chatbi_stable_qdrant_data`，RAG 发布目录独立于 `data/rag` 开发目录；API 对模型缓存和 RAG 目录只读。开发、验收、稳定环境使用独立 Compose 身份与配置。
+
+`.local/` 保存发布身份、部署状态、操作锁与 RAG 资产；管理员保存在数据库中。
+
+`./local` 固定设置 `CHATBI_LOCAL_SECCOMP_PROFILE` 指向仓库随附的 Chromium profile，以支持 PNG / PDF renderer 的 sandbox。直接调用本地 Compose 时也需显式设置该配置；导出渲染器不能通过关闭 sandbox 恢复。
+
+完整隔离验收要求 WSL 的 uv、Compose ≥2.24.4、Windows Node / npm 与 Microsoft Edge，以及 `.env.local` 中可用的真实 LLM 配置和已准备的固定模型缓存。先完成相关改动与 Review，再在 clean candidate 上执行：
+
+```bash
+./local build
+uv run --frozen python -m scripts.verify_local_deployment
+```
+
+验收入口新建带 run ID 的空 PostgreSQL / Qdrant 卷和 RAG 目录，完成 Windows Edge 业务 / 导出 / 重启恢复与失败检查；通过账号和资源归属校验后清理本次临时资源。它会进行少量真实模型调用，证据与验证限制见 [R6 Acceptance](acceptance/local-deployment-v1.md)。电脑 / Docker 重启需另选维护窗口，按同页步骤手动核验。
+
+### 本机下载接管导致 PDF 空响应
+
+若网页提示“导出文件大小无效”，浏览器收到 PDF 的 204 / 空内容而 API 访问日志为 200，先做客户端对照，不把它直接归因于服务器生成失败。本机下载管理器可能接管文件；检查 IDM 等软件的浏览器集成与文件类型设置。IDM 官方提供按站点排除自动接管和关闭浏览器集成的设置，见 [IDM Options](https://www.internetdownloadmanager.com/support/using_idm/options.html)。如需临时修改，先记录原设置、确认对其他下载的影响，验收后恢复。Agent 未获用户明确授权时不得调整本机下载管理器或用户浏览器配置。本机实测已确认IDM的PDF接管可导致该现象；完整R6验收在临时取消PDF接管的条件下通过，随后已恢复原设置。日常PDF下载需暂停接管或由用户明确设置本机站点例外。R6证据与验证限制见 [本地部署Acceptance](acceptance/local-deployment-v1.md)。

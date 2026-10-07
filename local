@@ -1,0 +1,843 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+CONFIG_FILE="$ROOT/.env.local"
+SECRET_FILE="$ROOT/.env.local.secrets"
+RELEASE_FILE="$ROOT/.local/release.env"
+RELEASE_DIR="$ROOT/.local/releases"
+PROJECT_NAME="chatbi-stable"
+source "$ROOT/scripts/local_port.sh"
+source "$ROOT/scripts/local_build_cache.sh"
+source "$ROOT/scripts/local_deployment_state.sh"
+
+# Compose reads only the dedicated stable files; developer-shell variables must not
+# override them or leak development credentials into this independent project.
+for key in \
+    COMPOSE_FILE COMPOSE_PROFILES COMPOSE_PROJECT_NAME \
+    CHATBI_API_IMAGE CHATBI_DATABASE_IMAGE CHATBI_SOURCE_COMMIT \
+    CHATBI_LOCAL_HTTP_PORT CHATBI_LOCAL_MODEL_DIR CHATBI_ADMIN_SECRET_KEY \
+    CHATBI_LOCAL_UID CHATBI_LOCAL_GID CHATBI_LOCAL_SECCOMP_PROFILE \
+    POSTGRES_DB POSTGRES_MIGRATOR_USER POSTGRES_MIGRATOR_PASSWORD \
+    POSTGRES_APP_PASSWORD POSTGRES_CONTROL_APP_PASSWORD \
+    QDRANT_API_KEY LLM_API_KEY LLM_BASE_URL LLM_MODEL \
+    LLM_TEMPERATURE LLM_MAX_TOKENS LLM_TIMEOUT_SECONDS
+do
+    unset "$key" || true
+done
+
+CHATBI_LOCAL_UID="$(id -u)"
+CHATBI_LOCAL_GID="$(id -g)"
+CHATBI_LOCAL_SECCOMP_PROFILE="$ROOT/docker/third-party/playwright-seccomp-profile.json"
+export CHATBI_LOCAL_UID CHATBI_LOCAL_GID CHATBI_LOCAL_SECCOMP_PROFILE
+
+fail() {
+    printf '错误：%s\n' "$1" >&2
+    exit 1
+}
+
+acquire_operation_lock() {
+    case "${1:-help}" in
+        init-config|build|infra|migrate|create-admin|prepare-model|build-rag|up|down|upgrade|rollback)
+            command -v flock >/dev/null 2>&1 || fail '稳定环境写操作需要 util-linux 提供的 flock。'
+            mkdir -p "$ROOT/.local" || fail '无法创建稳定环境本地状态目录。'
+            local lock_fd
+            exec {lock_fd}>>"$ROOT/.local/operation.lock" \
+                || fail '无法打开稳定环境操作锁。'
+            flock -n "$lock_fd" \
+                || fail '另一个稳定环境写操作正在执行；等待其结束后重试。'
+            ;;
+    esac
+}
+
+usage() {
+    cat <<'EOF'
+ChatBI 本地稳定环境（与开发 Compose、开发 .env、开发数据卷隔离）
+
+用法：./local <命令>
+
+  init-config    创建独立配置并生成一次性数据库、管理员和 Qdrant 随机密钥
+  build          从当前 clean commit 构建带身份的 API / PostgreSQL 固定版本镜像
+  infra          启动稳定 PostgreSQL / Qdrant 并等待基础合成数据初始化
+  migrate        显式安装应用库、RBAC 和 checkpoint Schema
+  create-admin   交互创建首个管理员，密码不回显
+  prepare-model  准备固定 revision BGE-M3 模型缓存
+  build-rag      在独立稳定 Qdrant / RAG 目录构建发布索引
+  up             检查镜像、数据库、模型和索引后后台启动 API
+  upgrade <SHA>  兼容检查后迁移并启动指定完整 commit
+  rollback <SHA> 兼容检查后回滚到指定完整 commit，不执行 migration
+  down           停止稳定环境服务并保留全部数据和资产
+  status         查看稳定环境服务状态与本机地址
+  logs [服务]    查看 api、postgres 或 qdrant 日志
+
+配置后需在 .env.local 中填写外部 LLM_API_KEY。此入口不会读取或复制开发 .env。
+EOF
+}
+
+require_docker() {
+    command -v docker >/dev/null 2>&1 || fail '需要 WSL/Linux 中可用的 Docker Engine。'
+    docker compose version >/dev/null 2>&1 || fail '需要 Docker Compose v2。'
+}
+
+read_config_value() {
+    local wanted="$1"
+    awk -F= -v wanted="$wanted" '$1 == wanted { sub(/^[^=]*=/, ""); value = $0 } END { print value }' "$CONFIG_FILE"
+}
+
+require_config() {
+    [[ -f "$CONFIG_FILE" ]] || fail '缺少 .env.local；先运行 ./local init-config。'
+    [[ -f "$SECRET_FILE" ]] || fail '缺少 .env.local.secrets；运行 ./local init-config，不会覆盖现有配置。'
+    local mode
+    for file in "$CONFIG_FILE" "$SECRET_FILE"; do
+        mode="$(stat -c '%a' "$file" 2>/dev/null)" || fail "无法检查配置文件权限：${file##*/}"
+        if (( (8#$mode & 077) != 0 )); then
+            fail "${file##*/} 权限过宽；请执行 chmod 600 '${file##*/}'。"
+        fi
+    done
+    [[ -s "$CONFIG_FILE" && -s "$SECRET_FILE" ]] || fail '独立本地配置文件为空。'
+}
+
+require_release() {
+    [[ -f "$RELEASE_FILE" ]] || fail '尚无本地固定版本镜像；先运行 ./local build。'
+    CHATBI_SOURCE_COMMIT=''
+    CHATBI_API_IMAGE=''
+    CHATBI_API_IMAGE_ID=''
+    CHATBI_DATABASE_IMAGE=''
+    CHATBI_DATABASE_IMAGE_ID=''
+    local key value
+    while IFS='=' read -r key value || [[ -n "$key" ]]; do
+        case "$key" in
+            CHATBI_SOURCE_COMMIT|CHATBI_API_IMAGE|CHATBI_API_IMAGE_ID|CHATBI_DATABASE_IMAGE|CHATBI_DATABASE_IMAGE_ID)
+                printf -v "$key" '%s' "$value"
+                ;;
+        esac
+    done < "$RELEASE_FILE"
+    [[ "$CHATBI_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail '本地发布记录中的 source commit 无效。'
+    [[ "$CHATBI_API_IMAGE" == chatbi-local-api:* ]] || fail '本地发布记录中的 API 镜像无效。'
+    [[ "$CHATBI_DATABASE_IMAGE" == chatbi-local-postgres:* ]] || fail '本地发布记录中的 PostgreSQL 镜像无效。'
+    [[ "$CHATBI_API_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] || fail '本地发布记录中的 API image ID 无效。'
+    [[ "$CHATBI_DATABASE_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] || fail '本地发布记录中的 PostgreSQL image ID 无效。'
+    export CHATBI_SOURCE_COMMIT CHATBI_API_IMAGE CHATBI_DATABASE_IMAGE
+}
+
+compose() {
+    local -a options=(
+        --project-name "$PROJECT_NAME"
+        --profile tools
+        --file "$ROOT/docker-compose.local.yml"
+        --env-file "$CONFIG_FILE"
+        --env-file "$SECRET_FILE"
+    )
+    if [[ -f "$RELEASE_FILE" ]]; then
+        options+=(--env-file "$RELEASE_FILE")
+    fi
+    docker compose "${options[@]}" "$@"
+}
+
+stable_container_ids() {
+    local service="$1"
+    docker ps --all --quiet \
+        --filter "label=com.docker.compose.project=$PROJECT_NAME" \
+        --filter "label=com.docker.compose.service=$service"
+}
+
+stop_stable_services() {
+    local service container state found=false
+    for service in api postgres qdrant; do
+        while IFS= read -r container; do
+            [[ -n "$container" ]] || continue
+            found=true
+            state="$(docker inspect --format '{{.State.Running}}' "$container")"
+            if [[ "$state" == true ]]; then
+                docker stop "$container" >/dev/null
+            fi
+        done < <(stable_container_ids "$service")
+    done
+    if [[ "$found" == false ]]; then
+        printf '稳定环境尚无已创建服务。\n'
+    else
+        printf '稳定环境已停止；PostgreSQL、Qdrant、RAG 与模型数据均已保留。\n'
+    fi
+}
+
+show_stable_status() {
+    local source_commit='未构建' port=8080
+    if [[ -f "$CONFIG_FILE" ]]; then
+        port="$(read_config_value CHATBI_LOCAL_HTTP_PORT)"
+        [[ -n "$port" ]] || port=8080
+    fi
+    if [[ -f "$RELEASE_FILE" ]]; then
+        while IFS='=' read -r key value || [[ -n "$key" ]]; do
+            if [[ "$key" == CHATBI_SOURCE_COMMIT && "$value" =~ ^[0-9a-f]{40}$ ]]; then
+                source_commit="$value"
+                break
+            fi
+        done < "$RELEASE_FILE"
+    fi
+    printf '最新构建 source commit: %s\n本机地址: http://127.0.0.1:%s/\n' "$source_commit" "$port"
+    if [[ -f "$ROOT/.local/deployment-state.json" ]]; then
+        printf '本机部署状态记录：'
+        cat "$ROOT/.local/deployment-state.json"
+    fi
+    docker ps --all \
+        --filter "label=com.docker.compose.project=$PROJECT_NAME" \
+        --format '{{.Label "com.docker.compose.service"}} | {{.Status}} | {{.Ports}}'
+}
+
+show_stable_logs() {
+    local -a services=(api postgres qdrant)
+    if (( $# > 0 )); then
+        (( $# == 1 )) && [[ "$1" =~ ^(api|postgres|qdrant)$ ]] \
+            || fail '日志服务仅支持 api、postgres、qdrant；不支持额外过滤参数。'
+        services=("$1")
+    fi
+    local service container found
+    for service in "${services[@]}"; do
+        found=false
+        while IFS= read -r container; do
+            [[ -n "$container" ]] || continue
+            found=true
+            printf '\n===== %s =====\n' "$service"
+            docker logs --tail=200 "$container"
+        done < <(stable_container_ids "$service")
+        if [[ "$found" == false ]]; then
+            printf '%s: 尚无容器。\n' "$service"
+        fi
+    done
+}
+
+prepare_host_directories() {
+    local model_path
+    model_path="$(read_config_value CHATBI_LOCAL_MODEL_DIR)"
+    [[ -n "$model_path" ]] || fail 'CHATBI_LOCAL_MODEL_DIR 不能为空。'
+    if [[ "$model_path" != /* ]]; then
+        model_path="$ROOT/$model_path"
+    fi
+    mkdir -p "$ROOT/.local/rag" "$model_path"
+}
+
+check_compose_config() {
+    compose config --quiet || fail 'Compose 配置无效；检查 .env.local 和 .env.local.secrets。'
+}
+
+verify_release_images() {
+    require_release
+    local actual_id revision release_json expected_json compatibility_json
+
+    actual_id="$(docker image inspect --format '{{.Id}}' "$CHATBI_API_IMAGE" 2>/dev/null)" \
+        || fail '当前 API 镜像不存在；运行 ./local build。'
+    [[ "$actual_id" == "$CHATBI_API_IMAGE_ID" ]] \
+        || fail 'API 镜像 ID 与本地发布记录不一致；拒绝启动。'
+    revision="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$CHATBI_API_IMAGE")"
+    [[ "$revision" == "$CHATBI_SOURCE_COMMIT" ]] \
+        || fail 'API 镜像 revision label 与本地发布记录不一致。'
+    release_json="$(docker run --rm --entrypoint /bin/cat "$CHATBI_API_IMAGE" /opt/chatbi-release.json)" \
+        || fail '无法读取 API 镜像来源身份。'
+    expected_json="$(printf '{"format":1,"source_commit":"%s"}' "$CHATBI_SOURCE_COMMIT")"
+    [[ "$release_json" == "$expected_json" ]] \
+        || fail 'API 镜像内嵌来源身份与本地发布记录不一致。'
+    compatibility_json="$(docker run --rm --entrypoint /bin/cat "$CHATBI_API_IMAGE" /opt/chatbi-compatibility.json 2>/dev/null)" \
+        || fail 'API 镜像缺少兼容性声明；拒绝启动、升级或回滚。'
+    [[ -n "$compatibility_json" ]] \
+        || fail 'API 镜像兼容性声明为空；拒绝启动、升级或回滚。'
+
+    actual_id="$(docker image inspect --format '{{.Id}}' "$CHATBI_DATABASE_IMAGE" 2>/dev/null)" \
+        || fail '当前 PostgreSQL 镜像不存在；运行 ./local build。'
+    [[ "$actual_id" == "$CHATBI_DATABASE_IMAGE_ID" ]] \
+        || fail 'PostgreSQL 镜像 ID 与本地发布记录不一致；拒绝启动。'
+    revision="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$CHATBI_DATABASE_IMAGE")"
+    [[ "$revision" == "$CHATBI_SOURCE_COMMIT" ]] \
+        || fail 'PostgreSQL 镜像 revision label 与本地发布记录不一致。'
+    release_json="$(docker run --rm --entrypoint /bin/cat "$CHATBI_DATABASE_IMAGE" /opt/chatbi-release.json)" \
+        || fail '无法读取 PostgreSQL 镜像来源身份。'
+    [[ "$release_json" == "$expected_json" ]] \
+        || fail 'PostgreSQL 镜像内嵌来源身份与本地发布记录不一致。'
+}
+
+build_images() {
+    require_docker
+    local dirty source_commit cache_commit api_build_tag database_build_tag
+    dirty="$(git -C "$ROOT" status --porcelain --untracked-files=all)"
+    [[ -z "$dirty" ]] || fail '固定版本构建要求 clean worktree；先提交当前目标改动。'
+    source_commit="$(git -C "$ROOT" rev-parse HEAD)"
+    [[ "$source_commit" =~ ^[0-9a-f]{40}$ ]] || fail '无法识别当前 Git commit。'
+    [[ ! -e "$RELEASE_DIR/$source_commit.env" ]] \
+        || fail '该 source commit 已有不可变本地发布记录；需要新 commit 才能创建另一候选。'
+    cache_commit="$(select_build_cache_commit "$source_commit" "$ROOT")"
+
+    docker build --check \
+        --file "$ROOT/docker/local.Dockerfile" \
+        --target api \
+        --build-arg "CHATBI_SOURCE_COMMIT=$cache_commit" \
+        --build-arg "CHATBI_RELEASE_COMMIT=$source_commit" \
+        "$ROOT"
+    api_build_tag="chatbi-local-api:build-${source_commit}"
+    docker build \
+        --file "$ROOT/docker/local.Dockerfile" \
+        --target api \
+        --build-arg "CHATBI_SOURCE_COMMIT=$cache_commit" \
+        --build-arg "CHATBI_RELEASE_COMMIT=$source_commit" \
+        --tag "$api_build_tag" \
+        "$ROOT"
+
+    docker build --check \
+        --file "$ROOT/docker/local.Dockerfile" \
+        --target database \
+        --build-arg "CHATBI_SOURCE_COMMIT=$cache_commit" \
+        --build-arg "CHATBI_RELEASE_COMMIT=$source_commit" \
+        "$ROOT"
+    database_build_tag="chatbi-local-postgres:build-${source_commit}"
+    docker build \
+        --file "$ROOT/docker/local.Dockerfile" \
+        --target database \
+        --build-arg "CHATBI_SOURCE_COMMIT=$cache_commit" \
+        --build-arg "CHATBI_RELEASE_COMMIT=$source_commit" \
+        --tag "$database_build_tag" \
+        "$ROOT"
+
+    local api_id database_id api_tag database_tag api_size database_size release_tmp
+    local record_tmp original_release_file="$RELEASE_FILE"
+    api_id="$(docker image inspect --format '{{.Id}}' "$api_build_tag")"
+    database_id="$(docker image inspect --format '{{.Id}}' "$database_build_tag")"
+    api_tag="chatbi-local-api:${source_commit:0:12}-${api_id#sha256:}"
+    database_tag="chatbi-local-postgres:${source_commit:0:12}-${database_id#sha256:}"
+    docker image tag "$api_id" "$api_tag"
+    docker image tag "$database_id" "$database_tag"
+    api_size="$(docker image inspect --format '{{.Size}}' "$api_tag")"
+    database_size="$(docker image inspect --format '{{.Size}}' "$database_tag")"
+
+    mkdir -p "${RELEASE_FILE%/*}" "$RELEASE_DIR"
+    release_tmp="$RELEASE_FILE.tmp.$$"
+    record_tmp="$RELEASE_DIR/$source_commit.env.tmp.$$"
+    umask 077
+    cat > "$release_tmp" <<EOF
+CHATBI_SOURCE_COMMIT=$source_commit
+CHATBI_API_IMAGE=$api_tag
+CHATBI_API_IMAGE_ID=$api_id
+CHATBI_DATABASE_IMAGE=$database_tag
+CHATBI_DATABASE_IMAGE_ID=$database_id
+EOF
+    chmod 600 "$release_tmp"
+    RELEASE_FILE="$release_tmp"
+    verify_release_images
+    RELEASE_FILE="$original_release_file"
+    cp "$release_tmp" "$record_tmp"
+    chmod 600 "$record_tmp"
+    mv "$record_tmp" "$RELEASE_DIR/$source_commit.env"
+    mv -f "$release_tmp" "$RELEASE_FILE"
+    printf '固定版本构建完成。release source commit: %s\nDocker layer cache source commit: %s\nAPI: %s (%s, %s bytes)\nPostgreSQL: %s (%s, %s bytes)\n' \
+        "$source_commit" "$cache_commit" "$api_tag" "$api_id" "$api_size" \
+        "$database_tag" "$database_id" "$database_size"
+}
+
+select_release() {
+    local source_commit="$1"
+    [[ "$source_commit" =~ ^[0-9a-f]{40}$ ]] \
+        || fail 'upgrade / rollback 必须指定完整 40 位 source commit。'
+    RELEASE_FILE="$RELEASE_DIR/$source_commit.env"
+    [[ -f "$RELEASE_FILE" ]] \
+        || fail "本机没有 source commit ${source_commit} 的固定版本记录；运行 ./local build 构建候选。"
+    require_release
+    [[ "$CHATBI_SOURCE_COMMIT" == "$source_commit" ]] \
+        || fail '指定 source commit 与本机发布记录不一致。'
+}
+
+initialize_config() {
+    command -v openssl >/dev/null 2>&1 || fail '生成独立随机密钥需要 WSL/Linux 中的 openssl。'
+    if [[ ! -e "$CONFIG_FILE" ]]; then
+        umask 077
+        cp "$ROOT/.env.local.example" "$CONFIG_FILE"
+        chmod 600 "$CONFIG_FILE"
+        printf '已创建独立配置 .env.local。\n'
+    else
+        printf '保留已有 .env.local，不覆盖。\n'
+    fi
+    if [[ ! -e "$SECRET_FILE" ]]; then
+        local secret_tmp
+        secret_tmp="$SECRET_FILE.tmp.$$"
+        umask 077
+        {
+            printf 'POSTGRES_MIGRATOR_PASSWORD='
+            openssl rand -hex 32
+            printf 'POSTGRES_APP_PASSWORD='
+            openssl rand -hex 32
+            printf 'POSTGRES_CONTROL_APP_PASSWORD='
+            openssl rand -hex 32
+            printf 'CHATBI_ADMIN_SECRET_KEY='
+            openssl rand -hex 32
+            printf 'QDRANT_API_KEY='
+            openssl rand -hex 32
+        } > "$secret_tmp"
+        chmod 600 "$secret_tmp"
+        mv -n "$secret_tmp" "$SECRET_FILE"
+        rm -f "$secret_tmp"
+        printf '已创建独立随机凭据 .env.local.secrets（权限 600）。\n'
+    else
+        printf '保留已有 .env.local.secrets，不覆盖。\n'
+    fi
+    prepare_host_directories
+    printf '完成。编辑 .env.local 填入外部 LLM_API_KEY，再执行 ./local build。\n'
+}
+
+start_infrastructure() {
+    local preserve_database_image="${1:-false}"
+    require_config
+    require_release
+    require_docker
+    prepare_host_directories
+    check_compose_config
+    local selected_database_image="$CHATBI_DATABASE_IMAGE" database_container runtime_database_image
+    if [[ "$preserve_database_image" == true ]]; then
+        database_container=""
+        local fallback_database_container='' container database_running
+        while IFS= read -r container; do
+            [[ -n "$container" ]] || continue
+            database_running="$(docker inspect --format '{{.State.Running}}' "$container" 2>/dev/null || true)"
+            if [[ "$database_running" == true ]]; then
+                database_container="$container"
+                break
+            fi
+            [[ -n "$fallback_database_container" ]] || fallback_database_container="$container"
+        done < <(stable_container_ids postgres)
+        [[ -n "$database_container" ]] || database_container="$fallback_database_container"
+        if [[ -n "$database_container" ]]; then
+            runtime_database_image="$(docker inspect --format '{{.Config.Image}}' "$database_container")"
+            [[ "$runtime_database_image" == chatbi-local-postgres:* ]] \
+                || fail '稳定 PostgreSQL 容器镜像身份未知；拒绝替换数据库容器。'
+            CHATBI_DATABASE_IMAGE="$runtime_database_image"
+            export CHATBI_DATABASE_IMAGE
+        fi
+    fi
+    compose up -d postgres qdrant
+    CHATBI_DATABASE_IMAGE="$selected_database_image"
+    export CHATBI_DATABASE_IMAGE
+    compose exec -T postgres sh /workspace/database/init/wait_for_base_initialization.sh \
+        || fail 'PostgreSQL 基础初始化失败；检查 ./local logs postgres。未删除任何数据。'
+    compose run --rm -T qdrant-check wait-qdrant
+    printf '稳定 PostgreSQL 与 Qdrant 已启动；数据库空卷上的合成 Sales Mart 仅由首次镜像初始化创建。\n'
+}
+
+wait_for_api() {
+    local container state attempt
+    for attempt in $(seq 1 90); do
+        container="$(compose ps -q api)"
+        if [[ -n "$container" ]]; then
+            state="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container" 2>/dev/null || true)"
+            if [[ "$state" == healthy ]]; then
+                return 0
+            fi
+            if [[ "$state" == unhealthy || "$state" == exited || "$state" == dead ]]; then
+                return 1
+            fi
+        fi
+        sleep 2
+    done
+    return 1
+}
+
+stable_api_serves_configured_port() {
+    local port="$1" container running published_port
+    container="$(compose ps -q api)"
+    [[ -n "$container" ]] || return 1
+    running="$(docker inspect --format '{{.State.Running}}' "$container" 2>/dev/null || true)"
+    [[ "$running" == true ]] || return 1
+    published_port="$(docker port "$container" 8000/tcp 2>/dev/null || true)"
+    [[ "$published_port" == "127.0.0.1:$port" ]] || return 1
+    local_loopback_http_health_ok "$port"
+}
+
+ensure_local_api_port_available() {
+    local port container running
+    port="$(read_config_value CHATBI_LOCAL_HTTP_PORT)"
+    container="$(compose ps -q api)"
+    if [[ -n "$container" ]]; then
+        running="$(docker inspect --format '{{.State.Running}}' "$container" 2>/dev/null || true)"
+        if [[ "$running" == true ]] && stable_api_serves_configured_port "$port"; then
+            return 0
+        fi
+        if [[ "$running" == true ]]; then
+            compose stop api >/dev/null \
+                || fail '无法停止本稳定环境中未正确发布的 API 容器；未处理其他进程。'
+        fi
+    fi
+    if ! local_loopback_port_is_free "$port"; then
+        fail "本机回环端口 ${port} 已被占用；请修改 .env.local 中的 CHATBI_LOCAL_HTTP_PORT 后重试。未停止占用进程。"
+    fi
+}
+
+record_deployment_state() {
+    local event="$1" operation="$2" target="$3" phase="$4" runtime_status="$5"
+    shift 5
+    local -a state_args=(
+        --event "$event"
+        --operation "$operation"
+        --phase "$phase"
+        --runtime-status "$runtime_status"
+    )
+    [[ "$target" == - ]] || state_args+=(--target-commit "$target")
+    local release_role=active
+    if [[ "${1:-}" == --baseline ]]; then
+        release_role=baseline
+        shift
+    fi
+    if (( $# == 5 )); then
+        append_deployment_release_arguments state_args "$release_role" "$@"
+        shift 5
+    elif (( $# != 0 )); then
+        fail '部署状态 release 身份必须提供五个字段。'
+    fi
+    (( $# == 0 )) || fail '部署状态参数数量错误。'
+    compose run --rm -T --no-deps verify record-state "${state_args[@]}"
+}
+
+capture_running_api_release() {
+    local api_container='' container running identity
+    RUNNING_SOURCE_COMMIT=''
+    RUNNING_API_IMAGE=''
+    RUNNING_API_IMAGE_ID=''
+    while IFS= read -r container; do
+        [[ -n "$container" ]] || continue
+        running="$(docker inspect --format '{{.State.Running}}' "$container" 2>/dev/null || true)"
+        if [[ "$running" == true ]]; then
+            api_container="$container"
+            break
+        fi
+    done < <(stable_container_ids api)
+    [[ -n "$api_container" ]] || return 1
+    identity="$(docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}|{{.Config.Image}}|{{.Image}}' "$api_container")"
+    IFS='|' read -r RUNNING_SOURCE_COMMIT RUNNING_API_IMAGE RUNNING_API_IMAGE_ID <<< "$identity"
+    [[ "$RUNNING_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+        || fail '当前稳定 API 缺少可信 source commit；拒绝升级或回滚。'
+    [[ "$RUNNING_API_IMAGE" == chatbi-local-api:* && "$RUNNING_API_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        || fail '当前稳定 API 镜像身份无效；拒绝升级或回滚。'
+    return 0
+}
+
+capture_running_release() {
+    local database_container='' container running identity
+    RUNNING_DATABASE_IMAGE=''
+    RUNNING_DATABASE_IMAGE_ID=''
+    capture_running_api_release || return 1
+    while IFS= read -r container; do
+        [[ -n "$container" ]] || continue
+        running="$(docker inspect --format '{{.State.Running}}' "$container" 2>/dev/null || true)"
+        if [[ "$running" == true ]]; then
+            database_container="$container"
+            break
+        fi
+    done < <(stable_container_ids postgres)
+    [[ -n "$database_container" ]] || fail '稳定 PostgreSQL 未运行；拒绝升级或回滚。'
+    identity="$(docker inspect --format '{{.Config.Image}}|{{.Image}}' "$database_container")"
+    IFS='|' read -r RUNNING_DATABASE_IMAGE RUNNING_DATABASE_IMAGE_ID <<< "$identity"
+    [[ "$RUNNING_DATABASE_IMAGE" == chatbi-local-postgres:* && "$RUNNING_DATABASE_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        || fail '稳定 PostgreSQL 镜像身份无效；拒绝升级或回滚。'
+    return 0
+}
+
+target_database_runtime_identity() {
+    local container candidate
+    container=""
+    while IFS= read -r candidate; do
+        [[ -n "$candidate" ]] || continue
+        if [[ "$(docker inspect --format '{{.State.Running}}' "$candidate" 2>/dev/null || true)" == true ]]; then
+            container="$candidate"
+            break
+        fi
+    done < <(stable_container_ids postgres)
+    [[ -n "$container" ]] || return 1
+    TARGET_DATABASE_RUNTIME_IMAGE="$(docker inspect --format '{{.Config.Image}}' "$container")"
+    TARGET_DATABASE_RUNTIME_IMAGE_ID="$(docker inspect --format '{{.Image}}' "$container")"
+    [[ "$TARGET_DATABASE_RUNTIME_IMAGE" == chatbi-local-postgres:* && "$TARGET_DATABASE_RUNTIME_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]
+}
+
+api_runtime_status() {
+    local container running health
+    container="$(compose ps -q api)"
+    if [[ -z "$container" ]]; then
+        printf 'unknown\n'
+        return 0
+    fi
+    running="$(docker inspect --format '{{.State.Running}}' "$container" 2>/dev/null || true)"
+    if [[ "$running" != true ]]; then
+        printf 'stopped\n'
+        return 0
+    fi
+    health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "$container" 2>/dev/null || true)"
+    if [[ "$health" == healthy ]]; then
+        printf 'running\n'
+    else
+        printf 'unhealthy\n'
+    fi
+}
+
+mark_operation_failed() {
+    local operation="$1" target="$2" phase="$3" runtime_status="$4"
+    record_deployment_state failed "$operation" "$target" "$phase" "$runtime_status" \
+        || printf '未能写入失败阶段；请查看 ./local status 和 ./local logs。\n' >&2
+}
+
+run_target_api() {
+    local operation="$1" target="$2" phase="$3"
+    local port
+    port="$(read_config_value CHATBI_LOCAL_HTTP_PORT)"
+    if ! local_loopback_port_is_free "$port"; then
+        mark_operation_failed "$operation" "$target" "${phase}-port-check" stopped
+        fail "本机回环端口 ${port} 已被其他进程占用；未处理该进程。"
+    fi
+    record_deployment_state phase "$operation" "$target" starting-api stopped
+    if ! compose up -d --no-deps api; then
+        if complete_started_api "$operation" "$target" "$port"; then
+            return 0
+        fi
+        local runtime_status
+        runtime_status="$(api_runtime_status)"
+        if [[ "$runtime_status" == running ]]; then
+            compose stop api >/dev/null || true
+            runtime_status=stopped
+        fi
+        mark_operation_failed "$operation" "$target" starting-api "$runtime_status"
+        fail '目标 API 启动失败；数据库和发布记录保留，可检查稳定环境日志。'
+    fi
+    if ! wait_for_api; then
+        if complete_started_api "$operation" "$target" "$port"; then
+            return 0
+        fi
+        local runtime_status
+        runtime_status="$(api_runtime_status)"
+        if [[ "$runtime_status" == running ]]; then
+            compose stop api >/dev/null || true
+            runtime_status=stopped
+        fi
+        mark_operation_failed "$operation" "$target" waiting-for-api "$runtime_status"
+        fail '目标 API 未通过健康检查；数据保留，可检查 ./local status 和 ./local logs api。'
+    fi
+    if ! stable_api_serves_configured_port "$port"; then
+        compose stop api >/dev/null || true
+        mark_operation_failed "$operation" "$target" verifying-api stopped
+        fail '目标 API 健康检查未能确认本机回环端口；未知占用进程未被处理。'
+    fi
+    if ! target_database_runtime_identity; then
+        compose stop api >/dev/null || true
+        mark_operation_failed "$operation" "$target" verifying-runtime stopped
+        fail '稳定 PostgreSQL 运行镜像身份无法确认。'
+    fi
+    if ! record_target_success "$operation" "$target"; then
+        compose stop api >/dev/null || true
+        mark_operation_failed "$operation" "$target" recording-active-release stopped
+        fail 'API 已通过健康检查，但 active release 无法原子记录；已停止本稳定环境 API。'
+    fi
+}
+
+complete_started_api() {
+    local operation="$1" target="$2" port="$3"
+    stable_api_serves_configured_port "$port" || return 1
+    if ! target_database_runtime_identity; then
+        compose stop api >/dev/null || true
+        mark_operation_failed "$operation" "$target" verifying-runtime stopped
+        fail '稳定 PostgreSQL 运行镜像身份无法确认。'
+    fi
+    if ! record_target_success "$operation" "$target"; then
+        compose stop api >/dev/null || true
+        mark_operation_failed "$operation" "$target" recording-active-release stopped
+        fail 'API 已通过健康检查，但 active release 无法原子记录；已停止本稳定环境 API。'
+    fi
+    return 0
+}
+
+record_target_success() {
+    local operation="$1" target="$2"
+    target_database_runtime_identity || return 1
+    record_deployment_state succeeded "$operation" "$target" running running \
+        "$CHATBI_SOURCE_COMMIT" "$CHATBI_API_IMAGE" "$CHATBI_API_IMAGE_ID" \
+        "$TARGET_DATABASE_RUNTIME_IMAGE" "$TARGET_DATABASE_RUNTIME_IMAGE_ID"
+}
+
+upgrade_release() {
+    local operation="$1" source_commit="$2" previous=()
+    require_config
+    require_release
+    require_docker
+    prepare_host_directories
+    check_compose_config
+    verify_release_images
+    start_infrastructure true
+    if ! compose run --rm -T --no-deps verify verify-runtime; then
+        fail '目标发布与当前持久化状态不兼容；API 未停止，数据未修改。'
+    fi
+    if capture_running_release; then
+        previous=(
+            "$RUNNING_SOURCE_COMMIT" "$RUNNING_API_IMAGE" "$RUNNING_API_IMAGE_ID"
+            "$RUNNING_DATABASE_IMAGE" "$RUNNING_DATABASE_IMAGE_ID"
+        )
+    fi
+    record_deployment_state begin "$operation" "$source_commit" stopping-api transitioning --baseline "${previous[@]}"
+    if ! compose stop api; then
+        mark_operation_failed "$operation" "$source_commit" stopping-api unknown
+        fail '无法确认当前 API 已停止；数据库和数据卷未清理。'
+    fi
+    if [[ "$operation" == upgrade ]]; then
+        record_deployment_state phase "$operation" "$source_commit" migrating stopped
+        if ! compose run --rm -T --no-deps migrator; then
+            mark_operation_failed "$operation" "$source_commit" migrating stopped
+            fail '目标 migration 失败；没有执行反向 migration 或清理数据，可显式恢复兼容版本。'
+        fi
+        record_deployment_state phase "$operation" "$source_commit" verifying-target stopped
+        if ! compose run --rm -T --no-deps verify verify-runtime; then
+            mark_operation_failed "$operation" "$source_commit" verifying-target stopped
+            fail 'migration 后兼容检查失败；没有启动目标 API 或回退数据库。'
+        fi
+    else
+        record_deployment_state phase "$operation" "$source_commit" starting-api stopped
+    fi
+    run_target_api "$operation" "$source_commit" starting-api
+    printf 'ChatBI %s 完成：http://127.0.0.1:%s/\n版本：%s\n' \
+        "$operation" "$(read_config_value CHATBI_LOCAL_HTTP_PORT)" "$source_commit"
+}
+
+record_stopped_state() {
+    local image_id="$1"
+    if [[ ! "$image_id" =~ ^sha256:[0-9a-f]{64}$ && -f "$RELEASE_FILE" ]]; then
+        local api_image
+        api_image="$(awk -F= '$1 == "CHATBI_API_IMAGE" { print substr($0, index($0, "=") + 1) }' "$RELEASE_FILE")"
+        image_id="$(docker image inspect --format '{{.Id}}' "$api_image" 2>/dev/null || true)"
+    fi
+    if [[ ! "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+        printf '服务已停止；没有可用本地 API 镜像更新部署状态记录。\n' >&2
+        return 0
+    fi
+    if docker run --rm \
+        --mount "type=bind,source=$ROOT/.local,target=/opt/chatbi-state" \
+        --user "$(id -u):$(id -g)" \
+        --entrypoint python "$image_id" -m scripts.local_release record-state \
+        --event stopped --operation down --phase stopped --runtime-status stopped \
+        >/dev/null 2>&1; then
+        printf '本机部署状态记录已更新为 stopped。\n'
+    else
+        printf '服务已停止；部署状态文件未能更新，请以 ./local status 显示的容器状态为准。\n' >&2
+    fi
+}
+
+main() {
+    local command_name="${1:-help}"
+    acquire_operation_lock "$command_name"
+    shift || true
+    case "$command_name" in
+        help|-h|--help)
+            usage
+            ;;
+        init-config)
+            initialize_config
+            ;;
+        build)
+            build_images
+            ;;
+        down)
+            [[ -z "${1:-}" ]] || fail './local down 不接受额外参数。'
+            require_docker
+            local state_api_image_id='' fallback_api_image_id='' candidate_api_image_id state_api_container state_running
+            while IFS= read -r state_api_container; do
+                [[ -n "$state_api_container" ]] || continue
+                candidate_api_image_id="$(docker inspect --format '{{.Image}}' "$state_api_container" 2>/dev/null || true)"
+                [[ -n "$fallback_api_image_id" ]] || fallback_api_image_id="$candidate_api_image_id"
+                state_running="$(docker inspect --format '{{.State.Running}}' "$state_api_container" 2>/dev/null || true)"
+                if [[ "$state_running" == true ]]; then
+                    state_api_image_id="$candidate_api_image_id"
+                    break
+                fi
+            done < <(stable_container_ids api)
+            [[ -n "$state_api_image_id" ]] || state_api_image_id="$fallback_api_image_id"
+            stop_stable_services
+            record_stopped_state "$state_api_image_id"
+            ;;
+        status)
+            [[ -z "${1:-}" ]] || fail './local status 不接受额外参数。'
+            require_docker
+            show_stable_status
+            ;;
+        logs)
+            require_docker
+            show_stable_logs "$@"
+            ;;
+        infra|migrate|create-admin|prepare-model|build-rag|up)
+            require_config
+            require_release
+            require_docker
+            prepare_host_directories
+            check_compose_config
+            verify_release_images
+            case "$command_name" in
+                infra)
+                    start_infrastructure
+                    ;;
+                migrate)
+                    start_infrastructure
+                    compose run --rm -T migrator
+                    ;;
+                create-admin)
+                    start_infrastructure
+                    compose run --rm admin
+                    ;;
+                prepare-model)
+                    compose run --rm -T model prepare-model
+                    ;;
+                build-rag)
+                    start_infrastructure
+                    local model_path
+                    model_path="$(read_config_value CHATBI_LOCAL_MODEL_DIR)"
+                    if [[ "$model_path" != /* ]]; then
+                        model_path="$ROOT/$model_path"
+                    fi
+                    [[ -f "$model_path/config.json" ]] \
+                        || fail '固定 revision 模型未准备；先运行 ./local prepare-model。'
+                    compose run --rm -T model build-rag
+                    ;;
+                up)
+                    [[ -z "${1:-}" ]] || fail './local up 不接受额外参数。'
+                    ensure_local_api_port_available
+                    local api_already_running=false
+                    if capture_running_api_release; then
+                        [[ "$RUNNING_SOURCE_COMMIT" == "$CHATBI_SOURCE_COMMIT" && "$RUNNING_API_IMAGE_ID" == "$CHATBI_API_IMAGE_ID" ]] \
+                            || fail "稳定环境当前运行版本为 ${RUNNING_SOURCE_COMMIT}；请使用 ./local upgrade ${CHATBI_SOURCE_COMMIT} 切换版本。"
+                        api_already_running=true
+                    fi
+                    if [[ "$api_already_running" == true ]]; then
+                        start_infrastructure true
+                    else
+                        start_infrastructure
+                    fi
+                    compose run --rm -T --no-deps verify verify-runtime \
+                        || fail '稳定环境前置检查未通过；按诊断完成显式初始化后重试。'
+                    if [[ "$api_already_running" == true ]]; then
+                        if ! stable_api_serves_configured_port "$(read_config_value CHATBI_LOCAL_HTTP_PORT)"; then
+                            fail '稳定 API 仍在运行，但 HTTP liveness 或回环端口不再通过检查。'
+                        fi
+                        record_deployment_state begin up "$CHATBI_SOURCE_COMMIT" verifying-runtime running
+                        if ! record_target_success up "$CHATBI_SOURCE_COMMIT"; then
+                            fail '稳定 API 正在运行，但 active release 状态无法原子记录。'
+                        fi
+                        printf 'ChatBI 稳定环境已在运行：http://127.0.0.1:%s/\n版本：%s\n' \
+                            "$(read_config_value CHATBI_LOCAL_HTTP_PORT)" "$CHATBI_SOURCE_COMMIT"
+                    else
+                        record_deployment_state begin up "$CHATBI_SOURCE_COMMIT" starting-api transitioning
+                        run_target_api up "$CHATBI_SOURCE_COMMIT" starting-api
+                        printf 'ChatBI 稳定环境已启动：http://127.0.0.1:%s/\n版本：%s\n' \
+                            "$(read_config_value CHATBI_LOCAL_HTTP_PORT)" "$CHATBI_SOURCE_COMMIT"
+                    fi
+                    ;;
+            esac
+            ;;
+        upgrade|rollback)
+            (( $# == 1 )) || fail "用法：./local ${command_name} <完整40位source commit>"
+            local target_commit="$1"
+            select_release "$target_commit"
+            upgrade_release "$command_name" "$CHATBI_SOURCE_COMMIT"
+            ;;
+        *)
+            usage >&2
+            fail "未知命令：$command_name"
+            ;;
+    esac
+}
+
+cd "$ROOT"
+main "$@"

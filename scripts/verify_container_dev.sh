@@ -135,6 +135,7 @@ docker run --rm --network "container:$web_id" --user "$(id -u):$(id -g)" \
     -v "$root/src:/workspace/backend-src" \
     -v "$root/frontend/playwright.container.config.ts:/workspace/frontend/playwright.container.config.ts:ro" \
     -v "$root/frontend/playwright.container-reporter.ts:/workspace/frontend/playwright.container-reporter.ts:ro" \
+    -v "$root/frontend/test-support:/workspace/frontend/test-support:ro" \
     "$browser_image" npx playwright test --config playwright.container.config.ts
 }
 "${compose[@]}" exec -T api python -c \

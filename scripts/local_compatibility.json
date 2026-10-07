@@ -1,0 +1,37 @@
+{
+  "format": 1,
+  "compatibility_id": "chatbi-local-sales-v1",
+  "control_migrations": {
+    "required": [
+      "chatbi-control-v1",
+      "chatbi-control-v2",
+      "chatbi-control-v3",
+      "chatbi-control-v4",
+      "chatbi-control-v5"
+    ],
+    "allowed": [
+      "chatbi-control-v1",
+      "chatbi-control-v2",
+      "chatbi-control-v3",
+      "chatbi-control-v4",
+      "chatbi-control-v5"
+    ]
+  },
+  "checkpoint_migrations": {
+    "required": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+    "allowed": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  },
+  "business_seed_versions": ["chatbi-sales-mart-dev-v3"],
+  "business_catalog_schema_metadata_sha256": "866e9b761f82053e0cd893843ab6f808f7172162d1b800fbbed9c26952369f64",
+  "history_snapshot_versions": [1],
+  "rag_pointer_schema_versions": [1],
+  "rag_manifest_schema_versions": [1],
+  "rag_model_revision": "5617a9f61b028005a4858fdac845db406aefb181",
+  "rag_embedding_dimension": 1024,
+  "rag_provenance": {
+    "schema_metadata_sha256": "866e9b761f82053e0cd893843ab6f808f7172162d1b800fbbed9c26952369f64",
+    "metrics_sha256": "17399264e05942fc6e42e4dadf3d834d987e8e3952584fa23356232b35193628",
+    "embedding_config_sha256": "756651732244b96e762ef41776b2e43a86f40b6d4604d531a8d6498a9b5abca5",
+    "source_sha256": "2a96f106b05793539da77443832110fedaabc93805b4f90331fbbd341a4925e1"
+  }
+}

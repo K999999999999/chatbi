@@ -198,6 +198,51 @@ def verify_persistence():
     print("停止重启后的业务数据与RAG资产身份保持。")
 
 
+def acceptance_snapshot():
+    """Record only counts and Seed identity around an isolated API restart."""
+    import psycopg
+
+    control = create_control_engine(
+        ControlDatabaseConfig.from_environment(require_migrator=False)
+    )
+    try:
+        with control.connect() as connection:
+            state = {
+                name: connection.execute(
+                    text(f"SELECT count(*) FROM {table}")
+                ).scalar_one()
+                for name, table in (
+                    ("users", "users"),
+                    ("histories", "history_records"),
+                    ("turns", "history_turns"),
+                    ("saved_results", "saved_results"),
+                )
+            }
+    finally:
+        control.dispose()
+
+    with psycopg.connect(
+        host=os.environ["POSTGRES_HOST"],
+        port=int(os.environ.get("POSTGRES_PORT", "5432")),
+        dbname=os.environ["POSTGRES_DB"],
+        user=os.environ["POSTGRES_APP_USER"],
+        password=os.environ["POSTGRES_APP_PASSWORD"],
+        connect_timeout=5,
+    ) as connection:
+        connection.read_only = True
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT seed_version, (SELECT count(*) FROM mart_sales.fct_sales_order_line) "
+                "FROM mart_sales.dev_seed_metadata WHERE singleton"
+            )
+            row = cursor.fetchone()
+    if row is None:
+        raise RuntimeError("隔离验收 Sales Mart Seed 身份缺失")
+    state["business_seed_version"] = row[0]
+    state["business_fact_rows"] = row[1]
+    print(json.dumps(state, sort_keys=True))
+
+
 def verify_execution_recovery():
     """核对真实 API 进程重启把遗留执行收敛为 unconfirmed。"""
     evidence = json.loads((REPORT / "browser.json").read_text())
@@ -537,6 +582,7 @@ if __name__ == "__main__":
             "expire-analysis",
             "execution-recovery",
             "verify-exports",
+            "acceptance-snapshot",
         ],
     )
     args = parser.parse_args()
@@ -552,5 +598,7 @@ if __name__ == "__main__":
         verify_execution_recovery()
     elif args.action == "verify-exports":
         verify_exports()
+    elif args.action == "acceptance-snapshot":
+        acceptance_snapshot()
     else:
         verify_persistence()
