@@ -1,6 +1,6 @@
 # R6 本地稳定部署交付 Spec
 
-Status: 用户于2026-10-07整体确认完整Spec及四项Ticket拆分与全部本地实施范围；Ticket 01已完成，Ticket 02实施中。
+Status: 用户于2026-10-07整体确认完整Spec及四项Ticket拆分与全部本地实施范围；Ticket 01、02已完成，Ticket 03实施中，Ticket 04待依赖。
 
 ## Problem Statement
 

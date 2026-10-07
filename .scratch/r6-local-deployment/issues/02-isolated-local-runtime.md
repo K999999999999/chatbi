@@ -1,9 +1,9 @@
 # Ticket 02：独立环境安装与日常启停闭环
 
-Status: in-progress
+Status: done
 Owner: 当前主Agent
 Blocked by: 01（done）
-Result: 已实现独立 Compose、`.env.local` 模板、`./local` 操作入口与运行前置检查；Runbook 安装 / 启停章节及正式 Contract 初稿已同步。空卷安装、迁移、模型 / RAG、管理员创建、Windows Edge真实问数和down-up历史持久性已通过。端口冲突误报已修复；后续clean构建暴露缓存选择键错误，也已修复并通过定向测试与Dockerfile检查，待clean候选重建与复验后完成Ticket。
+Result: 独立安装、配置、初始化、Runbook / Contract、隔离与启停闭环完成。空稳定PG/Qdrant卷、Sales Seed、migration、固定模型、RAG和管理员验收绑定clean候选`0a9f5aa`；端口冲突修复和缓存键修复绑定`9050258` / `df5c9e1`。最终clean候选`733b074`构建时复用依赖层缓存，镜像身份校验通过；同候选启动后，端口冲突保护、Windows Edge真实问数、down/up后的登录、历史快照和刷新持久性均通过。本地Stable与开发PG/Qdrant保持隔离，无远端发布。
 Comments: 本地实施授权于2026-10-07取得；发布授权未取得。
 
 
@@ -23,7 +23,10 @@ Done When: 已确认安装/启停边界全部有证据，正式行为说明与Ru
 
 Review: PASS（follow-up base `5ffe0b2e9512fdd64797c58e888847a53b3e73ab`；Ticket 02 owned files）。首次 Review 中的写操作锁和 Qdrant URL 问题已修复。构建失败暴露出的缓存 / release 身份耦合也已拆开：祖先镜像只提供可复用的 Docker layer cache key，最终标签和 `/opt/chatbi-release.json` 始终写当前 clean source commit；无祖先镜像时仍执行完整构建。当前无未解决实现发现。Correctness / Comprehension / Consistency / Testability / Architecture / Security 均通过。该 Review 不代表镜像构建或真实容器验收成功。
 
-Review补充（2026-10-08）：复核本次缓存选择helper、`./local`调用点、API / PostgreSQL镜像label和回归测试；显式缓存键按当前提交可达祖先选择，legacy镜像仅按最早可达revision回退，最终release身份仍由当前clean commit写入。未发现阻断问题；实际clean构建与运行验收仍待完成。
+Review补充（2026-10-08）：复核缓存选择helper、`./local`调用点、API / PostgreSQL镜像label和回归测试；显式缓存键按当前提交可达祖先选择，legacy镜像仅按最早可达revision回退，最终release身份仍由当前clean commit写入。未发现阻断问题；候选构建及目标运行证据见下。
 
-Verification: `uv run --frozen pytest tests/scripts/test_local_release.py -q`（20 passed）；`uv run --frozen ruff check scripts/local_release.py tests/scripts/test_local_release.py`；`bash -n local`；API / database Dockerfile `docker build --check` 无告警；`python3 -m scripts.check_markdown_links`；Compose JSON 检查仅有 API 回环端口、数据库 / Qdrant 无宿主端口、API 无 migrator 环境变量、应用资产只读、所有服务手动 restart、Qdrant 固定 digest；`git diff --check`。clean build `0a9f5aa287d87f648cb71ab31b234d77d07fc15b`成功，API / PostgreSQL image ID分别为`sha256:211550d04ab2524cf329fb5eb9bef341108a61314ba11e7a6b1ecaeba7cb6637` / `sha256:77379c207ef8345a2d5430cf6b283bcfd072cc4f7fb7308193632ec79bae3c78`，OCI revision与release JSON匹配。空卷Sales初始化、RBAC / 应用迁移、固定BGE-M3 revision `5617a9f61b028005a4858fdac845db406aefb181`和RAG build `20261007T153620Z-52a4cdfae6ea`（7 tables / 69 columns / 7 metrics / 9 relationships，0 failures）通过。Linux Chromium真实问数与独立SQL匹配；down/up后历史可读、页面刷新未重新执行；Windows Edge 154.0.4258.53同源登录和真实问数与独立SQL匹配。端口冲突在修复前确认为实际缺陷；TDD Red为新增测试1失败/1通过。修复后`tests/scripts/test_local_port.py`与`tests/scripts/test_local_release.py`共24 passed，Ruff / Bash语法 / Diff检查通过；真实端口占用时`./local up`非零诊断且临时占用进程HTTP 200未被停止，释放后新`up`及重复`up`通过。端口修复尚未Commit和clean build，需绑定下一候选重跑启动 / Edge问数 / down-up；开发PostgreSQL / Qdrant未修改。
-补充验证（2026-10-08）：缓存选择回归测试先在旧revision-only逻辑下Red（2项失败），修复后Green；构建缓存 / 端口 / release测试合计26项通过。Ruff、`bash -n`、`git diff --check`及API / database Dockerfile `docker build --check`通过。基于当前本机旧镜像实测，选择器按legacy metadata返回`4d4732b`。实现与进度证据已提交为`df5c9e1`；clean候选构建与目标环境复验待完成。
+Verification:
+- clean候选`0a9f5aa287d87f648cb71ab31b234d77d07fc15b`完成隔离空PG/Qdrant卷初始化、合成Sales Seed、应用/RBAC migration、固定BGE-M3 revision `5617a9f61b028005a4858fdac845db406aefb181`准备及RAG build `20261007T153620Z-52a4cdfae6ea`（7 tables / 69 columns / 7 metrics / 9 relationships，0 failures）；管理员创建与首轮浏览器问数完成，开发PG/Qdrant未修改。该候选API / PostgreSQL image ID为`sha256:211550d04ab2524cf329fb5eb9bef341108a61314ba11e7a6b1ecaeba7cb6637` / `sha256:77379c207ef8345a2d5430cf6b283bcfd072cc4f7fb7308193632ec79bae3c78`。
+- 端口修复TDD Red覆盖旧误报；修复后`tests/scripts/test_local_port.py`与`tests/scripts/test_local_release.py`共24 passed。真实占用回环8080时`./local up`非零退出并保留外部HTTP服务；释放后启动和重复`up`通过。
+- 缓存选择TDD先在旧revision-only逻辑下2项失败，修复后构建缓存 / 端口 / release测试合计26 passed。Ruff、`bash -n`、Markdown本地链接、`git diff --check`和API / database Dockerfile `docker build --check`通过。候选`733b074f2417460bc3a41e00815059bbdd6b2d26` clean build使用cache source `4d4732b7896a46b231a4a3437c703e74b5ae513f`；APT、Python依赖、Playwright、前端及PostgreSQL内容层显示`CACHED`。API / PostgreSQL image ID为`sha256:7c7631b1a1f1346a0d15bbfd4b775c65a7190456b3d6e63fe56d6b873d1032e2` / `sha256:43536bcacdb89892419a2bbc73aacdb4b4038472347c3283f7b2649a5561d130`；两镜像OCI revision、`com.chatbi.build-cache-commit`和`/opt/chatbi-release.json`均核实正确，API `/health`和启动前置检查通过。
+- 最终候选上的回环8080冲突验收返回非零，临时占用进程仍HTTP 200且稳定API保持停止；释放后候选恢复healthy。Windows Edge `154.0.4258.53`在稳定URL同源登录问数；2025年2月已完成订单人民币净销售额`171010.14355`与独立只读SQL一致。`./local down`后`./local up`，PG/Qdrant Volume CreatedAt均保持`2026-10-07T15:35:24Z`；重登录后读取历史及快照、页面刷新通过，未创建新执行。报告：ignored `reports/browser-real/r6-ticket02-candidate-733b074.json`（权限600）。临时账号已禁用且0 active session，临时凭据与隔离Edge profile已删除；开发PG/Qdrant保持运行且未改动。

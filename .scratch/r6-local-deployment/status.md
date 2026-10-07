@@ -2,9 +2,9 @@
 
 - 2026-10-07：首版范围、目标环境、安装 / 初始化、启停、升级回滚、运行边界与验收标准逐项确认，需求澄清完成。
 - [完整 Spec](spec.md) 已整体确认，Design Review PASS，四项Ticket拆分与完整本地实施已获用户确认和授权。
-- 当前实施分支 `feature/r6-local-deployment`，起始于已同步的 `master` / `origin/master` `2a7600d`；Ticket 01实现提交至`4d4732b`、证据收尾文档提交`eba02b0`，Ticket 02改动实施中，未发布。
+- 当前实施分支 `feature/r6-local-deployment`，起始于已同步的 `master` / `origin/master` `2a7600d`；Ticket 01、02已完成，最终候选`733b074`，Ticket 03开始实施；未发布。
 - 本机实时状态位于 Git 公共目录 `harness/work-items/r6-local-deployment/status.md`，本文件为规划历史，不作为实时状态副本。
-- R1–R5 历史证据不改写；R6 尚无完整稳定环境验收。R7 完整运行保障不纳入本地首版部署范围。
+- R1–R5 历史证据不改写；R6 Ticket 02的安装、端口、真实问数与持久性验收已完成，Ticket 03版本兼容和Ticket 04完整目标环境验收仍在范围内。R7完整运行保障不纳入本地首版部署范围。
 
 ## 需求澄清完成记录
 
@@ -16,7 +16,7 @@
 假设: None
 未决 / 阻塞项: None
 留给Ticket / 实施阶段的决定: 在Design中确定Compose/命令组织、固定版本标识、兼容性检查、缓存与发布资产路径、验收版本对；不得改变已确认边界。
-下一步: 收尾Ticket 02新发现的端口冲突误报修复，提交并重建clean候选；在该候选上复验启动、Windows Edge问数和down-up持久性，然后连续实施Ticket 03→04。
+下一步: Ticket 02已完成；按既有Design与Readiness开始Ticket 03真实版本升级、兼容回滚和失败恢复实现，完成后连续实施Ticket 04。
 
 ## 本次文档整理检查
 
@@ -63,3 +63,11 @@
 - 端口修复提交后尝试clean build时发现，旧选择器只读最终镜像`org.opencontainers.image.revision`，会把发布提交误当成依赖层实际缓存键，导致apt及后续昂贵层重新构建；在apt下载阶段中止，未改写release记录或容器。
 - 新增`com.chatbi.build-cache-commit`镜像标签，仍由当前source commit构建发布身份，同时记录早期依赖层实际cache commit；选择器先按该身份取最近可达祖先，旧镜像无该标签时才选择最早可达OCI revision。针对新标签和legacy回退新增TDD，旧实现2项失败，修复后与端口 / release测试合计26项通过；Ruff、Bash语法、API / database Dockerfile check和Diff检查通过。现有本机镜像上选择器实测返回`4d4732b`。
 - 端口与缓存选择修复及进度证据已本地提交为`df5c9e1`；本机稳定Stack仍运行旧候选`0a9f5aa`，开发PostgreSQL / Qdrant保持运行。下一步从clean提交构建新候选，确认昂贵依赖层命中缓存，并在新候选复验端口保护、Windows Edge问数和down-up持久性，再完成Ticket02并连续实施03→04。
+
+
+## R6 Ticket 02 最终候选验收完成（2026-10-08）
+
+- 候选`733b074f2417460bc3a41e00815059bbdd6b2d26` clean build成功，cache source=`4d4732b7896a46b231a4a3437c703e74b5ae513f`；APT、Python依赖、Playwright、前端与PostgreSQL内容层显示`CACHED`。API / PostgreSQL image ID及OCI revision、cache label、内嵌release JSON见Ticket 02记录；`.local/release.env`和镜像均仅在本机。
+- 该候选下8080占用测试非零拒绝、未停止外部HTTP服务，随后候选启动健康；Windows Edge真实查询为`171010.14355`，与稳定Sales库只读SQL一致。`down/up`后两持久卷`CreatedAt`不变，重新登录可打开历史与快照，刷新不触发新execution。
+- 空卷Seed、migration、模型及RAG初始化证据绑定先前clean候选`0a9f5aa`；其后的候选改动限于回环启动冲突保护和缓存/镜像身份元数据，并已在`733b074`复验受影响链路。最终ignored浏览器报告为`reports/browser-real/r6-ticket02-candidate-733b074.json`，mode 600。
+- 验收临时账号已禁用且会话全部撤销，临时凭据和隔离Windows Edge profile已删除。Stable API/PG/Qdrant运行于`733b074`；开发PG/Qdrant仍运行未修改。Ticket 02完成；依赖满足，下一步Ticket 03。

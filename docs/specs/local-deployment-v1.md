@@ -1,6 +1,6 @@
 # R6 本地稳定部署 Contract（初稿）
 
-Status: 用户确认的行为范围已记录；实现和目标环境验收仍进行中。本初稿将在 R6 Ticket 04 根据最终实现与验收证据定稿。
+Status: 用户确认的行为范围已记录；Ticket 01 / 02 实施与适用验收完成，Ticket 03 版本兼容和 Ticket 04 完整目标环境验收仍进行中。本初稿将在 R6 Ticket 04 根据最终实现与验收证据定稿。
 
 需求来源：[R6 完整 Spec](../../.scratch/r6-local-deployment/spec.md)。本文件固化当前已确认的本地稳定运行行为，不构成云端生产部署、容量或可用性承诺。
 
@@ -49,6 +49,6 @@ Status: 用户确认的行为范围已记录；实现和目标环境验收仍进
 
 指定版本升级允许短暂停机，必须显式检查目标镜像与数据库 / RAG 资产兼容性；回滚只启动经过验证兼容的旧版本，不执行反向 migration、DROP 或卷删除。不兼容状态必须拒绝并保留数据。具体版本描述、升级 / 回滚命令及兼容矩阵由 R6 Ticket 03 完成并在本文件定稿。
 
-Ticket 02 的独立环境安装、初始化、持久性与真实问数验收，以及 Ticket 03 的真实版本对兼容验证、Ticket 04 的 Windows 浏览器完整业务验收尚未全部完成。任何本地 smoke、`/health` 或单元测试都不单独代表完整验收通过。
+Ticket 02 的独立环境安装、空卷初始化、持久性、端口冲突与真实问数验收已完成；clean 候选和证据身份见 [Ticket 02记录](../../.scratch/r6-local-deployment/issues/02-isolated-local-runtime.md)。Ticket 03 的真实版本对兼容验证、Ticket 04 的 Windows 浏览器完整业务验收仍未完成。任何本地 smoke、`/health` 或单元测试都不单独代表完整验收通过。
 
 完整验收范围见 [R6 Spec 的 Testing Decisions](../../.scratch/r6-local-deployment/spec.md)；本地操作见 [Runbook](../runbook.md) §15。
