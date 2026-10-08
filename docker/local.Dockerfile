@@ -24,6 +24,8 @@ USER root
 RUN test -n "${CHATBI_SOURCE_COMMIT}" \
     && printf '%s' "${CHATBI_SOURCE_COMMIT}" | grep -Eq '^[0-9a-f]{40}$' \
     && printf 'Acquire::Retries "3";\n' > /etc/apt/apt.conf.d/80-retries \
+    && sed -i '/^URIs:/ s#http://deb.debian.org#https://deb.debian.org#g' \
+        /etc/apt/sources.list.d/debian.sources \
     && apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates fontconfig \
         fonts-noto-cjk=1:20220127+repack1-1 fonts-wqy-zenhei=0.9.45-8 \
