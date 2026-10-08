@@ -8,6 +8,12 @@ from functools import wraps
 from uuid import uuid4
 
 from src.business_analysis.run_execution import AnalysisExecutionBusy
+from src.observability.contracts import (
+    ErrorType,
+    QuerySource,
+    TraceOutcome,
+    TraceRecorder,
+)
 from src.online_query.contracts import ExecutionStopped, ExecutionStopReason
 
 from .execution_contracts import ExecutionRecord
@@ -19,6 +25,41 @@ from .execution_runtime import (
 from .history_contracts import HistoryError, operation_hash
 
 _LOGGER = logging.getLogger(__name__)
+_BUSINESS_REJECTION_CODES = frozenset(
+    {
+        "INVALID_REQUEST",
+        "AUTHENTICATION_REQUIRED",
+        "AUTHORIZATION_DENIED",
+        "EXECUTION_LIMIT_REACHED",
+        "CANNOT_ANSWER",
+        "SQL_REJECTED",
+        "CLARIFICATION_REQUIRED",
+        "UNSUPPORTED_ANALYSIS",
+        "CONVERSATION_CONFLICT",
+    }
+)
+
+
+def _trace_result_classification(
+    status: str, public_error: object
+) -> tuple[TraceOutcome, ErrorType | None, str | None]:
+    error_code = (
+        public_error.get("error_code") if isinstance(public_error, dict) else None
+    )
+    if not isinstance(error_code, str):
+        error_code = None
+    if status == "completed":
+        return TraceOutcome.SUCCESS, None, None
+    if error_code == "QUERY_TIMEOUT":
+        return TraceOutcome.TIMEOUT, ErrorType.TIMEOUT, error_code
+    if error_code in _BUSINESS_REJECTION_CODES:
+        error_type = ErrorType.SQL_GUARD if error_code == "SQL_REJECTED" else None
+        return TraceOutcome.BUSINESS_REJECTION, error_type, error_code
+    error_type = {
+        "LLM_ERROR": ErrorType.LLM,
+        "DATABASE_ERROR": ErrorType.DATABASE,
+    }.get(error_code, ErrorType.UNKNOWN)
+    return TraceOutcome.TECHNICAL_FAILURE, error_type, error_code
 
 
 def _serialize_operation_at(index):
@@ -44,11 +85,19 @@ class ExecutionView:
 
 
 class ExecutionApplication:
-    def __init__(self, history_application, execution_runtime, *, ready=None):
+    def __init__(
+        self,
+        history_application,
+        execution_runtime,
+        *,
+        ready=None,
+        trace_recorder: TraceRecorder | None = None,
+    ):
         self.history = history_application
         self.store = history_application.store
         self.runtime = execution_runtime
         self._ready = ready
+        self._trace_recorder = trace_recorder
 
     @_serialize_operation_at(2)
     def submit(
@@ -63,6 +112,7 @@ class ExecutionApplication:
         expected_context_revision=None,
         expected_record_revision=None,
         reauthenticate,
+        trace_carrier=None,
     ):
         self.history.authorize(auth, request_id)
         request_hash = operation_hash(
@@ -128,6 +178,7 @@ class ExecutionApplication:
                 reauthenticate,
                 kind=mode,
                 analysis_run_id=header.analysis_run_id,
+                trace_carrier=trace_carrier,
             )
             return self._view(auth, request_id, accepted.execution)
         except BaseException:
@@ -145,6 +196,7 @@ class ExecutionApplication:
         operation_id,
         *,
         reauthenticate,
+        trace_carrier=None,
     ):
         self.history.authorize(auth, request_id)
         request_hash = operation_hash(
@@ -207,6 +259,7 @@ class ExecutionApplication:
                 kind=mode,
                 requery=True,
                 analysis_run_id=header.analysis_run_id,
+                trace_carrier=trace_carrier,
             )
             return self._view(auth, request_id, execution)
         except BaseException:
@@ -305,6 +358,7 @@ class ExecutionApplication:
         kind,
         requery=False,
         analysis_run_id=None,
+        trace_carrier=None,
     ):
         progress = None
         control = None
@@ -330,7 +384,7 @@ class ExecutionApplication:
                 analysis_owner_subject=f"{auth.identity_provider}:{auth.subject_id}",
             )
 
-        def work():
+        def work_body():
             try:
                 self.store.mark_execution_running(auth.user_id, execution.id)
                 assert progress is not None
@@ -353,7 +407,26 @@ class ExecutionApplication:
                     execution_control=control,
                 )
                 progress.finish(turn.status, turn.public_error)
+                trace_outcome, trace_error_type, trace_error_code = (
+                    _trace_result_classification(turn.status, turn.public_error)
+                )
+                self._enrich_worker_trace(
+                    outcome=trace_outcome,
+                    error_type=trace_error_type,
+                    error_code=trace_error_code,
+                )
             except ExecutionStopped as stopped:
+                self._enrich_worker_trace(
+                    outcome=(
+                        TraceOutcome.TIMEOUT
+                        if stopped.reason is ExecutionStopReason.DEADLINE_EXCEEDED
+                        else TraceOutcome.TECHNICAL_FAILURE
+                    ),
+                    error_type=ErrorType.TIMEOUT
+                    if stopped.reason is ExecutionStopReason.DEADLINE_EXCEEDED
+                    else ErrorType.UNKNOWN,
+                    error_code="EXECUTION_STOPPED",
+                )
                 self._persist_stopped(
                     auth.user_id,
                     execution,
@@ -363,6 +436,11 @@ class ExecutionApplication:
                 )
                 self._finish_from_persistence(auth.user_id, execution, progress)
             except HistoryError as exc:
+                self._enrich_worker_trace(
+                    outcome=TraceOutcome.BUSINESS_REJECTION,
+                    error_type=ErrorType.VALIDATION,
+                    error_code=exc.code,
+                )
                 self._finish_worker_failure(
                     auth.user_id,
                     execution,
@@ -373,6 +451,11 @@ class ExecutionApplication:
                     progress,
                 )
             except Exception as exc:  # noqa: BLE001 - worker failure must not leak internals
+                self._enrich_worker_trace(
+                    outcome=TraceOutcome.TECHNICAL_FAILURE,
+                    error_type=ErrorType.UNKNOWN,
+                    error_code="EXECUTION_FAILED",
+                )
                 _LOGGER.warning(
                     "Background execution failed: error_type=%s", type(exc).__name__
                 )
@@ -385,6 +468,20 @@ class ExecutionApplication:
                     "执行失败，请刷新后查看状态",
                     progress,
                 )
+
+        def work():
+            if self._trace_recorder is None:
+                work_body()
+                return
+            with self._trace_recorder.query_trace(
+                QuerySource.EXECUTION,
+                carrier=trace_carrier,
+                attributes={
+                    "chatbi.execution.id": execution.id,
+                    "chatbi.execution.kind": kind,
+                },
+            ):
+                work_body()
 
         try:
             progress = self.runtime.attach_progress(lease, execution)
@@ -420,6 +517,14 @@ class ExecutionApplication:
                 turn_id=execution.turn_id,
                 execution_id=execution.id,
             ) from None
+
+    def _enrich_worker_trace(self, *, outcome, error_type=None, error_code=None):
+        if self._trace_recorder is not None:
+            self._trace_recorder.enrich_current(
+                outcome=outcome,
+                error_type=error_type,
+                error_code=error_code,
+            )
 
     def _finish_worker_failure(
         self,

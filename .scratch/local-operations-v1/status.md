@@ -23,3 +23,5 @@ Ticket 03手工备份本地实现/Review PASS；固定age工具、真实PG并发
 Ticket04本地实现/Review PASS：6h/24h/7d、失败冷却/锁/已知清理/升级保护软件验证，真实PG/age scheduler产物与0.016s停止、WindowsEdge14项PASS。来源处理已回归Spec宿主无新依赖，原R6仅只读核验，未修改实际服务/key/data。跨版本完整矩阵留07。继续05隔离恢复与显式资源切换。
 
 Ticket05本地实现/Review PASS：本地恢复测试与binding测试纳入118项R7本地回归，Ruff与diff检查通过；真实加密备份恢复至隔离PG/Qdrant、全表指纹/角色权限/session与epoch、RAG readiness、临时登录/历史/成果核验通过。独立stable clone完成candidate激活与previous回退；另验证恢复失败会清除解密payload。stable/dev运行容器和身份前后未变，未初始化实际stable key、未切换实际stable。详见 [Ticket 05](issues/05-isolated-restore.md) 和 [Review](review-05.md)。开始06。
+
+Ticket06本地实现与Code Review PASS：immutable carrier/Link覆盖后台问数、分析和导出worker，受限OTLP配置、内容硬关闭、有界Batch及只读状态轮询通过。受影响回归334 passed、2 skipped、26 subtests passed；实际阿里云Trace未使用历史证据代替，留Ticket07当前候选验收。稳定配置未启用OTLP，stable/dev服务未修改。详见 [Ticket 06](issues/06-safe-traces.md) 和 [Review](review-06.md)。继续07。

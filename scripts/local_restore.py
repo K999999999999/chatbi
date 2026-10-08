@@ -37,14 +37,15 @@ from scripts.local_restore_state import (
 
 RESTORE_ID = re.compile(r"[0-9a-f]{32}\Z")
 ENV_KEY = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
-SECRET_KEYS = {
+REQUIRED_SECRET_KEYS = {
     "POSTGRES_MIGRATOR_PASSWORD",
     "POSTGRES_APP_PASSWORD",
     "POSTGRES_CONTROL_APP_PASSWORD",
     "CHATBI_ADMIN_SECRET_KEY",
     "QDRANT_API_KEY",
 }
-CONFIG_KEYS = {
+SECRET_KEYS = REQUIRED_SECRET_KEYS | {"OTEL_EXPORTER_OTLP_HEADERS"}
+REQUIRED_CONFIG_KEYS = {
     "CHATBI_LOCAL_HTTP_PORT",
     "CHATBI_LOCAL_MODEL_DIR",
     "POSTGRES_DB",
@@ -55,6 +56,11 @@ CONFIG_KEYS = {
     "LLM_TEMPERATURE",
     "LLM_MAX_TOKENS",
     "LLM_TIMEOUT_SECONDS",
+}
+CONFIG_KEYS = REQUIRED_CONFIG_KEYS | {
+    "CHATBI_OBSERVABILITY_ENABLED",
+    "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+    "CHATBI_OTLP_TIMEOUT_SECONDS",
 }
 ROLE_FIELDS = {
     "name",
@@ -169,10 +175,14 @@ def validate_manifest(manifest, *, backup_id, payload):
         raise RestoreFailed("RESTORE_INVALID") from None
 
     config = parse_env(
-        secure_file(payload / "config.env"), allowed=CONFIG_KEYS, required=CONFIG_KEYS
+        secure_file(payload / "config.env"),
+        allowed=CONFIG_KEYS,
+        required=REQUIRED_CONFIG_KEYS,
     )
     secrets = parse_env(
-        secure_file(payload / "secrets.env"), allowed=SECRET_KEYS, required=SECRET_KEYS
+        secure_file(payload / "secrets.env"),
+        allowed=SECRET_KEYS,
+        required=REQUIRED_SECRET_KEYS,
     )
     release = parse_env(
         secure_file(payload / "release.env"),
@@ -217,7 +227,10 @@ def validate_manifest(manifest, *, backup_id, payload):
         or config["POSTGRES_DB"] != "chatbi_mvp"
         or config["POSTGRES_MIGRATOR_USER"] != "chatbi_migrator"
         or not config["LLM_API_KEY"].strip()
-        or any(not secrets[key] or len(secrets[key]) < 32 for key in SECRET_KEYS)
+        or any(
+            not secrets[key] or len(secrets[key]) < 32
+            for key in REQUIRED_SECRET_KEYS
+        )
     ):
         raise RestoreFailed("RESTORE_INVALID")
     if (

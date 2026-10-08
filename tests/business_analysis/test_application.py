@@ -20,6 +20,8 @@ from src.business_analysis.execution import TaskStatus
 from src.business_analysis.reporting import BusinessAnalysisReport
 from src.business_analysis.run_store import AnalysisRun, AnalysisRunStatus
 from src.business_analysis.runtime import _checkpoint_allowed_types
+from src.observability.contracts import QuerySource
+from src.observability.tracing import create_in_memory_recorder
 from src.online_query.contracts import (
     ExecutionStage,
     QueryErrorCode,
@@ -133,6 +135,32 @@ class BusinessAnalysisApplicationTest(unittest.TestCase):
             [request.semantic_query.time.text for request in bound.requests],
             ["2025年2月", "2025年3月", "2025年2月", "2025年3月"],
         )
+
+    def test_analysis_stages_are_traced_without_question_or_query_content(self) -> None:
+        recorder, exporter = create_in_memory_recorder()
+        application = _application(
+            _AuthorizedService(_BoundService()),
+            _Decomposer(_candidate()),
+            _Summarizer(),
+            trace_recorder=recorder,
+        )
+
+        with recorder.query_trace(QuerySource.HTTP):
+            result = application.analyze(
+                "2025年3月毛利为什么比2月下降？",
+                request_id="analysis-trace",
+                auth_context="auth-context",
+            )
+
+        self.assertIsInstance(result, BusinessAnalysisSuccess)
+        spans = exporter.get_finished_spans()
+        names = [span.name for span in spans]
+        self.assertEqual(names.count("analysis.extract"), 1)
+        self.assertEqual(names.count("analysis.validate"), 1)
+        self.assertEqual(names.count("analysis.execute_task"), 4)
+        self.assertEqual(names.count("analysis.attribute"), 1)
+        self.assertEqual(names.count("analysis.summarize"), 1)
+        self.assertNotIn("2025年3月毛利", repr(spans))
 
     def test_ambiguous_profit_is_clarified_before_query_or_summary(self) -> None:
         bound = _BoundService()
@@ -417,6 +445,7 @@ def _application(
     *,
     checkpointer=None,
     run_store=None,
+    trace_recorder=None,
 ) -> BusinessAnalysisApplication:
     return BusinessAnalysisApplication(
         authorized,
@@ -425,6 +454,7 @@ def _application(
         context_provider=_context,
         checkpointer=checkpointer,
         run_store=run_store,
+        trace_recorder=trace_recorder,
     )
 
 

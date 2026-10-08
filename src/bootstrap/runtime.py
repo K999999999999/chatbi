@@ -119,6 +119,7 @@ async def create_runtime() -> AsyncIterator[RuntimeDependencies]:
                 http_client=http_client,
                 http_async_client=http_async_client,
                 model_wrapper=observe_model,
+                trace_recorder=recorder,
             )
             register_cleanup(resources, "business_analysis", analysis.close)
             register_cleanup(resources, "history_drain", history_runtime.drain)

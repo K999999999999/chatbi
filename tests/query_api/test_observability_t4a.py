@@ -142,6 +142,23 @@ class T4AQueryApiObservabilityTest(unittest.TestCase):
         self.assertEqual(root.attributes["chatbi.request.id"], request_id)
         self.assertEqual(root.context.trace_id, int(trace_id, 16))
 
+    def test_read_only_execution_poll_keeps_local_id_without_business_trace(
+        self,
+    ) -> None:
+        recorder, exporter = create_in_memory_recorder()
+        client = TestClient(create_test_app(_SuccessService(), trace_recorder=recorder))
+
+        response = client.get(
+            "/api/v1/executions/00000000-0000-0000-0000-000000000001",
+            headers={
+                "traceparent": f"00-{'a' * 32}-{'b' * 16}-01",
+            },
+        )
+
+        self.assertIn("X-Trace-ID", response.headers)
+        self.assertNotEqual(response.headers["X-Trace-ID"], "a" * 32)
+        self.assertEqual(exporter.get_finished_spans(), ())
+
 
 if __name__ == "__main__":
     unittest.main()

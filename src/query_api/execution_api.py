@@ -227,6 +227,7 @@ def mount_execution_api(app):
                 question=body.question,
                 expected_context_revision=body.expected_context_revision,
                 reauthenticate=reauthenticate,
+                trace_carrier=getattr(request.state, "trace_carrier", None),
             )
         else:
             view = application.submit(
@@ -237,6 +238,7 @@ def mount_execution_api(app):
                 mode="analysis",
                 expected_record_revision=body.expected_record_revision,
                 reauthenticate=reauthenticate,
+                trace_carrier=getattr(request.state, "trace_carrier", None),
             )
         return JSONResponse(status_code=202, content=_public_view(view))
 
@@ -255,6 +257,7 @@ def mount_execution_api(app):
             str(body.source_turn_id) if body.source_turn_id else None,
             str(body.operation_id),
             reauthenticate=_reauthenticator(request, auth),
+            trace_carrier=getattr(request.state, "trace_carrier", None),
         )
         return JSONResponse(status_code=202, content=_public_view(view))
 
@@ -273,6 +276,7 @@ def mount_execution_api(app):
             None,
             str(body.operation_id),
             reauthenticate=_reauthenticator(request, auth),
+            trace_carrier=getattr(request.state, "trace_carrier", None),
         )
         return JSONResponse(status_code=202, content=_public_view(view))
 

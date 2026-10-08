@@ -4,7 +4,6 @@ from collections.abc import Mapping, Sequence
 from enum import StrEnum
 from typing import Any, Protocol, TypeAlias
 
-
 AttributeValue: TypeAlias = (
     str | bool | int | float | Sequence[str | bool | int | float]
 )
@@ -18,6 +17,8 @@ class QuerySource(StrEnum):
     HTTP = "HTTP"
     INTERNAL = "INTERNAL"
     EVALUATION = "EVALUATION"
+    EXECUTION = "EXECUTION"
+    EXPORT = "EXPORT"
 
 
 class TraceOutcome(StrEnum):
@@ -68,6 +69,10 @@ class TraceScope(SpanScope, Protocol):
     @property
     def owns_root(self) -> bool:
         """是否负责结束 Root Span（根链路）和清理 Context。"""
+
+    @property
+    def carrier(self) -> Carrier:
+        """返回只含进程内可信 traceparent 的不可变 carrier。"""
 
 
 class TraceRecorder(Protocol):

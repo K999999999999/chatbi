@@ -91,7 +91,7 @@ Alternative: 原卷原地DROP/restore恢复简单但无法保护原数据且切�
 
 Compose传递明确的OTel配置白名单：enable、HTTPS OTLP endpoint、service version/revision、资源environment、受限headers；在local清理shell环境覆盖后读取稳定配置，不能继承开发endpoint/headers。Trace内容采集硬关闭；状态refresh/probes不调用LLM、不产生大量请求链路污染用户业务性能基线。
 
-Batch exporter队列/timeout/shutdown有界，失败警告只有安全分类；云状态并非readiness业务门槛。初始软件用in-memory exporter验证真实span生命周期；最后用户配置的阿里云实际接入才能记云验收PASS，不依赖历史截图。
+Batch exporter使用128项队列 / 单批上限、1秒调度、1–10秒HTTP Timeout（默认5秒）；锁定的OpenTelemetry SDK关闭等待最多30秒。Exporter失败警告只有安全分类；云状态并非readiness业务门槛。初始软件用in-memory exporter验证真实span生命周期；最后用户配置的阿里云实际接入才能记云验收PASS，不依赖历史截图。
 
 ## 8. 验证与交付边界
 

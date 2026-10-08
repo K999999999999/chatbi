@@ -262,7 +262,7 @@ npm run dev
 - 网页成功 / 受控错误后展开“查看请求信息”，读取独立的请求编号和链路编号；Header 缺失不当作业务失败。
 - Header 缺失时不代表查询失败，也不应人为把 JSON Body 中的字段当作 Trace ID。
 
-定位一次查询时，以同一个 `trace_id` 从 `query.request` 根节点开始，依次查看固定节点：
+定位一次同步查询时，以同一个 `trace_id` 从 `query.request` 根节点开始，依次查看固定节点：
 
 ```text
 query.request -> retrieval -> llm -> sql -> database
@@ -270,7 +270,13 @@ query.request -> retrieval -> llm -> sql -> database
 
 优先结合固定 `status`、`error_code`、节点耗时和 `trace_id` 判断失败节点或最慢节点。Production（生产）只查看这些固定状态、错误码、耗时和链路编号；不要查看或传播原始异常、Prompt、候选/最终 SQL、RAG 正文、结果行、API Key 或完整请求头。
 
-如果没有配置或连接 Trace Exporter（链路导出器），服务仍可以正常运行，Query API 仍会返回链路编号；这只表示本地链路上下文可用，不等于 Trace 已经导出到后端。`GET /health` 只检查 HTTP 服务存活，不创建 Query Trace，因此正常不会返回 `X-Trace-ID`。
+后台执行和导出会建立独立 Root Trace，并通过服务签发的内部 carrier / Link 关联受理请求；HTTP Root 结束不会提前结束 worker Trace。导出还会记录生成、交付和临时资源回收阶段。原始问题、Prompt、SQL、结果、Secret 与原始异常不进入这些 Trace。
+
+GET 历史 / 执行状态轮询及 SSE 观察保留本地 `X-Trace-ID`，但不导出业务 Root Trace，避免页面轮询生成高频噪声。`GET /health` 在观测中间件之外，只检查 HTTP 存活且不返回 `X-Trace-ID`。
+
+稳定环境的 Trace 默认为关闭。要在后续获准的稳定运行窗口启用时，在权限为 600 的 `.env.local` 中填写 `CHATBI_OBSERVABILITY_ENABLED=true`、阿里云控制台提供的 HTTPS OTLP Trace Endpoint 和 `CHATBI_OTLP_TIMEOUT_SECONDS`（1–10 秒，默认 5）；认证 Header 放在权限为 600 的 `.env.local.secrets`，只支持 `Authorization` 或 `Authentication`。如供应商把 Token 放入 Endpoint 路径，该文件同样按 Secret 保护。`./local` 会清除宿主 shell 同名变量，稳定 Compose 固定 `deployment.environment.name=stable` 并强制 `CHATBI_TRACE_CONTENT_ENABLED=false`。非法 Endpoint 会关闭导出，不合规 Header 会被丢弃；两者都不阻断查询。有限 Batch 队列满时允许丢弃 Trace，业务继续运行。
+
+如果没有配置或连接 Trace Exporter，服务仍可以正常运行并提供本地链路编号；这只表示本地诊断上下文可用，不等于 Trace 已导出到阿里云。只有在当前候选上执行真实入口并能在用户配置的阿里云控制台查询到 Trace，才能记录云接入 PASS；以前的验收记录不代表当前 stable 已接通。
 
 ## 7. 构建 RAG Offline 资产
 

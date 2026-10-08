@@ -54,6 +54,7 @@ from src.online_query.contracts import (
     QuerySuccess,
 )
 
+from .admission import AdmissionRejected, admit
 from .browser import (
     COOKIE_NAME,
     BrowserIdentityProvider,
@@ -69,10 +70,9 @@ from .conversation import (
     ConversationUnavailableError,
     InMemoryConversationStore,
 )
-from .admission import AdmissionRejected, admit
-from .operations_api import mount_operations_api
 from .execution import ExecutionApplication
 from .execution_runtime import ExecutionRuntime
+from .operations_api import mount_operations_api
 from .query_response import HTTP_STATUS_BY_ERROR as _HTTP_STATUS_BY_ERROR
 from .query_response import (
     AnalysisSuccessResponse,
@@ -279,6 +279,7 @@ def create_app(
                 app.state.history_application,
                 active_execution_runtime,
                 ready=lambda: operations is not None and operations.ready,
+                trace_recorder=recorder,
             )
             if app.state.history_application is not None
             and active_execution_runtime is not None
@@ -477,7 +478,12 @@ def create_app(
             return response
         request_id = _request_id_from_header(request.headers.get("X-Request-ID"))
         request.state.request_id = request_id
-        with _http_trace_scope(recorder, request_id) as trace_scope:
+        with _http_trace_scope(
+            recorder,
+            request_id,
+            enabled=request.method not in {"GET", "HEAD"},
+        ) as trace_scope:
+            request.state.trace_carrier = getattr(trace_scope, "carrier", {})
             rejection = None
             if request.cookies.get(COOKIE_NAME):
                 try:
@@ -1154,6 +1160,10 @@ class _FallbackScope:
     def __enter__(self) -> "_FallbackScope":
         return self
 
+    @property
+    def carrier(self) -> dict[str, str]:
+        return {}
+
     def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> bool:
         return False
 
@@ -1162,9 +1172,11 @@ class _FallbackScope:
 def _http_trace_scope(
     recorder: TraceRecorder | None,
     request_id: str,
+    *,
+    enabled: bool = True,
 ) -> Iterator[Any]:
     scope: Any = _FallbackScope()
-    if recorder is not None:
+    if recorder is not None and enabled:
         try:
             scope = recorder.query_trace(
                 QuerySource.HTTP,

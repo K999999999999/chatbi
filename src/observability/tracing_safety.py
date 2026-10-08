@@ -20,6 +20,7 @@ _SAFE_ERROR_TYPES = frozenset(item.value for item in ErrorType)
 _SAFE_WARNING_STAGES = frozenset(
     {
         "attribute",
+        "carrier_create",
         "exporter_configuration",
         "exporter_export",
         "exporter_force_flush",
@@ -54,6 +55,11 @@ _SAFE_ATTRIBUTE_RULES: dict[str, str] = {
     "chatbi.request.source": "source",
     "chatbi.request.id": "identifier",
     "chatbi.analysis_run_id": "identifier",
+    "chatbi.execution.id": "identifier",
+    "chatbi.execution.kind": "status",
+    "chatbi.export.id": "identifier",
+    "chatbi.export.format": "export_format",
+    "chatbi.operation.stage": "status",
     "chatbi.content_capture.enabled": "boolean",
     "chatbi.outcome": "outcome",
     "chatbi.error.type": "error_type",
@@ -191,6 +197,8 @@ def safe_attribute_value(value: Any, rule: str) -> Any:
         return value if _SAFE_REASON_RE.fullmatch(value) else None
     if rule == "status":
         return value if _SAFE_IDENTIFIER_RE.fullmatch(value) else None
+    if rule == "export_format":
+        return value if value in {"xlsx", "png", "pdf"} else None
     return None
 
 

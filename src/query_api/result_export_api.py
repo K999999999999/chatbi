@@ -7,6 +7,7 @@ import re
 import subprocess
 import threading
 import unicodedata
+from contextlib import nullcontext
 from datetime import UTC, datetime
 from typing import Literal
 from urllib.parse import quote
@@ -17,6 +18,12 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, model_validator
 from starlette.concurrency import run_in_threadpool
 
+from src.observability.contracts import (
+    Carrier,
+    QuerySource,
+    TraceOutcome,
+    TraceRecorder,
+)
 from src.query_api.history_api import _identity, _request_id
 
 from .export_application import ExportJob, ResultExportApplication
@@ -62,19 +69,85 @@ class ResultExportRequest(BaseModel):
 
 
 class TemporaryFileResponse(FileResponse):
-    def __init__(self, path, *, runtime, owner: int, **kwargs):
+    def __init__(
+        self,
+        path,
+        *,
+        runtime,
+        owner: int,
+        trace_recorder: TraceRecorder | None = None,
+        trace_carrier: Carrier | None = None,
+        export_format: str,
+        export_id: str,
+        **kwargs,
+    ):
         super().__init__(path, **kwargs)
         self._runtime = runtime
         self._owner = owner
         self._path = path
+        self._trace_recorder = trace_recorder
+        self._trace_carrier = trace_carrier
+        self._export_format = export_format
+        self._export_id = export_id
 
     async def __call__(self, scope, receive, send):
-        try:
-            await super().__call__(scope, receive, send)
-        finally:
-            await asyncio.shield(
-                run_in_threadpool(self._runtime.finish, self._owner, self._path)
+        recorder = self._trace_recorder
+        root = (
+            recorder.query_trace(
+                QuerySource.EXPORT,
+                carrier=self._trace_carrier,
+                attributes={
+                    "chatbi.export.id": self._export_id,
+                    "chatbi.export.format": self._export_format,
+                },
             )
+            if recorder is not None
+            else nullcontext()
+        )
+        with root:
+            try:
+                delivery = (
+                    recorder.span(
+                        "export.delivery",
+                        {"chatbi.operation.stage": "delivery"},
+                    )
+                    if recorder is not None
+                    else nullcontext()
+                )
+                with delivery:
+                    await super().__call__(scope, receive, send)
+            except BaseException:
+                if recorder is not None:
+                    recorder.enrich_current(
+                        outcome=TraceOutcome.TECHNICAL_FAILURE,
+                        error_code="EXPORT_DELIVERY_FAILED",
+                    )
+                raise
+            finally:
+                cleanup = (
+                    recorder.span(
+                        "export.cleanup",
+                        {"chatbi.operation.stage": "cleanup"},
+                    )
+                    if recorder is not None
+                    else nullcontext()
+                )
+                try:
+                    with cleanup:
+                        await asyncio.shield(
+                            run_in_threadpool(
+                                self._runtime.finish, self._owner, self._path
+                            )
+                        )
+                except BaseException:
+                    if recorder is not None:
+                        recorder.enrich_current(
+                            outcome=TraceOutcome.TECHNICAL_FAILURE,
+                            error_code="EXPORT_CLEANUP_FAILED",
+                        )
+                    raise
+            if recorder is not None:
+                recorder.enrich_current(outcome=TraceOutcome.SUCCESS)
 
 
 def _content_disposition(filename: str) -> str:
@@ -167,9 +240,36 @@ def mount_result_export_api(app: FastAPI) -> None:
             ),
         )
         cancelled = threading.Event()
-        generate = asyncio.create_task(
-            run_in_threadpool(export_application.generate, job, cancelled)
-        )
+        trace_recorder = getattr(request.app.state, "trace_recorder", None)
+        trace_carrier = getattr(request.state, "trace_carrier", None)
+
+        def generate_export():
+            if trace_recorder is None:
+                return export_application.generate(job, cancelled)
+            with trace_recorder.query_trace(
+                QuerySource.EXPORT,
+                carrier=trace_carrier,
+                attributes={
+                    "chatbi.export.id": request_id,
+                    "chatbi.export.format": job.format,
+                },
+            ):
+                try:
+                    with trace_recorder.span(
+                        "export.generate",
+                        {"chatbi.operation.stage": "generation"},
+                    ):
+                        artifact = export_application.generate(job, cancelled)
+                except Exception:
+                    trace_recorder.enrich_current(
+                        outcome=TraceOutcome.TECHNICAL_FAILURE,
+                        error_code="EXPORT_GENERATION_FAILED",
+                    )
+                    raise
+                trace_recorder.enrich_current(outcome=TraceOutcome.SUCCESS)
+                return artifact
+
+        generate = asyncio.create_task(run_in_threadpool(generate_export))
         try:
             while not generate.done():
                 await asyncio.sleep(0.05)
@@ -212,6 +312,10 @@ def mount_result_export_api(app: FastAPI) -> None:
             artifact.path,
             runtime=runtime,
             owner=auth.user_id,
+            trace_recorder=trace_recorder,
+            trace_carrier=trace_carrier,
+            export_format=job.format,
+            export_id=request_id,
             media_type="image/png"
             if is_png
             else "application/pdf"

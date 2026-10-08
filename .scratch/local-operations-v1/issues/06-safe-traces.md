@@ -1,6 +1,6 @@
 # 06 — 真实执行生命周期与阿里云Trace安全接入
 
-Status: open
+Status: done
 Authorization: 用户2026-10-08确认七项拆分与全部本地实施、验证、Review和Commit；无Push/PR或实际stable切换授权。
 Canonical Source: [Spec](../spec.md)、[Design](../design.md)；共同约束见 [已确认拆分](../tickets-draft.md)。
 
@@ -20,5 +20,5 @@ Migration / Rollback: OTel SDK在Infrastructure Adapter；保留既有TraceRecor
 Done When: Trace软件/集成证据与Review完成；Observability/Runbook白名单与fail-open说明更新；真实云结果归07最终报告，缺证据不得宣称目标完成。
 
 
-Result: 待实施。
-Comments: 无。
+Result: 本地实现、软件与OTLP集成测试、Runbook/Observability Contract更新及Code Review完成。云端实际Trace查询属于Ticket 07当前候选最终验收；稳定配置未启用OTLP，因此不报告云接入PASS。
+Comments: 本地候选提交及验证记录见 `.scratch/local-operations-v1/review-06.md`；未修改或重启stable/dev服务，未读取或记录Secret值。

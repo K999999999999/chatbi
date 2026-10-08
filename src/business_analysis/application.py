@@ -12,6 +12,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 
 from src.authorization.contracts import AuthContext
+from src.observability.contracts import TraceRecorder
 from src.online_query.contracts import (
     ExecutionControl,
     ExecutionProgressObserver,
@@ -127,6 +128,7 @@ class BusinessAnalysisApplication:
         adapter: TaskSemanticAdapter | None = None,
         checkpointer: object | None = None,
         run_store: PostgresAnalysisRunStore | None = None,
+        trace_recorder: TraceRecorder | None = None,
     ) -> None:
         self._authorized_query_service = authorized_query_service
         self._decomposer = decomposer
@@ -135,6 +137,7 @@ class BusinessAnalysisApplication:
         self._adapter = adapter or TaskSemanticAdapter()
         self._checkpointer = checkpointer
         self._run_store = run_store
+        self._trace_recorder = trace_recorder
         if (checkpointer is None) != (run_store is None):
             raise ValueError("checkpoint 与运行登记必须同时配置")
         self._graph = self._build_graph()
@@ -339,11 +342,30 @@ class BusinessAnalysisApplication:
 
     def _build_graph(self):
         builder = StateGraph(AnalysisRunState, context_schema=AnalysisRunContext)
-        builder.add_node("extract", self._extract_request)
-        builder.add_node("validate", self._validate_request)
-        builder.add_node("execute", self._execute_tasks)
-        builder.add_node("attribute", self._attribute_results)
-        builder.add_node("summarize", self._summarize_results)
+        builder.add_node(
+            "extract",
+            self._traced_node("analysis.extract", "extract", self._extract_request),
+        )
+        builder.add_node(
+            "validate",
+            self._traced_node("analysis.validate", "validate", self._validate_request),
+        )
+        builder.add_node(
+            "execute",
+            self._traced_node("analysis.execute_task", "execute", self._execute_tasks),
+        )
+        builder.add_node(
+            "attribute",
+            self._traced_node(
+                "analysis.attribute", "attribute", self._attribute_results
+            ),
+        )
+        builder.add_node(
+            "summarize",
+            self._traced_node(
+                "analysis.summarize", "summarize", self._summarize_results
+            ),
+        )
         builder.add_edge(START, "extract")
         builder.add_edge("extract", "validate")
         builder.add_conditional_edges(
@@ -363,6 +385,15 @@ class BusinessAnalysisApplication:
         )
         builder.add_edge("summarize", END)
         return builder.compile(checkpointer=self._checkpointer)
+
+    def _traced_node(self, name, stage, callback):
+        def invoke(state, runtime):
+            if self._trace_recorder is None:
+                return callback(state, runtime)
+            with self._trace_recorder.span(name, {"chatbi.operation.stage": stage}):
+                return callback(state, runtime)
+
+        return invoke
 
     def _extract_request(
         self,

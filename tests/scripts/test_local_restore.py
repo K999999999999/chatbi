@@ -91,10 +91,19 @@ def _manifest(tmp_path):
             "business": {"name": "chatbi_mvp", "tables": tables},
             "control": {"name": "chatbi_control", "tables": tables},
         },
-        "members": {name: {"size": 1, "sha256": "a" * 64} for name in (
-            "business.dump", "control.dump", "config.env", "secrets.env", "release.env",
-            "rag-current.json", "rag-manifest.json", "compatibility.json",
-        )},
+        "members": {
+            name: {"size": 1, "sha256": "a" * 64}
+            for name in (
+                "business.dump",
+                "control.dump",
+                "config.env",
+                "secrets.env",
+                "release.env",
+                "rag-current.json",
+                "rag-manifest.json",
+                "compatibility.json",
+            )
+        },
     }
     return manifest, payload
 
@@ -144,15 +153,48 @@ def test_restore_manifest_accepts_only_known_role_and_resource_contracts(
     import scripts.local_restore as restore
 
     monkeypatch.setattr(restore, "verify_dump", lambda _path: None)
-    monkeypatch.setattr(release, "validate_compatibility_profile", lambda _profile: None)
+    monkeypatch.setattr(
+        release, "validate_compatibility_profile", lambda _profile: None
+    )
     manifest, payload = _manifest(tmp_path)
     checked = validate_manifest(manifest, backup_id="e" * 32, payload=payload)
     assert checked["source"]["source_commit"] == "a" * 40
-    assert checked["fingerprints"]["control"] == manifest["databases"]["control"]["tables"]
+    assert (
+        checked["fingerprints"]["control"] == manifest["databases"]["control"]["tables"]
+    )
 
     manifest["roles"][1]["superuser"] = True
     with pytest.raises(RestoreFailed):
         validate_manifest(manifest, backup_id="e" * 32, payload=payload)
+
+
+def test_restore_preserves_optional_trace_configuration(tmp_path, monkeypatch):
+    import scripts.local_release as release
+    import scripts.local_restore as restore
+
+    monkeypatch.setattr(restore, "verify_dump", lambda _path: None)
+    monkeypatch.setattr(
+        release, "validate_compatibility_profile", lambda _profile: None
+    )
+    manifest, payload = _manifest(tmp_path)
+    with (payload / "config.env").open("ab") as stream:
+        stream.write(
+            b"CHATBI_OBSERVABILITY_ENABLED=true\n"
+            b"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=https://collector.invalid/v1/traces\n"
+            b"CHATBI_OTLP_TIMEOUT_SECONDS=5\n"
+        )
+    with (payload / "secrets.env").open("ab") as stream:
+        stream.write(b"OTEL_EXPORTER_OTLP_HEADERS=Authentication=fixture-token\n")
+
+    checked = validate_manifest(manifest, backup_id="e" * 32, payload=payload)
+
+    assert checked["config"]["CHATBI_OBSERVABILITY_ENABLED"] == "true"
+    assert checked["config"]["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"].startswith(
+        "https://"
+    )
+    assert checked["secrets"]["OTEL_EXPORTER_OTLP_HEADERS"].startswith(
+        "Authentication="
+    )
 
 
 def test_restore_manifest_rejects_extra_config_and_release_identity_mismatch(
@@ -162,7 +204,9 @@ def test_restore_manifest_rejects_extra_config_and_release_identity_mismatch(
     import scripts.local_restore as restore
 
     monkeypatch.setattr(restore, "verify_dump", lambda _path: None)
-    monkeypatch.setattr(release, "validate_compatibility_profile", lambda _profile: None)
+    monkeypatch.setattr(
+        release, "validate_compatibility_profile", lambda _profile: None
+    )
     alternate = tmp_path / "alternate"
     alternate.mkdir(mode=0o700)
     manifest, payload = _manifest(alternate)
@@ -183,14 +227,20 @@ def test_temporary_verifier_copies_a_completed_snapshot_without_reassigning_sour
     import uuid
 
     import scripts.local_restore as restore
+
     restore_id = "a" * 32
     state_root = tmp_path / "operations"
     state_root.mkdir(mode=0o700)
     record = _restore_record(restore_id)
-    record["normalization"] = {"restored_epoch": str(uuid.uuid4()), "active_epoch": None}
+    record["normalization"] = {
+        "restored_epoch": str(uuid.uuid4()),
+        "active_epoch": None,
+    }
     restore.write_record(state_root, record)
     sql = []
-    monkeypatch.setattr(restore, "_control_psql", lambda statement, *, env: sql.append(statement))
+    monkeypatch.setattr(
+        restore, "_control_psql", lambda statement, *, env: sql.append(statement)
+    )
     monkeypatch.setattr(restore, "pg_environment", lambda _database: {})
     credentials = {
         "username": "restore_test_aaaaaaaaaaaa",
@@ -361,7 +411,11 @@ def test_login_verifier_rejects_missing_or_wrong_history_evidence_and_logs_out(
         if path == "/api/v1/histories/" + history_id + "/turns/" + turn_id:
             return 200, {"snapshot": {"version": 1}}
         if path == "/api/v1/saved-results?limit=1":
-            items = [] if failure == "empty_results" else [{"id": "33333333-3333-4333-8333-333333333333"}]
+            items = (
+                []
+                if failure == "empty_results"
+                else [{"id": "33333333-3333-4333-8333-333333333333"}]
+            )
             return 200, {"items": items}
         if path == "/auth/logout":
             return 204, None

@@ -25,6 +25,7 @@ from src.business_analysis.runtime import (
     load_analysis_context,
 )
 from src.chatbi_control.database import ControlDatabaseConfig, create_control_engine
+from src.observability.contracts import TraceRecorder
 
 from .lifecycle import register_cleanup
 
@@ -38,6 +39,7 @@ def build_analysis_application(
     http_client: object | None = None,
     http_async_client: object | None = None,
     model_wrapper=None,
+    trace_recorder: TraceRecorder | None = None,
 ) -> BusinessAnalysisApplication:
     """装配真实 LLM 边缘和当前语义事实。"""
 
@@ -78,6 +80,7 @@ def build_analysis_application(
             ),
             checkpointer=checkpointer,
             run_store=PostgresAnalysisRunStore(control_engine),
+            trace_recorder=trace_recorder,
         )
         pending.pop_all()
         return application
