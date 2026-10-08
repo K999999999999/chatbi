@@ -69,6 +69,15 @@ class ExportRuntime:
         self._source_root = Path(configured_source) if configured_source else None
         self._render_config: dict | None = None
 
+    def capacity_snapshot(self):
+        with self._lock:
+            return {
+                "active": len(self._owner_active),
+                "max_total": 2,
+                "max_per_user": 1,
+                "accepting": not self._closing,
+            }
+
     def startup(self) -> None:
         with self._startup_lock:
             if self._initialized:

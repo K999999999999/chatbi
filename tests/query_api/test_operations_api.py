@@ -17,6 +17,7 @@ def test_readiness_without_probe_evidence_fails_closed():
 
 def test_status_requires_identity_and_never_renews_idle_session(browser):  # noqa: F811
     client, service, clock, _auth = browser
+    client.app.state.operations = None
     assert client.get("/api/v1/operations/status").status_code == 401
     headers = login(client)
     clock[0] += timedelta(minutes=29)
@@ -76,3 +77,42 @@ def test_admin_details_follow_current_permissions_and_revocation(browser):  # no
         user.is_active = False
         session.commit()
     assert client.get("/api/v1/operations/status", headers=headers).status_code == 401
+
+
+def test_authenticated_query_is_rejected_when_readiness_has_no_current_evidence(
+    browser,  # noqa: F811
+):
+    client, service, _, _ = browser
+    client.app.state.operations = None
+    headers = login(client)
+    response = client.post(
+        "/api/v1/query", json={"question": "查询销售额"}, headers=headers
+    )
+    assert response.status_code == 503
+    assert response.json()["error_code"] == "SERVICE_NOT_READY"
+    service.execute.assert_not_called()
+
+
+def test_sync_query_shares_live_background_capacity_and_recovers(browser):  # noqa: F811
+    client, service, _, _ = browser
+    headers = login(client)
+    runtime = client.app.state.execution_runtime
+    owner = int(headers["X-ChatBI-User-ID"])
+    held = runtime.reserve_owner(owner)
+    try:
+        busy = client.post(
+            "/api/v1/query", json={"question": "查询销售额"}, headers=headers
+        )
+        assert busy.status_code == 429
+        assert busy.json()["error_code"] == "EXECUTION_LIMIT_REACHED"
+        service.execute.assert_not_called()
+        status = client.get("/api/v1/operations/status", headers=headers)
+        assert "details" not in status.json()
+    finally:
+        held.release()
+    response = client.post(
+        "/api/v1/query", json={"question": "查询销售额"}, headers=headers
+    )
+    assert response.status_code == 200
+    assert response.json()["rows"] == [[1]]
+    assert runtime.active_total == 0

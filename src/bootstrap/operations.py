@@ -26,7 +26,8 @@ class ProcessReadinessProbe:
                 not isinstance(checks, dict)
                 or set(checks) != set(DEPENDENCIES)
                 or any(
-                    value not in {"ready", "not_ready", "unknown"}
+                    not isinstance(value, str)
+                    or value not in {"ready", "not_ready", "unknown"}
                     for value in checks.values()
                 )
             ):

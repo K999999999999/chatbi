@@ -1,6 +1,6 @@
 # 03 — 固定工具镜像与可恢复的手工加密备份
 
-Status: open
+Status: in-progress
 Authorization: 用户2026-10-08确认七项拆分与全部本地实施、验证、Review和Commit；无Push/PR或实际stable切换授权。
 Canonical Source: [Spec](../spec.md)、[Design](../design.md)；共同约束见 [已确认拆分](../tickets-draft.md)。
 

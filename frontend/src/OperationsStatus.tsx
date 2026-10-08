@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { APIError, request, type Identity } from './api';
 
 type Status = 'ready' | 'not_ready' | 'unknown';
-type View = { status: Status; details?: { dependencies: Record<string, Status>; model: { status: string }; backup?: { overdue?: boolean; failure_code?: string; last_success?: string } } };
+type View = { status: Status; details?: { dependencies: Record<string, Status>; model: { status: string }; capacity?: { business?: { active: number; max_total: number }; export?: { active: number; max_total: number } }; backup?: { overdue?: boolean; failure_code?: string; last_success?: string } } };
 const dependencyNames: Record<string, string> = { control_database: '应用数据库', business_database: '业务数据库', qdrant: '检索服务', assets: '业务与检索资产' };
 const stateNames = { ready: '可用', not_ready: '不可用', unknown: '未确认' };
 
@@ -34,6 +34,8 @@ export function OperationsStatus({ user, onExpired }: { user: Identity; onExpire
     {details && <details><summary>运行状态：{stateNames[view!.status]}</summary>
       <ul>{Object.entries(dependencyNames).map(([key, name]) => <li key={key}>{name}：{stateNames[details.dependencies?.[key]] ?? '未确认'}</li>)}
         <li>模型：{details.model?.status === 'success' ? '最近调用成功' : details.model?.status === 'failure' ? '最近调用失败' : '无近期调用证据'}</li>
+        <li>业务执行：{Number.isSafeInteger(details.capacity?.business?.active) ? `${details.capacity!.business!.active} / ${details.capacity!.business!.max_total}` : '未确认'}</li>
+        <li>导出执行：{Number.isSafeInteger(details.capacity?.export?.active) ? `${details.capacity!.export!.active} / ${details.capacity!.export!.max_total}` : '未确认'}</li>
         <li>备份：{!details.backup?.last_success ? '尚无成功备份证据' : details.backup.overdue ? '已超过24小时，请检查' : details.backup.failure_code ? '最近备份失败，请检查' : '有成功备份证据'}</li>
       </ul>
     </details>}

@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from pypdf import PdfReader
 
 from src.authorization.contracts import AuthContext, AuthorizationDecision
-from src.query_api.app import create_app
+from tests.operations_support import create_app
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("CHATBI_EXPORT_PDF_RENDER_TEST") != "1",

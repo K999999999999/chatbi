@@ -28,6 +28,7 @@ from src.chatbi_control.models import Base, User
 from src.online_query.contracts import QueryErrorCode, QueryFailure, QuerySuccess
 from src.online_query.query_understanding import QueryType, ValidatedSemanticQuery
 from src.query_api.app import create_app
+from tests.operations_support import ready_operations
 from src.query_api.browser import BrowserSettings
 from src.query_api.history_codec import encode_snapshot
 from tests.history_support import BrowserHistoryRuntime, BrowserHistoryStore
@@ -245,6 +246,7 @@ def create_browser_app():
         )
     return create_app(
         BrowserQueryFixture(),
+        operations=ready_operations(),
         analysis_service=BrowserAnalysisFixture(),
         auth_service=auth,
         audit_sink=InMemoryAuditSink(),

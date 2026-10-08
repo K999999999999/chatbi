@@ -185,3 +185,7 @@ R5 导出、R6 生产打包 / 部署、R7 容量 / 运维验收；移动端、�
 ## Contract 与实施状态
 
 本 Spec 是 R4 的正式行为 Contract；实施前的确认、设计审查、Readiness 与 Ticket 拆分记录保留在 [工作目录](../../.scratch/execution-streaming-v1/)。实施与验收状态以本地 Git 公共目录 `work-items/execution-streaming-v1/status.md` 为准。该状态记录候选提交、适用验证及真实报告身份；本文件不把历史报告重标为当前候选，也不将本地验收表述为生产部署或远端发布。
+
+## R7 受理保护补充
+
+已确认[运行保障Contract](local-operations-v1.md)将同步Query API与本后台入口纳入同一owner/API容量（默认1/4），导出仍独立1/2。readiness未知/失败时仅拒绝新业务受理，返回503 SERVICE_NOT_READY；已持久受理的幂等重放先返回既有记录，观察和重放不重复占容量。运行中的取消/停止/epoch/保存规则保持，真实工作退出前不释放额度。新运行验收另见R7候选，原R4证据保持原身份。

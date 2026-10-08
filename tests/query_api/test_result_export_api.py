@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 
 from src.authorization.contracts import AuthContext, AuthorizationDecision
-from src.query_api.app import create_app
+from tests.operations_support import create_app
 from src.query_api.export_runtime import ExportArtifact
 from src.query_api.history_contracts import HistoryError
 

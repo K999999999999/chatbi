@@ -44,10 +44,11 @@ class ExecutionView:
 
 
 class ExecutionApplication:
-    def __init__(self, history_application, execution_runtime):
+    def __init__(self, history_application, execution_runtime, *, ready=None):
         self.history = history_application
         self.store = history_application.store
         self.runtime = execution_runtime
+        self._ready = ready
 
     @_serialize_operation_at(2)
     def submit(
@@ -265,6 +266,8 @@ class ExecutionApplication:
         return self._view(auth, request_id, record)
 
     def _reserve(self, auth, history_id, *, analysis_run_id):
+        if self._ready is not None and not self._ready():
+            raise HistoryError("SERVICE_NOT_READY", "服务暂时不可用，请稍后重试", 503)
         try:
             return self.runtime.reserve(
                 auth.user_id,

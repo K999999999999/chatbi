@@ -292,3 +292,28 @@ def _persist_first_stop(calls, durable_reason, reason):
     if durable_reason[0] is None:
         durable_reason[0] = reason
     return SimpleNamespace(status="stopping", stop_reason=durable_reason[0])
+
+
+def test_synchronous_owner_lease_shares_background_limits_and_releases_once():
+    runtime = ExecutionRuntime(
+        HistoryRuntime(), AnalysisGuard(), max_per_user=1, max_total=2
+    )
+    synchronous = runtime.reserve_owner(11)
+    try:
+        with pytest.raises(ExecutionCapacityExceeded) as busy:
+            runtime.reserve(11, "history")
+        assert busy.value.scope == "user"
+        background = runtime.reserve(12, "other-history")
+        assert runtime.capacity_snapshot()["active"] == 2
+        with pytest.raises(ExecutionCapacityExceeded) as full:
+            runtime.reserve_owner(13)
+        assert full.value.scope == "process"
+        background.release()
+        synchronous.release()
+        synchronous.release()
+        assert runtime.active_total == 0
+        accepted = runtime.reserve(11, "history")
+        accepted.release()
+    finally:
+        synchronous.release()
+        runtime.close()

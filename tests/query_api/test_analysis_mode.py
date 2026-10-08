@@ -125,7 +125,17 @@ class _AnalysisService:
         self.result = result
         self.calls = []
 
-    def analyze(self, question, *, request_id, auth_context, analysis_run_id):
+    def analyze(
+        self,
+        question,
+        *,
+        request_id,
+        auth_context,
+        analysis_run_id,
+        execution_control=None,
+    ):
+        if execution_control is not None:
+            execution_control.checkpoint()
         self.calls.append(
             {
                 "question": question,

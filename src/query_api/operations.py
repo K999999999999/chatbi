@@ -25,6 +25,10 @@ class OperationsState:
         self._checked_tick = None
         self._model = None
         self._backup_provider = backup_provider
+        self._capacity_provider = None
+
+    def set_capacity_provider(self, provider):
+        self._capacity_provider = provider
 
     def record_checks(self, checks: Mapping[str, str]) -> None:
         if set(checks) != set(DEPENDENCIES) or any(
@@ -49,6 +53,11 @@ class OperationsState:
             )
             if detailed
             else None
+        )
+        capacity = (
+            self._capacity_provider()
+            if detailed and self._capacity_provider is not None
+            else {"status": "unknown"}
         )
         with self._lock:
             now = self._clock()
@@ -80,6 +89,7 @@ class OperationsState:
                     "dependencies": checks,
                     "model": model,
                     "backup": backup,
+                    "capacity": capacity,
                 }
             return result
 

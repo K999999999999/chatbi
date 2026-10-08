@@ -7,7 +7,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from src.authorization.contracts import AuthContext
-from src.query_api.app import create_app
+from tests.operations_support import create_app
 from src.query_api.browser import BrowserSettings
 from src.query_api.execution import ExecutionView
 from src.query_api.execution_contracts import ExecutionRecord
