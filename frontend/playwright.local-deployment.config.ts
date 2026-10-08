@@ -31,7 +31,7 @@ export default defineConfig({
   grepInvert: /源码挂载实际触发 Python 重载与 Vite 热更新/,
   workers: 1,
   retries: 0,
-  timeout: 600000,
+  timeout: 1800000,
   reporter: './playwright.container-reporter.ts',
   outputDir: join(reportDir, 'playwright-results'),
   use: {

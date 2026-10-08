@@ -170,10 +170,13 @@ async function captureExecutionStreams(page: Page) {
     submissions,
     connectionCount(executionId: string): number { return connections.get(executionId) ?? 0; },
     async forExecution(executionId: string): Promise<ExecutionStreamEvidence> {
-      await expect.poll(() => page.evaluate(id =>
-        window.__chatbiExecutionEvidence?.[id]?.terminal_statuses.includes('succeeded') ?? false, executionId),
-      { timeout: 30000 }).toBe(true);
-      return await page.evaluate(id => window.__chatbiExecutionEvidence?.[id]!, executionId);
+      await expect.poll(() => page.evaluate(id => {
+        const statuses = window.__chatbiExecutionEvidence?.[id]?.terminal_statuses ?? [];
+        return statuses.find(status => ['succeeded', 'failed', 'cancelled', 'timed_out', 'unconfirmed'].includes(status)) ?? null;
+      }, executionId), { timeout: 30000 }).not.toBeNull();
+      const evidence = await page.evaluate(id => window.__chatbiExecutionEvidence?.[id]!, executionId);
+      expect(evidence.terminal_statuses).toContain('succeeded');
+      return evidence;
     },
   };
 }
@@ -348,7 +351,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     evidence.category_same_unit = { rows: category.rows.length, reference_matches: true, series: 2, metadata_status: categoryMeta.status };
     evidence.step = 'analysis-request';
     await page.getByRole('button', { name: '经营分析', exact: true }).click();
-    const analysisResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 600000 });
+    const analysisResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 1200000 });
     await send(page, '分析2025年3月相比2025年2月的人民币毛利变化及产品因素贡献。');
     const analysisHttp = await analysisResponse;
     evidence.analysis_http_status = analysisHttp.status();

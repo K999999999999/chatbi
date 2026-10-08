@@ -1,8 +1,20 @@
 import { expect, type Page } from '@playwright/test';
 
-export function isFinalExecutionResponse(response: { url(): string; request(): { method(): string } }): boolean {
+const terminalExecutionStatuses = new Set(['succeeded', 'failed', 'cancelled', 'timed_out', 'unconfirmed']);
+
+export async function isFinalExecutionResponse(response: {
+  url(): string;
+  request(): { method(): string };
+  json(): Promise<unknown>;
+}): Promise<boolean> {
   const path = new URL(response.url()).pathname;
-  return response.request().method() === 'GET' && /^\/api\/v1\/executions\/[0-9a-f-]{36}$/.test(path);
+  if (response.request().method() !== 'GET' || !/^\/api\/v1\/executions\/[0-9a-f-]{36}$/.test(path)) return false;
+  try {
+    const body = await response.json() as { execution?: { status?: unknown } };
+    return typeof body.execution?.status === 'string' && terminalExecutionStatuses.has(body.execution.status);
+  } catch {
+    return false;
+  }
 }
 
 export async function mockFinalExecution(page: Page, snapshot: unknown | ((current: unknown, call: number) => unknown)) {

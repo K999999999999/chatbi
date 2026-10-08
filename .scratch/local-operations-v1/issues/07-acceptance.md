@@ -19,5 +19,5 @@ owned files: scripts/local_acceptance.py及最小R7验收入口；受影响软�
 Migration / Rollback: 不执行真实stable数据激活、整机/Docker重启或永久IDM变更；隔离资源按明确标签清理且先留证据。发布前报告当前范围/风险/验证/自动合并规则再取得Push/PR授权。
 Done When: 01–06适用证据均可追溯，完整Review和文档链接检查通过；全部Done When满足或必要条件明确待补，未完成项不报告全目标完成；只完成本地candidate，不自动远端发布。
 
-Result: clean candidate `82b366e` 的隔离验收通过了数据库/Qdrant初始化、RAG构建和失败保护检查，但API启动因验收Compose override遗漏私有运行socket挂载而失败（退出码3）；专属容器、卷和网络已清理。已补齐验收project到`/opt/chatbi-runtime`的run-scoped挂载，并以Compose解析回归测试确认，当前需以新clean candidate重建并重跑完整验收。Ticket 06本地代码、软件和OTLP集成Review已完成，稳定环境OTLP解析为关闭。真实stable切换、云端Trace查询、Windows Edge业务验收和Push/PR均未执行。
-Comments: Ticket 06本地提交为`1293208`；本次修复仅调整隔离验收资源装配，不改生产API/Contract。TDD Red：Compose解析测试缺少`/opt/chatbi-runtime`；Green：定向Compose测试及`tests/scripts/test_local_acceptance.py`共10项通过。后续继续验证新candidate，明确记录当前环境未满足的Windows/外部配置条件。
+Result: clean candidate `4b515b6` 的隔离安装、RAG、失败保护、API启动及Chromium sandbox均通过。Windows Edge真实业务流程已完成问数/追问和部分图表导出；经营分析响应为HTTP 200，但测试的SSE流未在30秒内报告成功，尚不能区分长时间运行与执行失败。验收helper当时把任意`GET /executions/{id}`轮询当作最终响应，且浏览器等待上限低于R7允许的1200秒。已修正终态筛选、失败终态诊断和等待预算；待以新clean candidate重跑。专属验收资源已清理。Ticket 06本地代码、软件和OTLP集成Review已完成，稳定环境OTLP解析为关闭。真实stable切换、云端Trace查询和Push/PR均未执行。
+Comments: Ticket 06本地提交为`1293208`。本目标两处修复仅调整隔离验收装配与测试等待，不改生产API/Contract。Compose挂载回归测试先Red后Green，`tests/scripts/test_local_acceptance.py`10项通过；前端helper类型检查与终态谓词测试通过。完整验收仍须重跑，并明确记录当前环境未满足的云端Trace/容量/恢复窗口条件。
