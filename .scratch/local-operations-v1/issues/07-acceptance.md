@@ -1,6 +1,6 @@
 # 07 — 当前候选完整业务、恢复与容量验收
 
-Status: open
+Status: in-progress
 Authorization: 用户2026-10-08确认七项拆分与全部本地实施、验证、Review和Commit；无Push/PR或实际stable切换授权。
 Canonical Source: [Spec](../spec.md)、[Design](../design.md)；共同约束见 [已确认拆分](../tickets-draft.md)。
 
@@ -19,5 +19,5 @@ owned files: scripts/local_acceptance.py及最小R7验收入口；受影响软�
 Migration / Rollback: 不执行真实stable数据激活、整机/Docker重启或永久IDM变更；隔离资源按明确标签清理且先留证据。发布前报告当前范围/风险/验证/自动合并规则再取得Push/PR授权。
 Done When: 01–06适用证据均可追溯，完整Review和文档链接检查通过；全部Done When满足或必要条件明确待补，未完成项不报告全目标完成；只完成本地candidate，不自动远端发布。
 
-Result: 待实施。
-Comments: 无。
+Result: 正在建立当前候选完整运行验收证据；已完成Ticket 06本地代码、软件和OTLP集成Review，稳定环境OTLP解析为关闭。真实stable切换、云端Trace查询和Push/PR均未执行。
+Comments: Ticket 06本地提交为`1293208`；先在明确标记的隔离资源中推进可运行验收，并记录无法在当前Linux环境满足的Windows/外部配置条件。
