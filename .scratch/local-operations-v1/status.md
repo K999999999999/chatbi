@@ -1,6 +1,6 @@
 # R7 长期规划记录
 
-当前：01–06已本地实现/Review；06本地提交`1293208`，软件与OTLP集成验证通过。05隔离恢复、候选激活与previous恢复在独立stable clone完成。Ticket07完整运行验收进行中，真实stable/云端及Windows实际入口结论待补；无Push/PR或实际stable切换授权。以下按时间保留规划与实施历史，实时阶段见Git公共目录记录。
+当前：01–06已本地实现/Review；06本地提交`1293208`，软件与OTLP集成验证通过。05隔离恢复、候选激活与previous恢复在独立stable clone完成。Ticket07候选`f1b98d7`完成部分隔离/Windows Edge验收；经营分析以公开分类`LLM_ERROR`失败，PDF、容量、完整RTO和阿里云Trace仍待验。stable未修改；无Push/PR或实际stable切换授权。以下按时间保留规划与实施历史，实时阶段见Git公共目录记录。
 
 ## 初始规划快照（拆分确认前）
 

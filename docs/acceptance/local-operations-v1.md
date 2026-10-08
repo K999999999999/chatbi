@@ -1,0 +1,41 @@
+# R7 本地运行保障验收
+
+Status: incomplete. Ticket 01–06 的本地实现与 Review 已完成；Ticket 07 当前候选完成了部分隔离运行和真实浏览器验收，经营分析以公开分类 `LLM_ERROR` 终止，完整验收门槛未满足。
+
+## 候选与证据身份
+
+- 候选源码：`f1b98d73c72b572a37d7b6a3ff5dd19da9d46b3b`，验收报告记录 `git_dirty=false`。
+- 验收时间：2026-10-09（Asia/Shanghai）；运行 ID：`20261008T172902Z-2f1178cf`。
+- 浏览器：Windows Edge `154.0.4258.62`；运行资源使用独立 acceptance Compose project。
+- 原始证据位于本机 ignored 目录 `.local/acceptance/20261008T172902Z-2f1178cf/`，不随仓库分发。报告含运行身份和业务结果，不应复制到版本库或公开日志。
+- 候选镜像构建因默认软件源不可达，使用临时镜像 URL 构建包装；包装只改临时构建上下文中的下载地址，锁文件版本与摘要保持原值，仓库文件未修改。默认网络路径下的独立重建尚未验证。
+
+## 本次结果
+
+| 范围 | 结果 | 证据与限制 |
+| --- | --- | --- |
+| 隔离候选启动、数据库/RAG 初始化与 readiness | PASS | 使用专属运行资源；原稳定服务未加入验收 Compose。 |
+| 故障拒绝与状态保护 | PASS | 配置错误、启动失败、不兼容 migration、缺失索引、回环端口占用五类检查均按预期拒绝；持久状态前后检查相同。 |
+| 浏览器与查询链路 | PASS | Chromium sandbox 实际启动；Edge 查询和追问成功，执行流到达 `succeeded` 终态。 |
+| 图表与 XLSX 导出 | PASS | PNG 和 XLSX 均从已保存结果导出；导出期间没有新建业务执行。 |
+| PDF 导出 | NOT RUN | 经营分析失败后验收停止，尚未到 PDF 步骤。 |
+| 经营分析 | FAIL | HTTP 请求成功受理，执行流到达真实 `failed` 终态，公开 `error_code=LLM_ERROR`；安全报告不含原始异常，具体原因未能判定。不能记作模型拒答、应用缺陷或成功分析。 |
+| 临时资源回收 | PASS | acceptance 容器、网络和卷均为 0；清理记录为 `active_sessions=0`、卷已移除。 |
+| 稳定服务 | 保持运行 | 验收后稳定 API 与 PostgreSQL healthy、Qdrant running；没有对稳定环境执行升级、密钥初始化、恢复切换或重启。 |
+
+## 尚未满足的 Ticket 07 验收项
+
+- 需要先用安全证据复现并定位分析执行的 `LLM_ERROR`，再完成当前候选的分析、历史/成果和 PDF 浏览器验收。
+- 尚未形成当前候选的单用户分项耗时及 CPU/内存峰值、跨入口资源回收和 60 秒依赖故障/恢复矩阵；本次不能据此声明容量或恢复 SLA。
+- 当前候选的完整隔离恢复计时及 30 分钟 RTO / 条件 RPO 矩阵未完成。Ticket 05 的隔离恢复、切换和回退证据仍绑定各自候选，不自动替代本次候选验收。
+- 当前候选阿里云 Trace 未查询验证；稳定环境 OTLP 当前关闭。没有执行真实 stable 升级或运行配置更改。
+- 本次未重跑正式 AI Evaluation；历史报告仍绑定其原始候选，不能作为 `f1b98d7` 的通过证据。
+
+## 软件验证
+
+- `tests/scripts/test_local_acceptance.py`：10 passed。
+- `npm run typecheck`：通过；`npm test -- --config=playwright.config.ts tests/helpers.spec.ts`：1 passed。
+- 完整测试套件最近一次在前置候选 `82b366e` 上通过：941 passed、41 skipped、139 subtests。随后改动集中于验收挂载、浏览器终态等待与安全错误分类记录；本次未重跑完整套件。
+- 本机 `python -m scripts.check_harness_state` 检查 22 份记录，无 ERROR；`chatbi-product-v1`、`local-operations-v1` 和 `r6-presubmit-coverage` 保留 REVIEW，需各自继续跟进。
+
+结论：R7 Ticket 07 仍为 in-progress。当前候选只完成表中列出的部分证据，不能据此宣称 R7 全部验收通过或开始真实 stable 切换。未获本目标 Push/PR 授权。
