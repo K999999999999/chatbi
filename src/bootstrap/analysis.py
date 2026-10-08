@@ -37,12 +37,15 @@ def build_analysis_application(
     dimensions_path: Path = DEFAULT_DIMENSIONS_PATH,
     http_client: object | None = None,
     http_async_client: object | None = None,
+    model_wrapper=None,
 ) -> BusinessAnalysisApplication:
     """装配真实 LLM 边缘和当前语义事实。"""
 
     model = _build_chat_model(
         environ, http_client=http_client, http_async_client=http_async_client
     )
+    if model_wrapper is not None:
+        model = model_wrapper(model)
     control_config = ControlDatabaseConfig.from_environment(
         None if environ is None else dict(environ),
         require_migrator=False,

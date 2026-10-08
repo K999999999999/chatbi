@@ -68,6 +68,7 @@ from .conversation import (
     ConversationUnavailableError,
     InMemoryConversationStore,
 )
+from .operations_api import mount_operations_api
 from .execution import ExecutionApplication
 from .execution_runtime import ExecutionRuntime
 from .query_response import HTTP_STATUS_BY_ERROR as _HTTP_STATUS_BY_ERROR
@@ -190,6 +191,7 @@ def create_app(
     analysis_service_factory: AnalysisServiceFactory | None = None,
     history_store=None,
     history_runtime=None,
+    operations=None,
     runtime_factory: Callable[
         [],
         AbstractContextManager[RuntimeDependencies]
@@ -218,6 +220,7 @@ def create_app(
             browser_settings,
             history_store,
             history_runtime,
+            operations,
         )
     ):
         raise ValueError("runtime_factory 和直接资源注入不能混用")
@@ -278,6 +281,7 @@ def create_app(
             and active_execution_runtime is not None
             else None
         )
+        app.state.operations = operations
         app.state.query_service = authorized_service
         app.state.identity_provider = provider
         app.state.authorization_policy_store = authorization_store
@@ -299,7 +303,7 @@ def create_app(
             history_store, \
             history_runtime
         nonlocal service, analysis_guard
-        nonlocal active_execution_runtime
+        nonlocal active_execution_runtime, operations
         analysis_guard = AnalysisExecutionGuard()
         if runtime_factory is None:
             try:
@@ -361,6 +365,7 @@ def create_app(
                 recorder = dependencies.trace_recorder
                 query_understanding = dependencies.query_understanding
                 service = dependencies.service
+                operations = dependencies.operations
                 authorized_service = AuthorizedQueryService(
                     dependencies.service, authorization_store, audit_sink=audit_sink
                 )
@@ -422,10 +427,12 @@ def create_app(
                             active_analysis_service = None
                             history_store = history_runtime = None
                             browser_settings = None
+                            operations = None
                             publish_bindings(app)
 
     app = FastAPI(title="ChatBI Query API", version="0.1.0", lifespan=lifespan)
     publish_bindings(app)
+    mount_operations_api(app)
     if admin_engine is not None:
         if auth_service is None or not admin_secret_key:
             raise ValueError("SQLAdmin 需要统一 AuthService 和显式 secret key")

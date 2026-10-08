@@ -42,6 +42,7 @@ services:
     labels: *stable-labels
     environment: &runtime-environment
       CHATBI_ENV: development
+      CHATBI_LOCAL_OPERATIONS_ENABLED: "true"
       CHATBI_SOURCE_COMMIT: ${CHATBI_SOURCE_COMMIT:?run ./local build first}
       CHATBI_LOCAL_HTTP_PORT: ${CHATBI_LOCAL_HTTP_PORT:-8080}
       CHATBI_ADMIN_SECRET_KEY: ${CHATBI_ADMIN_SECRET_KEY:?run ./local init-config}

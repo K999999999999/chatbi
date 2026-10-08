@@ -182,6 +182,14 @@ show_stable_status() {
     docker ps --all \
         --filter "label=com.docker.compose.project=$PROJECT_NAME" \
         --format '{{.Label "com.docker.compose.service"}} | {{.Status}} | {{.Ports}}'
+    local container
+    container="$(stable_container_ids api | head -1)"
+    printf '运行就绪证据：'
+    if [[ -n "$container" ]] && docker exec "$container" python -m scripts.local_operations_status 2>/dev/null; then
+        :
+    else
+        printf '未确认（API未运行或当前版本尚无运行状态入口）。\n'
+    fi
 }
 
 show_stable_logs() {

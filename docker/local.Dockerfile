@@ -42,7 +42,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project \
     && /opt/venv/bin/playwright install --with-deps chromium
 COPY src ./src
-COPY scripts/__init__.py scripts/local_release.py ./scripts/
+COPY scripts/__init__.py scripts/local_release.py scripts/local_operations_status.py ./scripts/
 COPY scripts/local_compatibility.json /opt/chatbi-compatibility.json
 COPY scripts/metadata ./scripts/metadata
 COPY database ./database

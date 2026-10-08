@@ -642,3 +642,13 @@ uv run --frozen python -m scripts.verify_local_deployment
 ### 本机下载接管导致 PDF 空响应
 
 若网页提示“导出文件大小无效”，浏览器收到 PDF 的 204 / 空内容而 API 访问日志为 200，先做客户端对照，不把它直接归因于服务器生成失败。本机下载管理器可能接管文件；检查 IDM 等软件的浏览器集成与文件类型设置。IDM 官方提供按站点排除自动接管和关闭浏览器集成的设置，见 [IDM Options](https://www.internetdownloadmanager.com/support/using_idm/options.html)。如需临时修改，先记录原设置、确认对其他下载的影响，验收后恢复。Agent 未获用户明确授权时不得调整本机下载管理器或用户浏览器配置。本机实测已确认IDM的PDF接管可导致该现象；完整R6验收在临时取消PDF接管的条件下通过，随后已恢复原设置。日常PDF下载需暂停接管或由用户明确设置本机站点例外。R6证据与验证限制见 [本地部署Acceptance](acceptance/local-deployment-v1.md)。
+
+## R7 动态运行状态（实施中）
+
+R7 Contract见[Spec](specs/local-operations-v1.md)，机制见[Design](designs/local-operations-v1.md)。当前分支正在实施；已运行的stable仍为原R6版本，以下新增入口需相应候选镜像，不能将本文更新视为已部署。
+
+`/health`继续只证明HTTP存活；`/ready`公开最小status/checked_at，ready返回200，其余503。每15秒一轮有界独立进程探测，单轮最多10秒；30秒未更新则unknown。稳定镜像复用R6发布门禁，验证Control/业务库、Qdrant、固定业务/RAG/版本资产；不执行定时LLM调用。未知和失败均不能用旧正常结果替代。
+
+登录后页面每10秒刷新运行状态，网络请求最多8秒。普通账号只显示不可用提示；具备既有admin.audit权限且无需改密的管理员可见详细依赖、最近模型调用和安全备份状态。该入口使用readonly身份认证，不修改last_seen或Cookie，不延长30分钟Idle/8小时Absolute；身份过期返回登录。模型只显示最近15分钟最后一次真实调用成功/失败，过期则未知，不能保证下一次调用。
+
+`./local status`核对Docker真实状态，在明确stable API容器内读取600权限的Unix socket详细安全快照；不会创建或续期Session。旧镜像没有socket、API已停止或证据读取失败显示unknown。备份安全投影缺失/无成功副本时显示未初始化/未知；工具实现和完整恢复证据仍须后续Ticket验收。

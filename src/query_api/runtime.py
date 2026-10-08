@@ -59,6 +59,7 @@ class RuntimeDependencies:
     """一次应用启动所需的服务及边缘依赖，所有权由工厂持有。"""
 
     service: QueryService
+    operations: Any = None
     history_store: Any = None
     history_runtime: Any = None
     browser_settings: BrowserSettings | None = None

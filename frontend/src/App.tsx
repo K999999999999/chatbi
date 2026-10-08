@@ -1,4 +1,5 @@
 import { Chat } from './Chat';
+import { OperationsStatus } from './OperationsStatus';
 import { useEffect, useRef, useState } from 'react';
 import { APIError, identity, request, type Identity } from './api';
 
@@ -80,5 +81,5 @@ export default function App() {
     {user && <button className="secondary" onClick={() => void logout()}>退出登录</button>}
     {error && <p role="alert">{error}</p>}
   </section></main>;
-  return <main className="workspace"><header><div className="brand">ChatBI <span>销售经营分析</span></div><div>{user.username} <button className="secondary" onClick={() => void logout()}>退出登录</button></div></header><Chat key={user.user_id} user={user} onExpired={() => { clear(); setError("登录已失效，请重新登录。"); }}/></main>;
+  return <main className="workspace"><header><div className="brand">ChatBI <span>销售经营分析</span></div><div>{user.username} <button className="secondary" onClick={() => void logout()}>退出登录</button></div></header><OperationsStatus user={user} onExpired={() => { clear(); setError("登录已失效，请重新登录。"); }}/><Chat key={user.user_id} user={user} onExpired={() => { clear(); setError("登录已失效，请重新登录。"); }}/></main>;
 }
