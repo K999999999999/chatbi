@@ -1,6 +1,6 @@
 # R6 本地稳定部署交付 Spec
 
-Status: 用户于2026-10-07整体确认完整Spec及四项Ticket拆分与全部本地实施范围；Ticket 01、02已完成，Ticket 03实施中，Ticket 04待依赖。
+Status: Ticket 01–04 已完成；PR60 已合并（9a70601），交付与分支清理完成。运行验收仍绑定 clean runtime 2b4a8c8；电脑 / Docker daemon 重启恢复尚未验收，限制见 docs/acceptance/local-deployment-v1.md。
 
 ## Problem Statement
 
@@ -112,4 +112,4 @@ Status: 用户于2026-10-07整体确认完整Spec及四项Ticket拆分与全部�
 
 本文件为已确认完整 Spec；正式 Contract 在实施交付时按仓库规则固化，避免双份权威。澄清阶段无关键未决项；完整Spec及设计已通过阶段门禁。
 
-完整确认与授权记录：用户于2026-10-07在完整Spec整理后回复“确认”，构成整体Spec确认；随后明确确认Ticket拆分并授权完整本地实施与验证。编码前Design Review PASS，四项Ticket Readiness READY。远端Push/PR/部署仍未授权。
+完整确认与授权记录：用户于2026-10-07在完整Spec整理后回复“确认”，构成整体Spec确认；随后明确确认Ticket拆分并授权完整本地实施与验证。编码前Design Review PASS，四项Ticket Readiness READY。当时远端 Push / PR 未授权；用户于2026-10-08明确授权本目标发布，PR60随后已合并。此授权不包括云端部署或 R7。

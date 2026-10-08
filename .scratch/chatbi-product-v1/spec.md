@@ -108,7 +108,7 @@ Done When：目标、路线、未决问题与证据适用提交已记录，文�
 
 已确认的五项R1 Ticket已连续完成；React / TypeScript / Vite电脑端网页、Cookie登录 / 首次改密 / 退出、问数 / 追问 / 基础表格 / SQL、独立经营分析 / 原任务恢复已落地。Streamlit活动入口已移除。最终代码候选0e4000b本地软件 / 桌面Chrome / 真实模型与数据库闭环通过，证据见 docs/acceptance/web-dialogue-v1-20261003.md。用户已单独授权发布 R1 PR 至 `chatbi/master`；PR 与 CI 状态以 GitHub 实时信息为准。产品V1整体仍未完成，下一优先级为R2结果解释与可视化需求细化，不自动承诺实现未确认行为。
 
-## R6 本地首版范围确认（2026-10-07）
+## 历史：R6 本地首版范围确认（2026-10-07）
 
 用户逐项确认以当前 Windows + WSL2 + Docker 电脑作为部署和验收目标，Windows 浏览器仅本机同源 HTTP 访问。使用现有合成销售数据、本机指定版本构建、容器初始化与显式管理员创建；开发 / 验收 / 稳定环境隔离，手动后台启停并保留长期数据。升级允许短暂停机，仅允许兼容旧版本回滚；不兼容拒绝，不自动删除或反向迁移数据。单 API 进程、CPU / FP32、外部 LLM；首版不做公网部署、镜像仓库或金丝雀发布。
 
@@ -116,4 +116,4 @@ Done When：目标、路线、未决问题与证据适用提交已记录，文�
 
 ## R6 本地实施事实更新（2026-10-08）
 
-R6四项本地实现与适用验收完成，clean runtime `2b4a8c8` 的Windows完整业务、三格式导出/内容、专用服务停止恢复、失败与隔离/清理通过；稳定环境已升级到同一候选。详细候选、IDM条件与恢复、CPU依赖Evaluation复用边界及电脑/Docker重启未执行见 [R6 Acceptance](../../docs/acceptance/local-deployment-v1.md)。R6仍待远端发布授权；R7未实施，优先顺序不变，未扩展云或公网范围。
+R6四项本地实现与适用验收完成，clean runtime `2b4a8c8` 的Windows完整业务、三格式导出/内容、专用服务停止恢复、失败与隔离/清理通过；稳定环境已升级到同一候选。详细候选、IDM条件与恢复、CPU依赖Evaluation复用边界及电脑/Docker重启未执行见 [R6 Acceptance](../../docs/acceptance/local-deployment-v1.md)。用户于2026-10-08授权R6发布；PR60已合并（9a70601），required CI与分支清理完成。2026-10-08稳定服务恢复和数据只读核验见 [恢复记录](../r6-runtime-document-closeout/verification.md)。R7仍待澄清，优先顺序不变，未扩展云或公网范围。
