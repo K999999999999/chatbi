@@ -1,6 +1,6 @@
 # R6 本地固定版本部署验收
 
-Status: Ticket 01–04 本地实施与适用验收完成；最终 clean runtime candidate `2b4a8c8` 的完整隔离入口通过，稳定环境已升级到该候选。已获远端发布授权，交付状态见 [PR60](https://github.com/K999999999999/chatbi/pull/60)；电脑 / Docker daemon 重启未执行，仍按维护窗口计划验证。
+Status: Ticket 01–04 本地实施与适用验收完成；最终 clean runtime candidate `2b4a8c8` 的完整隔离入口通过，稳定环境已升级到该候选。PR60 已合并（`9a70601`），required CI 全部通过，交付与分支清理完成，见 [PR60](https://github.com/K999999999999/chatbi/pull/60)；电脑 / Docker daemon 重启未执行，仍按维护窗口计划验证。
 
 范围以 [Contract](../specs/local-deployment-v1.md)、[实现设计](../designs/local-deployment-v1.md) 和 [R6 Spec](../../.scratch/r6-local-deployment/spec.md) 为准。
 
@@ -53,4 +53,14 @@ AI Evaluation 的复用边界还包括运行依赖变化：R6 将 PyPI `torch 2.
 
 完整验收通过后，`./local upgrade 2b4a8c811713adb663d22cdac4108e13e731165f` 成功，稳定地址 `http://127.0.0.1:8080/`。4 个用户、3 条历史、3 个 turn、0 个成果的前后完整行指纹一致；PostgreSQL 容器 / 运行镜像（733b074）与 Qdrant 容器 / 两命名卷身份不变。API `/health` 为 ok、容器 healthy；实际 seccomp JSON 与仓库 profile 一致，Chromium sandbox 启动实测通过；部署状态 running/succeeded、权限600。指纹及资源身份详见 `stable-upgrade.json`。
 
-定向软件回归 66 passed；Windows Edge 的历史 / 成果确定性回归 3 passed，报告路径测试此前 3 passed；TypeScript、Ruff、Bash、Compose、Markdown local links 与 Diff 检查适用证据通过。宿主 Linux Chrome 启动曾因缺安装与 libnspr4 失败，改在已有目标 Windows Edge 完成确定性回归，没有安装宿主浏览器依赖。最终证据变更为纯文档，复用未受影响软件证据。电脑 / Docker daemon 重启没有执行，维护步骤与待选窗口仍如上；三套正式 AI Evaluation 没有重跑。R7 运行保障与远端交付未完成，不以本地通过宣称整个产品或生产就绪。
+定向软件回归 66 passed；Windows Edge 的历史 / 成果确定性回归 3 passed，报告路径测试此前 3 passed；TypeScript、Ruff、Bash、Compose、Markdown local links 与 Diff 检查适用证据通过。宿主 Linux Chrome 启动曾因缺安装与 libnspr4 失败，改在已有目标 Windows Edge 完成确定性回归，没有安装宿主浏览器依赖。最终证据变更为纯文档，复用未受影响软件证据。电脑 / Docker daemon 重启没有执行，维护步骤与待选窗口仍如上；三套正式 AI Evaluation 没有重跑。R6 远端交付已完成（PR60）；R7 运行保障仍待澄清，不以 R6 通过宣称整个产品或生产就绪。
+
+## 稳定服务恢复核验（2026-10-08）
+
+17时检查发现稳定 API / PostgreSQL / Qdrant 均已退出（exit 255），三容器记录的结束时间为当日16:53:41 +08:00；具体停止原因未确认，不能由此推定整机或 Docker 重启验收通过。部署状态文件仍保留此前 running 记录，实际可用性以容器与 HTTP 核验为准。
+
+用户授权后执行既有 `./local up`。启动前置校验通过，API仍为 `2b4a8c8`（image ID `sha256:a01769af61f448b2597a5994dfb5dcfb1a9ed3a0a896135cd42d4649e7d9cd97`）；PostgreSQL按发布记录重建容器，运行镜像从此前733b074改为2b4a8c8（image ID `sha256:fe35dc2bbd3aa62057c22aea10361ccf9b3e168f76193db97de11f33dbbbc2ec`），数据库命名卷保留。Qdrant容器、镜像及其卷保持不变。
+
+恢复后 API / PostgreSQL healthy，Qdrant running；网页 HTTP 200、`/health`返回ok；部署状态原子更新为running/succeeded。只读完整行指纹与此前stable-upgrade.json的after一致：4账号、3历史、3turn、0成果；Seed v3、1,166业务行。开发等其他项目的容器身份、镜像、运行状态、启动时间及卷均未变化。证据见 ignored `reports/browser-real-artifacts/r6-runtime-recovery-20261008/` 和 [长期恢复记录](../../.scratch/r6-runtime-document-closeout/verification.md)。
+
+本次仅核验服务恢复、启动门禁、HTTP及持久状态，不重跑登录 / 问数 / 下载的完整浏览器验收或正式AI Evaluation；不修改IDM、不执行整机 / Docker重启，既有维护窗口与下载条件仍适用。

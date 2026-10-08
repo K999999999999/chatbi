@@ -3,8 +3,8 @@
 Status: done
 Owner: 当前主Agent
 Blocked by: 03
-Result: clean runtime candidate `2b4a8c811713adb663d22cdac4108e13e731165f`，run `20261007T200251Z-e8ea09aa` 的正式完整隔离入口通过。Windows Edge 154.0.4258.53 真实业务、历史/成果、停止恢复、12份实际下载与独立解析、五项失败场景、Secret/挂载/资源隔离及清理通过；IDM临时PDF接管设置按用户授权调整并恢复。稳定API已upgrade到相同候选，数据指纹与PG/Qdrant资源不变，sandbox实测通过。正式Contract/Design/Acceptance/Runbook/产品范围/路线图已同步；CPU依赖的Evaluation复用适用性已说明，未重跑三套正式AI Evaluation。电脑或Docker重启维护步骤已记录，具体窗口待用户择时，未执行重启。无远端发布，候选、报告及验证边界见 `docs/acceptance/local-deployment-v1.md`。
-Comments: 本地实施授权于2026-10-07取得；发布授权未取得。
+Result: clean runtime candidate `2b4a8c811713adb663d22cdac4108e13e731165f`，run `20261007T200251Z-e8ea09aa` 的正式完整隔离入口通过。Windows Edge 154.0.4258.53 真实业务、历史/成果、停止恢复、12份实际下载与独立解析、五项失败场景、Secret/挂载/资源隔离及清理通过；IDM临时PDF接管设置按用户授权调整并恢复。稳定API已upgrade到相同候选，数据指纹与PG/Qdrant资源不变，sandbox实测通过。正式Contract/Design/Acceptance/Runbook/产品范围/路线图已同步；CPU依赖的Evaluation复用适用性已说明，未重跑三套正式AI Evaluation。电脑或Docker重启维护步骤已记录，具体窗口待用户择时，未执行重启。PR60已合并（9a70601），运行候选身份未变；候选、报告及验证边界见 `docs/acceptance/local-deployment-v1.md`。
+Comments: 本地实施授权于2026-10-07取得；发布授权于2026-10-08取得，PR60已合并并完成CI、复盘与分支清理。下文的验收失败与Review结论为当时的历史事实。
 
 
 Change Profile: 本轮验收+持续维护文档入口 / 中 / 证据身份与清理影响风险 / 软件回归+真实浏览器+运行验收 / 本地Commit。
@@ -22,6 +22,8 @@ Migration / Rollback: 只在专用验收资源构造失败状态，不写开发�
 Done When: 正式Contract/Design/Runbook/Acceptance/产品范围/路线图全部一致，最终Code Review与Diff检查完成，未运行项与限制明确；产品/R6实时状态同步，无远端发布。发布另需明确授权。
 
 Implementation review: PASS；基线 `995440b`，Scope为当前Ticket owned files与现有容器浏览器支持。检查Correctness / Comprehension / Consistency / Testability / Architecture / Security：运行资产API无源码或迁移身份；清理验证run ID / project / 卷 / 网络身份；Docker inspect敏感值仅内存核验；账号禁用并撤销Session、报告扫描已知凭据。定向软件66项、报告路径3项、TypeScript / Ruff / Markdown link / Diff检查通过。完整真实验收待clean candidate执行，尚未宣称通过。
+
+## 历史：Ticket 04 验收与Review过程
 
 2026-10-08 首次完整运行：clean候选 `e4f83aca437d1824db0f8c2045b33cae8231ed0e`，run `20261007T190056Z-9b5b8021`。空卷Seed / migration / 管理员 / RAG / 兼容前置与五项失败检查通过；Windows Edge真实问数和XLSX下载成功，随后PNG返回503，原浏览器用例等待不存在的下载导致180秒超时。诊断保存在ignored `.local/acceptance/<run>/`，未改称通过。专用账号已禁用、活跃Session为0；本次容器/卷/网络及Windows workspace已清理，临时配置凭据已删除。
 
