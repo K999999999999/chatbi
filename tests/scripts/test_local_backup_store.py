@@ -169,7 +169,7 @@ def test_live_source_requires_matching_running_release_and_assets(
     }
     snapshot = {
         "source_commit": "a" * 40,
-        "checked_at": now.isoformat(),
+        "observed_at": now.isoformat(),
         "asset_sha256": assets,
     }
     server = OperationsSocket(lambda: snapshot, path=path)
@@ -177,6 +177,7 @@ def test_live_source_requires_matching_running_release_and_assets(
     server.start()
     try:
         verify_source(identity, now, require_live=True)
+        verify_source(identity, now - timedelta(milliseconds=1), require_live=True)
         with pytest.raises(BackupFailed, match="BACKUP_SOURCE_CHANGED"):
             verify_source(
                 dict(identity, source_commit="f" * 40), now, require_live=True

@@ -77,11 +77,13 @@ class OperationsSocket:
 def runtime_snapshot(operations):
     """仅本机 socket 的实际发布资产证据；HTTP 不暴露此投影。"""
     import hashlib
+    from datetime import UTC, datetime
 
     result = dict(
         operations.snapshot(detailed=True),
         source_commit=os.environ.get("CHATBI_SOURCE_COMMIT"),
     )
+    result["observed_at"] = datetime.now(UTC).isoformat()
     result["asset_sha256"] = None
     try:
         root = Path(os.environ.get("RAG_OUTPUT_DIR", "/opt/chatbi-rag"))

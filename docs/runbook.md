@@ -659,10 +659,14 @@ R7受理保护使用同一ExecutionRuntime容量：默认每账号1、API进程4
 
 从 clean commit 执行 `./local build-operations` 构建固定 age v1.3.2 / PG16 工具，随后**显式**执行 `./local init-backup`。初始化不会覆盖已有私钥；`.local/backup-keys/identity.txt` 为恢复必需，私钥和目录分别600/700。应另存私钥，不能把它与密文当作同一个备份。私钥丢失时既有密文无法恢复，不能通过重新初始化解开旧副本。
 
-`./local backup` 核对实际运行 API/PG 身份，再在锁内备份双库、配置与固定发布资产。Control dump及全表指纹共用exported snapshot，业务库独立快照并核对前后内容。最新build不是备份来源。工具完整解密、检查固定成员/摘要与dump TOC后才登记；`./local backup-list`只读列出known catalog。尚未加入自动调度/升级前门禁/恢复切换的切片，不以手工成功代表完整R7可用。
+`./local backup` 核对实际运行 API/PG 身份，再在锁内备份双库、配置与固定发布资产。Control dump及全表指纹共用exported snapshot，业务库独立快照并核对前后内容。最新build不是备份来源。工具完整解密、检查固定成员/摘要与dump TOC后才登记；`./local backup-list`只读列出known catalog。本地代码已接入自动调度与升级前门禁；恢复切换和完整运行验收仍待完成，不以手工成功代表完整R7可用。
 
 `.local/backups/`仅存密文；`.local/operations/`包含可信目录和受限明文staging，API只挂安全public状态及独立socket目录，不读取私钥/catalog/source。仅已登记ID与匹配密文摘要可作为后续恢复来源，不接受任意路径。不要手工改catalog、删除已有副本或在local操作进行时改稳定配置/RAG。
 
 缺key、锁冲突、PG/工具失败、超时、wrong key或损坏均失败退出，保留原服务/旧副本，清理本次明文。网页管理员安全提示可能显示未初始化/未确认或最近失败，普通账号无备份详情。磁盘空间应同时容纳dump、打包、校验解密及既有密文；空间不足不得把半成品登记为成功。强制杀死容器或主机断电后的受限残留需由后续恢复/验收入口核对归属，不能删除不明文件。
 
 隔离机制验收：`python3 -m scripts.verify_local_backup`（先构建开发验证工具tag）；创建随机专用PG/network、生成测试key、并发写入与dump/空库恢复指纹核对，结束只清理本次资源。它验证机制，完整ChatBI恢复及30分钟目标另见R7 Ticket05/07。
+
+R7候选的`up`随服务启动独立backup工具，运行时每6小时尝试，无/超过24小时副本启动即尝试；失败/锁竞争不热循环，下一次常规尝试间隔6小时。`down`先停止backup再停止API/依赖，保留数据、密钥和catalog。未构建工具时up警告但不撤销已运行API；必须先build-operations/init-backup，不能据此宣称RPO有保障。`./local logs backup`只提供安全分类。
+
+`upgrade <SHA>`在停止旧API/迁移前先备份实际旧active；缺key、工具/来源/PG失败均退出，原API保持。最新目标镜像不会成为旧版本的备份来源。校验成功后才按7天清理已知expired副本，保留边界恰好7天、未知文件和原环境；cleanup中断可能留下未登记密文，保留并核查归属。完整跨版本与断电恢复矩阵留最终隔离验收。

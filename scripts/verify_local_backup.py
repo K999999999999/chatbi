@@ -221,6 +221,31 @@ with Snapshot('verify_control') as snapshot:
 assert restored == manifest['databases']['control']['tables']
 with Snapshot('control') as snapshot: live=snapshot.fingerprints()
 assert live['public.records']['rows'] >= restored['public.records']['rows']
+# Drive the real tool scheduler at its six-hour boundary using the clock seam.
+import socketserver, contextlib, io
+from datetime import timedelta
+from scripts.local_backup_schedule import BackupScheduler
+identity['asset_sha256']={name:digest_file(source/name) for name in ('rag-current.json','rag-manifest.json')}
+atomic_json(source/'identity.json',identity)
+socket_path=str(root/'source.sock')
+class SourceHandler(socketserver.BaseRequestHandler):
+    def handle(self):
+        self.request.sendall(json.dumps({'source_commit':identity['source_commit'],
+            'observed_at':datetime.now(UTC).isoformat(),'asset_sha256':identity['asset_sha256']}).encode()+b'\n')
+server=socketserver.UnixStreamServer(socket_path,SourceHandler)
+os.chmod(socket_path,0o600)
+server_thread=threading.Thread(target=server.serve_forever,kwargs={'poll_interval':.1},daemon=True)
+server_thread.start()
+os.environ['CHATBI_OPERATIONS_SOCKET_PATH']=socket_path
+scheduler=BackupScheduler(store,clock=lambda:datetime.fromisoformat(entry['created_at'])+timedelta(hours=6))
+try:
+    with contextlib.redirect_stdout(io.StringIO()):
+        assert scheduler.tick(source) is True
+        assert scheduler.tick(source) is False
+finally:
+    server.shutdown();server.server_close();server_thread.join();Path(socket_path).unlink()
+assert len(store.catalog()['backups']) == 2
+
 # Unknown ID, damaged cipher and wrong identity all refuse; previous catalog is preserved.
 for unknown in ('../identity.txt','d'*32):
     try: store.known_artifact(unknown)
@@ -255,13 +280,22 @@ subprocess.run(['psql','-X','-q','-v','ON_ERROR_STOP=1','-c','CREATE ROLE strang
 try: store.backup(source,require_live=False)
 except DatabaseBackupFailed: pass
 else: raise AssertionError('unknown database role accepted')
-assert len(store.catalog()['backups']) == 1
+assert len(store.catalog()['backups']) == 2
 assert not list(store.staging.iterdir())
+child=subprocess.Popen([sys.executable,'-m','scripts.local_backup_schedule'],cwd='/workspace',
+                       stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+time.sleep(.5)
+assert child.poll() is None, 'scheduler exited before shutdown'
+started=time.monotonic()
+child.terminate()
+assert child.wait(timeout=5) == 0
+shutdown=time.monotonic()-started
+assert len(store.catalog()['backups']) == 2
 print(json.dumps({'status':'PASS','tool_age':'v1.3.2','pg':'16','key_idempotence':'PASS',
     'snapshot_restore_fingerprints':'PASS','concurrent_writes':len(counts),
     'captured_control_rows':restored['public.records']['rows'],
     'live_control_rows':live['public.records']['rows'],'corrupt_wrong_key_unknown_id':'PASS','unknown_role_and_dump_toc':'PASS',
-    'plaintext_staging_cleanup':'PASS','scope':'isolated synthetic databases; full ChatBI restore in Ticket05'}))
+    'plaintext_staging_cleanup':'PASS','scheduler_real_backup':'PASS','scheduler_shutdown_seconds':round(shutdown,3),'scope':'isolated synthetic databases; full ChatBI restore in Ticket05'}))
 """
 
 if __name__ == "__main__":

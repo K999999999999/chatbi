@@ -28,9 +28,9 @@ ChatBI 的 MVP 核心能力已经形成：自然语言查询、Online Retrieval�
 
 | 阶段 | 目标 | 状态 |
 | --- | --- | --- |
-| 1. 目标细化 | 明确用户、核心流程、支持边界和验收标准；提前澄清部署、身份、结果语义、历史与执行状态 | R1–R5 Spec 已确认；R5 Design Review PASS、四项 Ticket Readiness READY；R6完整Spec与四项Ticket拆分、整体实施范围已确认，Design PASS / Readiness READY；R7完整Spec已确认，Design Review PASS，七项草案Readiness READY，七项拆分与整体本地实施已授权，01/02本地提交完成、03备份机制验证通过，04推进中；完整运行验收未完成 |
+| 1. 目标细化 | 明确用户、核心流程、支持边界和验收标准；提前澄清部署、身份、结果语义、历史与执行状态 | R1–R5 Spec 已确认；R5 Design Review PASS、四项 Ticket Readiness READY；R6完整Spec与四项Ticket拆分、整体实施范围已确认，Design PASS / Readiness READY；R7完整Spec已确认，Design Review PASS，七项草案Readiness READY，七项拆分与整体本地实施已授权，01–04本地实现/机制验证完成，05推进中；完整运行验收未完成 |
 | 2. 用户闭环 | 按 R1 → R2 → R3 → R4 → R5 推进；部署基础 R6 在目标环境确定后提前准备 | R1–R4 已交付；R5 Ticket 01 XLSX 候选 `111980d`、Ticket 02 PNG 候选 `88f122c` 已完成，R5 clean candidate `71d72d2` 的本地实现与完整隔离验收通过；Ticket 01–04 完成，PR56 已合并（`367a42a`） |
-| 3. 生产准备 | 完成 R6 的部署交付验收及 R7 的安全、监控、容量与恢复验收 | R6 Ticket 01 / 02 / 03完成；Ticket 04本地完整入口验收通过（runtime `2b4a8c8`），PR60 已合并（`9a70601`），required CI 与分支清理完成，见 [PR60](https://github.com/K999999999999/chatbi/pull/60)；电脑 / Docker重启待维护窗口；R7运行Contract与指标已确认，设计与Ticket就绪，整体本地实施已授权，01/02本地提交完成、03备份机制验证通过，04推进中；完整运行验收未完成 |
+| 3. 生产准备 | 完成 R6 的部署交付验收及 R7 的安全、监控、容量与恢复验收 | R6 Ticket 01 / 02 / 03完成；Ticket 04本地完整入口验收通过（runtime `2b4a8c8`），PR60 已合并（`9a70601`），required CI 与分支清理完成，见 [PR60](https://github.com/K999999999999/chatbi/pull/60)；电脑 / Docker重启待维护窗口；R7运行Contract与指标已确认，设计与Ticket就绪，整体本地实施已授权，01–04本地实现/机制验证完成，05推进中；完整运行验收未完成 |
 | 4. 作品交付 | 演示、架构说明及可复现评测和运行证据 | 阶段目标已确认，交付验收待细化 |
 
 ### 路线优先级图

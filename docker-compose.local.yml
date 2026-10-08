@@ -262,6 +262,14 @@ services:
         bind:
           create_host_path: false
 
+  backup:
+    extends:
+      service: operations
+    profiles: []
+    entrypoint: ["python3", "-m", "scripts.local_backup_schedule"]
+    command: []
+    stop_grace_period: 30s
+
 volumes:
   postgres_data:
     name: chatbi_stable_postgres_data

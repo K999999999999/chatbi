@@ -24,6 +24,7 @@ from scripts.local_backup_archive import (
     validate_bundle,
     write_bundle,
 )
+from scripts.local_backup_policy import expired
 from scripts.local_backup_postgres import DatabaseBackupFailed, Snapshot, verify_dump
 
 
@@ -234,6 +235,36 @@ class BackupStore:
             raise BackupFailed("BACKUP_INVALID")
         return path, entry
 
+    def prune_after_success(self, new_id):
+        """新副本有效才删除已知过期密文；陌生文件不纳入保留期。"""
+        _, newest = self.known_artifact(new_id)
+        if expired(newest, self.clock()):
+            raise BackupFailed("BACKUP_INVALID")
+        catalog = self.catalog()
+        candidates = [
+            entry
+            for entry in catalog["backups"]
+            if entry["id"] != new_id and expired(entry, self.clock())
+        ]
+        verified = [
+            (entry, self.known_artifact(entry["id"])[0]) for entry in candidates
+        ]
+        ids = {entry["id"] for entry, _ in verified}
+        if not ids:
+            return
+        # Interrupted deletion can leave an orphan cipher, never unknown-file deletion.
+        atomic_json(
+            self.catalog_path,
+            {
+                "format": 1,
+                "backups": [
+                    entry for entry in catalog["backups"] if entry["id"] not in ids
+                ],
+            },
+        )
+        for _, path in verified:
+            path.unlink()
+
     def decrypt(self, backup_id, destination):
         path, _ = self.known_artifact(backup_id)
         private, _ = self.require_key()
@@ -339,6 +370,10 @@ class BackupStore:
                 atomic_json(self.catalog_path, catalog)
                 registered = True
                 self.projection(success=metadata["created_at"])
+                try:
+                    self.prune_after_success(backup_id)
+                except (BackupFailed, OSError, ValueError):
+                    self.projection(failure_code="BACKUP_STORAGE_UNAVAILABLE")
                 return entry
         finally:
             pending.unlink(missing_ok=True)
@@ -376,8 +411,8 @@ def verify_source(identity, now, *, require_live):
                 or snapshot.get("asset_sha256") != identity["asset_sha256"]
             ):
                 raise ValueError()
-            checked = datetime.fromisoformat(snapshot["checked_at"])
-            if checked.tzinfo is None or not 0 <= (now - checked).total_seconds() < 30:
+            checked = datetime.fromisoformat(snapshot["observed_at"])
+            if checked.tzinfo is None or not -1 <= (now - checked).total_seconds() < 30:
                 raise ValueError()
         except (OSError, ValueError, KeyError, TypeError, AttributeError):
             raise BackupFailed("BACKUP_SOURCE_CHANGED") from None
@@ -413,7 +448,7 @@ def _timeout(*_):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("action", choices=["init", "backup", "list"])
+    parser.add_argument("action", choices=["init", "backup", "list", "capture"])
     parser.add_argument("--root", default="/state")
     parser.add_argument("--source", default="/state/operations/source")
     parser.add_argument("--host-locked", action="store_true")
@@ -426,7 +461,14 @@ def main():
     signal.alarm(1200)
     try:
         store = BackupStore(args.root, create=args.action != "list")
-        if args.action == "list":
+        if args.action == "capture":
+            if not args.host_locked:
+                raise BackupFailed("BACKUP_LOCKED")
+            from scripts.local_backup_source import capture
+
+            result = capture(store.operations / "capture", store.operations / "source")
+            result = {"source_commit": result["source_commit"]}
+        elif args.action == "list":
             result = store.catalog()["backups"]
         else:
             with operation_lock(

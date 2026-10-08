@@ -1,6 +1,6 @@
 # 04 — 自动备份、保留期和升级失败保护
 
-Status: in-progress
+Status: 本地实现/机制验证完成；完整ChatBI跨版本矩阵待07
 Authorization: 用户2026-10-08确认七项拆分与全部本地实施、验证、Review和Commit；无Push/PR或实际stable切换授权。
 Canonical Source: [Spec](../spec.md)、[Design](../design.md)；共同约束见 [已确认拆分](../tickets-draft.md)。
 
@@ -20,5 +20,5 @@ Migration / Rollback: 无DB migration；增量工具服务restart:no；升级故
 Done When: 全部时序与升级保护证据、Review、Runbook备份与升级步骤及roadmap事实核对完成。
 
 
-Result: 待实施。
+Result: 本地实现及Review PASS；见 [Review](../review-04.md)。
 Comments: 无。

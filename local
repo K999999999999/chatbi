@@ -48,6 +48,7 @@ acquire_operation_lock() {
                 [[ -f "$ROOT/.local/operation.lock" && "$(stat -c '%u' "$ROOT/.local/operation.lock")" == "$(id -u)" ]] \
                     || fail '稳定环境操作锁归属未确认。'
             fi
+            check_operations_root
             local lock_fd
             exec {lock_fd}>>"$ROOT/.local/operation.lock" \
                 || fail '无法打开稳定环境操作锁。'
@@ -79,7 +80,7 @@ ChatBI 本地稳定环境（与开发 Compose、开发 .env、开发数据卷隔
   rollback <SHA> 兼容检查后回滚到指定完整 commit，不执行 migration
   down           停止稳定环境服务并保留全部数据和资产
   status         查看稳定环境服务状态与本机地址
-  logs [服务]    查看 api、postgres 或 qdrant 日志
+  logs [服务]    查看 api、postgres、qdrant 或 backup 安全日志
 
 配置后需在 .env.local 中填写外部 LLM_API_KEY。此入口不会读取或复制开发 .env。
 EOF
@@ -154,7 +155,7 @@ stable_container_ids() {
 
 stop_stable_services() {
     local service container state found=false
-    for service in api postgres qdrant; do
+    for service in backup api postgres qdrant; do
         while IFS= read -r container; do
             [[ -n "$container" ]] || continue
             found=true
@@ -204,10 +205,10 @@ show_stable_status() {
 }
 
 show_stable_logs() {
-    local -a services=(api postgres qdrant)
+    local -a services=(api postgres qdrant backup)
     if (( $# > 0 )); then
-        (( $# == 1 )) && [[ "$1" =~ ^(api|postgres|qdrant)$ ]] \
-            || fail '日志服务仅支持 api、postgres、qdrant；不支持额外过滤参数。'
+        (( $# == 1 )) && [[ "$1" =~ ^(api|postgres|qdrant|backup)$ ]] \
+            || fail '日志服务仅支持 api、postgres、qdrant、backup；不支持额外过滤参数。'
         services=("$1")
     fi
     local service container found
@@ -680,6 +681,10 @@ upgrade_release() {
     prepare_host_directories
     check_compose_config
     verify_release_images
+    if [[ "$operation" == upgrade ]]; then
+        # Source capture reads Docker's old active identity, never the selected target.
+        run_manual_backup
+    fi
     start_infrastructure true
     if ! compose run --rm -T --no-deps verify verify-runtime; then
         fail '目标发布与当前持久化状态不兼容；API 未停止，数据未修改。'
@@ -710,6 +715,7 @@ upgrade_release() {
         record_deployment_state phase "$operation" "$source_commit" starting-api stopped
     fi
     run_target_api "$operation" "$source_commit" starting-api
+    start_backup_scheduler
     printf 'ChatBI %s 完成：http://127.0.0.1:%s/\n版本：%s\n' \
         "$operation" "$(read_config_value CHATBI_LOCAL_HTTP_PORT)" "$source_commit"
 }
@@ -860,6 +866,7 @@ main() {
                         printf 'ChatBI 稳定环境已启动：http://127.0.0.1:%s/\n版本：%s\n' \
                             "$(read_config_value CHATBI_LOCAL_HTTP_PORT)" "$CHATBI_SOURCE_COMMIT"
                     fi
+                    start_backup_scheduler
                     ;;
             esac
             ;;

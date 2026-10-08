@@ -1,6 +1,6 @@
 # R7 本机运行保障实现设计
 
-Status: 已确认Spec的Contract内实现设计；Design复审PASS，见 [复审](design-review-2.md)；未实施。Canonical Source: 行为以 [Spec](spec.md) 为准；本文仅固化Contract内实施机制。Owner: 本目标实施维护者。Baseline: 0c77d80。
+Status: 已确认Spec的Contract内实现设计；Design复审PASS，见 [复审](design-review-2.md)；01–04已本地实现，完整运行验收未完成。Canonical Source: 行为以 [Spec](spec.md) 为准；本文仅固化Contract内实施机制。Owner: 本目标实施维护者。Baseline: 0c77d80。
 
 ## 1. 边界与变更轴
 
@@ -112,3 +112,13 @@ API仅新增一个独立700运行socket目录的挂载；安全public投影仍�
 配置/发布资产在dump前后摘要核对；手工修改导致漂移时拒绝登记。source记录实际运行release，不读取latest build作为实际版本。固定成员、完整解密校验、known catalog与密文原子发布维持原设计。
 
 共享socket同时给出当前RAG pointer/manifest安全摘要；R7手工与自动路径核对live来源及资产一致，R6离线兼容仅首次显式备份。
+
+## 10. 宿主无新依赖与调度细化
+
+宿主local仅用既有Bash/Docker/coreutils/flock。Docker inspect原始Env、内嵌release/compatibility和RAG指针/manifest输出直接进入新建700 capture目录；Secret不经过终端。固定工具读取该目录、核对服务归属/运行状态/实际revision/配置匹配，完成后原子发布source identity；部分写入期间没有published identity。宿主EXIT只清理本次排他创建的raw目录。工具来源用600 tool-image.env的image ID/revision白名单解析，不执行其中shell内容。
+
+调度独立于API进程，不重启API；6小时、24小时、7天政策是纯clock规则。last_attempt在作业前持久化，失败/锁竞争等6小时后再试；显式up的启动逾期尝试按Spec立即执行。新副本完整校验登记后，先核对所有已知过期副本归属/摘要，再更新catalog和删除；中断可能留下未登记密文，绝不清理陌生文件。
+
+共享socket observed_at为本次处理的时间，不依赖readiness上次检查，避免启动时或Qdrant不可用阻止可验证的数据库备份。两容器同宿主时允许1秒时间误差，30秒以上证据拒绝；source commit和当前RAG安全摘要仍逐次核对。HTTP的readiness过期规则没有改变。
+
+R6兼容路径根据实际API镜像模块能力判断，不能根据新Compose注入的环境变量推断旧镜像已有socket能力；配置/API runtime mismatch仍保守拒绝，不将目标配置代称旧active。
