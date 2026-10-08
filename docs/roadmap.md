@@ -28,9 +28,9 @@ ChatBI 的 MVP 核心能力已经形成：自然语言查询、Online Retrieval�
 
 | 阶段 | 目标 | 状态 |
 | --- | --- | --- |
-| 1. 目标细化 | 明确用户、核心流程、支持边界和验收标准；提前澄清部署、身份、结果语义、历史与执行状态 | R1–R5 Spec 已确认；R5 Design Review PASS、四项 Ticket Readiness READY；R6完整Spec与四项Ticket拆分、整体实施范围已确认，Design PASS / Readiness READY；R7完整Spec已确认，Design Review PASS，七项草案Readiness READY，七项拆分与整体本地实施已授权，01–04本地实现/机制验证完成，05推进中；完整运行验收未完成 |
+| 1. 目标细化 | 明确用户、核心流程、支持边界和验收标准；提前澄清部署、身份、结果语义、历史与执行状态 | R1–R5 Spec 已确认；R5 Design Review PASS、四项 Ticket Readiness READY；R6完整Spec与四项Ticket拆分、整体实施范围已确认，Design PASS / Readiness READY；R7完整Spec已确认，Design Review PASS，七项草案Readiness READY，七项拆分与整体本地实施已授权，01–05本地实现/Review及相应机制验证完成；Ticket 06/07与完整运行验收待完成 |
 | 2. 用户闭环 | 按 R1 → R2 → R3 → R4 → R5 推进；部署基础 R6 在目标环境确定后提前准备 | R1–R4 已交付；R5 Ticket 01 XLSX 候选 `111980d`、Ticket 02 PNG 候选 `88f122c` 已完成，R5 clean candidate `71d72d2` 的本地实现与完整隔离验收通过；Ticket 01–04 完成，PR56 已合并（`367a42a`） |
-| 3. 生产准备 | 完成 R6 的部署交付验收及 R7 的安全、监控、容量与恢复验收 | R6 Ticket 01 / 02 / 03完成；Ticket 04本地完整入口验收通过（runtime `2b4a8c8`），PR60 已合并（`9a70601`），required CI 与分支清理完成，见 [PR60](https://github.com/K999999999999/chatbi/pull/60)；电脑 / Docker重启待维护窗口；R7运行Contract与指标已确认，设计与Ticket就绪，整体本地实施已授权，01–04本地实现/机制验证完成，05推进中；完整运行验收未完成 |
+| 3. 生产准备 | 完成 R6 的部署交付验收及 R7 的安全、监控、容量与恢复验收 | R6 Ticket 01 / 02 / 03完成；Ticket 04本地完整入口验收通过（runtime `2b4a8c8`），PR60 已合并（`9a70601`），required CI 与分支清理完成，见 [PR60](https://github.com/K999999999999/chatbi/pull/60)；电脑 / Docker重启待维护窗口；R7运行Contract与指标已确认，设计与Ticket就绪，整体本地实施已授权，01–05本地实现/Review及相应机制验证完成；Ticket 06/07与完整运行验收未完成 |
 | 4. 作品交付 | 演示、架构说明及可复现评测和运行证据 | 阶段目标已确认，交付验收待细化 |
 
 ### 路线优先级图
@@ -69,7 +69,7 @@ flowchart TD
 | R4 | 执行状态与流式反馈 | 后台受理与幂等、真实执行阶段、SSE 观察与恢复、取消 / 超时 / 授权停止、报告草稿与正式结果门槛 | 六项实现与本地验收已完成；PR55 已合并（ee92aca）；见 [Acceptance](acceptance/execution-streaming-v1.md)，不代表生产部署 |
 | R5 | 成果导出 | 成功快照导出 XLSX / PNG / PDF；保留精度、口径、截断与证据；不重查或获取全量数据，最多 100 行；当前身份 / owner / 权限检查；每账号 1 / API 2 个并发、60 秒、20 MiB | 需求逐项确认；[完整 Spec](specs/result-export-v1.md) 已整体确认，四项拆分与整体本地实施已授权；Ticket 01 XLSX 候选 `111980d`、Ticket 02 PNG 候选 `88f122c` 已完成，R5 clean candidate `71d72d2` 本地实现与完整隔离验收通过；Ticket 01–04 完成；[PR56](https://github.com/K999999999999/chatbi/pull/56) 已合并（`367a42a`），required CI 全部通过；生产部署和目标环境验收未包含 |
 | R6 | 部署交付 | 当前 Windows + WSL2 + Docker 电脑上的固定版本应用；销售合成数据；隔离配置与持久资源；显式初始化和手动启停；短暂停机升级与兼容回滚、真实浏览器验收 | [完整 Spec](../.scratch/r6-local-deployment/spec.md)、[整体实施范围与四项拆分](../.scratch/r6-local-deployment/tickets-draft.md)已确认；Design Review PASS、Ticket Readiness READY。Ticket 01镜像已完成并绑定clean commit `4d4732b` 与image ID；Ticket 02独立环境与启停完成（clean candidate `733b074`）；Ticket 03兼容升级 / 回滚与持久状态验收完成（clean candidates `9ae32ef` / `995440b`）；Ticket 04完整Windows业务 / 导出 / 专用服务恢复已验收（runtime `2b4a8c8`），见 [Acceptance](acceptance/local-deployment-v1.md)；交付完成，PR60 已合并（`9a70601`），required CI 与分支清理完成，见 [PR60](https://github.com/K999999999999/chatbi/pull/60)，电脑 / Docker重启待维护窗口。PR50仍仅代表开发环境，R6本地验收证据独立记录；公网部署和金丝雀发布不在首版范围 |
-| R7 | 运行保障 | 动态 readiness、并发与资源限制、监控告警、备份恢复及容量证据；按目标确定延迟、恢复和访问规模要求 | [完整Spec](../.scratch/local-operations-v1/spec.md)已确认，[Design复审](../.scratch/local-operations-v1/design-review-2.md)PASS，[七项草案](../.scratch/local-operations-v1/tickets-draft.md)Readiness READY；七项拆分与整体本地实施已授权，实施中，尚未完成运行验收 |
+| R7 | 运行保障 | 动态 readiness、并发与资源限制、监控告警、备份恢复及容量证据；按目标确定延迟、恢复和访问规模要求 | [完整Spec](../.scratch/local-operations-v1/spec.md)已确认，[Design复审](../.scratch/local-operations-v1/design-review-2.md)PASS，[七项草案](../.scratch/local-operations-v1/tickets-draft.md)Readiness READY；七项拆分与整体本地实施已授权，Ticket 01–05本地实现/Review完成，Ticket 06/07及完整运行验收待完成 |
 
 ### 跨需求设计与验证要求
 
@@ -84,7 +84,7 @@ flowchart TD
 
 多数据库、多 Schema、多租户、仪表板编辑器、任意复杂 Agent、SQL 自动修复和 MCP 集成不作为产品 V1 的默认实施项。细粒度数据权限是否进入第一版，取决于确认的用户与数据范围；不能把固定 RBAC 宣称为行列级隔离。
 
-此处确认目标和阶段路线，不代表自动获得其他功能的实施授权。R1–R4 已按各自授权交付。R5 完整 Spec、Design Review 和 Ticket Readiness 已完成；用户于 2026-10-06 确认四项拆分及整体本地实施，Ticket 01 XLSX 候选 `111980d`、Ticket 02 PNG 候选 `88f122c` 已完成，R5 clean candidate `71d72d2` 的本地实现与完整隔离验收通过；Ticket 01–04 完成，PR56 已合并（`367a42a`），required CI 全部通过；未包含生产部署。R6完整Spec、Design Review、四项Ticket Readiness、拆分与完整本地实施授权均已完成；Ticket 01镜像与Ticket 02独立运行验收完成，Ticket 02最终候选为clean commit `733b074`；Ticket 03版本兼容升级 / 回滚、真实版本对往返和持久状态核对已完成，Ticket 04本地完整入口验收通过（runtime `2b4a8c8`），PR60 已合并（`9a70601`），required CI 与分支清理完成，见 [PR60](https://github.com/K999999999999/chatbi/pull/60)；电脑 / Docker重启待维护窗口，用户于2026-10-08明确授权本目标远端发布，合并与CI事实见 [PR60](https://github.com/K999999999999/chatbi/pull/60)。R7完整Spec已确认，Design复审PASS，七项草案Readiness READY；七项拆分与整体本地实施已授权，实施中，尚未获得本目标发布授权。
+此处确认目标和阶段路线，不代表自动获得其他功能的实施授权。R1–R4 已按各自授权交付。R5 完整 Spec、Design Review 和 Ticket Readiness 已完成；用户于 2026-10-06 确认四项拆分及整体本地实施，Ticket 01 XLSX 候选 `111980d`、Ticket 02 PNG 候选 `88f122c` 已完成，R5 clean candidate `71d72d2` 的本地实现与完整隔离验收通过；Ticket 01–04 完成，PR56 已合并（`367a42a`），required CI 全部通过；未包含生产部署。R6完整Spec、Design Review、四项Ticket Readiness、拆分与完整本地实施授权均已完成；Ticket 01镜像与Ticket 02独立运行验收完成，Ticket 02最终候选为clean commit `733b074`；Ticket 03版本兼容升级 / 回滚、真实版本对往返和持久状态核对已完成，Ticket 04本地完整入口验收通过（runtime `2b4a8c8`），PR60 已合并（`9a70601`），required CI 与分支清理完成，见 [PR60](https://github.com/K999999999999/chatbi/pull/60)；电脑 / Docker重启待维护窗口，用户于2026-10-08明确授权本目标远端发布，合并与CI事实见 [PR60](https://github.com/K999999999999/chatbi/pull/60)。R7完整Spec已确认，Design复审PASS，七项草案Readiness READY；七项拆分与整体本地实施已授权，Ticket 01–05本地实现/Review与机制验证完成；Ticket 06/07和完整运行验收仍待完成，尚未获得本目标发布授权。
 
 ## 基线工作与适用证据
 

@@ -10,7 +10,7 @@ check_operations_root() {
 prepare_operations_directories() {
     local path mode expected
     check_operations_root
-    for path in operations backup-keys backups operations/api operations/public; do
+    for path in operations backup-keys backups operations/api operations/staging operations/public; do
         expected=700
         [[ "$path" != operations/public ]] || expected=755
         if [[ ! -e "$ROOT/.local/$path" && ! -L "$ROOT/.local/$path" ]]; then

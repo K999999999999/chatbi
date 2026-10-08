@@ -1,6 +1,6 @@
 # R7 长期规划记录
 
-当前：01–04已本地实现/Review；完整跨版本与恢复/运行验收未完成，继续05–07。无Push/PR或实际stable切换授权。以下按时间保留规划与实施历史，实时阶段见Git公共目录记录。
+当前：01–05已本地实现/Review；05隔离恢复、候选激活与previous恢复在独立stable clone完成，完整跨版本与运行验收未完成，继续06–07。无Push/PR或实际stable切换授权。以下按时间保留规划与实施历史，实时阶段见Git公共目录记录。
 
 ## 初始规划快照（拆分确认前）
 
@@ -21,3 +21,5 @@ Ticket 02共享受理保护已完成本地实现与Review，205+14subtests、追
 Ticket 03手工备份本地实现/Review PASS；固定age工具、真实PG并发snapshot到空库恢复指纹、wrongkey/损坏/unknownrole/明文清理PASS，24新增与87相关回归PASS；原stable仅只读来源核验，未初始化真实key或备份。继续04自动调度/升级前保护。
 
 Ticket04本地实现/Review PASS：6h/24h/7d、失败冷却/锁/已知清理/升级保护软件验证，真实PG/age scheduler产物与0.016s停止、WindowsEdge14项PASS。来源处理已回归Spec宿主无新依赖，原R6仅只读核验，未修改实际服务/key/data。跨版本完整矩阵留07。继续05隔离恢复与显式资源切换。
+
+Ticket05本地实现/Review PASS：本地恢复测试与binding测试纳入118项R7本地回归，Ruff与diff检查通过；真实加密备份恢复至隔离PG/Qdrant、全表指纹/角色权限/session与epoch、RAG readiness、临时登录/历史/成果核验通过。独立stable clone完成candidate激活与previous回退；另验证恢复失败会清除解密payload。stable/dev运行容器和身份前后未变，未初始化实际stable key、未切换实际stable。详见 [Ticket 05](issues/05-isolated-restore.md) 和 [Review](review-05.md)。开始06。

@@ -655,17 +655,25 @@ R7 Contract见[Spec](specs/local-operations-v1.md)，机制见[Design](designs/l
 
 R7受理保护使用同一ExecutionRuntime容量：默认每账号1、API进程4，同步问数/分析与后台任务合计；429 `EXECUTION_LIMIT_REACHED`表示额度已满，503 `SERVICE_NOT_READY`表示当前就绪未证实，请等待恢复后由用户重新发起。已受理任务/重放沿原R4；服务不自动排队或重试。同步执行不会为了额度写入伪history，超时中断仍等待真实工作退出再释放。管理员状态和本机socket显示业务/导出各自的当前总数与上限，不暴露其他用户ID。
 
-### R7 手工加密备份（本地实现，完整运行验收待完成）
+### R7 手工加密备份、隔离恢复与显式切换（本地实现，完整运行验收待完成）
 
 从 clean commit 执行 `./local build-operations` 构建固定 age v1.3.2 / PG16 工具，随后**显式**执行 `./local init-backup`。初始化不会覆盖已有私钥；`.local/backup-keys/identity.txt` 为恢复必需，私钥和目录分别600/700。应另存私钥，不能把它与密文当作同一个备份。私钥丢失时既有密文无法恢复，不能通过重新初始化解开旧副本。
 
-`./local backup` 核对实际运行 API/PG 身份，再在锁内备份双库、配置与固定发布资产。Control dump及全表指纹共用exported snapshot，业务库独立快照并核对前后内容。最新build不是备份来源。工具完整解密、检查固定成员/摘要与dump TOC后才登记；`./local backup-list`只读列出known catalog。本地代码已接入自动调度与升级前门禁；恢复切换和完整运行验收仍待完成，不以手工成功代表完整R7可用。
+`./local backup` 核对实际运行 API/PG 身份，再在锁内备份双库、配置与固定发布资产。Control dump及全表指纹共用exported snapshot，业务库独立快照并核对前后内容。最新build不是备份来源。工具完整解密、检查固定成员/摘要与dump TOC后才登记；`./local backup-list`只读列出known catalog。本地代码已接入自动调度与升级前门禁；Ticket 05 已实现隔离恢复和显式切换，Ticket 06/07 与完整运行验收仍待完成，不以机制验收代表完整R7可用。
 
 `.local/backups/`仅存密文；`.local/operations/`包含可信目录和受限明文staging，API只挂安全public状态及独立socket目录，不读取私钥/catalog/source。仅已登记ID与匹配密文摘要可作为后续恢复来源，不接受任意路径。不要手工改catalog、删除已有副本或在local操作进行时改稳定配置/RAG。
 
 缺key、锁冲突、PG/工具失败、超时、wrong key或损坏均失败退出，保留原服务/旧副本，清理本次明文。网页管理员安全提示可能显示未初始化/未确认或最近失败，普通账号无备份详情。磁盘空间应同时容纳dump、打包、校验解密及既有密文；空间不足不得把半成品登记为成功。强制杀死容器或主机断电后的受限残留需由后续恢复/验收入口核对归属，不能删除不明文件。
 
-隔离机制验收：`python3 -m scripts.verify_local_backup`（先构建开发验证工具tag）；创建随机专用PG/network、生成测试key、并发写入与dump/空库恢复指纹核对，结束只清理本次资源。它验证机制，完整ChatBI恢复及30分钟目标另见R7 Ticket05/07。
+隔离机制验收：`python3 -m scripts.verify_local_backup`（先构建开发验证工具tag）；创建随机专用PG/network、生成测试key、并发写入与dump/空库恢复指纹核对，结束只清理本次资源。它验证备份机制。
+
+### R7 隔离恢复和显式切换
+
+`./local restore <backup-id>`只接受本机known catalog中的完整备份ID。它在专属Compose project、带恢复ID标签的空PG/Qdrant卷和独立配置/RAG/运行目录中恢复，核对数据库全表指纹、批准角色与权限、Session撤销和运行代际，再重建固定模型对应的RAG并执行readiness、临时账号登录及历史/成果只读核验。只有全部检查通过且总耗时不超过30分钟，候选才标为verified并停止；本命令不会改变active binding或实际stable服务。
+
+通过输出中的恢复ID后，操作者可显式执行 `./local restore-activate <restore-id>`。该命令先记录previous/candidate与切换阶段，停止候选和旧stable writer，再原子切换binding并启动候选；中断时保留journal和两边资源，必须明确选择 `./local restore-recover <restore-id> --previous` 或 `--candidate` 完成恢复。不要手动编辑 `.local/runtime-binding.json` 或在journal未完成时启动其他 `./local` 写操作。
+
+恢复成功或普通失败退出时会清除解密归档payload；candidate专属的受限配置、Secret、release、卷和登记记录会保留，以支持检查或显式切换。若工具报告明文暂存清理失败，先核对恢复ID及目录归属，再按安全流程处理；不要清理未知资源。Ticket 05 已在独立stable clone中完成恢复、候选激活和previous回退核验，2026-10-08实际stable/dev运行身份与健康状态前后未变。本次没有初始化实际stable备份私钥，也没有对实际stable执行激活；完整RTO矩阵及Ticket 06/07验收仍未完成，验收总入口由 [R7 Ticket 07](../.scratch/local-operations-v1/issues/07-acceptance.md) 汇总。
 
 R7候选的`up`随服务启动独立backup工具，运行时每6小时尝试，无/超过24小时副本启动即尝试；失败/锁竞争不热循环，下一次常规尝试间隔6小时。`down`先停止backup再停止API/依赖，保留数据、密钥和catalog。未构建工具时up警告但不撤销已运行API；必须先build-operations/init-backup，不能据此宣称RPO有保障。`./local logs backup`只提供安全分类。
 

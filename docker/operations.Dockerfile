@@ -20,6 +20,10 @@ PY
 RUN test "$(age --version)" = 'v1.3.2' && pg_dump --version | grep -q 'PostgreSQL) 16\.'
 LABEL org.opencontainers.image.revision=$CHATBI_SOURCE_COMMIT
 WORKDIR /workspace
-COPY scripts/__init__.py scripts/local_backup*.py ./scripts/
+COPY scripts/__init__.py scripts/local_backup*.py scripts/local_release.py \
+    scripts/local_runtime_binding.py scripts/local_restore_state.py \
+    scripts/local_restore.py ./scripts/
+COPY database/grants.sql ./database/grants.sql
+COPY database/control/003_grants.sql ./database/control/003_grants.sql
 USER 1000:1000
 ENTRYPOINT ["python3", "-m", "scripts.local_backup"]

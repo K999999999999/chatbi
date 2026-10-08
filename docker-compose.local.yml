@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: ${CHATBI_DATABASE_IMAGE:?run ./local build first}
+    image: ${CHATBI_BOUND_DATABASE_IMAGE:-${CHATBI_DATABASE_IMAGE:?run ./local build first}}
     restart: "no"
     labels: &stable-labels
       com.chatbi.environment: stable
@@ -88,7 +88,7 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: .local/rag
+        source: ${CHATBI_BOUND_RAG_DIR:-.local/rag}
         target: /opt/chatbi-rag
         read_only: true
         bind:
@@ -100,7 +100,7 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: .local/operations/api
+        source: ${CHATBI_BOUND_OPERATIONS_API_DIR:-.local/operations/api}
         target: /opt/chatbi-runtime
         bind:
           create_host_path: false
@@ -184,7 +184,7 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: .local/rag
+        source: ${CHATBI_BOUND_RAG_DIR:-.local/rag}
         target: /opt/chatbi-rag
         bind:
           create_host_path: false
@@ -210,7 +210,7 @@ services:
     environment: *runtime-environment
     volumes:
       - type: bind
-        source: .local
+        source: ${CHATBI_BOUND_STATE_DIR:-.local}
         target: /opt/chatbi-state
       - type: bind
         source: ${CHATBI_LOCAL_MODEL_DIR:-.model-cache/bge-m3-5617a9f61b02}
@@ -219,7 +219,7 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: .local/rag
+        source: ${CHATBI_BOUND_RAG_DIR:-.local/rag}
         target: /opt/chatbi-rag
         read_only: true
         bind:
@@ -239,7 +239,7 @@ services:
       POSTGRES_CONTROL_DB: chatbi_control
       POSTGRES_MIGRATOR_USER: ${POSTGRES_MIGRATOR_USER:-chatbi_migrator}
       POSTGRES_MIGRATOR_PASSWORD: ${POSTGRES_MIGRATOR_PASSWORD:?run ./local init-config}
-      CHATBI_OPERATIONS_SOCKET_PATH: /state/operations/api/status.sock
+      CHATBI_OPERATIONS_SOCKET_PATH: /state/operations/${CHATBI_BOUND_OPERATIONS_API_RELATIVE:-api}/status.sock
     volumes:
       - type: bind
         source: .local/operations
@@ -262,6 +262,13 @@ services:
         bind:
           create_host_path: false
 
+  restore-tool:
+    extends:
+      service: operations
+    profiles: [tools]
+    entrypoint: ["python3", "-m", "scripts.local_restore"]
+    command: ["--help"]
+
   backup:
     extends:
       service: operations
@@ -272,6 +279,8 @@ services:
 
 volumes:
   postgres_data:
-    name: chatbi_stable_postgres_data
+    name: ${CHATBI_BOUND_POSTGRES_VOLUME:-chatbi_stable_postgres_data}
+    external: true
   qdrant_data:
-    name: chatbi_stable_qdrant_data
+    name: ${CHATBI_BOUND_QDRANT_VOLUME:-chatbi_stable_qdrant_data}
+    external: true

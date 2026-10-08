@@ -21,6 +21,7 @@ def test_upgrade_backup_is_before_stop_and_failure_preserves_running_source(
         "local_build_cache.sh",
         "local_deployment_state.sh",
         "local_backup.sh",
+        "local_runtime_binding.sh",
     ):
         shutil.copyfile(ROOT / "scripts" / name, scripts / name)
     entry = tmp_path / "local-functions"
@@ -67,6 +68,7 @@ upgrade_release upgrade target
         },
         text=True,
         capture_output=True,
+        check=False,
     )
     assert data.read_bytes() == b"old database contents"
     if backup_succeeds:
