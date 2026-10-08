@@ -16,6 +16,8 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(
             {code.value for code in QueryErrorCode},
             {
+                "SERVICE_NOT_READY",
+                "EXECUTION_LIMIT_REACHED",
                 "INVALID_REQUEST",
                 "AUTHENTICATION_REQUIRED",
                 "AUTHORIZATION_DENIED",
