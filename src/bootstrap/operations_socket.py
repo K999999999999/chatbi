@@ -9,12 +9,16 @@ import stat
 from pathlib import Path
 from threading import Thread
 
-SOCKET_PATH = "/tmp/chatbi-operations.sock"
+SOCKET_PATH = os.environ.get(
+    "CHATBI_OPERATIONS_SOCKET_PATH", "/tmp/chatbi-operations.sock"
+)
 
 
 class OperationsSocket:
-    def __init__(self, snapshot, *, path=SOCKET_PATH):
-        self._path = Path(path)
+    def __init__(self, snapshot, *, path=None):
+        self._path = Path(
+            path or os.environ.get("CHATBI_OPERATIONS_SOCKET_PATH", SOCKET_PATH)
+        )
         self._snapshot = snapshot
         self._server = None
         self._thread = None
@@ -68,3 +72,36 @@ class OperationsSocket:
             self._thread.join(timeout=1)
         if self._path.exists() and self._path.lstat().st_ino == self._inode:
             self._path.unlink()
+
+
+def runtime_snapshot(operations):
+    """仅本机 socket 的实际发布资产证据；HTTP 不暴露此投影。"""
+    import hashlib
+
+    result = dict(
+        operations.snapshot(detailed=True),
+        source_commit=os.environ.get("CHATBI_SOURCE_COMMIT"),
+    )
+    result["asset_sha256"] = None
+    try:
+        root = Path(os.environ.get("RAG_OUTPUT_DIR", "/opt/chatbi-rag"))
+        pointer = (root / "current.json").read_bytes()
+        if len(pointer) > 1024**2:
+            return result
+        value = json.loads(pointer)
+        ref = Path(value["manifest_path"])
+        if ref.is_absolute() or ".." in ref.parts:
+            return result
+        target = root / ref
+        if target.is_symlink() or not target.resolve().is_relative_to(root.resolve()):
+            return result
+        manifest = target.read_bytes()
+        if len(manifest) > 1024**2:
+            return result
+        result["asset_sha256"] = {
+            "rag-current.json": hashlib.sha256(pointer).hexdigest(),
+            "rag-manifest.json": hashlib.sha256(manifest).hexdigest(),
+        }
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return result

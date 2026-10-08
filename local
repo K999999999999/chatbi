@@ -10,12 +10,13 @@ PROJECT_NAME="chatbi-stable"
 source "$ROOT/scripts/local_port.sh"
 source "$ROOT/scripts/local_build_cache.sh"
 source "$ROOT/scripts/local_deployment_state.sh"
+source "$ROOT/scripts/local_backup.sh"
 
 # Compose reads only the dedicated stable files; developer-shell variables must not
 # override them or leak development credentials into this independent project.
 for key in \
     COMPOSE_FILE COMPOSE_PROFILES COMPOSE_PROJECT_NAME \
-    CHATBI_API_IMAGE CHATBI_DATABASE_IMAGE CHATBI_SOURCE_COMMIT \
+    CHATBI_API_IMAGE CHATBI_DATABASE_IMAGE CHATBI_SOURCE_COMMIT CHATBI_OPERATIONS_IMAGE \
     CHATBI_LOCAL_HTTP_PORT CHATBI_LOCAL_MODEL_DIR CHATBI_ADMIN_SECRET_KEY \
     CHATBI_LOCAL_UID CHATBI_LOCAL_GID CHATBI_LOCAL_SECCOMP_PROFILE \
     POSTGRES_DB POSTGRES_MIGRATOR_USER POSTGRES_MIGRATOR_PASSWORD \
@@ -38,9 +39,15 @@ fail() {
 
 acquire_operation_lock() {
     case "${1:-help}" in
-        init-config|build|infra|migrate|create-admin|prepare-model|build-rag|up|down|upgrade|rollback)
+        init-config|build|build-operations|init-backup|backup|infra|migrate|create-admin|prepare-model|build-rag|up|down|upgrade|rollback)
             command -v flock >/dev/null 2>&1 || fail '稳定环境写操作需要 util-linux 提供的 flock。'
             mkdir -p "$ROOT/.local" || fail '无法创建稳定环境本地状态目录。'
+            [[ ! -L "$ROOT/.local" && ! -L "$ROOT/.local/operation.lock" ]] \
+                || fail '稳定环境操作锁路径存在符号链接；拒绝写入。'
+            if [[ -e "$ROOT/.local/operation.lock" ]]; then
+                [[ -f "$ROOT/.local/operation.lock" && "$(stat -c '%u' "$ROOT/.local/operation.lock")" == "$(id -u)" ]] \
+                    || fail '稳定环境操作锁归属未确认。'
+            fi
             local lock_fd
             exec {lock_fd}>>"$ROOT/.local/operation.lock" \
                 || fail '无法打开稳定环境操作锁。'
@@ -58,6 +65,10 @@ ChatBI 本地稳定环境（与开发 Compose、开发 .env、开发数据卷隔
 
   init-config    创建独立配置并生成一次性数据库、管理员和 Qdrant 随机密钥
   build          从当前 clean commit 构建带身份的 API / PostgreSQL 固定版本镜像
+  build-operations  从clean commit构建固定age/PG16备份工具
+  init-backup    显式初始化备份密钥；重复执行不覆盖
+  backup         备份实际运行版本，完整解密校验后登记
+  backup-list    只读列出已登记加密副本
   infra          启动稳定 PostgreSQL / Qdrant 并等待基础合成数据初始化
   migrate        显式安装应用库、RBAC 和 checkpoint Schema
   create-admin   交互创建首个管理员，密码不回显
@@ -222,6 +233,7 @@ prepare_host_directories() {
         model_path="$ROOT/$model_path"
     fi
     mkdir -p "$ROOT/.local/rag" "$model_path"
+    prepare_operations_directories
 }
 
 check_compose_config() {
@@ -738,6 +750,23 @@ main() {
             ;;
         build)
             build_images
+            ;;
+        build-operations)
+            [[ -z "${1:-}" ]] || fail './local build-operations 不接受额外参数。'
+            build_operations_image
+            ;;
+        init-backup|backup|backup-list)
+            [[ -z "${1:-}" ]] || fail "./local $command_name 不接受额外参数。"
+            require_docker
+            require_config
+            require_release
+            [[ "$command_name" == backup-list ]] || prepare_operations_directories
+            require_operations_image
+            case "$command_name" in
+                init-backup) compose run --rm -T --no-deps operations init --host-locked ;;
+                backup) run_manual_backup ;;
+                backup-list) compose run --rm -T --no-deps operations list ;;
+            esac
             ;;
         down)
             [[ -z "${1:-}" ]] || fail './local down 不接受额外参数。'

@@ -43,6 +43,7 @@ services:
     environment: &runtime-environment
       CHATBI_ENV: development
       CHATBI_LOCAL_OPERATIONS_ENABLED: "true"
+      CHATBI_OPERATIONS_SOCKET_PATH: /opt/chatbi-runtime/status.sock
       CHATBI_SOURCE_COMMIT: ${CHATBI_SOURCE_COMMIT:?run ./local build first}
       CHATBI_LOCAL_HTTP_PORT: ${CHATBI_LOCAL_HTTP_PORT:-8080}
       CHATBI_ADMIN_SECRET_KEY: ${CHATBI_ADMIN_SECRET_KEY:?run ./local init-config}
@@ -90,6 +91,17 @@ services:
         source: .local/rag
         target: /opt/chatbi-rag
         read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: .local/operations/public
+        target: /opt/chatbi-operations
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: .local/operations/api
+        target: /opt/chatbi-runtime
         bind:
           create_host_path: false
     depends_on:
@@ -210,6 +222,43 @@ services:
         source: .local/rag
         target: /opt/chatbi-rag
         read_only: true
+        bind:
+          create_host_path: false
+
+
+  operations:
+    image: ${CHATBI_OPERATIONS_IMAGE:-chatbi-local-operations:uninitialized}
+    profiles: [tools]
+    restart: "no"
+    init: true
+    labels: *stable-labels
+    user: "${CHATBI_LOCAL_UID:-1000}:${CHATBI_LOCAL_GID:-1000}"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-chatbi_mvp}
+      POSTGRES_CONTROL_DB: chatbi_control
+      POSTGRES_MIGRATOR_USER: ${POSTGRES_MIGRATOR_USER:-chatbi_migrator}
+      POSTGRES_MIGRATOR_PASSWORD: ${POSTGRES_MIGRATOR_PASSWORD:?run ./local init-config}
+      CHATBI_OPERATIONS_SOCKET_PATH: /state/operations/api/status.sock
+    volumes:
+      - type: bind
+        source: .local/operations
+        target: /state/operations
+        bind:
+          create_host_path: false
+      - type: bind
+        source: .local/backups
+        target: /state/backups
+        bind:
+          create_host_path: false
+      - type: bind
+        source: .local/backup-keys
+        target: /state/backup-keys
+        bind:
+          create_host_path: false
+      - type: bind
+        source: .local/operation.lock
+        target: /state/operation.lock
         bind:
           create_host_path: false
 

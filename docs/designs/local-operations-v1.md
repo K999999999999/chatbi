@@ -1,6 +1,6 @@
 # R7 本机运行保障实现设计
 
-Status: 已确认Spec的Contract内实现设计；Design复审PASS，见 [复审](../../.scratch/local-operations-v1/design-review-2.md)；未实施。Canonical Source: 行为以 [Spec](../specs/local-operations-v1.md) 为准；本文仅固化Contract内实施机制。Owner: 本目标实施维护者。Baseline: 0c77d80。
+Status: 已确认Spec的Contract内实现设计；Design复审PASS，见 [复审](../../.scratch/local-operations-v1/design-review-2.md)；01/02已本地实施，03推进中，完整运行验收未完成。Canonical Source: 行为以 [Spec](../specs/local-operations-v1.md) 为准；本文仅固化Contract内实施机制。Owner: 本目标实施维护者。Baseline: 0c77d80。
 
 ## 1. 边界与变更轴
 
@@ -102,3 +102,13 @@ Batch exporter队列/timeout/shutdown有界，失败警告只有安全分类；�
 正式Spec/Design/API/Architecture/Runbook/Observability/Acceptance/Product Scope/roadmap按适用范围同步；最初只保留scratch规划，不提前改正式Contract。未授权主机重启/永久IDM/稳定数据切换，不在验收中执行。
 
 无需新增业务migration即可保存运行/备份绑定状态到本机受限文件。若实施证据要求改变schema/权限或稳定一级边界，返回Spec/Design审查。实验若需要真实资源/配置变更，先定义实验及授权，不以Design写入代替验证。
+
+## 9. 实施细化：实际来源与锁的交接
+
+手工/升级前备份由已持有operation.lock的local进程核对实际运行API/PG的Docker image ID、revision、内嵌compatibility与配置快照，写入受限source目录，再调用工具的host-locked入口；该入口不重复获取同inode的flock。自动调度自行取得同一锁，并通过同UID600的共享Unix socket核对API仍在运行及source_commit；它不能使用首次R6兼容的离线来源。工具没有Docker socket。local持锁进程和拥有受限目录的工具均属于已有本机操作者信任边界。
+
+API仅新增一个独立700运行socket目录的挂载；安全public投影仍单独只读挂载，API无keys/catalog/source目录。socket的来源字段仅供本机诊断，HTTP投影不新增发布详情。R6首次备份允许local在锁内直接核验旧API身份；自动备份要求新socket证据且不得重用R6离线捕获。
+
+配置/发布资产在dump前后摘要核对；手工修改导致漂移时拒绝登记。source记录实际运行release，不读取latest build作为实际版本。固定成员、完整解密校验、known catalog与密文原子发布维持原设计。
+
+共享socket同时给出当前RAG pointer/manifest安全摘要；R7手工与自动路径核对live来源及资产一致，R6离线兼容仅首次显式备份。

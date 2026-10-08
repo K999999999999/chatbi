@@ -90,3 +90,25 @@ def test_status_socket_refuses_unknown_existing_file(tmp_path):
         server.start()
     server.close()
     assert path.read_text() == "user content"
+
+
+def test_backup_without_success_still_shows_safe_failure(tmp_path):
+    import json
+    from src.bootstrap.backup_status import read_backup_status
+
+    path = tmp_path / "backup.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "last_success": None,
+                "failure_code": "BACKUP_KEY_UNAVAILABLE",
+            }
+        )
+    )
+    assert read_backup_status(path) == {
+        "status": "unknown",
+        "last_success": None,
+        "overdue": True,
+        "failure_code": "BACKUP_KEY_UNAVAILABLE",
+    }

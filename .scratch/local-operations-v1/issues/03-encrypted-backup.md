@@ -1,6 +1,6 @@
 # 03 — 固定工具镜像与可恢复的手工加密备份
 
-Status: in-progress
+Status: done（本地实现/机制验证；完整恢复验收05/07）
 Authorization: 用户2026-10-08确认七项拆分与全部本地实施、验证、Review和Commit；无Push/PR或实际stable切换授权。
 Canonical Source: [Spec](../spec.md)、[Design](../design.md)；共同约束见 [已确认拆分](../tickets-draft.md)。
 
@@ -20,5 +20,5 @@ Migration / Rollback: 新backup format1/catalog，不迁移原业务数据；现
 Done When: 可校验副本完整证据、Review与工具供应链核验；正式备份Contract、密钥保管/丢失/失败处理Runbook完成；真实空库恢复能力在05验证，当前不冒称已演练。
 
 
-Result: 待实施。
+Result: 本地实现与Review PASS；见 [Review](../review-03.md)。
 Comments: 无。

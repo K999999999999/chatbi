@@ -654,3 +654,15 @@ R7 Contract见[Spec](specs/local-operations-v1.md)，机制见[Design](designs/l
 `./local status`核对Docker真实状态，在明确stable API容器内读取600权限的Unix socket详细安全快照；不会创建或续期Session。旧镜像没有socket、API已停止或证据读取失败显示unknown。备份安全投影缺失/无成功副本时显示未初始化/未知；工具实现和完整恢复证据仍须后续Ticket验收。
 
 R7受理保护使用同一ExecutionRuntime容量：默认每账号1、API进程4，同步问数/分析与后台任务合计；429 `EXECUTION_LIMIT_REACHED`表示额度已满，503 `SERVICE_NOT_READY`表示当前就绪未证实，请等待恢复后由用户重新发起。已受理任务/重放沿原R4；服务不自动排队或重试。同步执行不会为了额度写入伪history，超时中断仍等待真实工作退出再释放。管理员状态和本机socket显示业务/导出各自的当前总数与上限，不暴露其他用户ID。
+
+### R7 手工加密备份（本地实现，完整运行验收待完成）
+
+从 clean commit 执行 `./local build-operations` 构建固定 age v1.3.2 / PG16 工具，随后**显式**执行 `./local init-backup`。初始化不会覆盖已有私钥；`.local/backup-keys/identity.txt` 为恢复必需，私钥和目录分别600/700。应另存私钥，不能把它与密文当作同一个备份。私钥丢失时既有密文无法恢复，不能通过重新初始化解开旧副本。
+
+`./local backup` 核对实际运行 API/PG 身份，再在锁内备份双库、配置与固定发布资产。Control dump及全表指纹共用exported snapshot，业务库独立快照并核对前后内容。最新build不是备份来源。工具完整解密、检查固定成员/摘要与dump TOC后才登记；`./local backup-list`只读列出known catalog。尚未加入自动调度/升级前门禁/恢复切换的切片，不以手工成功代表完整R7可用。
+
+`.local/backups/`仅存密文；`.local/operations/`包含可信目录和受限明文staging，API只挂安全public状态及独立socket目录，不读取私钥/catalog/source。仅已登记ID与匹配密文摘要可作为后续恢复来源，不接受任意路径。不要手工改catalog、删除已有副本或在local操作进行时改稳定配置/RAG。
+
+缺key、锁冲突、PG/工具失败、超时、wrong key或损坏均失败退出，保留原服务/旧副本，清理本次明文。网页管理员安全提示可能显示未初始化/未确认或最近失败，普通账号无备份详情。磁盘空间应同时容纳dump、打包、校验解密及既有密文；空间不足不得把半成品登记为成功。强制杀死容器或主机断电后的受限残留需由后续恢复/验收入口核对归属，不能删除不明文件。
+
+隔离机制验收：`python3 -m scripts.verify_local_backup`（先构建开发验证工具tag）；创建随机专用PG/network、生成测试key、并发写入与dump/空库恢复指纹核对，结束只清理本次资源。它验证机制，完整ChatBI恢复及30分钟目标另见R7 Ticket05/07。

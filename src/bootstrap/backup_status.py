@@ -32,7 +32,10 @@ def read_backup_status(path=Path("/opt/chatbi-operations/backup.json")):
         value = json.loads(data)
         if not isinstance(value, dict) or value.get("version") != 1:
             return unknown
+        failure = value.get("failure_code")
         timestamp = value.get("last_success")
+        if timestamp is None and isinstance(failure, str) and failure in FAILURE_CODES:
+            return dict(unknown, failure_code=failure)
         if not isinstance(timestamp, str) or not re.fullmatch(
             r"[0-9TZ:+.\-]{20,40}", timestamp
         ):
@@ -45,7 +48,7 @@ def read_backup_status(path=Path("/opt/chatbi-operations/backup.json")):
             return unknown
         result = {"status": "known", "last_success": timestamp, "overdue": age > 86400}
         failure = value.get("failure_code")
-        if failure in FAILURE_CODES:
+        if isinstance(failure, str) and failure in FAILURE_CODES:
             result["failure_code"] = failure
         return result
     except (OSError, ValueError, TypeError):

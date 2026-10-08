@@ -14,7 +14,8 @@ from src.query_api.app import create_app
 
 
 @pytest.fixture
-def runtime_resources(monkeypatch):
+def runtime_resources(monkeypatch, tmp_path):
+    monkeypatch.setenv("CHATBI_OPERATIONS_SOCKET_PATH", str(tmp_path / "status.sock"))
     monkeypatch.setenv("CHATBI_ENV", "development")
     monkeypatch.setenv(
         "CHATBI_ADMIN_SECRET_KEY", "test-admin-secret-32-characters-long"
@@ -110,6 +111,10 @@ def test_development_does_not_preload_rag(runtime_resources):
     with TestClient(create_app(runtime_factory=runtime.create_runtime)):
         rag.verify_production_ready.assert_not_called()
         rag.get_snapshot.assert_not_called()
+    import os
+    from pathlib import Path
+
+    assert not Path(os.environ["CHATBI_OPERATIONS_SOCKET_PATH"]).exists()
 
 
 def test_partial_assembly_closes_sync_and_async_http_clients(
