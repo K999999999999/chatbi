@@ -19,5 +19,5 @@ owned files: scripts/local_acceptance.py及最小R7验收入口；受影响软�
 Migration / Rollback: 不执行真实stable数据激活、整机/Docker重启或永久IDM变更；隔离资源按明确标签清理且先留证据。发布前报告当前范围/风险/验证/自动合并规则再取得Push/PR授权。
 Done When: 01–06适用证据均可追溯，完整Review和文档链接检查通过；全部Done When满足或必要条件明确待补，未完成项不报告全目标完成；只完成本地candidate，不自动远端发布。
 
-Result: clean candidate `4b515b6` 的隔离安装、RAG、失败保护、API启动及Chromium sandbox均通过。Windows Edge真实业务流程已完成问数/追问和部分图表导出；经营分析响应为HTTP 200，但测试的SSE流未在30秒内报告成功，尚不能区分长时间运行与执行失败。验收helper当时把任意`GET /executions/{id}`轮询当作最终响应，且浏览器等待上限低于R7允许的1200秒。已修正终态筛选、失败终态诊断和等待预算；待以新clean candidate重跑。专属验收资源已清理。Ticket 06本地代码、软件和OTLP集成Review已完成，稳定环境OTLP解析为关闭。真实stable切换、云端Trace查询和Push/PR均未执行。
-Comments: Ticket 06本地提交为`1293208`。本目标两处修复仅调整隔离验收装配与测试等待，不改生产API/Contract。Compose挂载回归测试先Red后Green，`tests/scripts/test_local_acceptance.py`10项通过；前端helper类型检查与终态谓词测试通过。完整验收仍须重跑，并明确记录当前环境未满足的云端Trace/容量/恢复窗口条件。
+Result: clean candidate `bbe2cce` 的隔离安装、RAG、失败保护、API启动及Chromium sandbox均通过。Windows Edge问数/追问和图表/XLSX导出通过，经营分析执行到达终态`failed`；该次报告未保存安全错误码，尚不能区分模型拒答/格式问题与应用处理缺陷。验收helper现按终态读取并只记录该执行的状态与公开`error_code`，待以新clean candidate重跑以分类。专属验收资源已清理。Ticket 06本地代码、软件和OTLP集成Review已完成，稳定环境OTLP解析为关闭。真实stable切换、云端Trace查询和Push/PR均未执行。
+Comments: Ticket 06本地提交为`1293208`。本目标修复仅调整隔离验收装配与测试等待/诊断，不改生产API/Contract。Compose挂载回归测试先Red后Green，`tests/scripts/test_local_acceptance.py`10项通过；前端helper类型检查与终态谓词测试通过。完整验收仍须重跑，并明确记录当前环境未满足的云端Trace/容量/恢复窗口条件。

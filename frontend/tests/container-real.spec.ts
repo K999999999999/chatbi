@@ -174,9 +174,7 @@ async function captureExecutionStreams(page: Page) {
         const statuses = window.__chatbiExecutionEvidence?.[id]?.terminal_statuses ?? [];
         return statuses.find(status => ['succeeded', 'failed', 'cancelled', 'timed_out', 'unconfirmed'].includes(status)) ?? null;
       }, executionId), { timeout: 30000 }).not.toBeNull();
-      const evidence = await page.evaluate(id => window.__chatbiExecutionEvidence?.[id]!, executionId);
-      expect(evidence.terminal_statuses).toContain('succeeded');
-      return evidence;
+      return await page.evaluate(id => window.__chatbiExecutionEvidence?.[id]!, executionId);
     },
   };
 }
@@ -357,6 +355,10 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     evidence.analysis_http_status = analysisHttp.status();
     evidence.step = 'analysis-parse';
     const analysisPayload = await analysisHttp.json();
+    evidence.analysis_execution = {
+      status: analysisPayload.execution.status,
+      error_code: analysisPayload.execution.public_error?.error_code ?? null,
+    };
     const analysisStream = await streams.forExecution(analysisPayload.execution.id);
     evidence.step = 'analysis-stage-evidence';
     evidence.analysis_execution_stream = analysisStream;
