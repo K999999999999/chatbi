@@ -214,6 +214,7 @@ def render_compose_override(
             "    volumes: !override",
             *_bind(model_dir, model_target, read_only=True),
             *_bind(rag_dir, rag_target, read_only=True),
+            *_bind(state_dir, "/opt/chatbi-runtime", read_only=False),
             "  model:",
             *labels,
             "    volumes: !override",

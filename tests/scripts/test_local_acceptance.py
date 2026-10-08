@@ -135,6 +135,7 @@ def test_docker_compose_resolves_isolation_without_starting_resources(
         "CHATBI_DATABASE_IMAGE=chatbi-local-postgres:test\n"
         "CHATBI_SOURCE_COMMIT=" + "a" * 40 + "\n"
     )
+    runtime_dir = tmp_path / "state"
     override = tmp_path / "compose.yml"
     override.write_text(
         render_compose_override(
@@ -142,7 +143,7 @@ def test_docker_compose_resolves_isolation_without_starting_resources(
             port=18432,
             model_dir=tmp_path / "model",
             rag_dir=tmp_path / "rag",
-            state_dir=tmp_path / "state",
+            state_dir=runtime_dir,
             report_dir=tmp_path / "report",
             tests_dir=root / "tests",
         )
@@ -185,11 +186,21 @@ def test_docker_compose_resolves_isolation_without_starting_resources(
     assert (
         resolved["services"]["api"]["labels"]["com.chatbi.environment"] == "acceptance"
     )
-    assert {v["source"] for v in resolved["services"]["api"]["volumes"]} == {
-        str(tmp_path / "model"),
-        str(tmp_path / "rag"),
+    api_mounts = {
+        volume["target"]: volume
+        for volume in resolved["services"]["api"]["volumes"]
     }
-    assert all(v["read_only"] for v in resolved["services"]["api"]["volumes"])
+    assert set(api_mounts) == {
+        "/opt/chatbi-model/bge-m3-5617a9f61b02",
+        "/opt/chatbi-rag",
+        "/opt/chatbi-runtime",
+    }
+    assert api_mounts["/opt/chatbi-runtime"]["source"] == str(runtime_dir)
+    assert api_mounts["/opt/chatbi-runtime"].get("read_only", False) is False
+    assert all(
+        api_mounts[target]["read_only"]
+        for target in ("/opt/chatbi-model/bge-m3-5617a9f61b02", "/opt/chatbi-rag")
+    )
     assert resolved["services"]["api"]["ports"][0]["host_ip"] == "127.0.0.1"
     assert resolved["services"]["api"]["security_opt"] == [
         f"seccomp={root}/docker/third-party/playwright-seccomp-profile.json"

@@ -19,5 +19,5 @@ owned files: scripts/local_acceptance.py及最小R7验收入口；受影响软�
 Migration / Rollback: 不执行真实stable数据激活、整机/Docker重启或永久IDM变更；隔离资源按明确标签清理且先留证据。发布前报告当前范围/风险/验证/自动合并规则再取得Push/PR授权。
 Done When: 01–06适用证据均可追溯，完整Review和文档链接检查通过；全部Done When满足或必要条件明确待补，未完成项不报告全目标完成；只完成本地candidate，不自动远端发布。
 
-Result: 正在建立当前候选完整运行验收证据；已完成Ticket 06本地代码、软件和OTLP集成Review，稳定环境OTLP解析为关闭。真实stable切换、云端Trace查询和Push/PR均未执行。
-Comments: Ticket 06本地提交为`1293208`；先在明确标记的隔离资源中推进可运行验收，并记录无法在当前Linux环境满足的Windows/外部配置条件。
+Result: clean candidate `82b366e` 的隔离验收通过了数据库/Qdrant初始化、RAG构建和失败保护检查，但API启动因验收Compose override遗漏私有运行socket挂载而失败（退出码3）；专属容器、卷和网络已清理。已补齐验收project到`/opt/chatbi-runtime`的run-scoped挂载，并以Compose解析回归测试确认，当前需以新clean candidate重建并重跑完整验收。Ticket 06本地代码、软件和OTLP集成Review已完成，稳定环境OTLP解析为关闭。真实stable切换、云端Trace查询、Windows Edge业务验收和Push/PR均未执行。
+Comments: Ticket 06本地提交为`1293208`；本次修复仅调整隔离验收资源装配，不改生产API/Contract。TDD Red：Compose解析测试缺少`/opt/chatbi-runtime`；Green：定向Compose测试及`tests/scripts/test_local_acceptance.py`共10项通过。后续继续验证新candidate，明确记录当前环境未满足的Windows/外部配置条件。
