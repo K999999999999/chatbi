@@ -1,7 +1,7 @@
 # 07 — 当前候选完整业务、恢复与容量验收
 
 Status: in-progress
-Authorization: 用户2026-10-08确认七项拆分与全部本地实施、验证、Review和Commit；用户后续明确授权初始化stable备份密钥、一次仅重建active R6 API以应用已保存OTLP配置、首份加密备份和隔离恢复；无Push/PR、stable版本切换或restore-activate授权。
+Authorization: 用户2026-10-08确认七项拆分与全部本地实施、验证、Review和Commit；用户后续授权stable备份密钥、首份加密备份及隔离恢复；用户于2026-10-10明确确认active Stable由R6切到已验收候选6d764ac、验证备份调度/RPO并在失败时回退原R6；无restore-activate、Push/PR或云部署授权。
 Canonical Source: [Spec](../spec.md)、[Design](../design.md)；共同约束见 [已确认拆分](../tickets-draft.md)。
 
 ## 2026-10-10 最新候选验收与剩余条件
@@ -12,7 +12,14 @@ clean candidate `6d764aca6428bd225afe30395723dfaeb4ae0e0b` 由 `./local build` �
 
 新发现的跨浏览器文件名问题：该次 Linux Chromium 对12次下载均建议名称`download`，独立原生Chrome CDP探针也实际保存中文Blob下载为`download`；文件内容与格式均正确。当前导出源码与此前 Windows Chromium 验收的 `0a97182` 相同，旧报告中的`suggested_filename`为预期中文名。未在本次R7授权内改变R5下载 Contract/产品代码。通用入口的 `runtime.json` 写有 `browser_channel=msedge`，但实际使用Linux Chromium executable，须以 `browser.json` 的153.0.8010.12版本和本机适配器命令为准。
 
-剩余条件：实际Stable仍是R6 `2b4a8c8`；R7调度备份及24小时提醒尚未在active Stable运行，条件RPO未验。阿里云Span已从隔离真实业务发送，但`.local/r7-cloud-connection-probe.json`仍为`cloud_query_verified=false`，需要登录控制台只读核验。当前授权不包括Stable版本切换、`restore-activate`或Push/PR。
+后续Stable验收（2026-10-10）：用户授权后`./local upgrade 6d764aca6428bd225afe30395723dfaeb4ae0e0b`成功，部署状态running/succeeded。升级前R6备份`9d01c195caeb4b71ad5cdb7ca726bfae`及升级后R7手工备份`ce589d79d5a643c48af315756a72ff22`均登记。Stable `/`、`/health`、`/ready`为200，依赖ready，自动备份进程运行，状态known且未逾期。23项调度/升级前门禁/逾期状态测试通过；真实下一次6小时自动备份尚待周期观察，未人为改写Stable状态来模拟24小时过期。阿里云Span已从隔离真实业务发送但`.local/r7-cloud-connection-probe.json`仍为`cloud_query_verified=false`，需要控制台只读核验。
+
+
+## 2026-10-10 Active Stable R7切换
+
+候选`6d764aca6428bd225afe30395723dfaeb4ae0e0b`通过兼容只读预检后执行`./local upgrade`。升级前R6副本`9d01c195caeb4b71ad5cdb7ca726bfae`成功；migration与迁移后兼容检查通过，Stable API切到R7且healthy，PostgreSQL/Qdrant保持运行。切换后创建R7来源副本`ce589d79d5a643c48af315756a72ff22`。`./local status`显示依赖ready、backup known/not-overdue；独立调度容器进程运行，安全日志无失败。23项定向调度/逾期状态测试通过。六小时调度真实周期尚未到达，活动Stable上的24小时逾期状态未人为触发，因此长周期RPO仍待后续观察。
+
+完整验收记录见[正式Acceptance](../../../docs/acceptance/local-operations-v1.md#active-stable-r7切换与备份观察2026-10-10)。
 
 ## 2026-10-09 顺序处理授权与当前修复
 

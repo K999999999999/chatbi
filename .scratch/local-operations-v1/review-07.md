@@ -81,4 +81,16 @@ Finding: Linux Chromium 153 的 12 项真实导出均返回 Playwright `suggeste
 
 该发现超出 R7 运行保障验收计时补丁的实现范围，未修改 R5 API 或产品行为。通用接受入口的 `runtime.json` 还把 Linux Chromium 版本误标为 `msedge`；实际版本由 `browser.json` 及本机 WSL 适配器命令证明。详见[Acceptance](../../docs/acceptance/local-operations-v1.md#6d764ac-当前-clean-候选完整验收与单用户基线2026-10-10)。
 
-Next: 保留为 R5 跨浏览器下载文件名兼容问题；若需支持 Linux Chromium 中文落盘名，应在确认修复 Contract 后另行实现和验收。R7 当前剩余条件为 active Stable 上的 RPO/提醒验收授权与阿里云控制台 Trace 查询。
+Next: 保留为 R5 跨浏览器下载文件名兼容问题；若需支持 Linux Chromium 中文落盘名，应在确认修复 Contract 后另行实现和验收。R7当前等待下一次真实6小时自动备份周期；阿里云控制台Trace查询仍待人工核验。
+
+## Active Stable R7切换核验（2026-10-10）
+
+Review: PASS（运行操作与验收证据）
+
+Scope: 用户明确授权的Stable R6→R7兼容升级与备份/RPO验证；候选`6d764aca6428bd225afe30395723dfaeb4ae0e0b`。
+
+Finding: `./local upgrade`的升级前R6备份门禁、只读兼容检查、Schema/RBAC migration、迁移后复核及R7 API启动均成功。升级前R6备份`9d01c195caeb4b71ad5cdb7ca726bfae`和升级后R7来源备份`ce589d79d5a643c48af315756a72ff22`完整校验并登记。首页、`/health`、`/ready`为200，依赖状态ready，独立备份调度进程仍运行，当前备份状态known且未逾期；PostgreSQL/Qdrant保持运行。调度/门禁/逾期状态定向回归23项通过。
+
+限制：R7升级后副本刚创建，下一次真实6小时调度尚未发生；未更改Active Stable的catalog/状态来伪造24小时逾期。故长周期RPO验收继续in-progress；阿里云控制台Trace查询与R5 Linux下载文件名问题不在本次运行操作范围。
+
+Next: 约在`2026-10-10 07:30 +08:00`后复查自动备份目录/状态与安全日志；由用户登录阿里云控制台只读核验Trace。
