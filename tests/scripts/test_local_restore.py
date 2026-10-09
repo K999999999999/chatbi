@@ -182,6 +182,8 @@ def test_restore_preserves_optional_trace_configuration(tmp_path, monkeypatch):
             b"CHATBI_OBSERVABILITY_ENABLED=true\n"
             b"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=https://collector.invalid/v1/traces\n"
             b"CHATBI_OTLP_TIMEOUT_SECONDS=5\n"
+            b"OTEL_SERVICE_NAME=chatbi\n"
+            b"CHATBI_TRACE_CONTENT_ENABLED=false\n"
         )
     with (payload / "secrets.env").open("ab") as stream:
         stream.write(b"OTEL_EXPORTER_OTLP_HEADERS=Authentication=fixture-token\n")
@@ -189,6 +191,8 @@ def test_restore_preserves_optional_trace_configuration(tmp_path, monkeypatch):
     checked = validate_manifest(manifest, backup_id="e" * 32, payload=payload)
 
     assert checked["config"]["CHATBI_OBSERVABILITY_ENABLED"] == "true"
+    assert checked["config"]["OTEL_SERVICE_NAME"] == "chatbi"
+    assert checked["config"]["CHATBI_TRACE_CONTENT_ENABLED"] == "false"
     assert checked["config"]["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"].startswith(
         "https://"
     )

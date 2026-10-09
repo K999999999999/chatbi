@@ -96,3 +96,11 @@ clean 候选 `8f73ab12e0b078ffca7c6416ab8ae7ea055522a9` 的固定镜像构建通
 clean candidate `7c12c1e9db3259ad0da92b530d9cb6bce8c02dd4`，运行 `20261009T112806Z-c99ef560`，使用独立 Windows Chromium 条件；首条执行提交 HTTP503 / `SERVICE_NOT_READY`，尚未进入持久执行，没有详情 GET，完整业务未通过。稍后真实依赖探针全部 ready（6.49秒）；证据不足以确定最初拒绝的具体依赖原因，也不能倒推之前的追问超时。临时账号与项目资源按原机制清理；资源清理报告确认专属卷移除。
 
 验收脚本补充首次和重启后的 `/ready` 前置等待；就绪、未知、不就绪、状态码冲突与非法响应的确定性测试通过，但还需新 clean candidate 验证。`e1801a5` 阿里云固定 Header 支持完成，observability 22项与12 subtests PASS；真实配置仅保存到ignored环境文件，稳定运行未切换，云端可查询性仍待验收。
+
+## a01545f 后续受理与探针诊断（2026-10-09）
+
+clean候选 `a01545f224759e235b06f71e27f21cbcddbef828`，运行 `20261009T114810Z-5179539a`，启用显式云端配置与隔离WindowsChromium。首次 `/ready` HTTP200/status=ready；首问202受理、详情200/succeeded、XLSX接口200，追问提交503/SERVICE_NOT_READY，未进入执行；两条提交均获得响应。此次完整业务验收失败，不能以启动前就绪替代运行期间就绪。临时账号清理完成，专属容器/网络/卷复核均为0。
+
+独立真实探针在稍后完成且四依赖均ready，耗时9.756秒；profiling探针11.342秒，其中导入9.371秒、源码编译4.012秒。源码确认 `src.query_api` eager import 加载整个HTTP应用，已补确定性Red并以保留公开入口的延迟导入修复；该证据确认导入开销问题，但尚未捕获最初503时具体探针的超时事件，不能将历史追问根因直接标已修复。资源采样与执行计时是本次隔离范围的安全补充，只有首问成功；采样值不代表瞬时资源峰值或完整容量PASS。
+
+使用用户配置的独立合成OTLP连接探针返回SUCCESS，服务名chatbi，仅一个无业务内容Span；控制台可查询性仍待用户核验。连接探针不等同于真实业务完整链路验收。私有证据分别位于 `.local/r7-cloud-connection-probe.json`、`.local/r7-readiness-profile.json` 与本轮ignored目录。

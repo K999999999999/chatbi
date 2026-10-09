@@ -1,3 +1,4 @@
+import subprocess
 import sys
 from unittest.mock import Mock
 
@@ -7,6 +8,33 @@ from scripts.local_operations_status import read_status
 from src.bootstrap.operations import ObservedModel, ProcessReadinessProbe
 from src.bootstrap.operations_socket import OperationsSocket
 from src.query_api.operations import DEPENDENCIES, OperationsState
+
+
+def test_readiness_probe_import_does_not_load_http_application():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys; from src.bootstrap.operations import ProcessReadinessProbe; "
+                "assert 'src.query_api.app' not in sys.modules, 'HTTP application loaded by lightweight probe'"
+            ),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_query_api_public_exports_keep_the_existing_app_identity():
+    from src.query_api import QueryService, create_app
+    from src.query_api.app import QueryService as DirectQueryService
+    from src.query_api.app import create_app as direct_create_app
+
+    assert QueryService is DirectQueryService
+    assert create_app is direct_create_app
 
 
 def test_probe_timeout_is_terminated_and_next_probe_can_recover():
@@ -121,6 +149,7 @@ def test_observed_model_reports_stream_start_failure_without_payloads():
 def test_backup_projection_is_bounded_and_does_not_echo_untrusted_fields(tmp_path):
     import json
     from datetime import UTC, datetime
+
     from src.bootstrap.backup_status import read_backup_status
 
     path = tmp_path / "backup.json"
@@ -147,7 +176,7 @@ def test_backup_projection_is_bounded_and_does_not_echo_untrusted_fields(tmp_pat
 def test_status_socket_refuses_unknown_existing_file(tmp_path):
     path = tmp_path / "status.sock"
     path.write_text("user content")
-    server = OperationsSocket(lambda: {}, path=path)
+    server = OperationsSocket(dict, path=path)
     with pytest.raises(RuntimeError):
         server.start()
     server.close()
@@ -156,6 +185,7 @@ def test_status_socket_refuses_unknown_existing_file(tmp_path):
 
 def test_backup_without_success_still_shows_safe_failure(tmp_path):
     import json
+
     from src.bootstrap.backup_status import read_backup_status
 
     path = tmp_path / "backup.json"
