@@ -1,6 +1,6 @@
 # R7 长期规划记录
 
-当前：01–06已本地实现/Review；06本地提交`1293208`，软件与OTLP集成验证通过。05隔离恢复、候选激活与previous恢复在独立stable clone完成。Ticket07候选`f1b98d7`两次clean隔离/Windows Edge验收均通过问数及PNG/XLSX，但经营分析重复以公开分类`LLM_ERROR`失败；PDF、容量、完整RTO和阿里云Trace仍待验。stable原R6服务曾停止，已按原发布恢复并核验；原因未确认。无Push/PR或实际R7升级、密钥初始化、恢复激活授权。以下按时间保留规划与实施历史，实时阶段见Git公共目录记录。
+当前：01–06已本地实现/Review；06本地提交`1293208`，软件与OTLP集成验证通过。05隔离恢复、候选激活与previous恢复在独立stable clone完成。Ticket07候选`f1b98d7`两次clean隔离/Windows Edge验收均通过问数及PNG/XLSX，但经营分析重复以公开分类`LLM_ERROR`失败；用户确认的一次最小合成Provider流式探针通过，未定位真实分析失败原因。PDF、容量、完整RTO和阿里云Trace仍待验。stable原R6服务曾停止，已按原发布恢复并核验；原因未确认。无Push/PR或实际R7升级、密钥初始化、恢复激活授权。以下按时间保留规划与实施历史，实时阶段见Git公共目录记录。
 
 ## 初始规划快照（拆分确认前）
 
