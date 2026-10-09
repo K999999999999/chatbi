@@ -1,6 +1,6 @@
 # R7 本地运行保障验收
 
-Status: incomplete. Ticket 01–06 的本地实现与 Review 已完成；Ticket 07 当前候选完成部分隔离运行和真实浏览器验收。经营分析的 `LLM_ERROR` 已通过隔离诊断定位到运行时 `ObservedModel` 未转发 `stream()`；本地修复及确定性回归已完成，尚待新的 clean candidate 真实复验，完整验收门槛未满足。
+Status: incomplete. Ticket 01–06 的本地实现与 Review 已完成；Ticket 07 当前候选完成部分隔离运行和真实浏览器验收。经营分析的 `LLM_ERROR` 已通过隔离诊断定位到运行时 `ObservedModel` 未转发 `stream()`；修复已提交，但当前候选的 Edge 验收在追问阶段未观察到终态，尚未覆盖经营分析。完整验收门槛未满足。
 
 ## 候选与证据身份
 
@@ -16,12 +16,12 @@ Status: incomplete. Ticket 01–06 的本地实现与 Review 已完成；Ticket 
 | --- | --- | --- |
 | 隔离候选启动、数据库/RAG 初始化与 readiness | PASS | 使用专属运行资源；原稳定服务未加入验收 Compose。 |
 | 故障拒绝与状态保护 | PASS | 配置错误、启动失败、不兼容 migration、缺失索引、回环端口占用五类检查均按预期拒绝；持久状态前后检查相同。 |
-| 浏览器与查询链路 | FAIL（最新候选） | `f1b98d7` 两次 Edge 问数/追问通过；修复候选 `515c253` 的 Edge 复验在首条问数未取得成功快照时停止，安全错误码当时未写入报告，见下文。 |
-| 图表与 XLSX 导出 | PASS（旧候选）/ NOT RUN（最新候选） | `f1b98d7` 的 PNG / XLSX 从已保存结果导出成功；`515c253` 未到导出步骤。 |
-| PDF 导出 | NOT RUN | `f1b98d7` 经营分析失败、`515c253` 首条问数未成功，均未到 PDF 步骤。 |
-| 经营分析 | FAIL（旧候选）/ NOT RUN（最新候选） | `f1b98d7` 两次验收公开 `error_code=LLM_ERROR`；诊断捕获内部分类 `PROVIDER_STREAM_UNAVAILABLE`，源码定位到 `ObservedModel` 未转发底层模型的 `stream()`，本地代码已修复。`515c253` 的浏览器验收在分析前停止，尚未验证修复。 |
+| 浏览器与查询链路 | FAIL（最新候选部分通过） | `f1b98d7` 两次 Edge 问数/追问通过；`515c253` 首条问数未取得成功快照；`2d907c0` 首条查询及执行流成功，随后追问未观察到终态响应而超时。 |
+| 图表与 XLSX 导出 | PASS（部分候选）/ NOT RUN（当前其余格式） | `f1b98d7` 的 PNG / XLSX 从已保存结果导出成功；`2d907c0` 首条查询 XLSX 导出成功；当前候选未到 PNG / PDF。 |
+| PDF 导出 | NOT RUN | `f1b98d7` 经营分析失败；`515c253` 首条问数未成功；`2d907c0` 追问未观察到终态，均未到 PDF 步骤。 |
+| 经营分析 | FAIL（旧候选）/ NOT RUN（修复候选） | `f1b98d7` 两次验收公开 `error_code=LLM_ERROR`；诊断捕获内部分类 `PROVIDER_STREAM_UNAVAILABLE`，源码定位到 `ObservedModel` 未转发底层模型的 `stream()`，修复已提交。`515c253` 在首条问数停止；`2d907c0` 在追问阶段停止，均未验证修复后的分析路径。 |
 | 临时资源回收 | PASS | acceptance 容器、网络和卷均为 0；清理记录为 `active_sessions=0`、卷已移除。 |
-| 稳定服务 | 未纳入验收项目 | 首次验收时健康；第二次复跑前稳定服务曾停止，随后按原 R6 版本恢复。两次验收均未执行升级、密钥初始化或恢复激活，恢复记录见 [R6 Acceptance](local-deployment-v1.md#稳定服务重启核验2026-10-09)。 |
+| 稳定服务 | 未纳入验收项目 | 当前验收期间稳定服务继续运行原 R6 发布 `2b4a8c8`；API/PostgreSQL healthy、Qdrant running，首页与 `/health` 均 HTTP 200。没有执行升级、密钥初始化或恢复激活；此前恢复记录见 [R6 Acceptance](local-deployment-v1.md#稳定服务重启核验2026-10-09)。 |
 
 ## 同一候选复跑（2026-10-09）
 
@@ -49,9 +49,17 @@ Status: incomplete. Ticket 01–06 的本地实现与 Review 已完成；Ticket 
 
 失败报告的错误位置仅指向缺少快照后的 UI 校验；受限报告只保存该静态校验分类和浏览器状态，没有保存响应正文。临时账号已禁用、活动 Session 为 0、验收容器/网络/卷均清理为 0。稳定 R6 API/PostgreSQL 仍 healthy、Qdrant running，`/` 和 `/health` 均返回 `200`。随后在工作区补充 E2E 安全记录：只保留允许列表中的执行错误码，并在无快照时给出固定失败分类；`npm run typecheck` 通过。该报告改进尚未重跑验收。
 
+## 最新修复候选 Edge 复验（2026-10-09）
+
+clean 候选 `2d907c03ee0b5eab353fb3478b6883793c823048` 的 API / PostgreSQL 固定镜像构建通过。隔离运行 `20261009T101046Z-94af86a8` 的启动、RAG readiness、配置/兼容/失败保护及 Chromium sandbox 检查通过。Windows Edge `154.0.4258.62` 的首条问数 HTTP 200，快照结果符合验收参考值；执行流到达 `succeeded`，阶段覆盖 `query_understanding`、`retrieval`、`sql_generation`、`sql_validation`、`query_execution` 和 `result_saving`。从该快照导出的 XLSX 成功。
+
+同一对话追问后，测试未观察到 `/api/v1/executions/{id}` 的终态响应，在 Playwright 等待窗口结束后停止。报告定位为 `container-real.spec.ts:288:33`，没有追问 HTTP 终态、执行错误码或终态执行状态；因此无法区分浏览器未发出后续请求、请求未完成或执行状态未到终态，也不能据此判断分析 Provider。经营分析、历史/成果、后续 PNG / PDF 与重启续聊步骤均未运行。本次没有验证 `ObservedModel.stream()` 的分析修复。
+
+临时账号已禁用、活动 Session 为 0；按本次 Compose project 标签复核，容器、网络、卷均为 0。稳定 R6 仍绑定 `2b4a8c8`，API/PostgreSQL healthy、Qdrant running，首页和 `/health` 均 HTTP 200。验收结束后本机默认 release 指针恢复为原 `f1b98d7`，文件权限为 `0600`。为下一次诊断，当前本地 E2E 改动汇总执行详情轮询的 HTTP 状态、允许列表内执行状态与错误码，不保存执行 ID、错误正文或业务响应；`npm run typecheck` 和 `git diff --check` 已通过，尚未提交或重跑。
+
 ## 尚未满足的 Ticket 07 验收项
 
-- 已定位并在本地修复分析流式包装器；仍需构建新的 clean candidate 并隔离复验经营分析成功，再完成历史/成果和 PDF 浏览器验收。
+- 已定位并在本地修复分析流式包装器；`2d907c0` 的真实问数及 XLSX 通过，但追问未观察到终态。当前候选仍需完成追问、经营分析成功、历史/成果及 PNG/PDF 浏览器验收。
 - 尚未形成当前候选的单用户分项耗时及 CPU/内存峰值、跨入口资源回收和 60 秒依赖故障/恢复矩阵；本次不能据此声明容量或恢复 SLA。
 - 当前候选的完整隔离恢复计时及 30 分钟 RTO / 条件 RPO 矩阵未完成。Ticket 05 的隔离恢复、切换和回退证据仍绑定各自候选，不自动替代本次候选验收。
 - 当前候选阿里云 Trace 未查询验证；稳定环境 OTLP 当前关闭。没有执行真实 stable 升级或运行配置更改。

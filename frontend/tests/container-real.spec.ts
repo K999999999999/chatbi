@@ -17,6 +17,9 @@ const safeExecutionErrorCodes = new Set([
   'CANNOT_ANSWER', 'SQL_REJECTED', 'DATABASE_ERROR', 'QUERY_TIMEOUT', 'CONVERSATION_UNAVAILABLE',
   'CLARIFICATION_REQUIRED', 'UNSUPPORTED_ANALYSIS', 'CONVERSATION_CONFLICT',
 ]);
+const safeExecutionStatuses = new Set([
+  'accepted', 'running', 'stopping', 'succeeded', 'failed', 'cancelled', 'timed_out', 'unconfirmed',
+]);
 
 type ExecutionStreamEvidence = {
   execution_id: string;
@@ -94,6 +97,8 @@ declare global {
 async function captureExecutionStreams(page: Page) {
   const connections = new Map<string, number>();
   const submissions: string[] = [];
+  const pollEvidence = { request_count: 0, http_statuses: new Set<number>(), execution_statuses: new Set<string>(), error_codes: new Set<string>() };
+  const pollReads: Promise<void>[] = [];
   await page.addInitScript((allowedStages: string[]) => {
     const target = window as Window & { __chatbiExecutionEvidence?: Record<string, ExecutionStreamEvidence> };
     const allowed = new Set(allowedStages);
@@ -172,9 +177,35 @@ async function captureExecutionStreams(page: Page) {
     }
     if (request.method() === 'POST' && /^\/api\/v1\/histories\/[0-9a-f-]{36}\/executions$/.test(path)) submissions.push(path);
   });
+  page.on('response', response => {
+    const request = response.request();
+    const path = new URL(response.url()).pathname;
+    if (request.method() !== 'GET' || !/^\/api\/v1\/executions\/[0-9a-f-]{36}$/.test(path)) return;
+    pollEvidence.request_count += 1;
+    pollEvidence.http_statuses.add(response.status());
+    pollReads.push(response.json().then(payload => {
+      const execution = (payload as { execution?: { status?: unknown; public_error?: { error_code?: unknown } } })?.execution;
+      if (typeof execution?.status === 'string' && safeExecutionStatuses.has(execution.status)) {
+        pollEvidence.execution_statuses.add(execution.status);
+      }
+      const errorCode = execution?.public_error?.error_code;
+      if (typeof errorCode === 'string' && safeExecutionErrorCodes.has(errorCode)) {
+        pollEvidence.error_codes.add(errorCode);
+      }
+    }).catch(() => undefined));
+  });
   return {
     submissions,
     connectionCount(executionId: string): number { return connections.get(executionId) ?? 0; },
+    async pollSummary() {
+      await Promise.allSettled(pollReads);
+      return {
+        request_count: pollEvidence.request_count,
+        http_statuses: [...pollEvidence.http_statuses],
+        execution_statuses: [...pollEvidence.execution_statuses],
+        error_codes: [...pollEvidence.error_codes],
+      };
+    },
     async forExecution(executionId: string): Promise<ExecutionStreamEvidence> {
       await expect.poll(() => page.evaluate(id => {
         const statuses = window.__chatbiExecutionEvidence?.[id]?.terminal_statuses ?? [];
@@ -570,6 +601,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     evidence.error_locations = (error as Error).stack?.match(/container-real\.spec\.ts:\d+:\d+/g) ?? [];
     throw new Error('真实容器业务验收失败，见私有报告的步骤与安全定位。');
   } finally {
+    evidence.execution_poll_evidence = await streams.pollSummary();
     writeFileSync(reportPath('browser.json'), JSON.stringify(evidence, null, 2));
   }
 });
