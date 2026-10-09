@@ -655,7 +655,7 @@ uv run --frozen python -m scripts.verify_local_deployment
 
 ## R7 动态运行状态（本地实现完成，当前候选验收未完成）
 
-R7 Contract见[Spec](specs/local-operations-v1.md)，机制见[Design](designs/local-operations-v1.md)。Ticket 01–06本地实现与Review已完成；Ticket 07的`6c3c639` Linux Playwright完整业务验收、四类依赖60秒故障/恢复矩阵及11项额度释放回归已通过。单用户完整资源采样、30分钟RTO/条件RPO与阿里云控制台Trace查询仍待完成，整体状态见[R7 Acceptance](acceptance/local-operations-v1.md)。stable仍运行原R6版本；本Runbook描述的是已实现的本地候选能力，不代表其已部署到stable。
+R7 Contract见[Spec](specs/local-operations-v1.md)，机制见[Design](designs/local-operations-v1.md)。Ticket 01–06本地实现与Review已完成；Ticket 07的`6c3c639` Linux Playwright完整业务验收、四类依赖60秒故障/恢复矩阵及11项额度释放回归已通过。单用户完整资源采样、30分钟RTO/条件RPO与阿里云控制台Trace查询仍待完成，整体状态见[R7 Acceptance](acceptance/local-operations-v1.md)。stable仍运行原R6版本；本机备份密钥已初始化，但首份备份因保存的OTLP配置与R6运行配置不一致而被来源校验拒绝，stable未重启或切换。
 
 `/health`继续只证明HTTP存活；`/ready`公开最小status/checked_at，ready返回200，其余503。每15秒一轮有界独立进程探测，单轮最多10秒；30秒未更新则unknown。稳定镜像复用R6发布门禁，验证Control/业务库、Qdrant、固定业务/RAG/版本资产；不执行定时LLM调用。未知和失败均不能用旧正常结果替代。
 
@@ -667,7 +667,7 @@ R7受理保护使用同一ExecutionRuntime容量：默认每账号1、API进程4
 
 ### R7 手工加密备份、隔离恢复与显式切换（本地实现，完整运行验收待完成）
 
-从 clean commit 执行 `./local build-operations` 构建固定 age v1.3.2 / PG16 工具，随后**显式**执行 `./local init-backup`。初始化不会覆盖已有私钥；`.local/backup-keys/identity.txt` 为恢复必需，私钥和目录分别600/700。应另存私钥，不能把它与密文当作同一个备份。私钥丢失时既有密文无法恢复，不能通过重新初始化解开旧副本。
+从 clean commit 执行 `./local build-operations` 构建固定 age v1.3.2 / PG16 工具，随后**显式**执行 `./local init-backup`。初始化不会覆盖已有私钥；`.local/backup-keys/identity.txt` 为恢复必需，私钥和目录分别600/700。当前本机已执行初始化，但尚未生成首份备份。应另存私钥，不能把它与密文当作同一个备份。私钥丢失时既有密文无法恢复，不能通过重新初始化解开旧副本。
 
 `./local backup` 核对实际运行 API/PG 身份，再在锁内备份双库、配置与固定发布资产。Control dump及全表指纹共用exported snapshot，业务库独立快照并核对前后内容。最新build不是备份来源。工具完整解密、检查固定成员/摘要与dump TOC后才登记；`./local backup-list`只读列出known catalog。本地代码已接入自动调度与升级前门禁；Ticket 05 已实现隔离恢复和显式切换，Ticket 06本地实现与Review已完成。当前候选的完整恢复与运行验收仍待完成，不以机制验收代表完整R7可用；见[R7 Acceptance](acceptance/local-operations-v1.md)。
 
@@ -683,7 +683,7 @@ R7受理保护使用同一ExecutionRuntime容量：默认每账号1、API进程4
 
 通过输出中的恢复ID后，操作者可显式执行 `./local restore-activate <restore-id>`。该命令先记录previous/candidate与切换阶段，停止候选和旧stable writer，再原子切换binding并启动候选；中断时保留journal和两边资源，必须明确选择 `./local restore-recover <restore-id> --previous` 或 `--candidate` 完成恢复。不要手动编辑 `.local/runtime-binding.json` 或在journal未完成时启动其他 `./local` 写操作。
 
-恢复成功或普通失败退出时会清除解密归档payload；candidate专属的受限配置、Secret、release、卷和登记记录会保留，以支持检查或显式切换。若工具报告明文暂存清理失败，先核对恢复ID及目录归属，再按安全流程处理；不要清理未知资源。Ticket 05 已在独立stable clone中完成恢复、候选激活和previous回退核验，2026-10-08实际stable/dev运行身份与健康状态前后未变。本轮尚无实际stable备份私钥或登记密文，未运行RTO/RPO；固定 age/PG 工具镜像已构建，但没有初始化密钥或执行stable激活。当前浏览器分析/PDF验收已通过，阿里云Trace查询仍未完成，见[R7 Acceptance](acceptance/local-operations-v1.md)及[R7 Ticket 07](../.scratch/local-operations-v1/issues/07-acceptance.md)。
+恢复成功或普通失败退出时会清除解密归档payload；candidate专属的受限配置、Secret、release、卷和登记记录会保留，以支持检查或显式切换。若工具报告明文暂存清理失败，先核对恢复ID及目录归属，再按安全流程处理；不要清理未知资源。Ticket 05 已在独立stable clone中完成恢复、候选激活和previous回退核验，2026-10-08实际stable/dev运行身份与健康状态前后未变。本轮实际stable备份密钥已初始化，但首份密文未创建：来源校验发现保存的OTLP配置与运行中的R6 API环境不一致并拒绝备份；stable未重启或激活候选，RTO/RPO未运行。当前浏览器分析/PDF验收已通过，阿里云Trace查询仍未完成，见[R7 Acceptance](acceptance/local-operations-v1.md)及[R7 Ticket 07](../.scratch/local-operations-v1/issues/07-acceptance.md)。
 
 R7候选的`up`随服务启动独立backup工具，运行时每6小时尝试，无/超过24小时副本启动即尝试；失败/锁竞争不热循环，下一次常规尝试间隔6小时。`down`先停止backup再停止API/依赖，保留数据、密钥和catalog。未构建工具时up警告但不撤销已运行API；必须先build-operations/init-backup，不能据此宣称RPO有保障。`./local logs backup`只提供安全分类。
 

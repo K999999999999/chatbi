@@ -1,6 +1,6 @@
 # R7 本地运行保障验收
 
-Status: incomplete. Ticket 01–06本地实现与Review完成；当前clean候选`6c3c639`的完整隔离业务验收由用户指定的 Linux Playwright 容器通过，12份 PDF/PNG/XLSX 均独立解析通过，重启续聊、日志Secret检查和资源清理通过。该轮没有启动 Windows 浏览器或 IDM。候选`6c3c639`的四类依赖60秒故障/恢复矩阵也已通过；11项额度/资源释放回归通过。当前单用户运行资源完整采样、30分钟RTO与条件RPO演练、阿里云控制台Trace查询仍待完成。
+Status: incomplete. Ticket 01–06本地实现与Review完成；当前clean候选`6c3c639`的完整隔离业务验收由用户指定的 Linux Playwright 容器通过，12份 PDF/PNG/XLSX 均独立解析通过，重启续聊、日志Secret检查和资源清理通过。该轮没有启动 Windows 浏览器或 IDM。候选`6c3c639`的四类依赖60秒故障/恢复矩阵也已通过；11项额度/资源释放回归通过。用户已授权并完成本机备份密钥初始化（私钥权限600）；首份备份未创建，来源捕获因保存的 OTLP 配置与运行中 R6 API 配置不一致而安全拒绝，stable 未重启且仍健康。当前单用户运行资源完整采样、30分钟RTO与条件RPO演练、阿里云控制台Trace查询仍待完成。
 
 ## 候选与证据身份
 
@@ -27,7 +27,7 @@ Status: incomplete. Ticket 01–06本地实现与Review完成；当前clean候�
 | 历史/成果及重启续聊 | PASS（`6c3c639`） | 浏览器两阶段均通过；持久状态指纹、未完成执行恢复规则及成功成果保留通过。 |
 | 共享额度拒绝与释放 | PASS（软件回归） | `tests/query_api/test_operations_api.py::test_sync_query_shares_live_background_capacity_and_recovers`、`tests/query_api/test_execution_runtime.py`、两个导出失败释放回归共11项通过；验证后台占额时同步问数返回429、释放后可再次执行。此证据验证额度逻辑，不代表并发容量或SLA。 |
 | 临时资源回收与最终日志检查 | PASS（`6c3c639`） | 专属账号禁用、`active_sessions=0`、验收容器/网络/卷清理；最终 API 日志 Secret 检查通过，验收前后外部 Docker 资源快照相同。 |
-| 稳定服务 | 未纳入验收项目 | 当前验收期间稳定服务继续运行原 R6 发布 `2b4a8c8`；API/PostgreSQL healthy、Qdrant running，首页与 `/health` 均 HTTP 200。没有执行升级、密钥初始化或恢复激活；此前恢复记录见 [R6 Acceptance](local-deployment-v1.md#稳定服务重启核验2026-10-09)。 |
+| 稳定服务 | 未纳入验收项目 | 当前验收期间稳定服务继续运行原 R6 发布 `2b4a8c8`；API/PostgreSQL healthy、Qdrant running，首页与 `/health` 均 HTTP 200。没有执行升级、重启或恢复激活。备份密钥已按用户授权初始化，但首份备份因 OTLP 配置漂移未生成；此前恢复记录见 [R6 Acceptance](local-deployment-v1.md#稳定服务重启核验2026-10-09)。 |
 | 最终日志凭据检查与总体门禁 | PASS（`6c3c639`） | `logs_no_known_secrets=true`；原始`0a97182`结果仍作为各自历史报告，不改写候选身份。 |
 
 ## `6c3c639` 当前候选完整 Linux Playwright 隔离验收（2026-10-09）
@@ -102,7 +102,7 @@ clean 候选 `8f73ab12e0b078ffca7c6416ab8ae7ea055522a9` 的固定镜像构建通
 
 - `6c3c639` 已完成当前候选 Linux Playwright 完整业务验收、12份导出解析、重启续聊、日志 Secret 检查及资源回收；同一候选四类依赖60秒故障/恢复矩阵通过。旧候选中未记录提交证据的追问超时仍按历史事实保留，不将旧运行重标。
 - 当前候选的单用户完整运行资源采样与容量报告仍待完成；额度共用/释放逻辑已有11项软件回归通过，但不构成并发容量或 p95 SLA。
-- 30 分钟 RTO / 条件 RPO 演练未开始：本机没有 `.local/backup-keys/identity.txt` 私钥或已登记密文备份。固定 age v1.3.2 / PG16 工具镜像已构建并登记；没有初始化实际 stable 备份密钥或创建备份。执行这一步前需要用户明确授权。
+- 30 分钟 RTO / 条件 RPO 演练未开始：`.local/backup-keys/identity.txt` 私钥已按用户授权生成，权限为600；本机仍没有已登记密文备份。`./local backup` 在来源捕获阶段拒绝继续，因为 `.env.local` / `.env.local.secrets` 中的 `CHATBI_OBSERVABILITY_ENABLED`、`OTEL_SERVICE_NAME`、`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`、`OTEL_EXPORTER_OTLP_HEADERS` 与运行中 R6 API 的环境值不一致。没有创建密文、没有重启或修改 stable；需先决定如何协调保存配置与运行配置，再重试备份。
 - 当前候选阿里云 Trace 尚未查询验证。隔离真实业务已使用用户给定的 OTLP 上报配置发送；本机没有阿里云 RAM 查询 AccessKey 或阿里云 CLI，本轮专用浏览器容器也没有控制台会话；`.local/r7-cloud-connection-probe.json` 记录 `cloud_query_verified=false`。阿里云[控制台文档](https://help.aliyun.com/zh/arms/application-monitoring/user-guide/trace-query)说明按 TraceId 查询需登录；[OpenAPI 文档](https://help.aliyun.com/zh/opentelemetry/developer-reference/api-xtrace-2019-08-08-overview)要求 AccessKey/RAM 身份，OTLP 上报 LicenseKey 本身不构成查询凭据。需要用户登录控制台人工核验，或提供最小只读查询凭据并安全存入本机环境。
 - 本次未重跑正式 AI Evaluation；根据 Ticket/Spec 按实际 Diff 决定影响范围，Prompt、业务算法和模型资产未改时可复用原候选的适用行为基线，但不得冒称当前版本的新正式 Evaluation 基线。
 

@@ -47,6 +47,8 @@ clean候选`6c3c639af9b9d9d70829b00a4356adec95b13212`的完整隔离浏览器验
 
 同一候选的四依赖故障矩阵运行`20261009T132359Z-825fdfde`通过：Control DB、业务 DB、Qdrant、业务资产故障与恢复均在60秒内反映，最长阶段29.588秒；Secret scan通过且外部Docker资源未变。当前未完成项为单用户完整运行资源采样、完整30分钟RTO及条件RPO演练、阿里云控制台Trace可查询性。RTO前置检查发现本机没有实际stable备份私钥或已登记密文备份；固定 age/PG 工具镜像已构建，但未执行`init-backup`或创建备份，需要用户明确授权。Trace查询尚缺RAM只读AccessKey或控制台登录；本地仅有OTLP上报配置，专用浏览器没有Console会话。Ticket 07仍为in-progress，不表示可切换实际stable或开始远端发布。
 
+用户随后明确授权初始化实际stable备份密钥、创建首份加密备份并执行隔离恢复。`./local init-backup`成功，私钥权限600、密钥目录700；第一次`./local backup`在来源捕获阶段被安全拒绝，没有创建密文或catalog。只读诊断确认本机保存配置中的`CHATBI_OBSERVABILITY_ENABLED`、`OTEL_SERVICE_NAME`、`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`、`OTEL_EXPORTER_OTLP_HEADERS`与仍运行的R6 API容器环境不一致；stable未重启/切换，`/health`仍HTTP200。需先明确是否允许重启当前stable加载已保存的OTLP配置；未有有效副本前不运行恢复演练。
+
 ## 历史结果：`59e1e34` 的 PDF 客户端条件（2026-10-09）
 
 该历史clean候选`59e1e34`于`20261009T110752Z-b9e90d25`通过Windows Edge首问/追问、多指标、PNG/XLSX和经营分析（流式报告/归因/持久保存）；旧追问超时根因当时仍未知。PDF API 200而Edge 204，当前IDM运行且接管PDF，流程当时停止，历史/成果/重启未运行。临时账号禁用、active sessions=0、专属容器/网络/卷均清理。原始`./local build`入口构建通过（复用依赖缓存，无临时包装）；stable/dev未切换。源码另确认SERVICE_NOT_READY / HTTP503被前端误报未知，三个新回归先红，修复后Windows Edge受影响18项回归通过（含未知503回查与原有网络丢失幂等行为），build/typecheck/diff通过；当时Code Review PASS。真实模型Prompt/业务算法/模型资产未改，不重跑全量正式Evaluation，不重标历史基线。
