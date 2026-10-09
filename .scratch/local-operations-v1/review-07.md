@@ -44,3 +44,18 @@ Review Dimensions: Correctness / Comprehension / Consistency / Testability / Arc
 Tests: `npm run typecheck --prefix frontend`、`uv run --frozen python -m scripts.check_markdown_links`、`git diff --check` 通过。候选 `8f73ab1` 已证明首问和 XLSX 流程，但追问未观察到终态；本补丁需后续隔离运行验证新的提交计数。
 
 Next: 提交本地诊断和验收记录；再进行真实模型/Edge 候选验收前需取得用户确认。
+
+## 确定性前端验收用例修正（2026-10-10）
+
+Review: PASS
+Scope: BASE `a822107`；`frontend/tests/execution.spec.ts`、`frontend/tests/history.spec.ts`、`frontend/tests/result-export.spec.ts`、本Review记录。
+Change Description: R7 新状态横幅增加了页面级 `role=status`，执行观察测试现限定到对话轮次中的状态；历史刷新测试补齐 ready 的 `/api/v1/operations/status` 响应。Google Chrome headless 的 Playwright download event 对 `blob:` 文件返回通用名 `download`，尽管 API `Content-Disposition` 与实际 `<a download>` 已含正确文件名；导出测试改为在真实点击事件中核对该下载名指令，并继续验证实际下载、文件签名和请求来源。产品行为与验收断言范围未放宽。
+
+Findings:
+- 无。
+
+Review Dimensions: Correctness / Comprehension / Consistency / Testability / Architecture / Security 均通过。状态定位仍验证“生成查询”；ready 状态 mock 符合 Operations Status contract；下载用例同时验证用户文件名指令和 XLSX / PNG 字节签名。修改只影响测试，不更改产品实现、权限或公共 API。
+
+Tests: Linux dedicated Playwright container，Google Chrome `155.0.8059.39`，全量前端 `68 passed`；`git diff --check` 通过。先前 `npm run build`、后端 pytest 证据未受仅测试文件变化影响。
+
+Next: 本地提交修正与Review；随后构建新 clean candidate，并在隔离 R7 Compose 项目中执行真实业务验收和当前候选资源采样。
