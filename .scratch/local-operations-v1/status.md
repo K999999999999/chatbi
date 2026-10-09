@@ -1,6 +1,6 @@
 # R7 长期规划记录
 
-当前：01–06已本地实现/Review；06本地提交`1293208`，软件与OTLP集成验证通过。05隔离恢复、候选激活与previous恢复在独立stable clone完成。Ticket07候选`f1b98d7`两次clean隔离/Windows Edge验收的问数及PNG/XLSX通过，经营分析重复以`LLM_ERROR`失败。获准诊断捕获`PROVIDER_STREAM_UNAVAILABLE`；源码确认`ObservedModel`包装器未转发底层`stream()`，摘要请求未发送到Provider。修复提交`515c253`并通过104项模块回归。候选`2d907c0`和`8f73ab1`均通过首条问数/SSE/XLSX，但追问等待终态超时，分析未运行；`8f73ab1`仅记录到首问详情GET，未记录追问提交请求计数。两轮临时资源均清理，stable仍为R6且健康；默认release指针已恢复。下一步补充追问提交计数/HTTP安全状态，Review并本地提交；后续真实候选复验需要用户再次确认。PDF、容量、完整RTO和阿里云Trace仍待验。无Push/PR或实际R7升级、密钥初始化、恢复激活授权。以下按时间保留规划与实施历史，实时阶段见Git公共目录记录。
+当前：01–06已本地实现/Review；06本地提交`1293208`，软件与OTLP集成验证通过。05隔离恢复、候选激活与previous恢复在独立stable clone完成。Ticket07候选`f1b98d7`两次clean隔离/Windows Edge验收的问数及PNG/XLSX通过，经营分析重复以`LLM_ERROR`失败。获准诊断捕获`PROVIDER_STREAM_UNAVAILABLE`；源码确认`ObservedModel`包装器未转发底层`stream()`，摘要请求未发送到Provider。修复提交`515c253`并通过104项模块回归。候选`2d907c0`和`8f73ab1`均通过首条问数/SSE/XLSX，但追问等待终态超时，分析未运行；`8f73ab1`仅记录到首问详情GET。提交`10a3a17`补充追问提交请求计数、响应数、HTTP状态及允许错误码摘要，Review和类型检查通过，候选真实复验尚未运行。两轮临时资源均清理，stable仍为R6且健康；默认release指针已恢复。后续真实候选复验需要用户再次确认。PDF、容量、完整RTO和阿里云Trace仍待验。无Push/PR或实际R7升级、密钥初始化、恢复激活授权。以下按时间保留规划与实施历史，实时阶段见Git公共目录记录。
 
 ## 初始规划快照（拆分确认前）
 

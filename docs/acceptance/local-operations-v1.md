@@ -64,7 +64,7 @@ clean 候选 `8f73ab12e0b078ffca7c6416ab8ae7ea055522a9` 的固定镜像构建通
 
 同一对话追问后，浏览器测试等待终态执行详情超时（`TimeoutError`，位置 `container-real.spec.ts:319:33`）。新的安全轮询摘要总计记录 1 个执行详情 GET（HTTP 200，状态 `succeeded`，错误码列表为空），与首条查询的终态核验相符；没有记录追问提交请求数量，故现有证据不能判断追问是否已提交或为何未继续轮询。报告未包含追问 HTTP 终态、执行状态或错误码。经营分析、历史/成果及后续 PNG/PDF、重启续聊步骤均未运行；`ObservedModel.stream()` 修复仍未被业务分析路径验证。
 
-临时账号已禁用、活动 Session 为 0；按本次 Compose project 标签复核，容器、网络、卷均为 0。稳定 R6 仍绑定 `2b4a8c8`，API/PostgreSQL healthy、Qdrant running，首页和 `/health` 均 HTTP 200。验收后本机默认 release 指针恢复为 `f1b98d7`。下一步本地补充仅记录执行提交请求计数和 HTTP 状态，不记录执行 ID、请求/响应正文或业务数据；当前需在新的真实候选运行前完成 Review 和本地提交。
+临时账号已禁用、活动 Session 为 0；按本次 Compose project 标签复核，容器、网络、卷均为 0。稳定 R6 仍绑定 `2b4a8c8`，API/PostgreSQL healthy、Qdrant running，首页和 `/health` 均 HTTP 200。验收后本机默认 release 指针恢复为 `f1b98d7`。提交 `10a3a17` 已补充只记录执行提交请求计数、响应数、HTTP 状态及允许错误码的摘要，不记录执行 ID、请求/响应正文或业务数据；类型检查与Review通过。新的真实候选运行尚未执行。
 
 ## 尚未满足的 Ticket 07 验收项
 
