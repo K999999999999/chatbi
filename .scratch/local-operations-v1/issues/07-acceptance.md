@@ -6,11 +6,11 @@ Canonical Source: [Spec](../spec.md)、[Design](../design.md)；共同约束见 
 
 ## 2026-10-09 顺序处理授权与当前修复
 
-用户明确要求“开始以一个一个处理问题”，继续授权在既有 Contract 内顺序排查、修复、隔离真实模型 / Windows 浏览器验收、Review 和本地 Commit；不包含实际 stable 切换、密钥初始化或本目标远端发布。此前单次复测已执行完毕的记录是历史范围，不再作为本轮本地验证的等待条件。
+用户明确要求“开始以一个一个处理问题”，继续授权在既有 Contract 内顺序排查、修复、隔离真实模型 / 浏览器验收、Review 和本地 Commit；随后明确当前验收使用 WSL/Linux 专用 Playwright 浏览器，不启动 Windows 浏览器或 IDM。该平台决定覆盖本轮浏览器验收方式，不代表 Windows 浏览器集成通过；不包含实际 stable 切换、密钥初始化或本目标远端发布。此前单次复测已执行完毕的记录是历史范围，不再作为本轮本地验证的等待条件。
 
 当前短 Spec：服务在持久受理前以 HTTP 503 / `SERVICE_NOT_READY` 明确拒绝时，网页应显示安全拒绝原因，保留原成功结果与上下文，恢复后允许用户明确再次提交；不得误报为提交响应丢失。普通未知 5xx / 网络断连仍按既有 R4 受理恢复与幂等 Contract 处理，不自动重发。覆盖问数、经营分析和重新查询的确定性浏览器回归；修复不改变权限、公共 API、业务语义或模型 Prompt。
 
-下一项短 Spec：隔离验收默认继续使用 Windows Edge；允许操作者显式指定本机已有 Windows 浏览器 EXE，仅用于专属临时 Profile。拒绝无效路径，报告记录实际浏览器版本与启动类型，不能把其他浏览器结果冒称 Edge 已通过；不修改 IDM、用户浏览器设置或系统安装。先核验合成 PDF 下载，再使用 clean candidate 完成真实 PDF / 历史 / 成果 / 重启续聊及独立文件解析。日常 Edge 的 IDM 接管条件继续保留。
+浏览器验收方式决定（2026-10-09，用户明确要求）：本轮使用项目现有 `chatbi-browser-dev:local` Linux Playwright 容器，记录实际 Chromium 版本；不启动 Windows 浏览器或 IDM，不修改 IDM、用户浏览器设置或系统安装。下载预检通过后再以 clean candidate 验证真实 PDF / 历史 / 成果 / 重启续聊及独立文件解析。该证据覆盖 Linux Chromium 浏览器行为，不宣称 Windows Edge 特有集成通过。当前仓库验收入口仍以 Windows 为默认，因此本次通过本机 ignored 适配器运行既有验收用例。
 
 
 阿里云接入短 Spec（2026-10-09 用户明确确认）：本地 `.env.local` 保存地址、服务名和开关，`.env.local.secrets` 保存认证 Header，均保持 600 权限；白名单在既有 Authorization/Authentication 基础上增加三个固定阿里云名称，总数上限五项，保留长度、控制字符、重复名称及不回显保护。内容采集仍关闭；不自动重启实际 stable。通过合成配置与 exporter 回归后再进行隔离云端验收，不能将配置保存或软件测试通过称为云端已可观测。
@@ -35,11 +35,17 @@ owned files: scripts/local_acceptance.py及最小R7验收入口；受影响软�
 Migration / Rollback: 不执行真实stable数据激活、整机/Docker重启或永久IDM变更；隔离资源按明确标签清理且先留证据。发布前报告当前范围/风险/验证/自动合并规则再取得Push/PR授权。
 Done When: 01–06适用证据均可追溯，完整Review和文档链接检查通过；全部Done When满足或必要条件明确待补，未完成项不报告全目标完成；只完成本地candidate，不自动远端发布。
 
-## 当前候选完整验收（2026-10-09）
+## 前一候选完整验收（2026-10-09）
 
-clean候选`0a97182e6840ed5ae1e3fd0da012dfe98fb4d1b3`绑定隔离运行`20261009T122448Z-57d6dc78`；专属Docker project为`chatbi-r6-accept-20261009t122448z-57d6dc78`。仓库原始`./local build`成功，Windows Chromium `149.0.7827.55`完整两阶段业务通过：问数、追问、多指标、重新查询、取消、经营分析/流式阶段、历史与成果保存/读取、重启后续聊及再次登录空白均通过。PDF、PNG、XLSX共七份文件由独立解析器验证通过。`scripts.verify_local_deployment`完整验收流程通过最终API日志Secret检查、专属账号/Session清理及外部资源前后核对；临时账号已禁用、active_sessions=0、专属容器/网络/卷清理。release指针已恢复；stable仍为R6 `2b4a8c8`，开发数据库/Qdrant未改动。安全摘要及详细本机证据见[Acceptance](../../../docs/acceptance/local-operations-v1.md#0a97182-当前候选完整隔离验收2026-10-09)。
+clean候选`0a97182e6840ed5ae1e3fd0da012dfe98fb4d1b3`绑定隔离运行`20261009T122448Z-57d6dc78`；专属Docker project为`chatbi-r6-accept-20261009t122448z-57d6dc78`。仓库原始`./local build`成功，Windows Chromium `149.0.7827.55`完整两阶段业务通过：问数、追问、多指标、重新查询、取消、经营分析/流式阶段、历史与成果保存/读取、重启后续聊及再次登录空白均通过。PDF、PNG、XLSX共七份文件由独立解析器验证通过。`scripts.verify_local_deployment`完整验收流程通过最终API日志Secret检查、专属账号/Session清理及外部资源前后核对；临时账号已禁用、active_sessions=0、专属容器/网络/卷清理。release指针已恢复；stable仍为R6 `2b4a8c8`，开发数据库/Qdrant未改动。安全摘要及详细本机证据见[Acceptance](../../../docs/acceptance/local-operations-v1.md#前一候选-0a97182-完整隔离验收2026-10-09)。
 
-本轮单用户耗时和资源采样已记录，但超额拒绝、跨入口额度释放与再次执行、60秒依赖故障/恢复矩阵、完整30分钟RTO及条件RPO演练仍待完成。依赖诊断运行`20261009T125022Z-917566fb`中，control DB / business DB故障及恢复、网页安全提示均在60秒内；Qdrant失效也触发网页不可用提示，但详细状态误记为assets不可用、qdrant未确认。已定位并修复周期探针将Qdrant重复归入启动门禁的问题，新增回归先红后绿；新clean候选的完整依赖矩阵尚未重跑。当前候选的真实业务Trace由OTLP成功发送，云端控制台可查询性仍待核实。Ticket 07继续in-progress；无Push/PR、stable切换、主机/Docker重启或实际密钥初始化授权。
+前一候选单用户耗时和资源采样已记录；当时超额拒绝、跨入口额度释放、60秒依赖矩阵及完整30分钟RTO / 条件RPO仍待验。后续`6c3c639`完整依赖故障/恢复矩阵已通过，具体结果见下节。OTLP真实业务Trace已发送，但云端控制台查询仍待核实。
+
+## `6c3c639` 当前候选 WSL/Linux Playwright 与依赖验收（2026-10-09）
+
+clean候选`6c3c639af9b9d9d70829b00a4356adec95b13212`的完整隔离浏览器验收运行`20261009T144447Z-abed4621`通过，浏览器为`chatbi-browser-dev:local`内 Chromium `153.0.8010.12`。通过范围包括真实问数/追问、经营分析流式、历史与成果、重启恢复及 PDF/PNG/XLSX 共12份文件的独立解析。浏览器下载预检和验收业务均在Linux专用Playwright容器完成；没有启动Windows浏览器、没有拉起IDM，也未修改用户本机配置。安全摘要与平台限制见[正式验收报告](../../../docs/acceptance/local-operations-v1.md#6c3c639-当前候选完整-linux-playwright-隔离验收2026-10-09)。
+
+同一候选的四依赖故障矩阵运行`20261009T132359Z-825fdfde`通过：Control DB、业务 DB、Qdrant、业务资产故障与恢复均在60秒内反映，最长阶段29.588秒；Secret scan通过且外部Docker资源未变。当前未完成项收敛为共享容量/超额拒绝与释放后再次执行、完整30分钟RTO及条件RPO演练、阿里云控制台Trace可查询性。Ticket 07仍为in-progress，不表示可切换实际stable或开始远端发布。
 
 ## 历史结果：`59e1e34` 的 PDF 客户端条件（2026-10-09）
 
