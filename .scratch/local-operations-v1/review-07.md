@@ -73,4 +73,12 @@ Review Dimensions: Correctness / Comprehension / Consistency / Testability / Arc
 
 Tests: `npm run typecheck` 与 `git diff --check` 通过；候选验收将验证每个导出均产生正耗时字段。
 
-Next: 本地提交计时补丁，构建并运行 clean 隔离候选；验收后记录耗时与资源采样。
+Result: commit `6d764ac` 的固定镜像构建与完整隔离验收通过，12项导出均记录正耗时，资源样本及运行结论已写入正式验收与路线图。
+
+## 验收后平台差异复核（2026-10-10）
+
+Finding: Linux Chromium 153 的 12 项真实导出均返回 Playwright `suggested_filename=download`；此前直接 Chrome CDP 探针也确认中文 Blob 下载实际保存名为 `download`，虽然服务端 UTF-8 文件名和 DOM `download` 值正确。实际文件内容及 PDF/PNG/XLSX 解析全部通过。Windows Chromium 旧候选 `0a97182` 报告中的`suggested_filename`为预期中文名，且当前与该候选间 `frontend/src/api.ts`、`src/query_api/result_export_api.py` 未变。
+
+该发现超出 R7 运行保障验收计时补丁的实现范围，未修改 R5 API 或产品行为。通用接受入口的 `runtime.json` 还把 Linux Chromium 版本误标为 `msedge`；实际版本由 `browser.json` 及本机 WSL 适配器命令证明。详见[Acceptance](../../docs/acceptance/local-operations-v1.md#6d764ac-当前-clean-候选完整验收与单用户基线2026-10-10)。
+
+Next: 保留为 R5 跨浏览器下载文件名兼容问题；若需支持 Linux Chromium 中文落盘名，应在确认修复 Contract 后另行实现和验收。R7 当前剩余条件为 active Stable 上的 RPO/提醒验收授权与阿里云控制台 Trace 查询。

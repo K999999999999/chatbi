@@ -1,6 +1,6 @@
 # R7 本地运行保障验收
 
-Status: incomplete. Ticket 01–06本地实现与Review完成；当前clean候选`6c3c639`的完整隔离业务验收由用户指定的 Linux Playwright 容器通过，12份 PDF/PNG/XLSX 均独立解析通过，重启续聊、日志Secret检查和资源清理通过。该轮没有启动 Windows 浏览器或 IDM。候选`6c3c639`的四类依赖60秒故障/恢复矩阵也已通过；11项额度/资源释放回归通过。用户已授权并完成本机备份密钥初始化、一次仅重建active R6 API以应用已保存OTLP配置的维护重启、首份加密备份和隔离恢复。R6备份在隔离环境完成数据库/权限/Session/RAG/readiness/登录/历史核验，耗时84秒，满足条件RTO不超过30分钟；候选已停止且卷保留，未激活或切换stable。active stable仍为R6，R7自动备份和24小时提醒未在stable启用，因此条件RPO仍未验证。当前候选单用户运行资源完整采样、阿里云控制台Trace查询仍待完成。
+Status: incomplete. Ticket 01–06本地实现与Review完成；最新 clean 候选 `6d764ac` 的 Linux Playwright 完整隔离验收通过，12份 PDF/PNG/XLSX 均独立解析，导出耗时与单用户资源采样已记录，重启续聊、Secret 检查和资源清理通过。没有启动 Windows 浏览器或 IDM。此前候选 `6c3c639` 的四类依赖 60 秒故障/恢复矩阵仍适用于最新候选：`6c3c639..6d764ac` 间业务源码、前端源码及镜像定义无变化。R6 备份隔离恢复耗时 84 秒，条件 RTO 通过；候选已停止且卷保留，未激活或切换 Stable。Stable 仍为 R6，因此 R7 自动备份与 24 小时提醒未在 active Stable 验证，条件 RPO 待完成。阿里云 Trace 已上报但控制台查询未确认。Linux Chromium 的中文 Blob 下载名实际落盘为 `download`，作为 R5 跨浏览器兼容问题单独保留；此前 Windows Chromium 候选`0a97182`报告中的`suggested_filename`为预期中文名。
 
 ## 候选与证据身份
 
@@ -8,6 +8,7 @@ Status: incomplete. Ticket 01–06本地实现与Review完成；当前clean候�
 - 首次正式运行时间：2026-10-09（Asia/Shanghai）；运行 ID：`20261008T172902Z-2f1178cf`。同一候选于当日再次隔离复跑，运行 ID：`20261009T090758Z-b87ca1ff`。
 - 后续修复候选：`515c253`（模型 `stream()` 转发）；`2d907c0`、`8f73ab1`（E2E 安全诊断），均以干净提交运行。`59e1e34` 的 Edge 成功部分绑定运行 `20261009T110752Z-b9e90d25`；`efb2f5e7` 的完整业务阶段绑定运行 `20261009T120227Z-c19f7505`；前一完整候选 `0a97182e6840ed5ae1e3fd0da012dfe98fb4d1b3` 绑定运行 `20261009T122448Z-57d6dc78`。
 - 最新候选 `6c3c639af9b9d9d70829b00a4356adec95b13212` 的依赖矩阵运行 `20261009T132359Z-825fdfde`、完整浏览器验收运行 `20261009T144447Z-abed4621`；完整验收绑定的 `git_dirty=false`。
+- 当前 clean 候选 `6d764aca6428bd225afe30395723dfaeb4ae0e0b` 的完整 Linux Playwright 验收运行 `20261009T170425Z-444d837d`，`git_dirty=false`。`./local build` 为其构建 API 镜像 `sha256:36f9a1a217bca7743d455d6abfd1a60ce94bd56b0d664698967a3f0de67f16c2`、PostgreSQL 镜像 `sha256:008c21a2772bbb645a1d1af2ab00c1d64fe316d48c9517dfb6c31f9947182183`；只运行于隔离验收项目，未激活到 Stable。
 - 历史浏览器：Windows Edge `154.0.4258.62`、独立 Windows Chromium `149.0.7827.55`；本轮按用户明确要求使用 `chatbi-browser-dev:local` 中的 Linux Chromium `153.0.8010.12`。运行资源使用专属 acceptance Compose project。
 - 原始证据位于本机 ignored 目录 `.local/acceptance/20261008T172902Z-2f1178cf/`，不随仓库分发。报告含运行身份和业务结果，不应复制到版本库或公开日志。
 - 候选镜像构建因默认软件源不可达，使用临时镜像 URL 构建包装；包装只改临时构建上下文中的下载地址，锁文件版本与摘要保持原值，仓库文件未修改。默认网络路径下的独立重建尚未验证。
@@ -17,21 +18,37 @@ Status: incomplete. Ticket 01–06本地实现与Review完成；当前clean候�
 
 | 范围 | 结果 | 证据与限制 |
 | --- | --- | --- |
-| 隔离候选启动、数据库/RAG 初始化与 readiness | PASS | 使用专属运行资源；原稳定服务未加入验收 Compose。 |
-| 故障拒绝与状态保护 | PASS（`6c3c639`） | 配置错误、启动失败、不兼容 migration、缺失索引、回环端口占用五类检查均按预期拒绝；持久状态前后检查相同。 |
-| 依赖故障与恢复 | PASS（`6c3c639`） | Control DB、业务 DB、Qdrant、业务资产四种隔离故障及恢复均在60秒内被网页/依赖状态观察到；单项故障与恢复最长29.588秒，Secret scan 与外部资源不变检查通过。 |
-| 浏览器与查询链路 | PASS（`6c3c639`） | 用户指定的 Linux Playwright Chromium 两阶段覆盖问数、追问、取消/多标签恢复、经营分析、历史/成果、重启后续聊及重新登录；真实执行流包含问数理解、检索、SQL生成/校验/执行和结果保存。没有测试 Windows Edge 特有行为。 |
-| 图表与 XLSX 导出 | PASS（`6c3c639`） | 当前、历史和重启后的成果均可导出；独立解析器验证全部文件。 |
-| PDF 导出 | PASS（`6c3c639`，Linux Playwright） | 三种格式合计12份文件（PDF、PNG、XLSX）均通过独立解析；专用浏览器成功收到 PDF 下载事件。本轮未启动 Windows 浏览器、未触发 IDM、未修改 IDM 或用户浏览器设置。 |
-| 经营分析 | PASS（`6c3c639`） | 真实分析、流式阶段、归因参考值、保存与重启后读取通过。 |
-| 历史/成果及重启续聊 | PASS（`6c3c639`） | 浏览器两阶段均通过；持久状态指纹、未完成执行恢复规则及成功成果保留通过。 |
+| 隔离候选启动、数据库/RAG 初始化与 readiness | PASS（`6d764ac`） | 使用专属运行资源；原稳定服务未加入验收 Compose。 |
+| 故障拒绝与状态保护 | PASS（`6d764ac`） | 配置错误、启动失败、不兼容 migration、缺失索引、回环端口占用五类检查均按预期拒绝；持久状态前后检查相同。 |
+| 依赖故障与恢复 | PASS（`6c3c639`，源码适用至`6d764ac`） | Control DB、业务 DB、Qdrant、业务资产四种隔离故障及恢复均在60秒内被网页/依赖状态观察到；单项故障与恢复最长29.588秒，Secret scan 与外部资源不变检查通过。`6c3c639..6d764ac` 间业务源码与运行镜像定义无变化，保留原候选身份。 |
+| 浏览器与查询链路 | PASS（`6d764ac`） | 用户指定的 Linux Playwright Chromium 两阶段覆盖问数、追问、取消/多标签恢复、经营分析、历史/成果、重启后续聊及重新登录；真实执行流包含问数理解、检索、SQL生成/校验/执行和结果保存。没有测试 Windows Edge 特有行为。 |
+| 图表与 XLSX 导出 | 内容 PASS（`6d764ac`） | 当前、历史和重启后的成果均可导出；独立解析器验证全部文件。中文文件名在 Linux Chromium 的问题另列。 |
+| PDF 导出 | 内容 PASS（`6d764ac`，Linux Playwright） | PDF、PNG、XLSX 共12份文件均通过独立解析；专用浏览器收到下载并核对实际字节。本轮未启动 Windows 浏览器、未触发 IDM、未修改 IDM 或用户浏览器设置。 |
+| 经营分析 | PASS（`6d764ac`） | 真实分析、流式阶段、归因参考值、保存与重启后读取通过。 |
+| 历史/成果及重启续聊 | PASS（`6d764ac`） | 浏览器两阶段均通过；持久状态指纹、未完成执行恢复规则及成功成果保留通过。 |
+| 单用户资源及耗时基线 | PASS（`6d764ac`） | 10项查询/分析时长、12项导出时长与三服务 CPU/内存采样已记录；不构成并发容量或 p95 SLA。 |
+| Linux Chromium 中文文件名 | 未通过（文件内容仍通过） | Blob 下载的建议名与原生 Chrome 实际落盘名均为`download`；Windows Chromium 候选`0a97182`报告中的`suggested_filename`为预期中文名。属于 R5 跨浏览器兼容遗留，未改 R5 Contract。 |
 | 共享额度拒绝与释放 | PASS（软件回归） | `tests/query_api/test_operations_api.py::test_sync_query_shares_live_background_capacity_and_recovers`、`tests/query_api/test_execution_runtime.py`、两个导出失败释放回归共11项通过；验证后台占额时同步问数返回429、释放后可再次执行。此证据验证额度逻辑，不代表并发容量或SLA。 |
-| 临时资源回收与最终日志检查 | PASS（`6c3c639`） | 专属账号禁用、`active_sessions=0`、验收容器/网络/卷清理；最终 API 日志 Secret 检查通过，验收前后外部 Docker 资源快照相同。 |
-| 稳定服务（`6c3c639`候选验收期间） | 保持 R6 | 该候选的专属验收未包含 stable。后续另按用户授权仅重建 R6 API 应用保存的 OTLP 配置；PG/Qdrant、RAG 挂载与 R6 镜像身份未变，`/health` HTTP 200。没有升级、恢复激活或切换 stable。 |
+| 临时资源回收与最终日志检查 | PASS（`6d764ac`） | 专属账号禁用、`active_sessions=0`、验收容器/网络/卷清理；最终 API 日志 Secret 检查通过，验收前后外部 Docker 资源快照相同。 |
+| 稳定服务（`6d764ac`候选验收期间） | 保持 R6 | 该候选的专属验收未包含 stable；R6 API/PostgreSQL healthy、Qdrant running，`/health` HTTP 200。没有升级、恢复激活或切换 stable。 |
 | 实际stable备份与隔离恢复 | PASS（条件RTO） | 首份R6加密备份 `2e1a0cc185ac467a8f91e2adc2ca783f` 已登记；隔离恢复 `0b4e8f4c3b7f62c71261f7f57703cfda` 完成数据库/RAG/readiness/登录/历史核验，84秒。详见下文；RPO自动调度与提醒尚未在active R6启用。 |
-| 最终日志凭据检查与总体门禁 | PASS（`6c3c639`） | `logs_no_known_secrets=true`；原始`0a97182`结果仍作为各自历史报告，不改写候选身份。 |
+| 最终日志凭据检查与总体门禁 | PASS（`6d764ac`） | `logs_no_known_secrets=true`；旧候选报告继续绑定各自运行身份，不改写历史结果。 |
 
-## `6c3c639` 当前候选完整 Linux Playwright 隔离验收（2026-10-09）
+## `6d764ac` 当前 clean 候选完整验收与单用户基线（2026-10-10）
+
+clean 候选 `6d764aca6428bd225afe30395723dfaeb4ae0e0b` 绑定隔离运行 `20261009T170425Z-444d837d`，专属 Compose project 为 `chatbi-r6-accept-20261009t170425z-444d837d`。`./local build` 成功并生成固定 API / PostgreSQL 镜像；镜像未激活，Stable 仍绑定 R6。验收浏览器由 `chatbi-browser-dev:local` 中的 Linux Chromium `153.0.8010.12` 执行，没有启动 Windows 浏览器或 IDM。
+
+两阶段真实浏览器业务、经营分析、历史/成果、重启续聊、重新登录以及 12 份 PDF/PNG/XLSX 导出均通过；文件独立解析全部 PASS。12 次导出点击至浏览器文件可用的耗时：XLSX `0.718–0.848s`、PNG `2.329–5.977s`、PDF `2.298–3.753s`。这些是本机单次端到端样本，不构成 SLA。查询执行样本为 10 项：成功问数约 `15.106–46.996s`，经营分析 `120.630s`，取消用时 `9.587s`，一次重启时执行标为 `unconfirmed`（此前成功轮次保留，符合恢复规则）。
+
+采样目标间隔 5 秒，实际记录 API 59、PostgreSQL 76、Qdrant 76 个样本。采样 CPU / 内存最大值分别为：API `487.98%` / `1564.7 MiB`，PostgreSQL `37.82%` / `62.5 MiB`，Qdrant `8.85%` / `231.0 MiB`；API 自启动以来 cgroup 内存高水位 `1865.8 MiB`。采样可能错过瞬时峰值，CPU 百分比可超过 100%，不推断并发容量、p95 或速度承诺。
+
+验收结束时专属账号已禁用、`active_sessions=0`；专属容器、网络、卷清理完成；验收前后外部 Docker 资源一致；`logs_no_known_secrets=true`。安全报告与 12 个解析结果存于本机 ignored 目录 `reports/browser-real-artifacts/r6-local-deployment/6d764aca6428-20261009T170425Z-444d837d/`，运行明细位于 `.local/acceptance/20261009T170425Z-444d837d/`。
+
+需要单独记录 Linux 文件名兼容情况：本次 12 次 Chromium download 的 `suggested_filename` 都是 `download`，尽管服务端 UTF-8 `Content-Disposition` 与 DOM `download` 值包含中文名，文件字节与格式解析正确。独立原生 Chrome CDP 探针也观察到中文 Blob 文件实际保存名为 `download`；因此当前 Linux Chromium 下文件名行为未通过。此前 Windows Chromium `0a97182` 验收报告记录了预期中文`suggested_filename`，且 `frontend/src/api.ts` 与 `src/query_api/result_export_api.py` 自该候选以来未变。未在本次授权中改变 R5 下载 Contract 或生产代码。
+
+本次运行的 `browser.json` 明确记录浏览器版本 `153.0.8010.12`；由通用验收入口生成的 `runtime.json` 却写入 `browser_channel=msedge`。这是该 ignored Linux 适配器没有覆盖元数据字段造成的标签错误，不能据此称本次使用 Edge。
+
+## `6c3c639` 依赖故障矩阵与历史 Linux Playwright 验收（2026-10-09）
 
 clean 源码候选 `6c3c639af9b9d9d70829b00a4356adec95b13212` 绑定运行 `20261009T144447Z-abed4621`，专属 Compose project 为 `chatbi-r6-accept-20261009t144447z-abed4621`。按用户要求，浏览器由现有 `chatbi-browser-dev:local` 镜像提供，Chromium `153.0.8010.12`；没有启动 Windows 浏览器或 IDM。Playwright 在共享本次隔离 API 网络命名空间的容器内运行，浏览器 Origin 与 API 临时 Origin 均为 `http://127.0.0.1:8000`，宿主发布端口仍只绑定回环地址。测试使用本机 ignored 的一次性适配器 `.local/verify_r7_wsl_acceptance.py`，仓库脚本和应用代码未修改。
 
@@ -101,10 +118,11 @@ clean 候选 `8f73ab12e0b078ffca7c6416ab8ae7ea055522a9` 的固定镜像构建通
 
 ## 尚未满足的 Ticket 07 验收项
 
-- `6c3c639` 已完成当前候选 Linux Playwright 完整业务验收、12份导出解析、重启续聊、日志 Secret 检查及资源回收；同一候选四类依赖60秒故障/恢复矩阵通过。旧候选中未记录提交证据的追问超时仍按历史事实保留，不将旧运行重标。
-- 当前候选的单用户完整运行资源采样与容量报告仍待完成；额度共用/释放逻辑已有11项软件回归通过，但不构成并发容量或 p95 SLA。
+- `6c3c639` 已完成前一 clean 候选 Linux Playwright 完整业务验收、12份导出解析、重启续聊、日志 Secret 检查及资源回收；同一候选四类依赖60秒故障/恢复矩阵通过。旧候选中未记录提交证据的追问超时仍按历史事实保留，不将旧运行重标。
+- 当前候选 `6d764ac` 的单用户耗时与资源采样已完成；这些数据不构成并发容量或 p95 SLA。额度共用/释放逻辑已有11项软件回归通过，验证逻辑而非并发容量。
 - 条件RTO已验证：实际R6备份 `2e1a0cc185ac467a8f91e2adc2ca783f` 在隔离环境恢复为 `0b4e8f4c3b7f62c71261f7f57703cfda`，从恢复开始至数据库/RAG/readiness/登录/历史核验用时84秒。条件RPO仍未验证：active stable仍运行R6，R7每6小时自动备份及超过24小时提醒尚未启用；不能将单份手工备份表述为持续24小时保障。早先来源校验拒绝及后续获准的R6 API维护重启见下文。
 - 当前候选阿里云 Trace 尚未查询验证。隔离真实业务已使用用户给定的 OTLP 上报配置发送；本机没有阿里云 RAM 查询 AccessKey 或阿里云 CLI，本轮专用浏览器容器也没有控制台会话；`.local/r7-cloud-connection-probe.json` 记录 `cloud_query_verified=false`。阿里云[控制台文档](https://help.aliyun.com/zh/arms/application-monitoring/user-guide/trace-query)说明按 TraceId 查询需登录；[OpenAPI 文档](https://help.aliyun.com/zh/opentelemetry/developer-reference/api-xtrace-2019-08-08-overview)要求 AccessKey/RAM 身份，OTLP 上报 LicenseKey 本身不构成查询凭据。需要用户登录控制台人工核验，或提供最小只读查询凭据并安全存入本机环境。
+- Linux Chromium 中文Blob下载的实际文件名为`download`，这是本次验收发现的R5跨浏览器兼容问题；文件内容正确，Windows Chromium候选`0a97182`报告的`suggested_filename`为预期中文名。未在R7 Ticket授权内修改R5下载行为，需独立决定是否修复。
 - 本次未重跑正式 AI Evaluation；根据 Ticket/Spec 按实际 Diff 决定影响范围，Prompt、业务算法和模型资产未改时可复用原候选的适用行为基线，但不得冒称当前版本的新正式 Evaluation 基线。
 
 ## 实际 stable R6 加密备份与隔离恢复（2026-10-09）
@@ -115,7 +133,7 @@ clean 候选 `8f73ab12e0b078ffca7c6416ab8ae7ea055522a9` 的固定镜像构建通
 
 `./local restore 2e1a0cc185ac467a8f91e2adc2ca783f`生成候选`0b4e8f4c3b7f62c71261f7f57703cfda`，来源API及PostgreSQL镜像ID与备份一致。恢复记录为`verified`，`duration_seconds=84`，readiness、登录、历史、index_ready均为true；覆盖数据库全表指纹、角色与grants、Session撤销、运行代际、固定模型RAG重建和只读历史核验。临时核验账号与解密payload已清理；专属API、PostgreSQL、Qdrant容器均停止，恢复卷、受限配置及登记记录保留。没有执行`restore-activate`，active binding仍为legacy R6，实际stable未切换。
 
-该84秒结果满足Spec的条件RTO目标，因为备份、私钥、镜像和固定模型缓存均已在本机就绪；不包含下载时间。条件RPO仍未验证：当前stable仍运行R6，R7每6小时调度、启动补备份及超过24小时持续提醒没有在active stable启用。R6镜像不提供R7详细状态socket，故`./local status`显示运行就绪证据未确认；HTTP 200仅代表liveness。单用户完整资源采样和阿里云控制台Trace可查询性仍待验。
+该84秒结果满足Spec的条件RTO目标，因为备份、私钥、镜像和固定模型缓存均已在本机就绪；不包含下载时间。条件RPO仍未验证：当前stable仍运行R6，R7每6小时调度、启动补备份及超过24小时持续提醒没有在active stable启用。R6镜像不提供R7详细状态socket，故`./local status`显示运行就绪证据未确认；HTTP 200仅代表liveness。单用户资源与耗时采样已在`6d764ac`完成，阿里云控制台Trace可查询性仍待验。
 
 ## 顺序处理与浏览器条件核验（2026-10-09）
 

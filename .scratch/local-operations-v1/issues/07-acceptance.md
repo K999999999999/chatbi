@@ -4,6 +4,16 @@ Status: in-progress
 Authorization: 用户2026-10-08确认七项拆分与全部本地实施、验证、Review和Commit；用户后续明确授权初始化stable备份密钥、一次仅重建active R6 API以应用已保存OTLP配置、首份加密备份和隔离恢复；无Push/PR、stable版本切换或restore-activate授权。
 Canonical Source: [Spec](../spec.md)、[Design](../design.md)；共同约束见 [已确认拆分](../tickets-draft.md)。
 
+## 2026-10-10 最新候选验收与剩余条件
+
+clean candidate `6d764aca6428bd225afe30395723dfaeb4ae0e0b` 由 `./local build` 构建，隔离运行 `20261009T170425Z-444d837d` 完整通过。Linux Chromium 153 两阶段问数/追问/分析/历史/成果/重启续聊成功，12份 PDF/PNG/XLSX 独立解析通过；账号已禁用、`active_sessions=0`、外部 Docker 资源未变、专属卷已清理、最终日志 Secret 检查通过。导出耗时为 XLSX `0.718–0.848s`、PNG `2.329–5.977s`、PDF `2.298–3.753s`。10项问数/分析耗时、API/PostgreSQL/Qdrant资源样本已归档到 `reports/browser-real-artifacts/r6-local-deployment/6d764aca6428-20261009T170425Z-444d837d/`；完整数据见[正式验收](../../../docs/acceptance/local-operations-v1.md#6d764ac-当前-clean-候选完整验收与单用户基线2026-10-10)。
+
+`6d764ac`相对依赖矩阵候选`6c3c639`仅更改 E2E 报告耗时字段和Review记录，`src/`、`frontend/src/`及镜像定义未变；依赖矩阵按既有证据重用并保留其原候选身份，不冒称由`6d764ac`重新注入。采样不构成多用户容量或SLA。
+
+新发现的跨浏览器文件名问题：该次 Linux Chromium 对12次下载均建议名称`download`，独立原生Chrome CDP探针也实际保存中文Blob下载为`download`；文件内容与格式均正确。当前导出源码与此前 Windows Chromium 验收的 `0a97182` 相同，旧报告中的`suggested_filename`为预期中文名。未在本次R7授权内改变R5下载 Contract/产品代码。通用入口的 `runtime.json` 写有 `browser_channel=msedge`，但实际使用Linux Chromium executable，须以 `browser.json` 的153.0.8010.12版本和本机适配器命令为准。
+
+剩余条件：实际Stable仍是R6 `2b4a8c8`；R7调度备份及24小时提醒尚未在active Stable运行，条件RPO未验。阿里云Span已从隔离真实业务发送，但`.local/r7-cloud-connection-probe.json`仍为`cloud_query_verified=false`，需要登录控制台只读核验。当前授权不包括Stable版本切换、`restore-activate`或Push/PR。
+
 ## 2026-10-09 顺序处理授权与当前修复
 
 用户明确要求“开始以一个一个处理问题”，继续授权在既有 Contract 内顺序排查、修复、隔离真实模型 / 浏览器验收、Review 和本地 Commit；随后明确当前验收使用 WSL/Linux 专用 Playwright 浏览器，不启动 Windows 浏览器或 IDM。该平台决定覆盖本轮浏览器验收方式，不代表 Windows 浏览器集成通过；不包含实际 stable 切换、密钥初始化或本目标远端发布。此前单次复测已执行完毕的记录是历史范围，不再作为本轮本地验证的等待条件。
@@ -41,11 +51,11 @@ clean候选`0a97182e6840ed5ae1e3fd0da012dfe98fb4d1b3`绑定隔离运行`20261009
 
 前一候选单用户耗时和资源采样已记录。当前代码候选的11项额度/释放回归通过，包含后台占额时同步问数被429拒绝、释放后重试成功；这验证额度逻辑，不替代候选级资源采样或并发容量结论。后续`6c3c639`完整依赖故障/恢复矩阵已通过，具体结果见下节。OTLP真实业务Trace已发送，但云端控制台查询仍待核实。
 
-## `6c3c639` 当前候选 WSL/Linux Playwright 与依赖验收（2026-10-09）
+## `6c3c639` 前一候选 WSL/Linux Playwright 与依赖验收（2026-10-09）
 
-clean候选`6c3c639af9b9d9d70829b00a4356adec95b13212`的完整隔离浏览器验收运行`20261009T144447Z-abed4621`通过，浏览器为`chatbi-browser-dev:local`内 Chromium `153.0.8010.12`。通过范围包括真实问数/追问、经营分析流式、历史与成果、重启恢复及 PDF/PNG/XLSX 共12份文件的独立解析。浏览器下载预检和验收业务均在Linux专用Playwright容器完成；没有启动Windows浏览器、没有拉起IDM，也未修改用户本机配置。安全摘要与平台限制见[正式验收报告](../../../docs/acceptance/local-operations-v1.md#6c3c639-当前候选完整-linux-playwright-隔离验收2026-10-09)。
+clean候选`6c3c639af9b9d9d70829b00a4356adec95b13212`的完整隔离浏览器验收运行`20261009T144447Z-abed4621`通过，浏览器为`chatbi-browser-dev:local`内 Chromium `153.0.8010.12`。通过范围包括真实问数/追问、经营分析流式、历史与成果、重启恢复及 PDF/PNG/XLSX 共12份文件的独立解析。浏览器下载预检和验收业务均在Linux专用Playwright容器完成；没有启动Windows浏览器、没有拉起IDM，也未修改用户本机配置。安全摘要与平台限制见[正式验收报告](../../../docs/acceptance/local-operations-v1.md#6c3c639-依赖故障矩阵与历史-linux-playwright-验收2026-10-09)。
 
-同一候选的四依赖故障矩阵运行`20261009T132359Z-825fdfde`通过：Control DB、业务 DB、Qdrant、业务资产故障与恢复均在60秒内反映，最长阶段29.588秒；Secret scan通过且外部Docker资源未变。当前未完成项为单用户完整运行资源采样、条件RPO（active stable仍为R6，R7备份调度和24小时提醒未启用）及阿里云控制台Trace可查询性。用户授权的R6 API维护重启后，首份加密备份与隔离恢复已成功；84秒满足条件RTO。Ticket 07仍为in-progress，不表示可切换实际stable或开始远端发布。
+同一候选的四依赖故障矩阵运行`20261009T132359Z-825fdfde`通过：Control DB、业务 DB、Qdrant、业务资产故障与恢复均在60秒内反映，最长阶段29.588秒；Secret scan通过且外部Docker资源未变。当时未完成项包括单用户完整运行资源采样、条件RPO（active stable仍为R6，R7备份调度和24小时提醒未启用）及阿里云控制台Trace可查询性。单用户采样已由`6d764ac`补齐；条件RPO与云端查询仍待完成。用户授权的R6 API维护重启后，首份加密备份与隔离恢复已成功；84秒满足条件RTO。Ticket 07仍为in-progress，不表示可切换实际stable或开始远端发布。
 
 用户随后明确授权初始化实际stable备份密钥、创建首份加密备份并执行隔离恢复。`./local init-backup`成功，私钥权限600、密钥目录700；第一次`./local backup`因保存的4项OTLP配置与运行R6容器环境不一致而安全拒绝，没有创建密文或catalog。之后用户确认一次维护重启，仅重建active R6 API以加载已保存配置；R6镜像、PG/Qdrant容器、RAG挂载和R7最新release指针未变，API健康检查200。首份R6密文`2e1a0cc185ac467a8f91e2adc2ca783f`登记成功；隔离恢复`0b4e8f4c3b7f62c71261f7f57703cfda`完成数据库/RAG/readiness/登录/历史核验，84秒，候选停止且恢复卷保留，未执行激活。详细证据见[正式验收](../../../docs/acceptance/local-operations-v1.md#实际-stable-r6-加密备份与隔离恢复2026-10-09)。
 

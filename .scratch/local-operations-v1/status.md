@@ -1,6 +1,6 @@
 # R7 长期规划记录
 
-当前：01–06本地实现/Review完成；07仍in-progress。clean候选`6c3c639`的四依赖故障/恢复矩阵、完整Linux Playwright验收（12份导出独立解析）及11项额度/释放回归通过；没有启动Windows浏览器/IDM。用户已授权初始化实际stable备份密钥、仅重建active R6 API以应用已保存OTLP配置、创建首份加密备份并隔离恢复。R6备份`2e1a0cc185ac467a8f91e2adc2ca783f`已登记；恢复候选`0b4e8f4c3b7f62c71261f7f57703cfda`核验通过，RTO 84秒，候选停止且卷保留；未激活或切换stable。active仍为R6 `2b4a8c8`且健康；R7自动备份/24小时提醒未在stable启用，条件RPO、当前候选完整单用户资源采样及阿里云控制台Trace查询仍待验。用户已授权既有Contract内顺序修复、隔离复验、Review与本地Commit；无本目标Push/PR或restore-activate授权。历史过程保留于下文，实时阶段见Git公共目录记录。
+当前：01–06本地实现/Review完成；07仍in-progress。最新clean候选`6d764ac`于`20261009T170425Z-444d837d`完成Linux Playwright隔离验收：12份导出独立解析、各格式导出耗时、单用户CPU/内存及查询/分析时间记录、重启续聊、日志Secret检查和资源清理通过。没有启动Windows浏览器/IDM。四依赖60秒矩阵继续引用`6c3c639`原运行；两候选间业务源码/镜像定义未变。用户已授权初始化实际stable备份密钥、仅重建active R6 API以应用已保存OTLP配置、创建首份加密备份并隔离恢复。R6备份`2e1a0cc185ac467a8f91e2adc2ca783f`已登记；恢复候选`0b4e8f4c3b7f62c71261f7f57703cfda`核验通过，RTO 84秒，候选停止且卷保留；未激活或切换stable。active仍为R6 `2b4a8c8`且健康；R7自动备份/24小时提醒未在stable启用，条件RPO和阿里云控制台Trace查询仍待验。另发现Linux Chromium中文Blob文件名落盘为`download`，文件内容正确，未改R5 Contract。用户已授权既有Contract内顺序修复、隔离复验、Review与本地Commit；无本目标Push/PR或restore-activate授权。历史过程保留于下文，实时阶段见Git公共目录记录。
 
 ## 初始规划快照（拆分确认前）
 
