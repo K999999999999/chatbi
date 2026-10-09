@@ -32,6 +32,26 @@ def _ps_quote(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+def validate_api_isolation(item: dict) -> None:
+    api_env = dict(value.split("=", 1) for value in item["Config"]["Env"])
+    expected_mounts = {
+        "/opt/chatbi-model/bge-m3-5617a9f61b02": False,
+        "/opt/chatbi-rag": False,
+        "/opt/chatbi-runtime": True,
+    }
+    mounts = item["Mounts"]
+    if (
+        any("MIGRATOR" in key for key in api_env)
+        or len(mounts) != len(expected_mounts)
+        or {m["Destination"] for m in mounts} != set(expected_mounts)
+        or any(
+            m["Type"] != "bind" or m["RW"] is not expected_mounts[m["Destination"]]
+            for m in mounts
+        )
+    ):
+        raise LocalAcceptanceError("API 凭据或挂载隔离检查失败")
+
+
 class Acceptance:
     def __init__(self, root: Path, commit: str) -> None:
         self.root = root
@@ -615,13 +635,7 @@ class Acceptance:
                 "if x.parent.name != str(os.getpid()) and x.exists()); print('导出临时资源已回收。')",
             )
             item = self.assert_container(self.dc("ps", "-q", "api").stdout.strip())
-            api_env = dict(value.split("=", 1) for value in item["Config"]["Env"])
-            if (
-                any("MIGRATOR" in key for key in api_env)
-                or len(item["Mounts"]) != 2
-                or not all(not m["RW"] for m in item["Mounts"])
-            ):
-                raise LocalAcceptanceError("API 凭据或挂载隔离检查失败")
+            validate_api_isolation(item)
             credentials = parse_env_text((self.report / "credentials.env").read_text())
             self.support("cleanup")
             cleanup_done = True
@@ -682,6 +696,7 @@ class Acceptance:
                     "persistent_state_preserved": before == after,
                     "external_resources_unchanged": True,
                     "api_readonly_asset_mounts": True,
+                    "api_writes_only_private_runtime_mount": True,
                     "api_has_no_migrator_identity": True,
                     "chromium_sandbox_launch": True,
                     "export_temporary_resources_clean": True,

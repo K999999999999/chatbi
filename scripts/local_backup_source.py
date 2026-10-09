@@ -3,8 +3,8 @@
 import hashlib
 import json
 import os
-import tempfile
 import re
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -51,6 +51,14 @@ def capture(raw, destination, *, project="chatbi-stable"):
     for line in (config + b"\n" + secrets).decode().splitlines():
         if line and not line.startswith("#") and "=" in line:
             key, value = line.split("=", 1)
+            key, value = key.strip(), value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+                quote = value[0]
+                value = value[1:-1]
+                if quote == "'":
+                    value = value.replace("\\'", "'")
+                else:
+                    value = value.replace('\\"', '"').replace("\\\\", "\\")
             if key in env and value != env[key]:
                 raise BackupFailed("BACKUP_SOURCE_CHANGED")
     pointer = secure_file(raw / "rag-current.json")

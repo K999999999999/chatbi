@@ -22,6 +22,48 @@ from scripts.local_acceptance import (
 RUN_ID = "20261008T021500Z-a1b2c3d4"
 
 
+def isolated_api_metadata():
+    return {
+        "Config": {"Env": ["POSTGRES_APP_USER=chatbi_app"]},
+        "Mounts": [
+            {
+                "Destination": "/opt/chatbi-model/bge-m3-5617a9f61b02",
+                "RW": False,
+                "Type": "bind",
+            },
+            {"Destination": "/opt/chatbi-rag", "RW": False, "Type": "bind"},
+            {"Destination": "/opt/chatbi-runtime", "RW": True, "Type": "bind"},
+        ],
+    }
+
+
+def test_api_isolation_allows_only_the_approved_runtime_write_directory():
+    from scripts.verify_local_deployment import validate_api_isolation
+
+    validate_api_isolation(isolated_api_metadata())
+
+
+@pytest.mark.parametrize(
+    "corruption", ["migrator", "writable_assets", "extra_mount", "foreign_destination"]
+)
+def test_api_isolation_still_rejects_privileged_credentials_and_foreign_writes(
+    corruption,
+):
+    from scripts.verify_local_deployment import validate_api_isolation
+
+    item = isolated_api_metadata()
+    if corruption == "migrator":
+        item["Config"]["Env"].append("POSTGRES_MIGRATOR_PASSWORD=synthetic")
+    elif corruption == "writable_assets":
+        item["Mounts"][0]["RW"] = True
+    elif corruption == "extra_mount":
+        item["Mounts"].append({"Destination": "/workspace", "RW": True, "Type": "bind"})
+    else:
+        item["Mounts"][2]["Destination"] = "/foreign"
+    with pytest.raises(LocalAcceptanceError, match="隔离检查失败"):
+        validate_api_isolation(item)
+
+
 @pytest.fixture
 def readiness_server():
     responses = []

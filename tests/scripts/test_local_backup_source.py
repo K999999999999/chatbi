@@ -101,8 +101,20 @@ def test_legacy_capability_uses_actual_image_not_new_compose_environment(tmp_pat
     assert capture(raw, tmp_path / "current")["live_required"] is True
 
 
+def test_source_accepts_quoted_config_without_changing_encrypted_source_bytes(tmp_path):
+    raw = raw_source(tmp_path)
+    (raw / "config.env").write_text("LLM_MODEL='old-model'\n")
+    (raw / "secrets.env").write_text('LLM_API_KEY="private-fixture"\n')
+    target = tmp_path / "source"
+    identity = capture(raw, target)
+    assert identity["source_commit"] == "a" * 40
+    assert (target / "config.env").read_text() == "LLM_MODEL='old-model'\n"
+    assert (target / "secrets.env").read_text() == 'LLM_API_KEY="private-fixture"\n'
+
+
 def test_interrupted_source_update_has_no_published_identity(tmp_path, monkeypatch):
     import os
+
     from scripts import local_backup_source
 
     raw = raw_source(tmp_path)
