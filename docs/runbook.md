@@ -655,13 +655,13 @@ uv run --frozen python -m scripts.verify_local_deployment
 
 ## R7 动态运行状态（本地实现完成，当前候选验收未完成）
 
-R7 Contract见[Spec](specs/local-operations-v1.md)，机制见[Design](designs/local-operations-v1.md)。Ticket 01–06本地实现与Review已完成；Ticket 07当前候选只完成部分隔离/浏览器验收，整体状态及未完成项见[R7 Acceptance](acceptance/local-operations-v1.md)。stable仍运行原R6版本；本Runbook描述的是已实现的本地候选能力，不代表其已部署到stable。
+R7 Contract见[Spec](specs/local-operations-v1.md)，机制见[Design](designs/local-operations-v1.md)。Ticket 01–06本地实现与Review已完成；Ticket 07的`6c3c639` Linux Playwright完整业务验收、四类依赖60秒故障/恢复矩阵及11项额度释放回归已通过。单用户完整资源采样、30分钟RTO/条件RPO与阿里云控制台Trace查询仍待完成，整体状态见[R7 Acceptance](acceptance/local-operations-v1.md)。stable仍运行原R6版本；本Runbook描述的是已实现的本地候选能力，不代表其已部署到stable。
 
 `/health`继续只证明HTTP存活；`/ready`公开最小status/checked_at，ready返回200，其余503。每15秒一轮有界独立进程探测，单轮最多10秒；30秒未更新则unknown。稳定镜像复用R6发布门禁，验证Control/业务库、Qdrant、固定业务/RAG/版本资产；不执行定时LLM调用。未知和失败均不能用旧正常结果替代。
 
 登录后页面每10秒刷新运行状态，网络请求最多8秒。普通账号只显示不可用提示；具备既有admin.audit权限且无需改密的管理员可见详细依赖、最近模型调用和安全备份状态。该入口使用readonly身份认证，不修改last_seen或Cookie，不延长30分钟Idle/8小时Absolute；身份过期返回登录。模型只显示最近15分钟最后一次真实调用成功/失败，过期则未知，不能保证下一次调用。
 
-`./local status`核对Docker真实状态，在明确stable API容器内读取600权限的Unix socket详细安全快照；不会创建或续期Session。旧镜像没有socket、API已停止或证据读取失败显示unknown。备份安全投影缺失/无成功副本时显示未初始化/未知；当前候选完整运行验收仍未完成，详见[R7 Acceptance](acceptance/local-operations-v1.md)。
+`./local status`核对Docker真实状态，在明确stable API容器内读取600权限的Unix socket详细安全快照；不会创建或续期Session。旧镜像没有socket、API已停止或证据读取失败显示unknown。备份安全投影缺失/无成功副本时显示未初始化/未知；当前stable尚未初始化R7备份密钥或副本，完整RTO验收仍待进行，详见[R7 Acceptance](acceptance/local-operations-v1.md)。
 
 R7受理保护使用同一ExecutionRuntime容量：默认每账号1、API进程4，同步问数/分析与后台任务合计；429 `EXECUTION_LIMIT_REACHED`表示额度已满，503 `SERVICE_NOT_READY`表示当前就绪未证实，请等待恢复后由用户重新发起。已受理任务/重放沿原R4；服务不自动排队或重试。同步执行不会为了额度写入伪history，超时中断仍等待真实工作退出再释放。管理员状态和本机socket显示业务/导出各自的当前总数与上限，不暴露其他用户ID。
 
@@ -683,7 +683,7 @@ R7受理保护使用同一ExecutionRuntime容量：默认每账号1、API进程4
 
 通过输出中的恢复ID后，操作者可显式执行 `./local restore-activate <restore-id>`。该命令先记录previous/candidate与切换阶段，停止候选和旧stable writer，再原子切换binding并启动候选；中断时保留journal和两边资源，必须明确选择 `./local restore-recover <restore-id> --previous` 或 `--candidate` 完成恢复。不要手动编辑 `.local/runtime-binding.json` 或在journal未完成时启动其他 `./local` 写操作。
 
-恢复成功或普通失败退出时会清除解密归档payload；candidate专属的受限配置、Secret、release、卷和登记记录会保留，以支持检查或显式切换。若工具报告明文暂存清理失败，先核对恢复ID及目录归属，再按安全流程处理；不要清理未知资源。Ticket 05 已在独立stable clone中完成恢复、候选激活和previous回退核验，2026-10-08实际stable/dev运行身份与健康状态前后未变。本次没有初始化实际stable备份私钥，也没有对实际stable执行激活；当前候选完整RTO矩阵、经营分析/PDF验收和阿里云Trace查询仍未完成，见[R7 Acceptance](acceptance/local-operations-v1.md)及[R7 Ticket 07](../.scratch/local-operations-v1/issues/07-acceptance.md)。
+恢复成功或普通失败退出时会清除解密归档payload；candidate专属的受限配置、Secret、release、卷和登记记录会保留，以支持检查或显式切换。若工具报告明文暂存清理失败，先核对恢复ID及目录归属，再按安全流程处理；不要清理未知资源。Ticket 05 已在独立stable clone中完成恢复、候选激活和previous回退核验，2026-10-08实际stable/dev运行身份与健康状态前后未变。本轮尚无实际stable备份私钥或登记密文，未运行RTO/RPO；固定 age/PG 工具镜像已构建，但没有初始化密钥或执行stable激活。当前浏览器分析/PDF验收已通过，阿里云Trace查询仍未完成，见[R7 Acceptance](acceptance/local-operations-v1.md)及[R7 Ticket 07](../.scratch/local-operations-v1/issues/07-acceptance.md)。
 
 R7候选的`up`随服务启动独立backup工具，运行时每6小时尝试，无/超过24小时副本启动即尝试；失败/锁竞争不热循环，下一次常规尝试间隔6小时。`down`先停止backup再停止API/依赖，保留数据、密钥和catalog。未构建工具时up警告但不撤销已运行API；必须先build-operations/init-backup，不能据此宣称RPO有保障。`./local logs backup`只提供安全分类。
 

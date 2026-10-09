@@ -24,14 +24,14 @@ Canonical Source: [Spec](../spec.md)、[Design](../design.md)；共同约束见 
 Change Profile: 本目标发布验收并持续保留证据 / 同一目标最终验证 / 高风险（数据和运行结论）/ Software回归+真实浏览器+运行/安全验收 / 本地Commit，发布另行授权。
 Owner: 当前目标实施维护者。
 Blocked by: 04、05、06。
-What to build: 复用适用测试建立clean candidate、专属运行资源与真实Windows入口证据；汇总60秒故障/恢复、30分钟恢复、24小时条件RPO/失败提醒、共享预算、单用户性能和阿里云trace；固化正式事实源，不以状态记录或CI代替验收。
+What to build: 复用适用测试建立clean candidate、专属运行资源与用户指定的Linux Playwright真实浏览器证据；汇总60秒故障/恢复、30分钟恢复、24小时条件RPO/失败提醒、共享预算、单用户性能和阿里云trace；固化正式事实源，不以状态记录或CI代替验收。
 Acceptance Criteria:
 - clean image绑定候选commit/image/config/Seed/model；管理员/普通账号问数、追问、分析、历史/成果和三格式导出成功；状态无保活且隔离正常。
 - 备份与私钥/镜像/固定model缓存已具备时，从恢复开始到DB恢复/index重建/登录历史成果核验不超过30分钟；下载单列，外部LLM不混算。条件不满足或超时记录失败，不重新定义目标。
 - 单用户代表用例逐次耗时和CPU/内存峰值；跨入口超额立即拒绝、180s/1200s/60s保护及取消/失败释放可再次执行；不冒称四并发容量或p95 SLA。
 - 两种role依赖故障/恢复60秒证据、云真实span与云失败业务成功、备份损坏/权限/归属/中断恢复安全证据齐全；真实stable/dev数据未被验收覆盖。
 owned files: scripts/local_acceptance.py及最小R7验收入口；受影响软件/浏览器验收文件；docs/specs、docs/designs、docs/acceptance、docs/runbook.md、docs/roadmap.md、docs/product-scope.md与Architecture适用章节；.scratch/local-operations-v1记录。
-验证证据: 精确命令/候选/资源/配置身份与结果，受影响required checks；Windows实际浏览器、真实模型业务/Trace及隔离恢复计时；Secret扫描；未运行项及限制明确。Prompt/业务算法不变可复用适用AI Evaluation，不重标报告；改变相关行为则重跑受影响Evaluation。
+验证证据: 精确命令/候选/资源/配置身份与结果，受影响required checks；用户指定的Linux Playwright浏览器、真实模型业务/Trace及隔离恢复计时；Secret扫描；未运行项及限制明确，不宣称未运行的Windows浏览器集成通过。Prompt/业务算法不变可复用适用AI Evaluation，不重标报告；改变相关行为则重跑受影响Evaluation。
 Migration / Rollback: 不执行真实stable数据激活、整机/Docker重启或永久IDM变更；隔离资源按明确标签清理且先留证据。发布前报告当前范围/风险/验证/自动合并规则再取得Push/PR授权。
 Done When: 01–06适用证据均可追溯，完整Review和文档链接检查通过；全部Done When满足或必要条件明确待补，未完成项不报告全目标完成；只完成本地candidate，不自动远端发布。
 
@@ -39,13 +39,13 @@ Done When: 01–06适用证据均可追溯，完整Review和文档链接检查�
 
 clean候选`0a97182e6840ed5ae1e3fd0da012dfe98fb4d1b3`绑定隔离运行`20261009T122448Z-57d6dc78`；专属Docker project为`chatbi-r6-accept-20261009t122448z-57d6dc78`。仓库原始`./local build`成功，Windows Chromium `149.0.7827.55`完整两阶段业务通过：问数、追问、多指标、重新查询、取消、经营分析/流式阶段、历史与成果保存/读取、重启后续聊及再次登录空白均通过。PDF、PNG、XLSX共七份文件由独立解析器验证通过。`scripts.verify_local_deployment`完整验收流程通过最终API日志Secret检查、专属账号/Session清理及外部资源前后核对；临时账号已禁用、active_sessions=0、专属容器/网络/卷清理。release指针已恢复；stable仍为R6 `2b4a8c8`，开发数据库/Qdrant未改动。安全摘要及详细本机证据见[Acceptance](../../../docs/acceptance/local-operations-v1.md#前一候选-0a97182-完整隔离验收2026-10-09)。
 
-前一候选单用户耗时和资源采样已记录；当时超额拒绝、跨入口额度释放、60秒依赖矩阵及完整30分钟RTO / 条件RPO仍待验。后续`6c3c639`完整依赖故障/恢复矩阵已通过，具体结果见下节。OTLP真实业务Trace已发送，但云端控制台查询仍待核实。
+前一候选单用户耗时和资源采样已记录。当前代码候选的11项额度/释放回归通过，包含后台占额时同步问数被429拒绝、释放后重试成功；这验证额度逻辑，不替代候选级资源采样或并发容量结论。后续`6c3c639`完整依赖故障/恢复矩阵已通过，具体结果见下节。OTLP真实业务Trace已发送，但云端控制台查询仍待核实。
 
 ## `6c3c639` 当前候选 WSL/Linux Playwright 与依赖验收（2026-10-09）
 
 clean候选`6c3c639af9b9d9d70829b00a4356adec95b13212`的完整隔离浏览器验收运行`20261009T144447Z-abed4621`通过，浏览器为`chatbi-browser-dev:local`内 Chromium `153.0.8010.12`。通过范围包括真实问数/追问、经营分析流式、历史与成果、重启恢复及 PDF/PNG/XLSX 共12份文件的独立解析。浏览器下载预检和验收业务均在Linux专用Playwright容器完成；没有启动Windows浏览器、没有拉起IDM，也未修改用户本机配置。安全摘要与平台限制见[正式验收报告](../../../docs/acceptance/local-operations-v1.md#6c3c639-当前候选完整-linux-playwright-隔离验收2026-10-09)。
 
-同一候选的四依赖故障矩阵运行`20261009T132359Z-825fdfde`通过：Control DB、业务 DB、Qdrant、业务资产故障与恢复均在60秒内反映，最长阶段29.588秒；Secret scan通过且外部Docker资源未变。当前未完成项收敛为共享容量/超额拒绝与释放后再次执行、完整30分钟RTO及条件RPO演练、阿里云控制台Trace可查询性。Ticket 07仍为in-progress，不表示可切换实际stable或开始远端发布。
+同一候选的四依赖故障矩阵运行`20261009T132359Z-825fdfde`通过：Control DB、业务 DB、Qdrant、业务资产故障与恢复均在60秒内反映，最长阶段29.588秒；Secret scan通过且外部Docker资源未变。当前未完成项为单用户完整运行资源采样、完整30分钟RTO及条件RPO演练、阿里云控制台Trace可查询性。RTO前置检查发现本机没有实际stable备份私钥或已登记密文备份；固定 age/PG 工具镜像已构建，但未执行`init-backup`或创建备份，需要用户明确授权。Trace查询尚缺RAM只读AccessKey或控制台登录；本地仅有OTLP上报配置，专用浏览器没有Console会话。Ticket 07仍为in-progress，不表示可切换实际stable或开始远端发布。
 
 ## 历史结果：`59e1e34` 的 PDF 客户端条件（2026-10-09）
 

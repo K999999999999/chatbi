@@ -97,7 +97,7 @@ Batch exporter队列/timeout/shutdown有界，失败警告只有安全分类；�
 
 沿Spec测试矩阵，每个纵向切片都有对应软件/隔离集成/文档门禁，不能把所有安全验证留到尾部。clock/probe/snapshot/transporter/资源命令提供真实边界可注入seam，避免测试专用业务分支。
 
-最后clean image执行Windows真实入口、备份/恢复/切换/回退、60秒故障/恢复、权限与无保活、Secret与资源归属、阿里云Trace及单用户容量/RTO报告；选择多个代表用例记逐次耗时和CPU/内存峰值，不在少量样本上声称可靠p95/SLA。
+用户于2026-10-09明确要求当前真实浏览器验收使用WSL/Linux专用Playwright容器，不启动Windows浏览器或IDM；本轮按此决定替代Windows真实入口。最终clean image验收覆盖浏览器业务、备份/恢复/切换/回退、60秒故障/恢复、权限与无保活、Secret与资源归属、阿里云Trace及单用户容量/RTO报告；选择多个代表用例记逐次耗时和CPU/内存峰值，不在少量样本上声称可靠p95/SLA。Linux Chromium结果不表示Windows Edge特有集成已通过。
 
 正式Spec/Design/API/Architecture/Runbook/Observability/Acceptance/Product Scope/roadmap按适用范围同步；最初只保留scratch规划，不提前改正式Contract。未授权主机重启/永久IDM/稳定数据切换，不在验收中执行。
 

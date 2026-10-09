@@ -1,6 +1,6 @@
 # R7 本地运行保障验收
 
-Status: incomplete. Ticket 01–06本地实现与Review完成；当前clean候选`6c3c639`的完整隔离业务验收由用户指定的 Linux Playwright 容器通过，12份 PDF/PNG/XLSX 均独立解析通过，重启续聊、日志Secret检查和资源清理通过。该轮没有启动 Windows 浏览器或 IDM。候选`6c3c639`的四类依赖60秒故障/恢复矩阵也已通过。容量/额度释放、完整30分钟RTO与条件RPO演练、阿里云控制台Trace查询仍待完成。
+Status: incomplete. Ticket 01–06本地实现与Review完成；当前clean候选`6c3c639`的完整隔离业务验收由用户指定的 Linux Playwright 容器通过，12份 PDF/PNG/XLSX 均独立解析通过，重启续聊、日志Secret检查和资源清理通过。该轮没有启动 Windows 浏览器或 IDM。候选`6c3c639`的四类依赖60秒故障/恢复矩阵也已通过；11项额度/资源释放回归通过。当前单用户运行资源完整采样、30分钟RTO与条件RPO演练、阿里云控制台Trace查询仍待完成。
 
 ## 候选与证据身份
 
@@ -25,6 +25,7 @@ Status: incomplete. Ticket 01–06本地实现与Review完成；当前clean候�
 | PDF 导出 | PASS（`6c3c639`，Linux Playwright） | 三种格式合计12份文件（PDF、PNG、XLSX）均通过独立解析；专用浏览器成功收到 PDF 下载事件。本轮未启动 Windows 浏览器、未触发 IDM、未修改 IDM 或用户浏览器设置。 |
 | 经营分析 | PASS（`6c3c639`） | 真实分析、流式阶段、归因参考值、保存与重启后读取通过。 |
 | 历史/成果及重启续聊 | PASS（`6c3c639`） | 浏览器两阶段均通过；持久状态指纹、未完成执行恢复规则及成功成果保留通过。 |
+| 共享额度拒绝与释放 | PASS（软件回归） | `tests/query_api/test_operations_api.py::test_sync_query_shares_live_background_capacity_and_recovers`、`tests/query_api/test_execution_runtime.py`、两个导出失败释放回归共11项通过；验证后台占额时同步问数返回429、释放后可再次执行。此证据验证额度逻辑，不代表并发容量或SLA。 |
 | 临时资源回收与最终日志检查 | PASS（`6c3c639`） | 专属账号禁用、`active_sessions=0`、验收容器/网络/卷清理；最终 API 日志 Secret 检查通过，验收前后外部 Docker 资源快照相同。 |
 | 稳定服务 | 未纳入验收项目 | 当前验收期间稳定服务继续运行原 R6 发布 `2b4a8c8`；API/PostgreSQL healthy、Qdrant running，首页与 `/health` 均 HTTP 200。没有执行升级、密钥初始化或恢复激活；此前恢复记录见 [R6 Acceptance](local-deployment-v1.md#稳定服务重启核验2026-10-09)。 |
 | 最终日志凭据检查与总体门禁 | PASS（`6c3c639`） | `logs_no_known_secrets=true`；原始`0a97182`结果仍作为各自历史报告，不改写候选身份。 |
@@ -100,9 +101,9 @@ clean 候选 `8f73ab12e0b078ffca7c6416ab8ae7ea055522a9` 的固定镜像构建通
 ## 尚未满足的 Ticket 07 验收项
 
 - `6c3c639` 已完成当前候选 Linux Playwright 完整业务验收、12份导出解析、重启续聊、日志 Secret 检查及资源回收；同一候选四类依赖60秒故障/恢复矩阵通过。旧候选中未记录提交证据的追问超时仍按历史事实保留，不将旧运行重标。
-- 仍待验证超额拒绝、跨入口额度共用、失败/超时释放后再次执行及单用户资源基线；已有单用户样本不构成并发容量或 p95 SLA。
-- 当前候选的完整隔离恢复计时及 30 分钟 RTO / 条件 RPO 矩阵未完成。Ticket 05 的隔离恢复、切换和回退证据仍绑定各自候选，不自动替代本次候选验收。
-- 当前候选阿里云 Trace 未查询验证；用户已提供并批准适配配置，已保存到私有本地环境文件，实际运行 stable 未重启或加载新配置。没有执行真实 stable 升级。
+- 当前候选的单用户完整运行资源采样与容量报告仍待完成；额度共用/释放逻辑已有11项软件回归通过，但不构成并发容量或 p95 SLA。
+- 30 分钟 RTO / 条件 RPO 演练未开始：本机没有 `.local/backup-keys/identity.txt` 私钥或已登记密文备份。固定 age v1.3.2 / PG16 工具镜像已构建并登记；没有初始化实际 stable 备份密钥或创建备份。执行这一步前需要用户明确授权。
+- 当前候选阿里云 Trace 尚未查询验证。隔离真实业务已使用用户给定的 OTLP 上报配置发送；本机没有阿里云 RAM 查询 AccessKey 或阿里云 CLI，本轮专用浏览器容器也没有控制台会话；`.local/r7-cloud-connection-probe.json` 记录 `cloud_query_verified=false`。阿里云[控制台文档](https://help.aliyun.com/zh/arms/application-monitoring/user-guide/trace-query)说明按 TraceId 查询需登录；[OpenAPI 文档](https://help.aliyun.com/zh/opentelemetry/developer-reference/api-xtrace-2019-08-08-overview)要求 AccessKey/RAM 身份，OTLP 上报 LicenseKey 本身不构成查询凭据。需要用户登录控制台人工核验，或提供最小只读查询凭据并安全存入本机环境。
 - 本次未重跑正式 AI Evaluation；根据 Ticket/Spec 按实际 Diff 决定影响范围，Prompt、业务算法和模型资产未改时可复用原候选的适用行为基线，但不得冒称当前版本的新正式 Evaluation 基线。
 
 ## 顺序处理与浏览器条件核验（2026-10-09）
@@ -114,6 +115,7 @@ clean 候选 `8f73ab12e0b078ffca7c6416ab8ae7ea055522a9` 的固定镜像构建通
 ## 软件验证
 
 - `tests/scripts/test_local_acceptance.py`：10 passed。
+- 额度与资源释放回归：11 passed，包括同步问数与后台任务共用额度、拒绝后释放额度、导出错误/授权变化清理临时资源。
 - `npm run typecheck`：通过；`npm test -- --config=playwright.config.ts tests/helpers.spec.ts`：1 passed。
 - 完整测试套件最近一次在前置候选 `82b366e` 上通过：941 passed、41 skipped、139 subtests。随后改动集中于验收挂载、浏览器终态等待与安全错误分类记录；本次未重跑完整套件。
 - 本机 `python -m scripts.check_harness_state` 检查 22 份记录，无 ERROR；`chatbi-product-v1`、`local-operations-v1` 和 `r6-presubmit-coverage` 保留 REVIEW，需各自继续跟进。

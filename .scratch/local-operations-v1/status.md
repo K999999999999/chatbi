@@ -1,6 +1,6 @@
 # R7 长期规划记录
 
-当前：01–06本地实现/Review完成；07仍in-progress。clean候选`6c3c639`的四依赖故障/恢复矩阵运行`20261009T132359Z-825fdfde`通过；完整两阶段浏览器验收运行`20261009T144447Z-abed4621`使用`chatbi-browser-dev:local`中的Linux Chromium `153.0.8010.12`通过，PDF/PNG/XLSX共12份导出独立解析，经营分析、重启续聊、日志Secret扫描、账号禁用与临时资源清理通过。没有启动Windows浏览器/IDM。首个WSL尝试的临时API Origin与浏览器内部访问地址不匹配，登录请求被拒且未进入业务；对齐本次隔离Origin后完整验收通过。当前容量/超额与额度释放行为、完整30分钟RTO及条件RPO矩阵、阿里云控制台Trace可查询性仍待验。用户授权既有Contract内顺序修复、隔离复验、Review与本地Commit。stable仍为R6 `2b4a8c8`且健康，未切换/重启；无本目标Push/PR、实际密钥初始化或恢复激活授权。历史过程保留于下文，实时阶段见Git公共目录记录。
+当前：01–06本地实现/Review完成；07仍in-progress。clean候选`6c3c639`的四依赖故障/恢复矩阵运行`20261009T132359Z-825fdfde`通过；完整两阶段浏览器验收运行`20261009T144447Z-abed4621`使用`chatbi-browser-dev:local`中的Linux Chromium `153.0.8010.12`通过，PDF/PNG/XLSX共12份导出独立解析，经营分析、重启续聊、日志Secret扫描、账号禁用与临时资源清理通过。没有启动Windows浏览器/IDM。首个WSL尝试的临时API Origin与浏览器内部访问地址不匹配，登录请求被拒且未进入业务；对齐本次隔离Origin后完整验收通过。11项额度拒绝/释放回归通过（后台占额时同步问数返回429，释放后可重试），当前候选单用户完整资源采样仍待补。完整30分钟RTO/RPO未执行：本机无实际stable备份私钥或登记备份，固定age/PG工具镜像已构建但未初始化密钥。阿里云控制台Trace仍待查询，本机只有OTLP上报License Key，没有RAM查询凭据或专用浏览器Console会话。用户授权既有Contract内顺序修复、隔离复验、Review与本地Commit。stable仍为R6 `2b4a8c8`且健康，未切换/重启；无本目标Push/PR、实际密钥初始化或恢复激活授权。历史过程保留于下文，实时阶段见Git公共目录记录。
 
 ## 初始规划快照（拆分确认前）
 
