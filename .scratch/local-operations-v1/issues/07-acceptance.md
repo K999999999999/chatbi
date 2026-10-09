@@ -35,7 +35,15 @@ owned files: scripts/local_acceptance.py及最小R7验收入口；受影响软�
 Migration / Rollback: 不执行真实stable数据激活、整机/Docker重启或永久IDM变更；隔离资源按明确标签清理且先留证据。发布前报告当前范围/风险/验证/自动合并规则再取得Push/PR授权。
 Done When: 01–06适用证据均可追溯，完整Review和文档链接检查通过；全部Done When满足或必要条件明确待补，未完成项不报告全目标完成；只完成本地candidate，不自动远端发布。
 
-Result: 最新clean候选`59e1e34`于`20261009T110752Z-b9e90d25`通过Windows Edge首问/追问、多指标、PNG/XLSX和经营分析（流式报告/归因/持久保存）；旧追问超时根因仍未知。PDF API 200而Edge 204，当前IDM运行且接管PDF，流程停止，历史/成果/重启未运行。临时账号禁用、active sessions=0、专属容器/网络/卷均清理。原始`./local build`入口构建通过（复用依赖缓存，无临时包装）；stable/dev未切换。源码另确认SERVICE_NOT_READY / HTTP503被前端误报未知，三个新回归先红，修复后Windows Edge受影响18项回归通过（含未知503回查与原有网络丢失幂等行为），build/typecheck/diff通过；当前主Agent Code Review PASS。真实模型Prompt/业务算法/模型资产未改，不重跑全量正式Evaluation，不重标历史基线。下一步采用已核验的隔离Windows Chromium条件补齐PDF/历史/重启，再完成其他运行验收。
+## 当前候选完整验收（2026-10-09）
+
+clean候选`0a97182e6840ed5ae1e3fd0da012dfe98fb4d1b3`绑定隔离运行`20261009T122448Z-57d6dc78`；专属Docker project为`chatbi-r6-accept-20261009t122448z-57d6dc78`。仓库原始`./local build`成功，Windows Chromium `149.0.7827.55`完整两阶段业务通过：问数、追问、多指标、重新查询、取消、经营分析/流式阶段、历史与成果保存/读取、重启后续聊及再次登录空白均通过。PDF、PNG、XLSX共七份文件由独立解析器验证通过。`scripts.verify_local_deployment`完整验收流程通过最终API日志Secret检查、专属账号/Session清理及外部资源前后核对；临时账号已禁用、active_sessions=0、专属容器/网络/卷清理。release指针已恢复；stable仍为R6 `2b4a8c8`，开发数据库/Qdrant未改动。安全摘要及详细本机证据见[Acceptance](../../../docs/acceptance/local-operations-v1.md#0a97182-当前候选完整隔离验收2026-10-09)。
+
+本轮单用户耗时和资源采样已记录，但超额拒绝、跨入口额度释放与再次执行、60秒依赖故障/恢复矩阵、完整30分钟RTO及条件RPO演练仍待完成。依赖诊断运行`20261009T125022Z-917566fb`中，control DB / business DB故障及恢复、网页安全提示均在60秒内；Qdrant失效也触发网页不可用提示，但详细状态误记为assets不可用、qdrant未确认。已定位并修复周期探针将Qdrant重复归入启动门禁的问题，新增回归先红后绿；新clean候选的完整依赖矩阵尚未重跑。当前候选的真实业务Trace由OTLP成功发送，云端控制台可查询性仍待核实。Ticket 07继续in-progress；无Push/PR、stable切换、主机/Docker重启或实际密钥初始化授权。
+
+## 历史结果：`59e1e34` 的 PDF 客户端条件（2026-10-09）
+
+该历史clean候选`59e1e34`于`20261009T110752Z-b9e90d25`通过Windows Edge首问/追问、多指标、PNG/XLSX和经营分析（流式报告/归因/持久保存）；旧追问超时根因当时仍未知。PDF API 200而Edge 204，当前IDM运行且接管PDF，流程当时停止，历史/成果/重启未运行。临时账号禁用、active sessions=0、专属容器/网络/卷均清理。原始`./local build`入口构建通过（复用依赖缓存，无临时包装）；stable/dev未切换。源码另确认SERVICE_NOT_READY / HTTP503被前端误报未知，三个新回归先红，修复后Windows Edge受影响18项回归通过（含未知503回查与原有网络丢失幂等行为），build/typecheck/diff通过；当时Code Review PASS。真实模型Prompt/业务算法/模型资产未改，不重跑全量正式Evaluation，不重标历史基线。
 
 ## 历史验收与诊断
 

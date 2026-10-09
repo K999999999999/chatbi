@@ -66,14 +66,8 @@ def probe_dependencies() -> dict[str, str]:
         published = load_published_asset(config.output_dir)
         _validate_manifest(published, config)
         _validate_provenance(published, config)
-        if os.getenv("CHATBI_LOCAL_OPERATIONS_ENABLED", "false").lower() == "true":
-            # 稳定镜像复用R6权威门禁；仅构造Embedding配置，不加载模型/发请求。
-            import io
-            from contextlib import redirect_stdout
-            from scripts.local_release import verify_runtime
-
-            with redirect_stdout(io.StringIO()):
-                verify_runtime(dict(os.environ))
+        # 完整verify_runtime是启动门禁，也会再次探测数据库和Qdrant；周期监控
+        # 已分别检查这些依赖，此处只报告RAG发布资产与来源，避免状态串位。
         checks["assets"] = "ready"
         try:
             store = QdrantAssetStore.connect(

@@ -204,3 +204,77 @@ def test_backup_without_success_still_shows_safe_failure(tmp_path):
         "overdue": True,
         "failure_code": "BACKUP_KEY_UNAVAILABLE",
     }
+
+
+def test_readiness_reports_qdrant_outage_as_qdrant_not_asset_failure(monkeypatch):
+    from dataclasses import dataclass
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from scripts import local_release
+    from src.bootstrap import readiness
+    from src.chatbi_control import database as control_database
+    from src.online_query.database import PsycopgQueryExecutor
+    from src.online_query.retrieval import rag_runtime
+    from src.rag_offline import build, config, qdrant_store
+
+    @dataclass(frozen=True)
+    class FakeBuildConfig:
+        output_dir: Path = Path("/isolated/rag")
+        qdrant_timeout_seconds: int = 5
+        qdrant_url: str = "http://qdrant:6333"
+        qdrant_path: Path | None = None
+        qdrant_api_key: str | None = None
+
+        @classmethod
+        def from_environment(cls):
+            return cls()
+
+    class FakeControlConfig:
+        @classmethod
+        def from_environment(cls, *, require_migrator):
+            assert require_migrator is False
+            return cls()
+
+    monkeypatch.setenv("RAG_ONLINE_RETRIEVAL_ENABLED", "true")
+    monkeypatch.setenv("CHATBI_LOCAL_OPERATIONS_ENABLED", "true")
+    monkeypatch.setattr(control_database, "ControlDatabaseConfig", FakeControlConfig)
+    monkeypatch.setattr(
+        control_database,
+        "create_control_engine",
+        lambda _config: SimpleNamespace(dispose=lambda: None),
+    )
+    monkeypatch.setattr(readiness, "verify_control_schema", lambda _engine: None)
+    monkeypatch.setattr(
+        PsycopgQueryExecutor,
+        "from_env",
+        lambda: SimpleNamespace(verify_structure_metadata=lambda: None),
+    )
+    monkeypatch.setattr(config, "OfflineBuildConfig", FakeBuildConfig)
+    published = object()
+    monkeypatch.setattr(build, "load_published_asset", lambda _path: published)
+    monkeypatch.setattr(rag_runtime, "_validate_manifest", lambda *_args: None)
+    monkeypatch.setattr(rag_runtime, "_validate_provenance", lambda *_args: None)
+
+    def unavailable_qdrant(**_kwargs):
+        raise OSError("isolated Qdrant is unavailable")
+
+    monkeypatch.setattr(
+        qdrant_store.QdrantAssetStore, "connect", staticmethod(unavailable_qdrant)
+    )
+    monkeypatch.setattr(
+        local_release,
+        "verify_runtime",
+        lambda _environment: (_ for _ in ()).throw(
+            RuntimeError("full startup gate includes unrelated dependencies")
+        ),
+    )
+
+    result = readiness.probe_dependencies()
+
+    assert result == {
+        "control_database": "ready",
+        "business_database": "ready",
+        "qdrant": "not_ready",
+        "assets": "ready",
+    }
