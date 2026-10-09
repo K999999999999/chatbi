@@ -63,7 +63,7 @@ class OperationsMonitor:
 
 
 class ObservedModel:
-    """仅观察真实invoke结束；不接收/保存问题、结果或异常文本。"""
+    """观察真实invoke / stream结果；不保存问题、结果或异常文本。"""
 
     def __init__(self, model, observer):
         self._model = model
@@ -77,3 +77,25 @@ class ObservedModel:
             raise
         self._observer(True)
         return response
+
+    def stream(self, prompt):
+        provider_stream = getattr(self._model, "stream", None)
+        if not callable(provider_stream):
+            self._observer(False)
+            raise TypeError("被观察的模型不支持流式调用")
+        try:
+            chunks = iter(provider_stream(prompt))
+        except Exception:
+            self._observer(False)
+            raise
+
+        def observed_chunks():
+            try:
+                yield from chunks
+            except Exception:
+                self._observer(False)
+                raise
+            else:
+                self._observer(True)
+
+        return observed_chunks()

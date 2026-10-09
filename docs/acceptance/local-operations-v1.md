@@ -1,6 +1,6 @@
 # R7 本地运行保障验收
 
-Status: incomplete. Ticket 01–06 的本地实现与 Review 已完成；Ticket 07 当前候选完成了部分隔离运行和真实浏览器验收，经营分析以公开分类 `LLM_ERROR` 终止，完整验收门槛未满足。
+Status: incomplete. Ticket 01–06 的本地实现与 Review 已完成；Ticket 07 当前候选完成部分隔离运行和真实浏览器验收。经营分析的 `LLM_ERROR` 已通过隔离诊断定位到运行时 `ObservedModel` 未转发 `stream()`；本地修复及确定性回归已完成，尚待新的 clean candidate 真实复验，完整验收门槛未满足。
 
 ## 候选与证据身份
 
@@ -19,13 +19,13 @@ Status: incomplete. Ticket 01–06 的本地实现与 Review 已完成；Ticket 
 | 浏览器与查询链路 | PASS | Chromium sandbox 实际启动；Edge 查询和追问成功，执行流到达 `succeeded` 终态。 |
 | 图表与 XLSX 导出 | PASS | PNG 和 XLSX 均从已保存结果导出；导出期间没有新建业务执行。 |
 | PDF 导出 | NOT RUN | 经营分析失败后验收停止，尚未到 PDF 步骤。 |
-| 经营分析 | FAIL | HTTP 请求成功受理，执行流到达真实 `failed` 终态，公开 `error_code=LLM_ERROR`；安全报告不含原始异常，具体原因未能判定。不能记作模型拒答、应用缺陷或成功分析。 |
+| 经营分析 | FAIL | 两次候选验收均由 HTTP 成功受理并到达真实 `failed` 终态，公开 `error_code=LLM_ERROR`。获准的隔离诊断复测捕获内部分类 `PROVIDER_STREAM_UNAVAILABLE`；源码定位到 `ObservedModel` 未转发底层模型的 `stream()`，导致摘要流在发起 Provider 请求前失败。本地代码已修复并通过确定性测试，尚未在新 clean candidate 上重验。 |
 | 临时资源回收 | PASS | acceptance 容器、网络和卷均为 0；清理记录为 `active_sessions=0`、卷已移除。 |
 | 稳定服务 | 未纳入验收项目 | 首次验收时健康；第二次复跑前稳定服务曾停止，随后按原 R6 版本恢复。两次验收均未执行升级、密钥初始化或恢复激活，恢复记录见 [R6 Acceptance](local-deployment-v1.md#稳定服务重启核验2026-10-09)。 |
 
 ## 同一候选复跑（2026-10-09）
 
-运行 `20261009T090758Z-b87ca1ff` 再次绑定 clean 源码候选 `f1b98d73c72b572a37d7b6a3ff5dd19da9d46b3b`（`git_dirty=false`），Windows Edge `154.0.4258.62`。问数执行流 `succeeded`，PNG / XLSX 导出成功；经营分析 HTTP 受理成功并到达 `failed` 终态，公开分类仍为 `LLM_ERROR`。安全报告没有原始异常或业务内容，底层原因仍未确认；这证明该候选上的失败可复现，不证明具体由模型服务、网络或应用哪一层引起。PDF 未运行。
+运行 `20261009T090758Z-b87ca1ff` 再次绑定 clean 源码候选 `f1b98d73c72b572a37d7b6a3ff5dd19da9d46b3b`（`git_dirty=false`），Windows Edge `154.0.4258.62`。问数执行流 `succeeded`，PNG / XLSX 导出成功；经营分析 HTTP 受理成功并到达 `failed` 终态，公开分类仍为 `LLM_ERROR`。截至该次复跑完成时，安全报告没有原始异常或业务内容，具体底层原因尚未确认；后续隔离诊断与源码核对定位为模型包装器未转发`stream()`，见下文。PDF 未运行。
 
 本次临时账号已禁用、活动 Session 为 0；按专属 Compose project 标签复核，验收容器、网络、卷均为 0。该复跑未更改稳定版。原始运行报告保留在本机 ignored 目录 `.local/acceptance/20261009T090758Z-b87ca1ff/`，不提交原始诊断文件。
 
@@ -35,9 +35,17 @@ Status: incomplete. Ticket 01–06 的本地实现与 Review 已完成；Ticket 
 
 该探针表明探针时刻当前配置可完成一次最小流式调用；它不覆盖真实经营分析的长提示词、实际结果或报告 Contract，也不是候选验收通过证据。因而不能据此定位两次 `LLM_ERROR` 的根因，经营分析验收仍失败且 Ticket 07 仍未完成。没有修改稳定服务或 Provider 配置。
 
+## 隔离分析诊断与本地修复（2026-10-09）
+
+用户确认后，在独立临时 clone 对 clean candidate `f1b98d73c72b572a37d7b6a3ff5dd19da9d46b3b` 进行一次分析诊断复测，运行 ID `20261009T093333Z-179e5fee`。问数执行流成功，PNG / XLSX 导出成功；经营分析到达 `failed` 终态，安全 checkpoint 只读出 `public_error_code=LLM_ERROR`、`internal_reason=PROVIDER_STREAM_UNAVAILABLE`、`http_status=null`。受限本机记录 `.local/acceptance/diagnostic-probes/20261009T093333Z-analysis-internal-reason.json` 仅含固定分类与运行身份，权限为目录 `0700`、文件 `0600`；未保存提示词、模型响应或异常文本。隔离 Compose 容器、网络、卷均清理为 0，活动 Session 为 0。
+
+源码核对定位了原因：`src/bootstrap/runtime.py` 把用于模型调用状态观察的 `ObservedModel` 注入经营分析；该包装器此前只转发 `invoke()`，未转发底层 `ChatOpenAI.stream()`。报告生成通过流式路径时，`LangChainAnalysisSummarizer` 因包装器缺少 `stream()` 在 Provider 请求前报 `PROVIDER_STREAM_UNAVAILABLE`，所以本次没有摘要 HTTP 状态。此前合成 Provider 探针直接构造 ChatOpenAI，没有经过该包装器，无法覆盖此故障。
+
+当前工作区已为 `ObservedModel` 增加惰性 `stream()` 转发：流完整结束后记录成功，流不受支持、创建失败或迭代失败时记录失败，不保存提示词或内容。核心流转发回归先因包装器缺少 `stream()` 而失败；修复后 `tests/bootstrap/test_operations.py` 为 10 passed。该本地修复尚未构建成新的 clean candidate，也尚未重跑真实模型/Edge 验收；不能记作经营分析或 Ticket 07 验收通过。稳定 R6 服务及其配置未更改。
+
 ## 尚未满足的 Ticket 07 验收项
 
-- 需要先用安全证据复现并定位分析执行的 `LLM_ERROR`，再完成当前候选的分析、历史/成果和 PDF 浏览器验收。
+- 已定位并在本地修复分析流式包装器；仍需构建新的 clean candidate 并隔离复验经营分析成功，再完成历史/成果和 PDF 浏览器验收。
 - 尚未形成当前候选的单用户分项耗时及 CPU/内存峰值、跨入口资源回收和 60 秒依赖故障/恢复矩阵；本次不能据此声明容量或恢复 SLA。
 - 当前候选的完整隔离恢复计时及 30 分钟 RTO / 条件 RPO 矩阵未完成。Ticket 05 的隔离恢复、切换和回退证据仍绑定各自候选，不自动替代本次候选验收。
 - 当前候选阿里云 Trace 未查询验证；稳定环境 OTLP 当前关闭。没有执行真实 stable 升级或运行配置更改。

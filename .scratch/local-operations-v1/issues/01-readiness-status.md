@@ -20,5 +20,5 @@ Migration / Rollback: 无业务schema migration；缺新projection兼容显示�
 Done When: 上述证据、Review、Spec/API/Runbook/Design相关章节与状态提示说明完成；60秒真实证据若依赖最终整体验收，明确暂不宣称总目标完成。
 
 
-Result: 动态状态/只读HTTP/前端/CLI/真实模型结果观察已实现；软件、Windows Edge确定性浏览器、真实资源只读probe、静态/链接检查通过，见 [Review与证据](../review-01.md)。当前stable未部署新候选，60秒故障/完整运行目标由07验证。
-Comments: 无。
+Result: 动态状态/只读HTTP/前端/CLI/真实模型结果观察已实现；软件、Windows Edge确定性浏览器、真实资源只读probe、静态/链接检查通过，见 [Review与证据](../review-01.md)。Ticket07诊断发现模型状态包装器隐藏了摘要使用的`stream()`；当前已修正为透明转发，并在流完成或失败后更新安全状态。当前stable未部署新候选，60秒故障/完整运行目标由07验证。
+Comments: 2026-10-09 Ticket07隔离诊断确认`ObservedModel`原本只转发`invoke()`，导致经营分析摘要流在Provider调用前失败。已在`src/bootstrap/operations.py`增加`stream()`转发与安全结果观察，并增加完整成功、unsupported、启动失败、迭代失败覆盖；`tests/bootstrap/test_operations.py`10 passed，代码 Review 追加见[Review与证据](../review-01.md)。此修正尚未进入新的clean candidate；完整真实运行复验仍由Ticket07完成。

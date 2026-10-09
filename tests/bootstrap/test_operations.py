@@ -56,6 +56,68 @@ def test_observer_counts_actual_model_success_and_failure_without_payloads():
     assert "private" not in repr(status)
 
 
+def test_observed_model_forwards_stream_and_records_success_after_completion():
+    state = OperationsState()
+    model = Mock()
+    model.stream.return_value = iter(["private response"])
+    observed = ObservedModel(model, state.record_model)
+
+    stream = observed.stream("private question")
+    assert next(stream) == "private response"
+    assert state.snapshot(detailed=True)["details"]["model"]["status"] == "unknown"
+    assert list(stream) == []
+    model.stream.assert_called_once_with("private question")
+
+    status = state.snapshot(detailed=True)
+    assert status["details"]["model"]["status"] == "success"
+    assert "private" not in repr(status)
+
+
+def test_observed_model_records_stream_iteration_failure_without_payloads():
+    state = OperationsState()
+    model = Mock()
+
+    def failed_stream(_prompt):
+        yield "private partial response"
+        raise RuntimeError("private exception")
+
+    model.stream.side_effect = failed_stream
+    observed = ObservedModel(model, state.record_model)
+
+    with pytest.raises(RuntimeError, match="private exception"):
+        list(observed.stream("private question"))
+
+    status = state.snapshot(detailed=True)
+    assert status["details"]["model"]["status"] == "failure"
+    assert "private" not in repr(status)
+
+
+def test_observed_model_reports_unsupported_stream_as_failure():
+    state = OperationsState()
+    observed = ObservedModel(object(), state.record_model)
+
+    with pytest.raises(TypeError, match="不支持流式调用"):
+        observed.stream("private question")
+
+    status = state.snapshot(detailed=True)
+    assert status["details"]["model"]["status"] == "failure"
+    assert "private" not in repr(status)
+
+
+def test_observed_model_reports_stream_start_failure_without_payloads():
+    state = OperationsState()
+    model = Mock()
+    model.stream.side_effect = RuntimeError("private exception")
+    observed = ObservedModel(model, state.record_model)
+
+    with pytest.raises(RuntimeError, match="private exception"):
+        observed.stream("private question")
+
+    status = state.snapshot(detailed=True)
+    assert status["details"]["model"]["status"] == "failure"
+    assert "private" not in repr(status)
+
+
 def test_backup_projection_is_bounded_and_does_not_echo_untrusted_fields(tmp_path):
     import json
     from datetime import UTC, datetime
