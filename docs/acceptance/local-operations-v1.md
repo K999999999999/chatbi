@@ -16,10 +16,10 @@ Status: incomplete. Ticket 01–06 的本地实现与 Review 已完成；Ticket 
 | --- | --- | --- |
 | 隔离候选启动、数据库/RAG 初始化与 readiness | PASS | 使用专属运行资源；原稳定服务未加入验收 Compose。 |
 | 故障拒绝与状态保护 | PASS | 配置错误、启动失败、不兼容 migration、缺失索引、回环端口占用五类检查均按预期拒绝；持久状态前后检查相同。 |
-| 浏览器与查询链路 | PASS | Chromium sandbox 实际启动；Edge 查询和追问成功，执行流到达 `succeeded` 终态。 |
-| 图表与 XLSX 导出 | PASS | PNG 和 XLSX 均从已保存结果导出；导出期间没有新建业务执行。 |
-| PDF 导出 | NOT RUN | 经营分析失败后验收停止，尚未到 PDF 步骤。 |
-| 经营分析 | FAIL | 两次候选验收均由 HTTP 成功受理并到达真实 `failed` 终态，公开 `error_code=LLM_ERROR`。获准的隔离诊断复测捕获内部分类 `PROVIDER_STREAM_UNAVAILABLE`；源码定位到 `ObservedModel` 未转发底层模型的 `stream()`，导致摘要流在发起 Provider 请求前失败。本地代码已修复并通过确定性测试，尚未在新 clean candidate 上重验。 |
+| 浏览器与查询链路 | FAIL（最新候选） | `f1b98d7` 两次 Edge 问数/追问通过；修复候选 `515c253` 的 Edge 复验在首条问数未取得成功快照时停止，安全错误码当时未写入报告，见下文。 |
+| 图表与 XLSX 导出 | PASS（旧候选）/ NOT RUN（最新候选） | `f1b98d7` 的 PNG / XLSX 从已保存结果导出成功；`515c253` 未到导出步骤。 |
+| PDF 导出 | NOT RUN | `f1b98d7` 经营分析失败、`515c253` 首条问数未成功，均未到 PDF 步骤。 |
+| 经营分析 | FAIL（旧候选）/ NOT RUN（最新候选） | `f1b98d7` 两次验收公开 `error_code=LLM_ERROR`；诊断捕获内部分类 `PROVIDER_STREAM_UNAVAILABLE`，源码定位到 `ObservedModel` 未转发底层模型的 `stream()`，本地代码已修复。`515c253` 的浏览器验收在分析前停止，尚未验证修复。 |
 | 临时资源回收 | PASS | acceptance 容器、网络和卷均为 0；清理记录为 `active_sessions=0`、卷已移除。 |
 | 稳定服务 | 未纳入验收项目 | 首次验收时健康；第二次复跑前稳定服务曾停止，随后按原 R6 版本恢复。两次验收均未执行升级、密钥初始化或恢复激活，恢复记录见 [R6 Acceptance](local-deployment-v1.md#稳定服务重启核验2026-10-09)。 |
 
@@ -41,7 +41,13 @@ Status: incomplete. Ticket 01–06 的本地实现与 Review 已完成；Ticket 
 
 源码核对定位了原因：`src/bootstrap/runtime.py` 把用于模型调用状态观察的 `ObservedModel` 注入经营分析；该包装器此前只转发 `invoke()`，未转发底层 `ChatOpenAI.stream()`。报告生成通过流式路径时，`LangChainAnalysisSummarizer` 因包装器缺少 `stream()` 在 Provider 请求前报 `PROVIDER_STREAM_UNAVAILABLE`，所以本次没有摘要 HTTP 状态。此前合成 Provider 探针直接构造 ChatOpenAI，没有经过该包装器，无法覆盖此故障。
 
-当前工作区已为 `ObservedModel` 增加惰性 `stream()` 转发：流完整结束后记录成功，流不受支持、创建失败或迭代失败时记录失败，不保存提示词或内容。核心流转发回归先因包装器缺少 `stream()` 而失败；修复后 `tests/bootstrap/test_operations.py` 为 10 passed。该本地修复尚未构建成新的 clean candidate，也尚未重跑真实模型/Edge 验收；不能记作经营分析或 Ticket 07 验收通过。稳定 R6 服务及其配置未更改。
+该次隔离诊断后，工作区为 `ObservedModel` 增加惰性 `stream()` 转发：流完整结束后记录成功，流不受支持、创建失败或迭代失败时记录失败，不保存提示词或内容。核心流转发回归先因包装器缺少 `stream()` 而失败；修复后 `tests/bootstrap/test_operations.py` 为 10 passed。当时尚未构建新 clean candidate；后续候选 `515c253` 的复验结果见下文，尚未覆盖分析步骤。稳定 R6 服务及其配置未更改。
+
+## 修复候选 Edge 复验（2026-10-09）
+
+候选 `515c253489eea0e99cadc6dc833b42ed563a33f7` 的 API / PostgreSQL 固定镜像构建通过，RAG 初始化、配置/兼容/失败保护及 Chromium sandbox 检查通过。隔离验收运行 `20261009T095740Z-a125115e` 在 Windows Edge 首条问数阶段停止：HTTP 请求为 `200`，执行终态响应未包含成功 `turn.snapshot`，浏览器未进入追问、经营分析、历史/成果或导出步骤。该版本的 E2E 报告未保存执行对象中的 `public_error.error_code`，因此不能判断这是 Provider、查询解析或其他执行失败；没有把它归为 `LLM_ERROR`。本次运行尚未覆盖 `ObservedModel.stream()` 修复。
+
+失败报告的错误位置仅指向缺少快照后的 UI 校验；受限报告只保存该静态校验分类和浏览器状态，没有保存响应正文。临时账号已禁用、活动 Session 为 0、验收容器/网络/卷均清理为 0。稳定 R6 API/PostgreSQL 仍 healthy、Qdrant running，`/` 和 `/health` 均返回 `200`。随后在工作区补充 E2E 安全记录：只保留允许列表中的执行错误码，并在无快照时给出固定失败分类；`npm run typecheck` 通过。该报告改进尚未重跑验收。
 
 ## 尚未满足的 Ticket 07 验收项
 

@@ -11,6 +11,12 @@ const executionStages = new Set([
   'query_understanding', 'retrieval', 'sql_generation', 'sql_validation', 'query_execution', 'result_saving',
   'analysis_understanding', 'analysis_plan_validation', 'analysis_query_tasks', 'analysis_attribution', 'analysis_report_generation',
 ]);
+const safeExecutionErrorCodes = new Set([
+  'SERVICE_NOT_READY', 'EXECUTION_LIMIT_REACHED', 'INVALID_REQUEST', 'AUTHENTICATION_REQUIRED',
+  'AUTHORIZATION_DENIED', 'AUTHENTICATION_UNAVAILABLE', 'CONTEXT_ERROR', 'LLM_ERROR',
+  'CANNOT_ANSWER', 'SQL_REJECTED', 'DATABASE_ERROR', 'QUERY_TIMEOUT', 'CONVERSATION_UNAVAILABLE',
+  'CLARIFICATION_REQUIRED', 'UNSUPPORTED_ANALYSIS', 'CONVERSATION_CONFLICT',
+]);
 
 type ExecutionStreamEvidence = {
   execution_id: string;
@@ -260,7 +266,11 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     const firstHttp = await firstResponse;
     const firstPayload = await firstHttp.json();
     evidence.first_http_status = firstHttp.status();
-    evidence.first_error_code = firstPayload.error_code;
+    if (!firstPayload.turn?.snapshot) {
+      const errorCode = firstPayload.execution?.public_error?.error_code;
+      evidence.first_error_code = safeExecutionErrorCodes.has(errorCode) ? errorCode : 'UNCLASSIFIED';
+      throw new Error('initial query did not commit a successful snapshot');
+    }
     const first = querySnapshot(firstPayload.turn.snapshot);
     expect(first.rows.length).toBe(1);
     expect(Number(first.rows[0][0])).toBe(Number(reference.net_sales['2']));
