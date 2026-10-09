@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from scripts.local_restore import RestoreFailed, validate_manifest
+from scripts.local_restore import RestoreFailed, _sql_literal, validate_manifest
 
 
 def _write(path, value):
@@ -11,6 +11,13 @@ def _write(path, value):
     path.write_bytes(data)
     path.chmod(0o600)
     return data
+
+
+def test_restore_sql_literal_escapes_quotes_and_rejects_control_characters():
+    assert _sql_literal("user'; DROP TABLE users;--") == "'user''; DROP TABLE users;--'"
+    for value in ("bad\x00value", "bad\nvalue", "bad\rvalue"):
+        with pytest.raises(RestoreFailed, match="RESTORE_INVALID"):
+            _sql_literal(value)
 
 
 def _manifest(tmp_path):
@@ -339,6 +346,47 @@ def test_temporary_credentials_work_when_launched_outside_the_repository(tmp_pat
     assert credentials["username"] == "restore_test_aaaaaaaaaaaa"
     assert len(credentials["password"]) >= 32
     assert credentials["password_hash"].startswith("$argon2id$")
+
+
+def test_restore_login_request_uses_only_the_validated_loopback_port(monkeypatch):
+    import scripts.local_restore_login as client
+
+    seen = {}
+
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, _limit):
+            return b"{}"
+
+    def open_request(request, *, timeout):
+        seen["url"] = request.full_url
+        seen["timeout"] = timeout
+        return Response()
+
+    monkeypatch.setattr(client, "urlopen", open_request)
+
+    assert client._request(8080, "/health") == (200, {})
+    assert seen == {"url": "http://127.0.0.1:8080/health", "timeout": 8}
+
+
+def test_restore_login_request_rejects_invalid_port_before_network(monkeypatch):
+    import scripts.local_restore_login as client
+
+    monkeypatch.setattr(
+        client,
+        "urlopen",
+        lambda *_args, **_kwargs: pytest.fail("network call attempted"),
+    )
+
+    with pytest.raises(RuntimeError, match="RESTORE_LOGIN_FAILED"):
+        client._request(65536, "/health")
 
 
 def test_login_verifier_reads_a_completed_history_and_saved_snapshot_then_logs_out(

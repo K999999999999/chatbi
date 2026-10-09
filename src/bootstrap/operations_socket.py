@@ -9,8 +9,10 @@ import stat
 from pathlib import Path
 from threading import Thread
 
+# Compose supplies a protected runtime mount; `/tmp` is a same-UID fallback with a 0600 socket.
 SOCKET_PATH = os.environ.get(
-    "CHATBI_OPERATIONS_SOCKET_PATH", "/tmp/chatbi-operations.sock"
+    "CHATBI_OPERATIONS_SOCKET_PATH",
+    "/tmp/chatbi-operations.sock",  # nosec B108
 )
 
 

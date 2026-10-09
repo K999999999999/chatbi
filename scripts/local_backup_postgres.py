@@ -95,11 +95,13 @@ AND n.nspname NOT LIKE 'pg_toast%';
             identifier = ".".join(
                 '"' + name.replace('"', '""') + '"' for name in (schema, table)
             )
-            value = self.query(f"""
+            # Catalog identifiers are double-quote escaped before this fixed query is formatted.
+            query = """
 SELECT json_build_object('rows',count(*),'sha256',encode(sha256(convert_to(
 COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb)::text,'UTF8')),'hex'))
 FROM {identifier} t;
-""")
+""".format(identifier=identifier)  # nosec B608
+            value = self.query(query)
             result[f"{schema}.{table}"] = json.loads(value)
         if not result:
             raise DatabaseBackupFailed("BACKUP_DATABASE_FAILED")

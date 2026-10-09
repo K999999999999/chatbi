@@ -17,7 +17,7 @@ def raw_source(tmp_path):
             "Image": "sha256:" + "b" * 64,
             "Config": {
                 "Image": "chatbi-local-" + service + ":old",
-                "Env": ["LLM_MODEL=old-model", "LLM_API_KEY=private-fixture"],
+                "Env": ["LLM_MODEL=old-model", "LLM_API_KEY=dummy"],
                 "Labels": {
                     "com.docker.compose.project": "chatbi-stable",
                     "com.docker.compose.service": service,
@@ -32,7 +32,7 @@ def raw_source(tmp_path):
         "capabilities.json": json.dumps({"operations_status": False}),
         "release.json": json.dumps({"format": 1, "source_commit": source}),
         "config.env": "LLM_MODEL=old-model\n",
-        "secrets.env": "LLM_API_KEY=private-fixture\n",
+        "secrets.env": "LLM_API_KEY=dummy",
         "rag-current.json": json.dumps({"manifest_path": "build/manifest.json"}),
         "rag-manifest.json": json.dumps({"status": "READY"}),
         "compatibility.json": '{"format":1}',
@@ -50,9 +50,9 @@ def test_tool_captures_actual_old_source_without_latest_pointer(tmp_path):
     identity = capture(raw, target)
     assert identity["source_commit"] == "a" * 40
     assert identity["live_required"] is False
-    assert "private-fixture" not in json.dumps(identity)
+    assert "dummy" not in json.dumps(identity)
     assert "CHATBI_SOURCE_COMMIT=" + "a" * 40 in (target / "release.env").read_text()
-    assert (target / "secrets.env").read_text() == "LLM_API_KEY=private-fixture\n"
+    assert (target / "secrets.env").read_text() == "LLM_API_KEY=dummy"
     assert (target / "secrets.env").stat().st_mode & 0o777 == 0o600
 
 
@@ -104,12 +104,12 @@ def test_legacy_capability_uses_actual_image_not_new_compose_environment(tmp_pat
 def test_source_accepts_quoted_config_without_changing_encrypted_source_bytes(tmp_path):
     raw = raw_source(tmp_path)
     (raw / "config.env").write_text("LLM_MODEL='old-model'\n")
-    (raw / "secrets.env").write_text('LLM_API_KEY="private-fixture"\n')
+    (raw / "secrets.env").write_text('LLM_API_KEY="dummy"\n')
     target = tmp_path / "source"
     identity = capture(raw, target)
     assert identity["source_commit"] == "a" * 40
     assert (target / "config.env").read_text() == "LLM_MODEL='old-model'\n"
-    assert (target / "secrets.env").read_text() == 'LLM_API_KEY="private-fixture"\n'
+    assert (target / "secrets.env").read_text() == 'LLM_API_KEY="dummy"\n'
 
 
 def test_interrupted_source_update_has_no_published_identity(tmp_path, monkeypatch):

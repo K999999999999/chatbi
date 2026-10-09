@@ -672,7 +672,8 @@ def create_verification_identity(root, restore_id, data):
         raise RestoreFailed("RESTORE_STATE_INVALID")
     identity = _temporary_identity_input(data, restore_id)
     username, password_hash = identity["username"], identity["password_hash"]
-    sql = f"""
+    # Dynamic values are SQL literals validated and escaped by _sql_literal.
+    sql = """
 DO $$
 DECLARE
     v_user_id BIGINT;
@@ -682,7 +683,7 @@ DECLARE
     v_turn_id UUID;
 BEGIN
     INSERT INTO users(username,password_hash,is_active,must_change_password,failed_login_count,locked_until)
-    VALUES ({_sql_literal(username)},{_sql_literal(password_hash)},TRUE,FALSE,0,NULL)
+    VALUES ({username},{password_hash},TRUE,FALSE,0,NULL)
     RETURNING id INTO v_user_id;
     SELECT id INTO v_role_id FROM roles WHERE name='analyst';
     IF v_role_id IS NULL THEN RAISE EXCEPTION 'verification role missing'; END IF;
@@ -733,7 +734,9 @@ BEGIN
         v_source.snapshot_version,v_source.snapshot
     );
 END $$;
-"""
+""".format(  # nosec B608
+        username=_sql_literal(username), password_hash=_sql_literal(password_hash)
+    )
     _control_psql(sql, env=pg_environment(os.environ.get("POSTGRES_DB", "chatbi_mvp")))
     return {"status": "created", "username": username}
 
@@ -742,11 +745,12 @@ def cleanup_verification_identity(root, restore_id):
     operations = secure_directory(Path(root) / "operations", create=False)
     load_record(operations, restore_id)
     username = "restore_test_" + restore_id[:12]
-    sql = f"""
+    # The generated username is encoded as a SQL literal before interpolation.
+    sql = """
 DO $$
 DECLARE v_user_id BIGINT;
 BEGIN
-    SELECT id INTO v_user_id FROM users WHERE username={_sql_literal(username)};
+    SELECT id INTO v_user_id FROM users WHERE username={username};
     IF FOUND THEN
         DELETE FROM sessions WHERE user_id=v_user_id;
         DELETE FROM saved_results WHERE owner_user_id=v_user_id;
@@ -761,11 +765,12 @@ BEGIN
         DELETE FROM users WHERE id=v_user_id;
     END IF;
 END $$;
-"""
+""".format(username=_sql_literal(username))  # nosec B608
     _control_psql(sql, env=pg_environment(os.environ.get("POSTGRES_DB", "chatbi_mvp")))
+    # The generated username is encoded by _sql_literal before interpolation.
     remaining = _scalar(
         "chatbi_control",
-        "SELECT count(*) FROM users WHERE username=" + _sql_literal(username),
+        "SELECT count(*) FROM users WHERE username={}".format(_sql_literal(username)),  # nosec B608
         env=pg_environment(os.environ.get("POSTGRES_DB", "chatbi_mvp")),
     )
     if remaining != "0":

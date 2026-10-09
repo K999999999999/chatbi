@@ -39,7 +39,8 @@ def secure_directory(path, *, public=False, create=True):
         if public:
             descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
             try:
-                os.fchmod(descriptor, 0o755)
+                # This child contains only the public backup projection; its parent remains 0700.
+                os.fchmod(descriptor, 0o755)  # nosec B103
             finally:
                 os.close(descriptor)
     info = path.lstat()

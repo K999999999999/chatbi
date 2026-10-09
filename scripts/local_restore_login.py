@@ -9,7 +9,9 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
-def _request(base, path, *, token=None, body=None, method=None):
+def _request(port, path, *, token=None, body=None, method=None):
+    if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+        raise RuntimeError("RESTORE_LOGIN_FAILED")
     headers = {"Accept": "application/json"}
     data = None
     if body is not None:
@@ -18,13 +20,14 @@ def _request(base, path, *, token=None, body=None, method=None):
     if token:
         headers["Authorization"] = "Bearer " + token
     request = Request(
-        base + path,
+        f"http://127.0.0.1:{port}{path}",
         data=data,
         headers=headers,
         method=method or ("POST" if body is not None else "GET"),
     )
     try:
-        with urlopen(request, timeout=8) as response:
+        # verify() supplies a validated port; this URL uses a fixed HTTP loopback host.
+        with urlopen(request, timeout=8) as response:  # nosec B310
             payload = response.read(1024**2 + 1)
             if len(payload) > 1024**2:
                 raise ValueError()
@@ -34,7 +37,7 @@ def _request(base, path, *, token=None, body=None, method=None):
 
 
 def verify(port, credentials):
-    if not isinstance(port, int) or not 1 <= port <= 65535:
+    if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
         raise RuntimeError("RESTORE_LOGIN_FAILED")
     if (
         not isinstance(credentials, dict)
@@ -44,9 +47,8 @@ def verify(port, credentials):
         or not isinstance(credentials["password_hash"], str)
     ):
         raise RuntimeError("RESTORE_LOGIN_FAILED")
-    base = f"http://127.0.0.1:{port}"
     _, login = _request(
-        base,
+        port,
         "/auth/login",
         body={"username": credentials["username"], "password": credentials["password"]},
     )
@@ -54,13 +56,13 @@ def verify(port, credentials):
     if not isinstance(token, str) or not token:
         raise RuntimeError("RESTORE_LOGIN_FAILED")
     try:
-        _, identity = _request(base, "/auth/me", token=token)
+        _, identity = _request(port, "/auth/me", token=token)
         if (
             not isinstance(identity, dict)
             or identity.get("username") != credentials["username"]
         ):
             raise RuntimeError("RESTORE_LOGIN_FAILED")
-        _, histories = _request(base, "/api/v1/histories?limit=20", token=token)
+        _, histories = _request(port, "/api/v1/histories?limit=20", token=token)
         if (
             not isinstance(histories, dict)
             or not isinstance(histories.get("items"), list)
@@ -72,10 +74,10 @@ def verify(port, credentials):
             history_id = item.get("id") if isinstance(item, dict) else None
             if not isinstance(history_id, str) or not re.fullmatch(r"[0-9a-f-]{36}", history_id):
                 continue
-            _, header = _request(base, "/api/v1/histories/" + history_id, token=token)
+            _, header = _request(port, "/api/v1/histories/" + history_id, token=token)
             if not isinstance(header, dict) or header.get("id") != history_id:
                 raise RuntimeError("RESTORE_HISTORY_FAILED")
-            _, turns = _request(base, "/api/v1/histories/" + history_id + "/turns?limit=100", token=token)
+            _, turns = _request(port, "/api/v1/histories/" + history_id + "/turns?limit=100", token=token)
             if not isinstance(turns, dict) or not isinstance(turns.get("items"), list):
                 raise TypeError("RESTORE_HISTORY_FAILED")
             for turn in turns["items"]:
@@ -85,7 +87,7 @@ def verify(port, credentials):
                 if turn.get("status") != "succeeded" or not isinstance(turn_id, str):
                     continue
                 _, detail = _request(
-                    base,
+                    port,
                     "/api/v1/histories/" + history_id + "/turns/" + turn_id,
                     token=token,
                 )
@@ -95,7 +97,7 @@ def verify(port, credentials):
                 found_success_snapshot = True
             if not found_success_snapshot:
                 raise RuntimeError("RESTORE_HISTORY_FAILED")
-        _, results = _request(base, "/api/v1/saved-results?limit=1", token=token)
+        _, results = _request(port, "/api/v1/saved-results?limit=1", token=token)
         if (
             not isinstance(results, dict)
             or not isinstance(results.get("items"), list)
@@ -106,11 +108,11 @@ def verify(port, credentials):
         result_id = first_result.get("id") if isinstance(first_result, dict) else None
         if not isinstance(result_id, str) or not re.fullmatch(r"[0-9a-f-]{36}", result_id):
             raise RuntimeError("RESTORE_HISTORY_FAILED")
-        _, detail = _request(base, "/api/v1/saved-results/" + result_id, token=token)
+        _, detail = _request(port, "/api/v1/saved-results/" + result_id, token=token)
         if not isinstance(detail, dict) or not isinstance(detail.get("snapshot"), dict):
             raise TypeError("RESTORE_HISTORY_FAILED")
     finally:
-        _request(base, "/auth/logout", token=token, method="POST")
+        _request(port, "/auth/logout", token=token, method="POST")
     return {"login": True, "history": True}
 
 
