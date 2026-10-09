@@ -1,6 +1,6 @@
 # R7 长期规划记录
 
-当前：01–06本地实现/Review完成；07仍in-progress。clean候选`6c3c639`的四依赖故障/恢复矩阵运行`20261009T132359Z-825fdfde`通过；完整两阶段浏览器验收运行`20261009T144447Z-abed4621`使用`chatbi-browser-dev:local`中的Linux Chromium `153.0.8010.12`通过，PDF/PNG/XLSX共12份导出独立解析，经营分析、重启续聊、日志Secret扫描、账号禁用与临时资源清理通过。没有启动Windows浏览器/IDM。首个WSL尝试的临时API Origin与浏览器内部访问地址不匹配，登录请求被拒且未进入业务；对齐本次隔离Origin后完整验收通过。11项额度拒绝/释放回归通过（后台占额时同步问数返回429，释放后可重试），当前候选单用户完整资源采样仍待补。用户已授权并初始化实际stable备份私钥（权限600）；首份`./local backup`在来源捕获阶段因保存的4项OTLP配置与运行R6容器环境不一致而安全拒绝，未创建密文或catalog。stable仍为R6 `2b4a8c8`且健康，未重启/切换；需用户决定是否通过一次受支持的stable重启应用当前保存配置后再备份。阿里云控制台Trace仍待查询，本机只有OTLP上报配置，没有RAM查询凭据或专用浏览器Console会话。用户授权既有Contract内顺序修复、隔离复验、Review与本地Commit。无本目标Push/PR或恢复激活授权。历史过程保留于下文，实时阶段见Git公共目录记录。
+当前：01–06本地实现/Review完成；07仍in-progress。clean候选`6c3c639`的四依赖故障/恢复矩阵、完整Linux Playwright验收（12份导出独立解析）及11项额度/释放回归通过；没有启动Windows浏览器/IDM。用户已授权初始化实际stable备份密钥、仅重建active R6 API以应用已保存OTLP配置、创建首份加密备份并隔离恢复。R6备份`2e1a0cc185ac467a8f91e2adc2ca783f`已登记；恢复候选`0b4e8f4c3b7f62c71261f7f57703cfda`核验通过，RTO 84秒，候选停止且卷保留；未激活或切换stable。active仍为R6 `2b4a8c8`且健康；R7自动备份/24小时提醒未在stable启用，条件RPO、当前候选完整单用户资源采样及阿里云控制台Trace查询仍待验。用户已授权既有Contract内顺序修复、隔离复验、Review与本地Commit；无本目标Push/PR或restore-activate授权。历史过程保留于下文，实时阶段见Git公共目录记录。
 
 ## 初始规划快照（拆分确认前）
 

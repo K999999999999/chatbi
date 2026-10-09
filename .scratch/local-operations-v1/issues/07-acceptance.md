@@ -1,7 +1,7 @@
 # 07 — 当前候选完整业务、恢复与容量验收
 
 Status: in-progress
-Authorization: 用户2026-10-08确认七项拆分与全部本地实施、验证、Review和Commit；无Push/PR或实际stable切换授权。
+Authorization: 用户2026-10-08确认七项拆分与全部本地实施、验证、Review和Commit；用户后续明确授权初始化stable备份密钥、一次仅重建active R6 API以应用已保存OTLP配置、首份加密备份和隔离恢复；无Push/PR、stable版本切换或restore-activate授权。
 Canonical Source: [Spec](../spec.md)、[Design](../design.md)；共同约束见 [已确认拆分](../tickets-draft.md)。
 
 ## 2026-10-09 顺序处理授权与当前修复
@@ -45,9 +45,9 @@ clean候选`0a97182e6840ed5ae1e3fd0da012dfe98fb4d1b3`绑定隔离运行`20261009
 
 clean候选`6c3c639af9b9d9d70829b00a4356adec95b13212`的完整隔离浏览器验收运行`20261009T144447Z-abed4621`通过，浏览器为`chatbi-browser-dev:local`内 Chromium `153.0.8010.12`。通过范围包括真实问数/追问、经营分析流式、历史与成果、重启恢复及 PDF/PNG/XLSX 共12份文件的独立解析。浏览器下载预检和验收业务均在Linux专用Playwright容器完成；没有启动Windows浏览器、没有拉起IDM，也未修改用户本机配置。安全摘要与平台限制见[正式验收报告](../../../docs/acceptance/local-operations-v1.md#6c3c639-当前候选完整-linux-playwright-隔离验收2026-10-09)。
 
-同一候选的四依赖故障矩阵运行`20261009T132359Z-825fdfde`通过：Control DB、业务 DB、Qdrant、业务资产故障与恢复均在60秒内反映，最长阶段29.588秒；Secret scan通过且外部Docker资源未变。当前未完成项为单用户完整运行资源采样、完整30分钟RTO及条件RPO演练、阿里云控制台Trace可查询性。RTO前置检查发现本机没有实际stable备份私钥或已登记密文备份；固定 age/PG 工具镜像已构建，但未执行`init-backup`或创建备份，需要用户明确授权。Trace查询尚缺RAM只读AccessKey或控制台登录；本地仅有OTLP上报配置，专用浏览器没有Console会话。Ticket 07仍为in-progress，不表示可切换实际stable或开始远端发布。
+同一候选的四依赖故障矩阵运行`20261009T132359Z-825fdfde`通过：Control DB、业务 DB、Qdrant、业务资产故障与恢复均在60秒内反映，最长阶段29.588秒；Secret scan通过且外部Docker资源未变。当前未完成项为单用户完整运行资源采样、条件RPO（active stable仍为R6，R7备份调度和24小时提醒未启用）及阿里云控制台Trace可查询性。用户授权的R6 API维护重启后，首份加密备份与隔离恢复已成功；84秒满足条件RTO。Ticket 07仍为in-progress，不表示可切换实际stable或开始远端发布。
 
-用户随后明确授权初始化实际stable备份密钥、创建首份加密备份并执行隔离恢复。`./local init-backup`成功，私钥权限600、密钥目录700；第一次`./local backup`在来源捕获阶段被安全拒绝，没有创建密文或catalog。只读诊断确认本机保存配置中的`CHATBI_OBSERVABILITY_ENABLED`、`OTEL_SERVICE_NAME`、`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`、`OTEL_EXPORTER_OTLP_HEADERS`与仍运行的R6 API容器环境不一致；stable未重启/切换，`/health`仍HTTP200。需先明确是否允许重启当前stable加载已保存的OTLP配置；未有有效副本前不运行恢复演练。
+用户随后明确授权初始化实际stable备份密钥、创建首份加密备份并执行隔离恢复。`./local init-backup`成功，私钥权限600、密钥目录700；第一次`./local backup`因保存的4项OTLP配置与运行R6容器环境不一致而安全拒绝，没有创建密文或catalog。之后用户确认一次维护重启，仅重建active R6 API以加载已保存配置；R6镜像、PG/Qdrant容器、RAG挂载和R7最新release指针未变，API健康检查200。首份R6密文`2e1a0cc185ac467a8f91e2adc2ca783f`登记成功；隔离恢复`0b4e8f4c3b7f62c71261f7f57703cfda`完成数据库/RAG/readiness/登录/历史核验，84秒，候选停止且恢复卷保留，未执行激活。详细证据见[正式验收](../../../docs/acceptance/local-operations-v1.md#实际-stable-r6-加密备份与隔离恢复2026-10-09)。
 
 ## 历史结果：`59e1e34` 的 PDF 客户端条件（2026-10-09）
 

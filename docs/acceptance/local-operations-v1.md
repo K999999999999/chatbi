@@ -1,6 +1,6 @@
 # R7 本地运行保障验收
 
-Status: incomplete. Ticket 01–06本地实现与Review完成；当前clean候选`6c3c639`的完整隔离业务验收由用户指定的 Linux Playwright 容器通过，12份 PDF/PNG/XLSX 均独立解析通过，重启续聊、日志Secret检查和资源清理通过。该轮没有启动 Windows 浏览器或 IDM。候选`6c3c639`的四类依赖60秒故障/恢复矩阵也已通过；11项额度/资源释放回归通过。用户已授权并完成本机备份密钥初始化（私钥权限600）；首份备份未创建，来源捕获因保存的 OTLP 配置与运行中 R6 API 配置不一致而安全拒绝，stable 未重启且仍健康。当前单用户运行资源完整采样、30分钟RTO与条件RPO演练、阿里云控制台Trace查询仍待完成。
+Status: incomplete. Ticket 01–06本地实现与Review完成；当前clean候选`6c3c639`的完整隔离业务验收由用户指定的 Linux Playwright 容器通过，12份 PDF/PNG/XLSX 均独立解析通过，重启续聊、日志Secret检查和资源清理通过。该轮没有启动 Windows 浏览器或 IDM。候选`6c3c639`的四类依赖60秒故障/恢复矩阵也已通过；11项额度/资源释放回归通过。用户已授权并完成本机备份密钥初始化、一次仅重建active R6 API以应用已保存OTLP配置的维护重启、首份加密备份和隔离恢复。R6备份在隔离环境完成数据库/权限/Session/RAG/readiness/登录/历史核验，耗时84秒，满足条件RTO不超过30分钟；候选已停止且卷保留，未激活或切换stable。active stable仍为R6，R7自动备份和24小时提醒未在stable启用，因此条件RPO仍未验证。当前候选单用户运行资源完整采样、阿里云控制台Trace查询仍待完成。
 
 ## 候选与证据身份
 
@@ -27,7 +27,8 @@ Status: incomplete. Ticket 01–06本地实现与Review完成；当前clean候�
 | 历史/成果及重启续聊 | PASS（`6c3c639`） | 浏览器两阶段均通过；持久状态指纹、未完成执行恢复规则及成功成果保留通过。 |
 | 共享额度拒绝与释放 | PASS（软件回归） | `tests/query_api/test_operations_api.py::test_sync_query_shares_live_background_capacity_and_recovers`、`tests/query_api/test_execution_runtime.py`、两个导出失败释放回归共11项通过；验证后台占额时同步问数返回429、释放后可再次执行。此证据验证额度逻辑，不代表并发容量或SLA。 |
 | 临时资源回收与最终日志检查 | PASS（`6c3c639`） | 专属账号禁用、`active_sessions=0`、验收容器/网络/卷清理；最终 API 日志 Secret 检查通过，验收前后外部 Docker 资源快照相同。 |
-| 稳定服务 | 未纳入验收项目 | 当前验收期间稳定服务继续运行原 R6 发布 `2b4a8c8`；API/PostgreSQL healthy、Qdrant running，首页与 `/health` 均 HTTP 200。没有执行升级、重启或恢复激活。备份密钥已按用户授权初始化，但首份备份因 OTLP 配置漂移未生成；此前恢复记录见 [R6 Acceptance](local-deployment-v1.md#稳定服务重启核验2026-10-09)。 |
+| 稳定服务（`6c3c639`候选验收期间） | 保持 R6 | 该候选的专属验收未包含 stable。后续另按用户授权仅重建 R6 API 应用保存的 OTLP 配置；PG/Qdrant、RAG 挂载与 R6 镜像身份未变，`/health` HTTP 200。没有升级、恢复激活或切换 stable。 |
+| 实际stable备份与隔离恢复 | PASS（条件RTO） | 首份R6加密备份 `2e1a0cc185ac467a8f91e2adc2ca783f` 已登记；隔离恢复 `0b4e8f4c3b7f62c71261f7f57703cfda` 完成数据库/RAG/readiness/登录/历史核验，84秒。详见下文；RPO自动调度与提醒尚未在active R6启用。 |
 | 最终日志凭据检查与总体门禁 | PASS（`6c3c639`） | `logs_no_known_secrets=true`；原始`0a97182`结果仍作为各自历史报告，不改写候选身份。 |
 
 ## `6c3c639` 当前候选完整 Linux Playwright 隔离验收（2026-10-09）
@@ -102,9 +103,19 @@ clean 候选 `8f73ab12e0b078ffca7c6416ab8ae7ea055522a9` 的固定镜像构建通
 
 - `6c3c639` 已完成当前候选 Linux Playwright 完整业务验收、12份导出解析、重启续聊、日志 Secret 检查及资源回收；同一候选四类依赖60秒故障/恢复矩阵通过。旧候选中未记录提交证据的追问超时仍按历史事实保留，不将旧运行重标。
 - 当前候选的单用户完整运行资源采样与容量报告仍待完成；额度共用/释放逻辑已有11项软件回归通过，但不构成并发容量或 p95 SLA。
-- 30 分钟 RTO / 条件 RPO 演练未开始：`.local/backup-keys/identity.txt` 私钥已按用户授权生成，权限为600；本机仍没有已登记密文备份。`./local backup` 在来源捕获阶段拒绝继续，因为 `.env.local` / `.env.local.secrets` 中的 `CHATBI_OBSERVABILITY_ENABLED`、`OTEL_SERVICE_NAME`、`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`、`OTEL_EXPORTER_OTLP_HEADERS` 与运行中 R6 API 的环境值不一致。没有创建密文、没有重启或修改 stable；需先决定如何协调保存配置与运行配置，再重试备份。
+- 条件RTO已验证：实际R6备份 `2e1a0cc185ac467a8f91e2adc2ca783f` 在隔离环境恢复为 `0b4e8f4c3b7f62c71261f7f57703cfda`，从恢复开始至数据库/RAG/readiness/登录/历史核验用时84秒。条件RPO仍未验证：active stable仍运行R6，R7每6小时自动备份及超过24小时提醒尚未启用；不能将单份手工备份表述为持续24小时保障。早先来源校验拒绝及后续获准的R6 API维护重启见下文。
 - 当前候选阿里云 Trace 尚未查询验证。隔离真实业务已使用用户给定的 OTLP 上报配置发送；本机没有阿里云 RAM 查询 AccessKey 或阿里云 CLI，本轮专用浏览器容器也没有控制台会话；`.local/r7-cloud-connection-probe.json` 记录 `cloud_query_verified=false`。阿里云[控制台文档](https://help.aliyun.com/zh/arms/application-monitoring/user-guide/trace-query)说明按 TraceId 查询需登录；[OpenAPI 文档](https://help.aliyun.com/zh/opentelemetry/developer-reference/api-xtrace-2019-08-08-overview)要求 AccessKey/RAM 身份，OTLP 上报 LicenseKey 本身不构成查询凭据。需要用户登录控制台人工核验，或提供最小只读查询凭据并安全存入本机环境。
 - 本次未重跑正式 AI Evaluation；根据 Ticket/Spec 按实际 Diff 决定影响范围，Prompt、业务算法和模型资产未改时可复用原候选的适用行为基线，但不得冒称当前版本的新正式 Evaluation 基线。
+
+## 实际 stable R6 加密备份与隔离恢复（2026-10-09）
+
+用户授权初始化本机备份私钥、创建首份加密副本、执行隔离恢复，并在来源校验拒绝后确认一次维护重启，仅让active R6 API加载已经保存的OTLP配置。操作前API为R6 `2b4a8c811713adb663d22cdac4108e13e731165f`、镜像ID `sha256:a01769af61f448b2597a5994dfb5dcfb1a9ed3a0a896135cd42d4649e7d9cd97`。重启后API容器由`d4bd45a94e740220cf199d3228b4126dd5177a8b710a61281338438d025290a3`变为`908963b87ebe5924902ebaf2c3e25f1e6eb648195cb3df1efd8c0f2e86b5725f`，仍使用相同R6镜像；PostgreSQL容器`ac805e339f9394f5bf12fa1168aa528f681849e2bcdec19000454e0b978aad9b`和Qdrant容器`f54cf28e05434fec5efeeecb426c94c65a4c722862356d9f89f5fd15287eefc0`未变，API挂载、deployment-state及指向R7 `6c3c639`的最新release指针未变。重启后`/health` HTTP 200。实际R6配置解析为OTLP已启用、endpoint存在、Header名称为`x-arms-license-key`、`x-arms-project`、`x-cms-workspace`，内容采集关闭；这只证明本机运行配置已加载，未证明阿里云可查询。
+
+`./local backup`于`2026-10-09T15:38:49.626457Z`登记副本`2e1a0cc185ac467a8f91e2adc2ca783f`，来源R6 commit `2b4a8c811713adb663d22cdac4108e13e731165f`，密文SHA-256 `c76c4255a5df7e60ff334aaf05f86109b7f7e0e5241459f6b9ea5aa443c60574`，大小187357字节。密文与catalog登记摘要一致，备份目录和密钥权限符合700/600要求。
+
+`./local restore 2e1a0cc185ac467a8f91e2adc2ca783f`生成候选`0b4e8f4c3b7f62c71261f7f57703cfda`，来源API及PostgreSQL镜像ID与备份一致。恢复记录为`verified`，`duration_seconds=84`，readiness、登录、历史、index_ready均为true；覆盖数据库全表指纹、角色与grants、Session撤销、运行代际、固定模型RAG重建和只读历史核验。临时核验账号与解密payload已清理；专属API、PostgreSQL、Qdrant容器均停止，恢复卷、受限配置及登记记录保留。没有执行`restore-activate`，active binding仍为legacy R6，实际stable未切换。
+
+该84秒结果满足Spec的条件RTO目标，因为备份、私钥、镜像和固定模型缓存均已在本机就绪；不包含下载时间。条件RPO仍未验证：当前stable仍运行R6，R7每6小时调度、启动补备份及超过24小时持续提醒没有在active stable启用。R6镜像不提供R7详细状态socket，故`./local status`显示运行就绪证据未确认；HTTP 200仅代表liveness。单用户完整资源采样和阿里云控制台Trace可查询性仍待验。
 
 ## 顺序处理与浏览器条件核验（2026-10-09）
 
