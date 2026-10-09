@@ -47,6 +47,7 @@ async function captureExport(page: Page, button: Locator, format: 'xlsx' | 'png'
   const downloadReady = page.waitForEvent('download', { timeout: 180000 });
   void downloadReady.catch(() => undefined);
   try {
+    const startedAt = performance.now();
     const [response] = await Promise.all([responseReady, button.click()]);
     expect(executionPosts).toBe(0);
     expect(response.status()).toBe(200);
@@ -58,13 +59,16 @@ async function captureExport(page: Page, button: Locator, format: 'xlsx' | 'png'
     expect(body.source).toEqual(expectedSource);
     const path = await download.path();
     if (!path) throw new Error('浏览器没有保留导出下载文件');
+    const durationSeconds = Number(((performance.now() - startedAt) / 1000).toFixed(3));
+    expect(durationSeconds).toBeGreaterThan(0);
     const bytes = readFileSync(path);
     expect(bytes.length).toBeGreaterThan(100);
     if (format === 'xlsx') expect(bytes.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
     if (format === 'png') expect(bytes.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
     if (format === 'pdf') expect(bytes.subarray(0, 5).toString('ascii')).toBe('%PDF-');
     await download.saveAs(reportPath(file));
-    return { format, file, suggested_filename: download.suggestedFilename(), size: bytes.length,
+    return { format, file, suggested_filename: download.suggestedFilename(), duration_seconds: durationSeconds,
+      size: bytes.length,
       sha256: createHash('sha256').update(bytes).digest('hex'), mime: response.headers()['content-type'],
       source: body.source, selection: { chart_id: body.chart_id, chart_type: body.chart_type,
         task_id: body.task_id, product_index: body.product_index }, execution_posts_during_export: executionPosts,

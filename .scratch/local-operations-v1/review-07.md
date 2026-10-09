@@ -59,3 +59,18 @@ Review Dimensions: Correctness / Comprehension / Consistency / Testability / Arc
 Tests: Linux dedicated Playwright container，Google Chrome `155.0.8059.39`，全量前端 `68 passed`；`git diff --check` 通过。先前 `npm run build`、后端 pytest 证据未受仅测试文件变化影响。
 
 Next: 本地提交修正与Review；随后构建新 clean candidate，并在隔离 R7 Compose 项目中执行真实业务验收和当前候选资源采样。
+
+## 单用户导出耗时记录（2026-10-10）
+
+Review: PASS
+Scope: BASE `3aeb96d8f44f4116fd6695a02979798d9e13e136`；`frontend/tests/container-real.spec.ts` 与本Review记录。
+Change Description: 为真实浏览器验收中的每个导出记录点击到浏览器下载完成的单次耗时，精确到毫秒，并纳入现有安全 JSON 报告；不记录文件内容或新增生产行为。该字段补齐 R7 单用户基线中 PDF / PNG / XLSX 导出时长。风险限于验收报告。
+
+Findings:
+- 无。
+
+Review Dimensions: Correctness / Comprehension / Consistency / Testability / Architecture / Security 均通过。计时使用单调时钟，从触发按钮开始，到 `download.path()` 确认浏览器文件可用为止；文件签名与独立解析逻辑保持原样。类型检查及 Diff 检查通过，真实候选验收待运行。
+
+Tests: `npm run typecheck` 与 `git diff --check` 通过；候选验收将验证每个导出均产生正耗时字段。
+
+Next: 本地提交计时补丁，构建并运行 clean 隔离候选；验收后记录耗时与资源采样。
