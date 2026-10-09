@@ -5,7 +5,7 @@ Status: incomplete. Ticket 01–06 的本地实现与 Review 已完成；Ticket 
 ## 候选与证据身份
 
 - 候选源码：`f1b98d73c72b572a37d7b6a3ff5dd19da9d46b3b`，验收报告记录 `git_dirty=false`。
-- 验收时间：2026-10-09（Asia/Shanghai）；运行 ID：`20261008T172902Z-2f1178cf`。
+- 首次正式运行时间：2026-10-09（Asia/Shanghai）；运行 ID：`20261008T172902Z-2f1178cf`。同一候选于当日再次隔离复跑，运行 ID：`20261009T090758Z-b87ca1ff`。
 - 浏览器：Windows Edge `154.0.4258.62`；运行资源使用独立 acceptance Compose project。
 - 原始证据位于本机 ignored 目录 `.local/acceptance/20261008T172902Z-2f1178cf/`，不随仓库分发。报告含运行身份和业务结果，不应复制到版本库或公开日志。
 - 候选镜像构建因默认软件源不可达，使用临时镜像 URL 构建包装；包装只改临时构建上下文中的下载地址，锁文件版本与摘要保持原值，仓库文件未修改。默认网络路径下的独立重建尚未验证。
@@ -21,7 +21,13 @@ Status: incomplete. Ticket 01–06 的本地实现与 Review 已完成；Ticket 
 | PDF 导出 | NOT RUN | 经营分析失败后验收停止，尚未到 PDF 步骤。 |
 | 经营分析 | FAIL | HTTP 请求成功受理，执行流到达真实 `failed` 终态，公开 `error_code=LLM_ERROR`；安全报告不含原始异常，具体原因未能判定。不能记作模型拒答、应用缺陷或成功分析。 |
 | 临时资源回收 | PASS | acceptance 容器、网络和卷均为 0；清理记录为 `active_sessions=0`、卷已移除。 |
-| 稳定服务 | 保持运行 | 验收后稳定 API 与 PostgreSQL healthy、Qdrant running；没有对稳定环境执行升级、密钥初始化、恢复切换或重启。 |
+| 稳定服务 | 未纳入验收项目 | 首次验收时健康；第二次复跑前稳定服务曾停止，随后按原 R6 版本恢复。两次验收均未执行升级、密钥初始化或恢复激活，恢复记录见 [R6 Acceptance](local-deployment-v1.md#稳定服务重启核验2026-10-09)。 |
+
+## 同一候选复跑（2026-10-09）
+
+运行 `20261009T090758Z-b87ca1ff` 再次绑定 clean 源码候选 `f1b98d73c72b572a37d7b6a3ff5dd19da9d46b3b`（`git_dirty=false`），Windows Edge `154.0.4258.62`。问数执行流 `succeeded`，PNG / XLSX 导出成功；经营分析 HTTP 受理成功并到达 `failed` 终态，公开分类仍为 `LLM_ERROR`。安全报告没有原始异常或业务内容，底层原因仍未确认；这证明该候选上的失败可复现，不证明具体由模型服务、网络或应用哪一层引起。PDF 未运行。
+
+本次临时账号已禁用、活动 Session 为 0；按专属 Compose project 标签复核，验收容器、网络、卷均为 0。该复跑未更改稳定版。原始运行报告保留在本机 ignored 目录 `.local/acceptance/20261009T090758Z-b87ca1ff/`，不提交原始诊断文件。
 
 ## 尚未满足的 Ticket 07 验收项
 

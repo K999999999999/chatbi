@@ -64,3 +64,11 @@ AI Evaluation 的复用边界还包括运行依赖变化：R6 将 PyPI `torch 2.
 恢复后 API / PostgreSQL healthy，Qdrant running；网页 HTTP 200、`/health`返回ok；部署状态原子更新为running/succeeded。只读完整行指纹与此前stable-upgrade.json的after一致：4账号、3历史、3turn、0成果；Seed v3、1,166业务行。开发等其他项目的容器身份、镜像、运行状态、启动时间及卷均未变化。证据见 ignored `reports/browser-real-artifacts/r6-runtime-recovery-20261008/` 和 [长期恢复记录](../../.scratch/r6-runtime-document-closeout/verification.md)。
 
 本次仅核验服务恢复、启动门禁、HTTP及持久状态，不重跑登录 / 问数 / 下载的完整浏览器验收或正式AI Evaluation；不修改IDM、不执行整机 / Docker重启，既有维护窗口与下载条件仍适用。
+
+## 稳定服务重启核验（2026-10-09）
+
+当日检查发现稳定 API、PostgreSQL、Qdrant 容器均已退出（exit 255）。停止原因未确认；没有证据表明这是整机或 Docker daemon 重启。运行绑定仍为 `legacy`，活动发布仍是 R6 `2b4a8c811713adb663d22cdac4108e13e731165f`，没有未完成的恢复切换日志。
+
+为恢复已授权的原稳定服务，执行 `./local rollback 2b4a8c811713adb663d22cdac4108e13e731165f`，命令与启动核验成功。恢复前后 API / PostgreSQL 镜像身份与原发布记录相同；PostgreSQL 和 Qdrant 使用原稳定命名卷，未运行 migration、初始化密钥或激活恢复候选。恢复后 API、PostgreSQL healthy，Qdrant running；`/` 和 `/health` 返回 HTTP 200，PostgreSQL 接受连接。最后复核仍为该 R6 发布且服务健康。
+
+R6 当前不实现 R7 readiness 入口，因此 `/ready` 返回 404，`./local status` 的运行就绪证据显示未确认；这不改变 `/health` 和容器健康结果，也不构成 R7 readiness 验收。此处只记录恢复和当前 R6 服务核验，不代表整机 / Docker 重启测试通过。停止原因仍待查明。

@@ -10,6 +10,8 @@ ChatBI 的 MVP 核心能力已经形成：自然语言查询、Online Retrieval�
 
 历史完整 Evaluation 基线包括 commit `31a04549924f622777f106d4fe5a758bd2ca2beb` 和较新的 `564343216e4493f832f07efb345c03b058a04eb5`；后者的三套通过证据及此前多轮失败见[工作项验收记录](../.scratch/engineering-quality-gates/issues/04-current-candidate-evaluation-baseline.md#result)。历史通过结果不代表当前 HEAD 或模型稳定性。当前候选只有在三套正式报告均指向同一最终 clean commit、`git_dirty=false` 且各自 `0 FAIL`、`0 INVALID_CASE` 后才能标记为新的正式 AI Evaluation 基线。
 
+2026-10-09 R7 clean candidate `f1b98d7` 再次隔离复跑，问数与 PNG / XLSX 通过，经营分析仍以 `LLM_ERROR` 失败；Ticket 07 仍未完成。稳定环境曾停止，已按原 R6 发布恢复并核验，原因未确认。详细证据见 [R7 Acceptance](acceptance/local-operations-v1.md) 和 [R6 稳定服务重启核验](acceptance/local-deployment-v1.md#稳定服务重启核验2026-10-09)。
+
 ## 路线顺序与优先级状态
 
 三套验收入口、报告身份检查及基线核验已经完成。用户于 2026-10-03 确认产品 V1 目标，并在项目审查后授权按建议修订需求与优先级：先明确用户流程与运行约束，再推进对话和分析入口、结果可视化、历史与成果、流式和导出，最后完成部署运行验收及作品交付。部署基础与跨需求状态设计提前准备，验证贯穿各项交付。
