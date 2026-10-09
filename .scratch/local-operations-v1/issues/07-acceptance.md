@@ -12,7 +12,7 @@ clean candidate `6d764aca6428bd225afe30395723dfaeb4ae0e0b` 由 `./local build` �
 
 新发现的跨浏览器文件名问题：该次 Linux Chromium 对12次下载均建议名称`download`，独立原生Chrome CDP探针也实际保存中文Blob下载为`download`；文件内容与格式均正确。当前导出源码与此前 Windows Chromium 验收的 `0a97182` 相同，旧报告中的`suggested_filename`为预期中文名。未在本次R7授权内改变R5下载 Contract/产品代码。通用入口的 `runtime.json` 写有 `browser_channel=msedge`，但实际使用Linux Chromium executable，须以 `browser.json` 的153.0.8010.12版本和本机适配器命令为准。
 
-后续Stable验收（2026-10-10）：用户授权后`./local upgrade 6d764aca6428bd225afe30395723dfaeb4ae0e0b`成功，部署状态running/succeeded。升级前R6备份`9d01c195caeb4b71ad5cdb7ca726bfae`及升级后R7手工备份`ce589d79d5a643c48af315756a72ff22`均登记。Stable `/`、`/health`、`/ready`为200，依赖ready，自动备份进程运行，状态known且未逾期。23项调度/升级前门禁/逾期状态测试通过；真实下一次6小时自动备份尚待周期观察，未人为改写Stable状态来模拟24小时过期。阿里云Span已从隔离真实业务发送但`.local/r7-cloud-connection-probe.json`仍为`cloud_query_verified=false`，需要控制台只读核验。
+后续Stable验收（2026-10-10）：用户授权后`./local upgrade 6d764aca6428bd225afe30395723dfaeb4ae0e0b`成功，部署状态running/succeeded。升级前R6备份`9d01c195caeb4b71ad5cdb7ca726bfae`及升级后R7手工备份`ce589d79d5a643c48af315756a72ff22`均登记。Stable `/`、`/health`、`/ready`为200，依赖ready，自动备份进程运行，状态known且未逾期。23项调度/升级前门禁/逾期状态测试通过；真实下一次6小时自动备份尚待周期观察，未人为改写Stable状态来模拟24小时过期。阿里云Trace控制台查询已由用户只读核验：可查到service=chatbi的query.request与retrieval.plan记录；显示时间为10/10 01:10–01:13，早于约01:28的Stable切换，因此不作为切换后Stable请求证据。
 
 
 ## 2026-10-10 Active Stable R7切换
@@ -56,7 +56,7 @@ Done When: 01–06适用证据均可追溯，完整Review和文档链接检查�
 
 clean候选`0a97182e6840ed5ae1e3fd0da012dfe98fb4d1b3`绑定隔离运行`20261009T122448Z-57d6dc78`；专属Docker project为`chatbi-r6-accept-20261009t122448z-57d6dc78`。仓库原始`./local build`成功，Windows Chromium `149.0.7827.55`完整两阶段业务通过：问数、追问、多指标、重新查询、取消、经营分析/流式阶段、历史与成果保存/读取、重启后续聊及再次登录空白均通过。PDF、PNG、XLSX共七份文件由独立解析器验证通过。`scripts.verify_local_deployment`完整验收流程通过最终API日志Secret检查、专属账号/Session清理及外部资源前后核对；临时账号已禁用、active_sessions=0、专属容器/网络/卷清理。release指针已恢复；stable仍为R6 `2b4a8c8`，开发数据库/Qdrant未改动。安全摘要及详细本机证据见[Acceptance](../../../docs/acceptance/local-operations-v1.md#前一候选-0a97182-完整隔离验收2026-10-09)。
 
-前一候选单用户耗时和资源采样已记录。当前代码候选的11项额度/释放回归通过，包含后台占额时同步问数被429拒绝、释放后重试成功；这验证额度逻辑，不替代候选级资源采样或并发容量结论。后续`6c3c639`完整依赖故障/恢复矩阵已通过，具体结果见下节。OTLP真实业务Trace已发送，但云端控制台查询仍待核实。
+前一候选单用户耗时和资源采样已记录。当前代码候选的11项额度/释放回归通过，包含后台占额时同步问数被429拒绝、释放后重试成功；这验证额度逻辑，不替代候选级资源采样或并发容量结论。后续`6c3c639`完整依赖故障/恢复矩阵已通过，具体结果见下节。当时OTLP真实业务Trace已发送而云端查询尚待核验；用户后续在ARMS查到chatbi链路，见本记录的Stable验收。
 
 ## `6c3c639` 前一候选 WSL/Linux Playwright 与依赖验收（2026-10-09）
 

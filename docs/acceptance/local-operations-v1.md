@@ -1,6 +1,6 @@
 # R7 本地运行保障验收
 
-Status: incomplete. Ticket 01–06本地实现与Review完成；clean候选`6d764ac`的Linux Playwright完整隔离验收通过。用户于2026-10-10授权将本机Stable从R6切至R7：`./local upgrade`成功，升级前R6备份`9d01c195caeb4b71ad5cdb7ca726bfae`已登记；升级后创建并校验绑定R7的备份`ce589d79d5a643c48af315756a72ff22`。Stable首页、`/health`、`/ready`为HTTP 200，依赖ready，备份状态known且未逾期，独立调度进程运行。23项备份/提醒定向测试通过；下一个真实6小时周期尚未到达，持续RPO仍待观察，活动Stable逾期提醒未人为触发。阿里云Trace控制台查询未确认。Linux Chromium中文Blob下载名为`download`，保留为R5跨浏览器兼容问题；没有启动Windows浏览器或IDM。
+Status: incomplete. Ticket 01–06本地实现与Review完成；clean候选`6d764ac`的Linux Playwright完整隔离验收通过。用户于2026-10-10授权将本机Stable从R6切至R7：`./local upgrade`成功，升级前R6备份`9d01c195caeb4b71ad5cdb7ca726bfae`已登记；升级后创建并校验绑定R7的备份`ce589d79d5a643c48af315756a72ff22`。Stable首页、`/health`、`/ready`为HTTP 200，依赖ready，备份状态known且未逾期，独立调度进程运行。23项备份/提醒定向测试通过；下一个真实6小时周期尚未到达，持续RPO仍待观察，活动Stable逾期提醒未人为触发。阿里云Trace控制台查询已由用户只读核验：可查到chatbi链路；显示时间早于Stable切换，详见下文。Linux Chromium中文Blob下载名为`download`，保留为R5跨浏览器兼容问题；没有启动Windows浏览器或IDM。
 
 ## 候选与证据身份
 
@@ -35,7 +35,12 @@ Status: incomplete. Ticket 01–06本地实现与Review完成；clean候选`6d76
 | Active Stable R7切换与启动 | PASS（`6d764ac`） | 用户授权后执行`./local upgrade`；首页、`/health`、`/ready`均HTTP 200，Control DB、业务DB、Qdrant、资产均ready；原PostgreSQL/Qdrant持续运行。 |
 | 升级前备份与R7备份 | PASS（升级门禁/手工） | 升级前R6备份`9d01c195caeb4b71ad5cdb7ca726bfae`及升级后R7副本`ce589d79d5a643c48af315756a72ff22`成功登记；ready状态backup known、overdue=false。 |
 | Active Stable自动调度与逾期提醒 | 部分完成 | 独立调度进程运行；调度/升级前备份/逾期状态相关23项定向回归通过。下一次真实6小时周期尚未到达，未改写Stable状态伪造24小时逾期；长周期运行观察待完成。 |
+| 阿里云Trace控制台查询 | PASS（用户只读核验） | ARMS控制台可查到service=chatbi的query.request与retrieval.plan记录；具体Trace ID、耗时和时间边界见阿里云Trace控制台核验记录。 |
 | 最终日志凭据检查与总体门禁 | PASS（`6d764ac`） | `logs_no_known_secrets=true`；旧候选报告继续绑定各自运行身份，不改写历史结果。 |
+
+## 阿里云 Trace 控制台核验（2026-10-10）
+
+阿里云Trace控制台查询已由用户只读核验。用户于2026-10-10报告在ARMS控制台看到service=chatbi的记录：query.request（47.01s，Trace ID 6882f166f4a74d4224a26b2559bd3b00；67.58ms，fab0803c9cc0462e499cb7a2e97b606c；2.22s，562449c33f56c5989c0d7424bf6585ab；5.27ms，360c08fde3795347bc9943007e3c8c70）及retrieval.plan（121μs，9365985bf4298c7b00bf545ee9ebb25a）。这确认控制台可查询到chatbi链路；列表耗时本身不表示成功或失败，需进入详情查看状态和时间线。控制台显示时间为10/10 01:10–01:13，早于本机约01:28的Stable切换记录，因此不作为切换后Stable请求可见性的证据。本机合成探针记录.local/r7-cloud-connection-probe.json绑定另一Trace ID，不将本次列表冒称为该合成探针的精确ID匹配。阿里云[控制台文档](https://help.aliyun.com/zh/arms/application-monitoring/user-guide/trace-query)说明可按TraceId查询调用链详情。
 
 ## `6d764ac` 当前 clean 候选完整验收与单用户基线（2026-10-10）
 
@@ -57,7 +62,7 @@ clean 候选 `6d764aca6428bd225afe30395723dfaeb4ae0e0b` 绑定隔离运行 `2026
 
 切换后首页、`/health`和`/ready`均返回HTTP 200。`./local status`的详细快照中Control DB、业务DB、Qdrant和资产均ready；模型状态为unknown（切换后没有新的真实模型调用），备份状态为known且`overdue=false`。独立`chatbi-stable-backup-1`持续运行，进程为`python3 -m scripts.local_backup_schedule`，`./local logs backup`没有失败记录。升级后执行一次在线手工`./local backup`，副本`ce589d79d5a643c48af315756a72ff22`于`2026-10-10T01:29:47+08:00`成功登记，来源commit为R7 `6d764ac`。
 
-升级前备份门禁、调度周期和过期状态相关23项定向回归通过。由于R7副本刚创建，下一次真实6小时自动周期预计不早于`2026-10-10 07:29:47 +08:00`；本次没有为制造证据而改写生产备份目录或伪造24小时逾期状态。因此自动周期的实际新副本及活动Stable逾期提醒仍待后续观察，不能据当前`overdue=false`宣称长周期RPO已完全验收。云端Trace查询和R5 Linux中文文件名问题仍分别待人工核验与独立跟进。
+升级前备份门禁、调度周期和过期状态相关23项定向回归通过。由于R7副本刚创建，下一次真实6小时自动周期预计不早于`2026-10-10 07:29:47 +08:00`；本次没有为制造证据而改写生产备份目录或伪造24小时逾期状态。因此自动周期的实际新副本及活动Stable逾期提醒仍待后续观察，不能据当前`overdue=false`宣称长周期RPO已完全验收。阿里云Trace控制台查询已由用户只读核验可见chatbi链路（记录早于Stable切换）；R5 Linux中文文件名仍为独立跟进。
 
 ## `6c3c639` 依赖故障矩阵与历史 Linux Playwright 验收（2026-10-09）
 
@@ -132,7 +137,6 @@ clean 候选 `8f73ab12e0b078ffca7c6416ab8ae7ea055522a9` 的固定镜像构建通
 - `6c3c639` 已完成前一 clean 候选 Linux Playwright 完整业务验收、12份导出解析、重启续聊、日志 Secret 检查及资源回收；同一候选四类依赖60秒故障/恢复矩阵通过。旧候选中未记录提交证据的追问超时仍按历史事实保留，不将旧运行重标。
 - 当前候选 `6d764ac` 的单用户耗时与资源采样已完成；这些数据不构成并发容量或 p95 SLA。额度共用/释放逻辑已有11项软件回归通过，验证逻辑而非并发容量。
 - 条件RTO已验证：实际R6备份 `2e1a0cc185ac467a8f91e2adc2ca783f` 在隔离环境恢复为 `0b4e8f4c3b7f62c71261f7f57703cfda`，从恢复开始至数据库/RAG/readiness/登录/历史核验用时84秒。该恢复记录描述截至2026-10-09的状态：当时active Stable运行R6，R7每6小时调度及超过24小时提醒未在Stable启用，单份手工备份不足以证明持续24小时保障。2026-10-10用户授权切到R7后的观察见下文。早先来源校验拒绝及后续获准的R6 API维护重启见下文。
-- 当前候选阿里云 Trace 尚未查询验证。隔离真实业务已使用用户给定的 OTLP 上报配置发送；本机没有阿里云 RAM 查询 AccessKey 或阿里云 CLI，本轮专用浏览器容器也没有控制台会话；`.local/r7-cloud-connection-probe.json` 记录 `cloud_query_verified=false`。阿里云[控制台文档](https://help.aliyun.com/zh/arms/application-monitoring/user-guide/trace-query)说明按 TraceId 查询需登录；[OpenAPI 文档](https://help.aliyun.com/zh/opentelemetry/developer-reference/api-xtrace-2019-08-08-overview)要求 AccessKey/RAM 身份，OTLP 上报 LicenseKey 本身不构成查询凭据。需要用户登录控制台人工核验，或提供最小只读查询凭据并安全存入本机环境。
 - Linux Chromium 中文Blob下载的实际文件名为`download`，这是本次验收发现的R5跨浏览器兼容问题；文件内容正确，Windows Chromium候选`0a97182`报告的`suggested_filename`为预期中文名。未在R7 Ticket授权内修改R5下载行为，需独立决定是否修复。
 - 本次未重跑正式 AI Evaluation；根据 Ticket/Spec 按实际 Diff 决定影响范围，Prompt、业务算法和模型资产未改时可复用原候选的适用行为基线，但不得冒称当前版本的新正式 Evaluation 基线。
 
@@ -144,7 +148,7 @@ clean 候选 `8f73ab12e0b078ffca7c6416ab8ae7ea055522a9` 的固定镜像构建通
 
 `./local restore 2e1a0cc185ac467a8f91e2adc2ca783f`生成候选`0b4e8f4c3b7f62c71261f7f57703cfda`，来源API及PostgreSQL镜像ID与备份一致。恢复记录为`verified`，`duration_seconds=84`，readiness、登录、历史、index_ready均为true；覆盖数据库全表指纹、角色与grants、Session撤销、运行代际、固定模型RAG重建和只读历史核验。临时核验账号与解密payload已清理；专属API、PostgreSQL、Qdrant容器均停止，恢复卷、受限配置及登记记录保留。没有执行`restore-activate`，active binding仍为legacy R6，实际stable未切换。
 
-该84秒结果满足Spec的条件RTO目标，因为备份、私钥、镜像和固定模型缓存均已在本机就绪；不包含下载时间。此段记录的是2026-10-09验收时状态。2026-10-10用户授权将Stable升级到R7并创建R7来源副本；升级后`./local status`已取得ready与backup known/not-overdue证据，调度进程运行。下一次真实6小时自动备份周期尚未到达，活动Stable上的24小时逾期提醒没有人为触发，因此持续RPO仍待周期观察。R7候选单用户资源与耗时采样已完成；阿里云控制台Trace可查询性仍待核验。
+该84秒结果满足Spec的条件RTO目标，因为备份、私钥、镜像和固定模型缓存均已在本机就绪；不包含下载时间。此段记录的是2026-10-09验收时状态。2026-10-10用户授权将Stable升级到R7并创建R7来源副本；升级后`./local status`已取得ready与backup known/not-overdue证据，调度进程运行。下一次真实6小时自动备份周期尚未到达，活动Stable上的24小时逾期提醒没有人为触发，因此持续RPO仍待周期观察。R7候选单用户资源与耗时采样已完成；阿里云Trace控制台查询已由用户核验可见chatbi链路，记录早于Stable切换。
 
 ## 顺序处理与浏览器条件核验（2026-10-09）
 
