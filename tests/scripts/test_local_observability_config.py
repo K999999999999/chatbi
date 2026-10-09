@@ -25,6 +25,10 @@ def test_stable_compose_passes_only_the_explicit_trace_configuration():
         "OTEL_EXPORTER_OTLP_HEADERS",
     } <= api_environment.keys()
     assert "OTEL_EXPORTER_OTLP_ENDPOINT" not in api_environment
+    assert (
+        api_environment["OTEL_SERVICE_NAME"]
+        == "${OTEL_SERVICE_NAME:-chatbi-engine-stable}"
+    )
 
 
 def test_stable_entry_clears_host_trace_variables_before_compose_interpolation():

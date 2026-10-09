@@ -73,7 +73,7 @@ clean 候选 `8f73ab12e0b078ffca7c6416ab8ae7ea055522a9` 的固定镜像构建通
 - `59e1e34` 已完成本轮追问、经营分析及 PNG/XLSX；完整候选仍需完成历史/成果、PDF 和重启续聊。过去追问超时的根因未确定；源码另确认 SERVICE_NOT_READY / HTTP 503 的明确拒绝被网页误报为受理未知，已按既有 Contract 补充确定性回归并修复，不能将该缺陷倒推为历史超时原因。
 - 尚未形成当前候选的单用户分项耗时及 CPU/内存峰值、跨入口资源回收和 60 秒依赖故障/恢复矩阵；本次不能据此声明容量或恢复 SLA。
 - 当前候选的完整隔离恢复计时及 30 分钟 RTO / 条件 RPO 矩阵未完成。Ticket 05 的隔离恢复、切换和回退证据仍绑定各自候选，不自动替代本次候选验收。
-- 当前候选阿里云 Trace 未查询验证；稳定环境 OTLP 当前关闭。没有执行真实 stable 升级或运行配置更改。
+- 当前候选阿里云 Trace 未查询验证；用户已提供并批准适配配置，已保存到私有本地环境文件，实际运行 stable 未重启或加载新配置。没有执行真实 stable 升级。
 - 本次未重跑正式 AI Evaluation；根据 Ticket/Spec 按实际 Diff 决定影响范围，Prompt、业务算法和模型资产未改时可复用原候选的适用行为基线，但不得冒称当前版本的新正式 Evaluation 基线。
 
 ## 顺序处理与浏览器条件核验（2026-10-09）
@@ -90,3 +90,9 @@ clean 候选 `8f73ab12e0b078ffca7c6416ab8ae7ea055522a9` 的固定镜像构建通
 - 本机 `python -m scripts.check_harness_state` 检查 22 份记录，无 ERROR；`chatbi-product-v1`、`local-operations-v1` 和 `r6-presubmit-coverage` 保留 REVIEW，需各自继续跟进。
 
 结论：R7 Ticket 07 仍为 in-progress。当前候选只完成表中列出的部分证据，不能据此宣称 R7 全部验收通过或开始真实 stable 切换。未获本目标 Push/PR 授权。
+
+## 隔离浏览器复验与就绪前置（2026-10-09）
+
+clean candidate `7c12c1e9db3259ad0da92b530d9cb6bce8c02dd4`，运行 `20261009T112806Z-c99ef560`，使用独立 Windows Chromium 条件；首条执行提交 HTTP503 / `SERVICE_NOT_READY`，尚未进入持久执行，没有详情 GET，完整业务未通过。稍后真实依赖探针全部 ready（6.49秒）；证据不足以确定最初拒绝的具体依赖原因，也不能倒推之前的追问超时。临时账号与项目资源按原机制清理；资源清理报告确认专属卷移除。
+
+验收脚本补充首次和重启后的 `/ready` 前置等待；就绪、未知、不就绪、状态码冲突与非法响应的确定性测试通过，但还需新 clean candidate 验证。`e1801a5` 阿里云固定 Header 支持完成，observability 22项与12 subtests PASS；真实配置仅保存到ignored环境文件，稳定运行未切换，云端可查询性仍待验收。

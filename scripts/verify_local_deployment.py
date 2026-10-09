@@ -10,8 +10,11 @@ import shutil
 import socket
 import subprocess
 import sys
+import time
 from datetime import UTC, datetime
 from pathlib import Path, PureWindowsPath
+from urllib.error import HTTPError, URLError
+from urllib.request import ProxyHandler, build_opener
 
 from scripts.local_acceptance import (
     LocalAcceptanceError,
@@ -108,6 +111,61 @@ class Acceptance:
         (self.report / name).write_text(
             json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8"
         )
+
+    def wait_ready(
+        self, stage: str, *, timeout: float = 60, interval: float = 1
+    ) -> None:
+        """只对本次隔离 API 等待动态就绪；不保存响应正文或异常。"""
+        started = time.monotonic()
+        deadline = started + timeout
+        opener = build_opener(ProxyHandler({}))
+        samples = []
+        while (remaining := deadline - time.monotonic()) > 0:
+            status = None
+            state = "unknown"
+            try:
+                try:
+                    response = opener.open(
+                        f"http://127.0.0.1:{self.port}/ready",
+                        timeout=min(5, remaining),
+                    )
+                except HTTPError as error:
+                    response = error
+                with response:
+                    status = response.code
+                    payload = json.loads(response.read(4097))
+                    candidate = (
+                        payload.get("status") if isinstance(payload, dict) else None
+                    )
+                    if isinstance(candidate, str) and candidate in {
+                        "ready",
+                        "not_ready",
+                        "unknown",
+                    }:
+                        state = candidate
+            except (OSError, URLError, ValueError):
+                pass
+            samples.append({"http_status": status, "state": state})
+            if status == 200 and state == "ready":
+                self.save(
+                    f"readiness-{stage}.json",
+                    {
+                        "status": "ready",
+                        "samples": samples,
+                        "elapsed_seconds": round(time.monotonic() - started, 3),
+                    },
+                )
+                return
+            time.sleep(max(0, min(interval, deadline - time.monotonic())))
+        self.save(
+            f"readiness-{stage}.json",
+            {
+                "status": "timeout",
+                "samples": samples,
+                "elapsed_seconds": round(time.monotonic() - started, 3),
+            },
+        )
+        raise LocalAcceptanceError("隔离 API 未在限时内就绪；未提交业务请求")
 
     def external_state(self) -> list[dict]:
         ids = self.run(
@@ -507,8 +565,9 @@ class Acceptance:
             )
             self.support("prepare")
             frontend = self.edge_workspace()
+            self.wait_ready("startup")
             self.phase(
-                "运行 Windows Edge：真实问数 / 追问 / 分析 / 历史 / 成果 / 三种导出。"
+                "运行 Windows 浏览器：真实问数 / 追问 / 分析 / 历史 / 成果 / 三种导出。"
             )
             self.edge(frontend, 0)
             before = json.loads(self.support("acceptance-snapshot").stdout)
@@ -522,6 +581,7 @@ class Acceptance:
             self.dc("run", "--rm", "--no-deps", "-T", "qdrant-check")
             self.dc("run", "--rm", "--no-deps", "-T", "verify")
             self.dc("up", "-d", "--wait", "--wait-timeout", "180", "api")
+            self.wait_ready("restart")
             after = json.loads(self.support("acceptance-snapshot").stdout)
             self.save("after-restart.json", after)
             if before != after:

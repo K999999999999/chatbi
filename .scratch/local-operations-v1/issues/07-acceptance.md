@@ -15,6 +15,8 @@ Canonical Source: [Spec](../spec.md)、[Design](../design.md)；共同约束见 
 
 阿里云接入短 Spec（2026-10-09 用户明确确认）：本地 `.env.local` 保存地址、服务名和开关，`.env.local.secrets` 保存认证 Header，均保持 600 权限；白名单在既有 Authorization/Authentication 基础上增加三个固定阿里云名称，总数上限五项，保留长度、控制字符、重复名称及不回显保护。内容采集仍关闭；不自动重启实际 stable。通过合成配置与 exporter 回归后再进行隔离云端验收，不能将配置保存或软件测试通过称为云端已可观测。
 
+验收前置短 Spec：首条及重启后的真实业务提交前，对专属回环 `/ready` 等待最多60秒，只有 HTTP200/status=ready 可继续，超时安全记录并停止；不重定义 `/health` 或放宽业务断言。显式 `CHATBI_ACCEPTANCE_TRACE_ENABLED=1` 才读取权限600的专用配置/认证 Header，临时环境仍生成独立数据库/管理员/索引凭据并关闭内容采集；默认不导出，清除宿主 OTEL 变量。配置保存与 exporter 配置验证不代表云端可查询。
+
 Change Profile: 本目标发布验收并持续保留证据 / 同一目标最终验证 / 高风险（数据和运行结论）/ Software回归+真实浏览器+运行/安全验收 / 本地Commit，发布另行授权。
 Owner: 当前目标实施维护者。
 Blocked by: 04、05、06。

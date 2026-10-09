@@ -70,6 +70,7 @@ def clean_compose_environment(environ: dict[str, str]) -> dict[str, str]:
         "LLM_",
         "RAG_",
         "QDRANT_",
+        "OTEL_",
     )
     return {
         key: value
@@ -101,6 +102,7 @@ def write_acceptance_env_files(
     uid: int,
     gid: int,
     repository: Path | None = None,
+    trace_headers: str | None = None,
 ) -> tuple[Path, Path]:
     if not 1 <= port <= 65535:
         raise LocalAcceptanceError("验收端口无效")
@@ -141,6 +143,34 @@ def write_acceptance_env_files(
         "CHATBI_ADMIN_SECRET_KEY": secrets.token_hex(32),
         "QDRANT_API_KEY": secrets.token_hex(32),
     }
+    if trace_headers is not None:
+        from src.observability.config import ObservabilityConfig
+
+        trace_config = ObservabilityConfig.from_env(
+            {
+                **local_values,
+                "CHATBI_RUNTIME_ENV": "stable",
+                "OTEL_EXPORTER_OTLP_HEADERS": trace_headers,
+            }
+        )
+        if (
+            not trace_config.enabled
+            or not trace_config.otlp_endpoint
+            or not trace_config.otlp_headers
+        ):
+            raise LocalAcceptanceError("隔离云端 Trace 缺少安全有效配置")
+        config.update(
+            {
+                "CHATBI_OBSERVABILITY_ENABLED": "true",
+                "CHATBI_TRACE_CONTENT_ENABLED": "false",
+                "OTEL_SERVICE_NAME": trace_config.service_name,
+                "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": trace_config.otlp_endpoint,
+                "CHATBI_OTLP_TIMEOUT_SECONDS": str(trace_config.otlp_timeout_seconds),
+            }
+        )
+        private["OTEL_EXPORTER_OTLP_HEADERS"] = ",".join(
+            f"{key}={value}" for key, value in trace_config.otlp_headers.items()
+        )
     config_path = work_dir / "acceptance.env"
     secret_path = work_dir / "acceptance.secrets.env"
     _write_private(config_path, config)
@@ -269,6 +299,14 @@ def prepare(root: Path, work: Path, run_id: str, port: int) -> None:
     if local_config.stat().st_mode & 0o077:
         raise LocalAcceptanceError(".env.local 权限过宽；需要 chmod 600")
     local_values = parse_env_text(local_config.read_text(encoding="utf-8"))
+    trace_headers = None
+    if os.getenv("CHATBI_ACCEPTANCE_TRACE_ENABLED") == "1":
+        trace_secrets = root / ".env.local.secrets"
+        if trace_secrets.stat().st_mode & 0o077:
+            raise LocalAcceptanceError(".env.local.secrets 权限过宽；需要 chmod 600")
+        trace_headers = parse_env_text(trace_secrets.read_text(encoding="utf-8")).get(
+            "OTEL_EXPORTER_OTLP_HEADERS", ""
+        )
     config_path, secret_path = write_acceptance_env_files(
         work,
         local_values=local_values,
@@ -276,6 +314,7 @@ def prepare(root: Path, work: Path, run_id: str, port: int) -> None:
         uid=os.getuid(),
         gid=os.getgid(),
         repository=root,
+        trace_headers=trace_headers,
     )
     model_dir = Path(
         local_values.get("CHATBI_LOCAL_MODEL_DIR", ".model-cache/bge-m3-5617a9f61b02")
