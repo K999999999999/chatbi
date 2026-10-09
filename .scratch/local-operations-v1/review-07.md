@@ -29,3 +29,18 @@ Review Dimensions: Correctness / Comprehension / Consistency / Testability / Arc
 Tests: `npm run typecheck --prefix frontend` 通过；当前候选 `2d907c0` 已证明首问和 XLSX 流程通过，但追问超时且未暴露终态。该补丁仍需一次新的隔离 Edge 运行验证报告字段。
 
 Next: 本地提交补丁与本次验收记录。是否再次发起真实模型/Edge 候选复验，需取得用户对下一次外部调用的确认。
+
+## 执行提交请求安全计数补丁（2026-10-09）
+
+Review: PASS
+Scope: BASE `8f73ab12e0b078ffca7c6416ab8ae7ea055522a9`; `frontend/tests/container-real.spec.ts`、`.scratch/local-operations-v1/issues/07-acceptance.md`、`docs/acceptance/local-operations-v1.md`、`docs/roadmap.md`。
+Change Description: `8f73ab1` 的复验只观察到首问详情轮询，未记录追问的提交请求。补丁为验收报告增加执行提交 POST 的请求数、响应数、HTTP 状态和允许列表内公开错误码，并汇总 SSE 连接计数；现有执行详情状态/错误码摘要保持不变。输出不含 URL 路径、执行 ID、错误正文或业务数据。文档记录 `8f73ab1` 已核实结果，并把分析未运行和后续待项明确保留。风险仅涉及验收诊断；产品 API 和运行行为不变。验证：`npm run typecheck`、Markdown 链接检查、`git diff --check` 通过；新字段尚未由真实候选复验验证。
+
+Findings:
+- 无。
+
+Review Dimensions: Correctness / Comprehension / Consistency / Testability / Architecture / Security 均通过。只统计固定执行提交路由及响应状态；从提交响应读取的错误码仅接受公开错误码白名单，其他值不保存；解析失败时不传播、不记录原始响应。SSE 连接只聚合为总数，不保留执行 ID。
+
+Tests: `npm run typecheck --prefix frontend`、`uv run --frozen python -m scripts.check_markdown_links`、`git diff --check` 通过。候选 `8f73ab1` 已证明首问和 XLSX 流程，但追问未观察到终态；本补丁需后续隔离运行验证新的提交计数。
+
+Next: 提交本地诊断和验收记录；再进行真实模型/Edge 候选验收前需取得用户确认。

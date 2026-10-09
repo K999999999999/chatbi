@@ -97,6 +97,9 @@ declare global {
 async function captureExecutionStreams(page: Page) {
   const connections = new Map<string, number>();
   const submissions: string[] = [];
+  const submissionEvidence = {
+    request_count: 0, response_count: 0, http_statuses: new Set<number>(), error_codes: new Set<string>(),
+  };
   const pollEvidence = { request_count: 0, http_statuses: new Set<number>(), execution_statuses: new Set<string>(), error_codes: new Set<string>() };
   const pollReads: Promise<void>[] = [];
   await page.addInitScript((allowedStages: string[]) => {
@@ -175,11 +178,29 @@ async function captureExecutionStreams(page: Page) {
       const executionId = eventMatch[1];
       connections.set(executionId, (connections.get(executionId) ?? 0) + 1);
     }
-    if (request.method() === 'POST' && /^\/api\/v1\/histories\/[0-9a-f-]{36}\/executions$/.test(path)) submissions.push(path);
+    if (request.method() === 'POST' && /^\/api\/v1\/histories\/[0-9a-f-]{36}\/executions$/.test(path)) {
+      submissions.push(path);
+      submissionEvidence.request_count += 1;
+    }
   });
   page.on('response', response => {
     const request = response.request();
     const path = new URL(response.url()).pathname;
+    if (request.method() === 'POST' && /^\/api\/v1\/histories\/[0-9a-f-]{36}\/executions$/.test(path)) {
+      submissionEvidence.response_count += 1;
+      submissionEvidence.http_statuses.add(response.status());
+      pollReads.push(response.json().then(payload => {
+        const body = payload as {
+          error_code?: unknown;
+          execution?: { public_error?: { error_code?: unknown } };
+        };
+        const errorCode = body?.error_code ?? body?.execution?.public_error?.error_code;
+        if (typeof errorCode === 'string' && safeExecutionErrorCodes.has(errorCode)) {
+          submissionEvidence.error_codes.add(errorCode);
+        }
+      }).catch(() => undefined));
+      return;
+    }
     if (request.method() !== 'GET' || !/^\/api\/v1\/executions\/[0-9a-f-]{36}$/.test(path)) return;
     pollEvidence.request_count += 1;
     pollEvidence.http_statuses.add(response.status());
@@ -204,6 +225,13 @@ async function captureExecutionStreams(page: Page) {
         http_statuses: [...pollEvidence.http_statuses],
         execution_statuses: [...pollEvidence.execution_statuses],
         error_codes: [...pollEvidence.error_codes],
+        event_connection_count: [...connections.values()].reduce((total, count) => total + count, 0),
+        execution_submissions: {
+          request_count: submissionEvidence.request_count,
+          response_count: submissionEvidence.response_count,
+          http_statuses: [...submissionEvidence.http_statuses],
+          error_codes: [...submissionEvidence.error_codes],
+        },
       };
     },
     async forExecution(executionId: string): Promise<ExecutionStreamEvidence> {

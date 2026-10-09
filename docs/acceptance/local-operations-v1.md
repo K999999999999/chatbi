@@ -1,11 +1,12 @@
 # R7 本地运行保障验收
 
-Status: incomplete. Ticket 01–06 的本地实现与 Review 已完成；Ticket 07 当前候选完成部分隔离运行和真实浏览器验收。经营分析的 `LLM_ERROR` 已通过隔离诊断定位到运行时 `ObservedModel` 未转发 `stream()`；修复已提交，但当前候选的 Edge 验收在追问阶段未观察到终态，尚未覆盖经营分析。完整验收门槛未满足。
+Status: incomplete. Ticket 01–06 的本地实现与 Review 已完成；Ticket 07 当前候选完成部分隔离运行和真实浏览器验收。经营分析的 `LLM_ERROR` 已通过隔离诊断定位到运行时 `ObservedModel` 未转发 `stream()`；修复已提交，但最新 Edge 候选的首问通过后，追问仍未观察到终态，尚未覆盖经营分析。完整验收门槛未满足。
 
 ## 候选与证据身份
 
 - 候选源码：`f1b98d73c72b572a37d7b6a3ff5dd19da9d46b3b`，验收报告记录 `git_dirty=false`。
 - 首次正式运行时间：2026-10-09（Asia/Shanghai）；运行 ID：`20261008T172902Z-2f1178cf`。同一候选于当日再次隔离复跑，运行 ID：`20261009T090758Z-b87ca1ff`。
+- 后续修复候选：`515c253`（模型 `stream()` 转发）；`2d907c0`、`8f73ab1`（E2E 安全诊断），均以干净提交运行。最新已测候选为 `8f73ab1`，运行 ID `20261009T102635Z-456860d7`。
 - 浏览器：Windows Edge `154.0.4258.62`；运行资源使用独立 acceptance Compose project。
 - 原始证据位于本机 ignored 目录 `.local/acceptance/20261008T172902Z-2f1178cf/`，不随仓库分发。报告含运行身份和业务结果，不应复制到版本库或公开日志。
 - 候选镜像构建因默认软件源不可达，使用临时镜像 URL 构建包装；包装只改临时构建上下文中的下载地址，锁文件版本与摘要保持原值，仓库文件未修改。默认网络路径下的独立重建尚未验证。
@@ -16,10 +17,10 @@ Status: incomplete. Ticket 01–06 的本地实现与 Review 已完成；Ticket 
 | --- | --- | --- |
 | 隔离候选启动、数据库/RAG 初始化与 readiness | PASS | 使用专属运行资源；原稳定服务未加入验收 Compose。 |
 | 故障拒绝与状态保护 | PASS | 配置错误、启动失败、不兼容 migration、缺失索引、回环端口占用五类检查均按预期拒绝；持久状态前后检查相同。 |
-| 浏览器与查询链路 | FAIL（最新候选部分通过） | `f1b98d7` 两次 Edge 问数/追问通过；`515c253` 首条问数未取得成功快照；`2d907c0` 首条查询及执行流成功，随后追问未观察到终态响应而超时。 |
-| 图表与 XLSX 导出 | PASS（部分候选）/ NOT RUN（当前其余格式） | `f1b98d7` 的 PNG / XLSX 从已保存结果导出成功；`2d907c0` 首条查询 XLSX 导出成功；当前候选未到 PNG / PDF。 |
-| PDF 导出 | NOT RUN | `f1b98d7` 经营分析失败；`515c253` 首条问数未成功；`2d907c0` 追问未观察到终态，均未到 PDF 步骤。 |
-| 经营分析 | FAIL（旧候选）/ NOT RUN（修复候选） | `f1b98d7` 两次验收公开 `error_code=LLM_ERROR`；诊断捕获内部分类 `PROVIDER_STREAM_UNAVAILABLE`，源码定位到 `ObservedModel` 未转发底层模型的 `stream()`，修复已提交。`515c253` 在首条问数停止；`2d907c0` 在追问阶段停止，均未验证修复后的分析路径。 |
+| 浏览器与查询链路 | FAIL（最新候选部分通过） | `f1b98d7` 两次 Edge 问数/追问通过；`515c253` 首条问数未取得成功快照；`2d907c0`、`8f73ab1` 首条查询及执行流成功，XLSX导出通过，但追问均未观察到终态并超时。 |
+| 图表与 XLSX 导出 | PASS（部分候选）/ NOT RUN（当前其余格式） | `f1b98d7` 的 PNG / XLSX 从已保存结果导出成功；`2d907c0`、`8f73ab1` 首条查询 XLSX 导出成功；当前候选未到 PNG / PDF。 |
+| PDF 导出 | NOT RUN | `f1b98d7` 经营分析失败；`515c253` 首条问数未成功；`2d907c0`、`8f73ab1` 追问未观察到终态，均未到 PDF 步骤。 |
+| 经营分析 | FAIL（旧候选）/ NOT RUN（修复候选） | `f1b98d7` 两次验收公开 `error_code=LLM_ERROR`；诊断捕获内部分类 `PROVIDER_STREAM_UNAVAILABLE`，源码定位到 `ObservedModel` 未转发底层模型的 `stream()`，修复已提交。`515c253` 在首条问数停止；`2d907c0`、`8f73ab1` 均在追问阶段停止，未验证修复后的分析路径。 |
 | 临时资源回收 | PASS | acceptance 容器、网络和卷均为 0；清理记录为 `active_sessions=0`、卷已移除。 |
 | 稳定服务 | 未纳入验收项目 | 当前验收期间稳定服务继续运行原 R6 发布 `2b4a8c8`；API/PostgreSQL healthy、Qdrant running，首页与 `/health` 均 HTTP 200。没有执行升级、密钥初始化或恢复激活；此前恢复记录见 [R6 Acceptance](local-deployment-v1.md#稳定服务重启核验2026-10-09)。 |
 
@@ -57,9 +58,17 @@ clean 候选 `2d907c03ee0b5eab353fb3478b6883793c823048` 的 API / PostgreSQL 固
 
 临时账号已禁用、活动 Session 为 0；按本次 Compose project 标签复核，容器、网络、卷均为 0。稳定 R6 仍绑定 `2b4a8c8`，API/PostgreSQL healthy、Qdrant running，首页和 `/health` 均 HTTP 200。验收结束后本机默认 release 指针恢复为原 `f1b98d7`，文件权限为 `0600`。为下一次诊断，当前本地 E2E 改动汇总执行详情轮询的 HTTP 状态、允许列表内执行状态与错误码，不保存执行 ID、错误正文或业务响应；`npm run typecheck` 和 `git diff --check` 已通过，尚未提交或重跑。
 
+## 轮询诊断候选 Edge 复验（2026-10-09）
+
+clean 候选 `8f73ab12e0b078ffca7c6416ab8ae7ea055522a9` 的固定镜像构建通过。隔离运行 `20261009T102635Z-456860d7` 的启动、RAG readiness、配置/兼容/失败保护及 Chromium sandbox 检查通过。Windows Edge `154.0.4258.62` 首条问数 HTTP 200，快照符合参考值，执行流为 `succeeded`，阶段覆盖问数理解、检索、SQL生成/校验/执行和结果保存；XLSX 导出通过。
+
+同一对话追问后，浏览器测试等待终态执行详情超时（`TimeoutError`，位置 `container-real.spec.ts:319:33`）。新的安全轮询摘要总计记录 1 个执行详情 GET（HTTP 200，状态 `succeeded`，错误码列表为空），与首条查询的终态核验相符；没有记录追问提交请求数量，故现有证据不能判断追问是否已提交或为何未继续轮询。报告未包含追问 HTTP 终态、执行状态或错误码。经营分析、历史/成果及后续 PNG/PDF、重启续聊步骤均未运行；`ObservedModel.stream()` 修复仍未被业务分析路径验证。
+
+临时账号已禁用、活动 Session 为 0；按本次 Compose project 标签复核，容器、网络、卷均为 0。稳定 R6 仍绑定 `2b4a8c8`，API/PostgreSQL healthy、Qdrant running，首页和 `/health` 均 HTTP 200。验收后本机默认 release 指针恢复为 `f1b98d7`。下一步本地补充仅记录执行提交请求计数和 HTTP 状态，不记录执行 ID、请求/响应正文或业务数据；当前需在新的真实候选运行前完成 Review 和本地提交。
+
 ## 尚未满足的 Ticket 07 验收项
 
-- 已定位并在本地修复分析流式包装器；`2d907c0` 的真实问数及 XLSX 通过，但追问未观察到终态。当前候选仍需完成追问、经营分析成功、历史/成果及 PNG/PDF 浏览器验收。
+- 已定位并在本地修复分析流式包装器；`2d907c0`、`8f73ab1` 的真实首问及 XLSX 通过，但追问未观察到终态。当前候选仍需完成追问、经营分析成功、历史/成果及 PNG/PDF 浏览器验收。
 - 尚未形成当前候选的单用户分项耗时及 CPU/内存峰值、跨入口资源回收和 60 秒依赖故障/恢复矩阵；本次不能据此声明容量或恢复 SLA。
 - 当前候选的完整隔离恢复计时及 30 分钟 RTO / 条件 RPO 矩阵未完成。Ticket 05 的隔离恢复、切换和回退证据仍绑定各自候选，不自动替代本次候选验收。
 - 当前候选阿里云 Trace 未查询验证；稳定环境 OTLP 当前关闭。没有执行真实 stable 升级或运行配置更改。
