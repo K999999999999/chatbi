@@ -236,6 +236,6 @@ query.request
 - 后台问数 / 分析、导出生成、文件交付与临时资源回收覆盖真实执行生命周期。经营分析的提取、计划校验、查询任务、归因和总结只在实际执行时建立固定命名 Span。
 - GET 状态查询、执行轮询和 SSE 观察保留本地 `X-Trace-ID` 诊断编号，但不产生业务 Root Trace；这类观察不得制造高频 Trace。健康探测仍在观测中间件范围之外。
 - 稳定 Compose 只向 API 传递启用开关、HTTPS Trace Endpoint、Trace 超时、service name/version、固定 stable 资源环境和受限认证 Header。`./local` 清理宿主 shell 的同名变量后再读取专用配置。内容采集在 stable 中固定关闭；未知或不安全 Endpoint 使 OTLP 停用，不阻断业务，不合规 Header 会被丢弃。
-- Endpoint 不含用户信息、查询字符串或片段；stable 必须使用 HTTPS。开发环境仅允许回环地址使用 HTTP。Header 只接受 `Authorization` 或 `Authentication`，值不能含控制字符且长度有上限；配置对象与安全日志不回显其值。
+- Endpoint 不含用户信息、查询字符串或片段；stable 必须使用 HTTPS。开发环境仅允许回环地址使用 HTTP。Header 只接受 `Authorization`、`Authentication`、`x-arms-license-key`、`x-arms-project`、`x-cms-workspace` 五个固定名称，最多五项；每项值最多 1024 字符，完整环境配置最多 4096 字符，值必须为无控制字符的 ASCII 文本，重复名称拒绝整组环境配置；配置对象与安全日志不回显其值。
 - OTLP Timeout 为 1–10 秒，默认 5 秒；BatchSpanProcessor 使用 128 项有限队列与单批上限 128。Exporter 异常只记录固定阶段与错误分类，不重试业务、不写原始异常；Provider 关闭遵守锁定 SDK 的有限关闭等待。
 - 实际阿里云 Trace 可查询性仍需用当前候选和用户自己的稳定配置验收；没有配置或外连证据时记录为未验收，不沿用旧版模块的历史结果。

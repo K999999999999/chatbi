@@ -6,6 +6,48 @@ from src.observability.config import ObservabilityConfig
 
 
 class ObservabilityConfigTest(unittest.TestCase):
+    def test_aliyun_headers_are_preserved_with_existing_authentication(self) -> None:
+        expected = {
+            "authorization": "Bearer synthetic",
+            "authentication": "synthetic-auth",
+            "x-arms-license-key": "synthetic-license",
+            "x-arms-project": "synthetic-project",
+            "x-cms-workspace": "synthetic-workspace",
+        }
+        config = ObservabilityConfig.from_env(
+            {
+                "OTEL_EXPORTER_OTLP_HEADERS": ",".join(
+                    f"{key}={value}" for key, value in expected.items()
+                )
+                + ",tenant=unapproved"
+            }
+        )
+        self.assertEqual(dict(config.otlp_headers), expected)
+        for value in expected.values():
+            self.assertNotIn(value, repr(config))
+
+    def test_aliyun_headers_keep_duplicate_length_and_control_protection(self) -> None:
+        duplicate = ObservabilityConfig.from_env(
+            {
+                "OTEL_EXPORTER_OTLP_HEADERS": "x-arms-project=synthetic-one,X-Arms-Project=synthetic-two",
+            }
+        )
+        self.assertEqual(dict(duplicate.otlp_headers), {})
+        direct = ObservabilityConfig(
+            otlp_headers={
+                "X-Arms-License-Key": "x" * 1025,
+                "x-arms-project": "synthetic\nInjected",
+                "x-cms-workspace": "synthetic-workspace",
+                "tenant": "unapproved",
+            }
+        )
+        self.assertEqual(
+            dict(direct.otlp_headers),
+            {
+                "x-cms-workspace": "synthetic-workspace",
+            },
+        )
+
     def test_content_capture_is_fail_closed_by_default_and_unknown_env(self) -> None:
         default_config = ObservabilityConfig.from_env({})
         unknown_config = ObservabilityConfig.from_env(

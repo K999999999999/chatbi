@@ -11,7 +11,15 @@ from urllib.parse import urlsplit
 _DEFAULT_TIMEOUT_SECONDS = 5.0
 _MAX_TIMEOUT_SECONDS = 10.0
 _ALLOWED_CONTENT_ENVS = frozenset({"local", "dev", "test"})
-_ALLOWED_HEADER_NAMES = frozenset({"authorization", "authentication"})
+_ALLOWED_HEADER_NAMES = frozenset(
+    {
+        "authorization",
+        "authentication",
+        "x-arms-license-key",
+        "x-arms-project",
+        "x-cms-workspace",
+    }
+)
 _TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 _FALSE_VALUES = frozenset({"0", "false", "no", "off"})
 _HEADER_PART_RE = re.compile(r"^\s*([A-Za-z][A-Za-z0-9-]{0,63})\s*=\s*(.*?)\s*$")
@@ -244,7 +252,7 @@ def _safe_headers(headers: Mapping[str, str] | object) -> dict[str, str]:
             or not normalized_value
             or len(normalized_value) > 1024
             or any(ord(char) < 32 or ord(char) > 126 for char in normalized_value)
-            or len(safe) >= 2
+            or len(safe) >= len(_ALLOWED_HEADER_NAMES)
         ):
             continue
         safe[normalized_key] = normalized_value

@@ -340,13 +340,26 @@ class ObservabilityTracingTest(unittest.TestCase):
                     runtime_env="stable",
                     otlp_traces_endpoint="https://collector/v1/traces",
                     otlp_timeout_seconds=2.5,
-                    otlp_headers={"Authentication": "Bearer secret"},
+                    otlp_headers={
+                        "Authentication": "Bearer synthetic",
+                        "x-arms-license-key": "synthetic-license",
+                        "x-arms-project": "synthetic-project",
+                        "x-cms-workspace": "synthetic-workspace",
+                    },
                 )
             )
 
         self.assertEqual(captured["endpoint"], "https://collector/v1/traces")
         self.assertEqual(captured["timeout"], 2.5)
-        self.assertEqual(captured["headers"], {"authentication": "Bearer secret"})
+        self.assertEqual(
+            captured["headers"],
+            {
+                "authentication": "Bearer synthetic",
+                "x-arms-license-key": "synthetic-license",
+                "x-arms-project": "synthetic-project",
+                "x-cms-workspace": "synthetic-workspace",
+            },
+        )
         recorder.shutdown()
 
     def test_worker_root_uses_immutable_carrier_link_after_http_root_closes(
