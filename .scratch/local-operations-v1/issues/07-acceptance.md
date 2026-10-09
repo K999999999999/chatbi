@@ -10,6 +10,8 @@ Canonical Source: [Spec](../spec.md)、[Design](../design.md)；共同约束见 
 
 当前短 Spec：服务在持久受理前以 HTTP 503 / `SERVICE_NOT_READY` 明确拒绝时，网页应显示安全拒绝原因，保留原成功结果与上下文，恢复后允许用户明确再次提交；不得误报为提交响应丢失。普通未知 5xx / 网络断连仍按既有 R4 受理恢复与幂等 Contract 处理，不自动重发。覆盖问数、经营分析和重新查询的确定性浏览器回归；修复不改变权限、公共 API、业务语义或模型 Prompt。
 
+下一项短 Spec：隔离验收默认继续使用 Windows Edge；允许操作者显式指定本机已有 Windows 浏览器 EXE，仅用于专属临时 Profile。拒绝无效路径，报告记录实际浏览器版本与启动类型，不能把其他浏览器结果冒称 Edge 已通过；不修改 IDM、用户浏览器设置或系统安装。先核验合成 PDF 下载，再使用 clean candidate 完成真实 PDF / 历史 / 成果 / 重启续聊及独立文件解析。日常 Edge 的 IDM 接管条件继续保留。
+
 
 Change Profile: 本目标发布验收并持续保留证据 / 同一目标最终验证 / 高风险（数据和运行结论）/ Software回归+真实浏览器+运行/安全验收 / 本地Commit，发布另行授权。
 Owner: 当前目标实施维护者。

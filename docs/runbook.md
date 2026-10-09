@@ -649,6 +649,8 @@ uv run --frozen python -m scripts.verify_local_deployment
 
 若网页提示“导出文件大小无效”，浏览器收到 PDF 的 204 / 空内容而 API 访问日志为 200，先做客户端对照，不把它直接归因于服务器生成失败。本机下载管理器可能接管文件；检查 IDM 等软件的浏览器集成与文件类型设置。IDM 官方提供按站点排除自动接管和关闭浏览器集成的设置，见 [IDM Options](https://www.internetdownloadmanager.com/support/using_idm/options.html)。如需临时修改，先记录原设置、确认对其他下载的影响，验收后恢复。Agent 未获用户明确授权时不得调整本机下载管理器或用户浏览器配置。本机实测已确认IDM的PDF接管可导致该现象；完整R6验收在临时取消PDF接管的条件下通过，随后已恢复原设置。日常PDF下载需暂停接管或由用户明确设置本机站点例外。R6证据与验证限制见 [本地部署Acceptance](acceptance/local-deployment-v1.md)。
 
+隔离验收可通过 `CHATBI_ACCEPTANCE_BROWSER_EXECUTABLE` 显式指定本机已有 Windows 浏览器的绝对 EXE 路径，运行 `uv run --frozen python -m scripts.verify_local_deployment`。默认仍为 Edge；该选项只影响专属临时 Profile，不改变用户配置或安装浏览器。先确认该浏览器能完整接收合成 PDF，报告会记录实际版本和 `custom-executable` 启动类型；其他浏览器通过不代表日常 Edge 的 IDM 接管已解除，也不替代真实业务文件解析。
+
 ## R7 动态运行状态（本地实现完成，当前候选验收未完成）
 
 R7 Contract见[Spec](specs/local-operations-v1.md)，机制见[Design](designs/local-operations-v1.md)。Ticket 01–06本地实现与Review已完成；Ticket 07当前候选只完成部分隔离/浏览器验收，整体状态及未完成项见[R7 Acceptance](acceptance/local-operations-v1.md)。stable仍运行原R6版本；本Runbook描述的是已实现的本地候选能力，不代表其已部署到stable。

@@ -11,7 +11,7 @@ import socket
 import subprocess
 import sys
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from scripts.local_acceptance import (
     LocalAcceptanceError,
@@ -40,6 +40,13 @@ class Acceptance:
         self.work = root / ".local" / "acceptance" / self.run_id
         self.report = self.work / "report"
         self.env = clean_compose_environment(dict(os.environ))
+        self.browser_executable = os.getenv("CHATBI_ACCEPTANCE_BROWSER_EXECUTABLE", "")
+        if self.browser_executable and (
+            not PureWindowsPath(self.browser_executable).is_absolute()
+            or PureWindowsPath(self.browser_executable).suffix.lower() != ".exe"
+            or any(char in self.browser_executable for char in "\r\n\0")
+        ):
+            raise LocalAcceptanceError("隔离浏览器必须指定 Windows 绝对 EXE 路径")
         self.windows_workspace: Path | None = None
         self.compose: list[str] = []
         self.sequence = 0
@@ -281,7 +288,10 @@ class Acceptance:
             "CHATBI_CONTAINER_BASE_URL": f"http://127.0.0.1:{self.port}",
             "CHATBI_CONTAINER_COMMIT": self.commit,
             "CHATBI_CONTAINER_GIT_DIRTY": "false",
-            "CHATBI_CONTAINER_TARGET": "local-fixed-image-windows-edge",
+            "CHATBI_CONTAINER_TARGET": "local-fixed-image-windows-browser"
+            if self.browser_executable
+            else "local-fixed-image-windows-edge",
+            "CHATBI_CONTAINER_BROWSER_EXECUTABLE": self.browser_executable,
             "CHATBI_CONTAINER_REPORT_DIR": windows_report,
             "CHATBI_CONTAINER_CREDENTIALS_FILE": windows_report + "\\credentials.env",
         }
@@ -583,7 +593,12 @@ class Acceptance:
                     "release": release,
                     "project": self.project,
                     "volumes": acceptance_volume_names(self.run_id),
-                    "browser_channel": "msedge",
+                    "browser_channel": "custom-executable"
+                    if self.browser_executable
+                    else "msedge",
+                    "browser_version": json.loads(
+                        (self.report / "browser.json").read_text()
+                    )["browser"],
                     "model_config_sha256": hashlib.sha256(
                         (model_dir / "config.json").read_bytes()
                     ).hexdigest(),
@@ -671,7 +686,11 @@ def main() -> int:
             file=sys.stderr,
         )
         return 2
-    acceptance = Acceptance(ROOT, commit)
+    try:
+        acceptance = Acceptance(ROOT, commit)
+    except LocalAcceptanceError as error:
+        print(f"本地部署验收配置无效：{error}", file=sys.stderr)
+        return 2
     try:
         acceptance.execute()
     except (

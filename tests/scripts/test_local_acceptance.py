@@ -20,6 +20,18 @@ from scripts.local_acceptance import (
 RUN_ID = "20261008T021500Z-a1b2c3d4"
 
 
+@pytest.mark.parametrize("path", ["relative.exe", "C:relative.exe", "C:\\browser.txt", "C:\\browser.exe\n"])
+def test_acceptance_refuses_invalid_windows_browser_before_creating_resources(
+    tmp_path, monkeypatch, path
+):
+    from scripts.verify_local_deployment import Acceptance
+
+    monkeypatch.setenv("CHATBI_ACCEPTANCE_BROWSER_EXECUTABLE", path)
+    with pytest.raises(LocalAcceptanceError, match="Windows 绝对 EXE"):
+        Acceptance(tmp_path, "a" * 40)
+    assert not (tmp_path / ".local").exists()
+
+
 def test_acceptance_resources_have_run_scoped_nonstable_identity() -> None:
     assert project_name(RUN_ID) == f"chatbi-r6-accept-{RUN_ID.lower()}"
     assert acceptance_volume_names(RUN_ID) == (
