@@ -1,5 +1,75 @@
 import { test, expect } from '@playwright/test';
-import { login } from './helpers';
+import { login, send } from './helpers';
+
+test('服务拒绝追问时显示确定原因，恢复后沿用成功上下文', async ({ page }) => {
+  await login(page);
+  await send(page, '2025年2月净销售额');
+  await expect(page.getByRole('table')).toHaveCount(1);
+  const submissions: Record<string, unknown>[] = [];
+  let rejected = true;
+  await page.route('**/api/v1/histories/*/executions', route => {
+    submissions.push(route.request().postDataJSON());
+    return rejected ? route.fulfill({ status: 503, json: {
+      request_id: 'readiness-rejected', error_code: 'SERVICE_NOT_READY',
+      error_message: '服务暂时不可用，请稍后重试',
+    } }) : route.continue();
+  });
+  await send(page, '改成2025年3月');
+  await expect(page.getByText('服务暂时不可用，请稍后重试', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '明确重试同一请求' })).toHaveCount(0);
+  await expect(page.getByRole('table')).toHaveCount(1);
+  expect(submissions).toHaveLength(1);
+  rejected = false;
+  await send(page, '改成2025年3月');
+  await expect(page.getByRole('table')).toHaveCount(2);
+  expect(submissions[1].expected_context_revision).toBe(1);
+  expect(submissions[1].operation_id).not.toBe(submissions[0].operation_id);
+});
+
+test('服务拒绝经营分析时显示确定原因，恢复后可以重新提交', async ({ page }) => {
+  await login(page);
+  await page.getByRole('button', { name: '经营分析', exact: true }).click();
+  await page.route('**/api/v1/histories/*/executions', route => route.fulfill({ status: 503, json: {
+    request_id: 'readiness-rejected', error_code: 'SERVICE_NOT_READY',
+    error_message: '服务暂时不可用，请稍后重试',
+  } }));
+  await send(page, '分析2025年2月相比2025年1月的毛利变化');
+  await expect(page.getByText('服务暂时不可用，请稍后重试', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '明确重试同一请求' })).toHaveCount(0);
+  await page.unroute('**/api/v1/histories/*/executions');
+  await send(page, '分析2025年2月相比2025年1月的毛利变化');
+  await expect(page.getByRole('heading', { name: '两期经营分析报告' })).toBeVisible();
+});
+
+test('服务拒绝重新查询时保留原结果并显示确定原因', async ({ page }) => {
+  await login(page);
+  await send(page, '2025年2月净销售额');
+  await expect(page.getByRole('table')).toHaveCount(1);
+  await page.route('**/api/v1/histories/*/requery-executions', route => route.fulfill({ status: 503, json: {
+    request_id: 'readiness-rejected', error_code: 'SERVICE_NOT_READY',
+    error_message: '服务暂时不可用，请稍后重试',
+  } }));
+  await page.getByRole('button', { name: '重新查询当前数据', exact: true }).click();
+  await expect(page.getByText('服务暂时不可用，请稍后重试', { exact: true })).toBeVisible();
+  await expect(page.getByRole('table')).toHaveCount(1);
+});
+
+test('未知503仍恢复已持久受理的请求，不重复提交', async ({ page }) => {
+  await login(page);
+  let submissions = 0;
+  await page.route('**/api/v1/histories/*/executions', async route => {
+    submissions += 1;
+    await route.fetch();
+    await route.fulfill({ status: 503, json: {
+      request_id: 'response-unconfirmed', error_code: 'HISTORY_STORAGE_UNAVAILABLE',
+      error_message: '历史存储暂时不可用',
+    } });
+  });
+  await send(page, '2025年2月净销售额');
+  await expect(page.getByRole('table')).toHaveCount(1);
+  expect(submissions).toBe(1);
+  await expect(page.getByRole('button', { name: '明确重试同一请求' })).toHaveCount(0);
+});
 
 test('ordinary account sees outage and recovery without detailed diagnostics', async ({ page }) => {
   let status = 'not_ready';
