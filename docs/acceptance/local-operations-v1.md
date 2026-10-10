@@ -1,6 +1,6 @@
 # R7 本地运行保障验收
 
-Status: complete（按已确认Spec要求验收）。Ticket 01–06实现/Review及clean候选`6d764ac`隔离验收完成；Active Stable R7切换通过。12:30+08:00启动补备份副本`f501b61cd4154a9491f9cadb32ca1abe`后，Stable于2026-10-10 18:30:58+08:00在连续运行中自动登记副本`a0fa7ba4dd9748b88de3b12983386541`，跨越完整6小时周期通过；复核时服务healthy、依赖ready、备份known且未逾期。24小时逾期提醒已由确定性阈值、启动补备份及管理员提示测试覆盖；没有人为制造Active Stable逾期状态。Spec要求确定性测试，不要求对Stable做24小时故障演练。用户已确认切换后的Stable业务Trace在阿里云ARMS验收通过；未提供可独立关联的Trace ID或时间戳，按用户人工验收结论记录。2026-10-10 Docker Desktop重启后的Stable恢复核验也通过，详见下文。Linux Chromium中文下载名退化已定位为验收容器缺少UTF-8 locale，作为R5验收环境修复独立跟进；没有启动Windows浏览器或IDM。
+Status: complete（按已确认Spec要求验收）。Ticket 01–06实现/Review及clean候选`6d764ac`隔离验收完成；Active Stable R7切换通过。12:30+08:00启动补备份副本`f501b61cd4154a9491f9cadb32ca1abe`后，Stable于2026-10-10 18:30:58+08:00在连续运行中自动登记副本`a0fa7ba4dd9748b88de3b12983386541`，跨越完整6小时周期通过；复核时服务healthy、依赖ready、备份known且未逾期。24小时逾期提醒已由确定性阈值、启动补备份及管理员提示测试覆盖；没有人为制造Active Stable逾期状态。Spec要求确定性测试，不要求对Stable做24小时故障演练。用户已确认切换后的Stable业务Trace在阿里云ARMS验收通过；未提供可独立关联的Trace ID或时间戳，按用户人工验收结论记录。2026-10-10 Docker Desktop及整台Windows电脑重启后的Stable恢复核验均通过，详见下文。Linux Chromium中文下载名退化已定位为验收容器缺少UTF-8 locale，R5验收环境修复已合并PR #64；没有启动Windows浏览器或IDM。
 
 ## 候选与证据身份
 
@@ -85,6 +85,14 @@ Linux 文件名偏差的后续根因核验：
 重启前后只读核对一致：Stable API / PostgreSQL 镜像 ID 未变，`chatbi_stable_postgres_data` / `chatbi_stable_qdrant_data` 持久卷名称、创建时间与标签未变。数据库用户4条、历史4条、历史轮次4条、保存成果0条；Sales Mart Seed 为 `chatbi-sales-mart-dev-v3`，业务事实行1,166条，四类控制数据的完整行 SHA-256 均与重启前一致。`/health` 与 `/ready` 均为 HTTP 200；Control DB、业务 DB、Qdrant 和资产均 ready；备份状态为 `known`、`overdue=false`，最近成功副本仍为 `a0fa7ba4dd9748b88de3b12983386541`。
 
 本次证明当前 R7 Active Stable 可从 Docker Desktop / Engine 重启后通过 `./local up` 恢复并保留数据；不是整台 Windows 电脑电源级重启证据，也未重跑浏览器登录 / 问数 / 导出或发起模型请求。保存成果当前为空，因此没有成果导出步骤。原始重启前后快照位于本机 ignored `reports/browser-real-artifacts/r6-docker-restart-20261010/{before,after}.json`；未记录 Secret 或原始业务行。
+
+## Active Stable Windows 整机重启恢复核验（2026-10-10）
+
+Windows 系统报告启动时间为`2026-10-10T23:20:35.500+08:00`，WSL 启动时间为`2026-10-10 23:21:10`。重启后用户执行`./local up`，部署状态为`running/succeeded`，Stable source commit仍为`6d764aca6428bd225afe30395723dfaeb4ae0e0b`；API镜像 ID为`sha256:36f9a1a217bca7743d455d6abfd1a60ce94bd56b0d664698967a3f0de67f16c2`，PostgreSQL镜像 ID为`sha256:008c21a2772bbb645a1d1af2ab00c1d64fe316d48c9517dfb6c31f9947182183`。API与PostgreSQL healthy，Qdrant和备份调度器运行；`/health`与`/ready`均成功，Control DB、业务DB、Qdrant和业务资产ready。
+
+只读数据核对显示，PostgreSQL / Qdrant 持久卷名称、创建时间`2026-10-07T15:35:24Z`及Compose身份标签与重启前证据相同。用户4条、历史4条、历史轮次4条、保存成果0条；Sales Mart Seed为`chatbi-sales-mart-dev-v3`，销售明细1,166行，与重启前快照的数量一致。本轮核对了计数和持久卷身份，没有重算控制表全行SHA-256。备份状态为`known`、`overdue=false`，最近成功副本仍为`a0fa7ba4dd9748b88de3b12983386541`；模型状态`unknown`表示重启后尚无新的真实模型请求，不代表服务故障。
+
+本次验证整台Windows电脑重启后，通过Runbook要求的显式`./local up`恢复了当前R7 Active Stable并保留已核对的持久资源及数据计数；没有重跑浏览器登录、问数或导出，也没有发起模型请求。
 
 ## `6c3c639` 依赖故障矩阵与历史 Linux Playwright 验收（2026-10-09）
 
