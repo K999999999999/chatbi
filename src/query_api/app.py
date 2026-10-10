@@ -46,6 +46,7 @@ from src.chatbi_control.admin import mount_admin
 from src.observability.contracts import QuerySource, TraceRecorder
 from src.observability.tracing import create_trace_recorder
 from src.online_query.contracts import (
+    ExecutionStopped,
     QueryErrorCode,
     QueryFailure,
     QueryRequest,
@@ -53,6 +54,7 @@ from src.online_query.contracts import (
     QuerySuccess,
 )
 
+from .admission import AdmissionRejected, admit
 from .browser import (
     COOKIE_NAME,
     BrowserIdentityProvider,
@@ -70,6 +72,7 @@ from .conversation import (
 )
 from .execution import ExecutionApplication
 from .execution_runtime import ExecutionRuntime
+from .operations_api import mount_operations_api
 from .query_response import HTTP_STATUS_BY_ERROR as _HTTP_STATUS_BY_ERROR
 from .query_response import (
     AnalysisSuccessResponse,
@@ -190,6 +193,7 @@ def create_app(
     analysis_service_factory: AnalysisServiceFactory | None = None,
     history_store=None,
     history_runtime=None,
+    operations=None,
     runtime_factory: Callable[
         [],
         AbstractContextManager[RuntimeDependencies]
@@ -218,6 +222,7 @@ def create_app(
             browser_settings,
             history_store,
             history_runtime,
+            operations,
         )
     ):
         raise ValueError("runtime_factory 和直接资源注入不能混用")
@@ -273,11 +278,25 @@ def create_app(
             ExecutionApplication(
                 app.state.history_application,
                 active_execution_runtime,
+                ready=lambda: operations is not None and operations.ready,
+                trace_recorder=recorder,
             )
             if app.state.history_application is not None
             and active_execution_runtime is not None
             else None
         )
+        if operations is not None:
+            operations.set_capacity_provider(
+                lambda: {
+                    "business": active_execution_runtime.capacity_snapshot()
+                    if active_execution_runtime is not None
+                    else {"status": "unknown"},
+                    "export": app.state.result_export_runtime.capacity_snapshot()
+                    if getattr(app.state, "result_export_runtime", None) is not None
+                    else {"status": "unknown"},
+                }
+            )
+        app.state.operations = operations
         app.state.query_service = authorized_service
         app.state.identity_provider = provider
         app.state.authorization_policy_store = authorization_store
@@ -299,14 +318,13 @@ def create_app(
             history_store, \
             history_runtime
         nonlocal service, analysis_guard
-        nonlocal active_execution_runtime
+        nonlocal active_execution_runtime, operations
         analysis_guard = AnalysisExecutionGuard()
         if runtime_factory is None:
             try:
-                if history_store is not None and history_runtime is not None:
-                    active_execution_runtime = ExecutionRuntime.from_environment(
-                        history_runtime, analysis_guard
-                    )
+                active_execution_runtime = ExecutionRuntime.from_environment(
+                    history_runtime, analysis_guard
+                )
                 publish_bindings(app)
                 export_runtime = getattr(app.state, "result_export_runtime", None)
                 if export_runtime is not None:
@@ -361,6 +379,7 @@ def create_app(
                 recorder = dependencies.trace_recorder
                 query_understanding = dependencies.query_understanding
                 service = dependencies.service
+                operations = dependencies.operations
                 authorized_service = AuthorizedQueryService(
                     dependencies.service, authorization_store, audit_sink=audit_sink
                 )
@@ -368,10 +387,9 @@ def create_app(
                     active_analysis_service = dependencies.analysis_service_factory(
                         authorized_service
                     )
-                if history_store is not None and history_runtime is not None:
-                    active_execution_runtime = ExecutionRuntime.from_environment(
-                        history_runtime, analysis_guard
-                    )
+                active_execution_runtime = ExecutionRuntime.from_environment(
+                    history_runtime, analysis_guard
+                )
                 if dependencies.admin_engine is not None:
                     if auth_service is None or not dependencies.admin_secret_key:
                         raise ValueError(
@@ -422,10 +440,12 @@ def create_app(
                             active_analysis_service = None
                             history_store = history_runtime = None
                             browser_settings = None
+                            operations = None
                             publish_bindings(app)
 
     app = FastAPI(title="ChatBI Query API", version="0.1.0", lifespan=lifespan)
     publish_bindings(app)
+    mount_operations_api(app)
     if admin_engine is not None:
         if auth_service is None or not admin_secret_key:
             raise ValueError("SQLAdmin 需要统一 AuthService 和显式 secret key")
@@ -458,7 +478,12 @@ def create_app(
             return response
         request_id = _request_id_from_header(request.headers.get("X-Request-ID"))
         request.state.request_id = request_id
-        with _http_trace_scope(recorder, request_id) as trace_scope:
+        with _http_trace_scope(
+            recorder,
+            request_id,
+            enabled=request.method not in {"GET", "HEAD"},
+        ) as trace_scope:
+            request.state.trace_carrier = getattr(trace_scope, "carrier", {})
             rejection = None
             if request.cookies.get(COOKIE_NAME):
                 try:
@@ -599,6 +624,7 @@ def create_app(
             403: {"model": QueryFailureResponse},
             404: {"model": QueryFailureResponse},
             422: {"model": QueryFailureResponse},
+            429: {"model": QueryFailureResponse},
             409: {"model": QueryFailureResponse},
             502: {"model": QueryFailureResponse},
             503: {"model": QueryFailureResponse},
@@ -784,6 +810,44 @@ def _authorized_query(
             None,
         )
 
+    authorization_result = query_service.authorize(
+        QueryRequest(question=question, request_id=request_id),
+        auth_context=auth_context,
+    )
+    if authorization_result is not None:
+        return authorization_result, None
+    try:
+        with admit(request, auth_context, request_id, seconds=180) as control:
+            return _run_authorized_query(
+                request,
+                question=question,
+                conversation_id=conversation_id,
+                auth_context=auth_context,
+                query_service=query_service,
+                conversation_store=conversation_store,
+                query_understanding=query_understanding,
+                execution_control=control,
+            )
+    except AdmissionRejected as exc:
+        return exc.result, None
+    except ExecutionStopped:
+        return QueryFailure(
+            request_id, QueryErrorCode.QUERY_TIMEOUT, "查询执行超过保护时限"
+        ), None
+
+
+def _run_authorized_query(
+    request,
+    *,
+    question,
+    conversation_id,
+    auth_context,
+    query_service,
+    conversation_store,
+    query_understanding,
+    execution_control,
+):
+    request_id = _request_id_from_state(request)
     lease: ConversationLease | None = None
     if conversation_id is not None:
         try:
@@ -811,17 +875,9 @@ def _authorized_query(
     request = QueryRequest(
         question=question,
         request_id=request_id,
+        execution_control=execution_control,
     )
     try:
-        authorization_result = query_service.authorize(
-            request,
-            auth_context=auth_context,
-        )
-        if authorization_result is not None:
-            if lease is not None:
-                conversation_store.abort(lease)
-            return authorization_result, None
-
         effective_request = request
         if lease is not None:
             try:
@@ -829,6 +885,7 @@ def _authorized_query(
                     lease.record.structured_query_state,
                     question,
                     query_understanding=query_understanding,
+                    execution_control=execution_control,
                 )
             except SemanticRevisionError as exc:
                 conversation_store.abort(lease)
@@ -837,11 +894,14 @@ def _authorized_query(
                 question=question,
                 request_id=request_id,
                 semantic_query=revised_state,
+                execution_control=execution_control,
             )
+        execution_control.checkpoint()
         result = query_service.execute_authorized(
             effective_request,
             auth_context=auth_context,
         )
+        execution_control.checkpoint()
     except Exception:
         if lease is not None:
             conversation_store.abort(lease)
@@ -927,22 +987,37 @@ def _authorized_analysis(
             failure_stage="business_analysis",
             internal_reason="ANALYSIS_SERVICE_MISSING",
         )
+    authorization_result = query_service.authorize(
+        QueryRequest(question=question, request_id=request_id),
+        auth_context=auth_context,
+    )
+    if authorization_result is not None:
+        return authorization_result
     try:
-        from contextlib import nullcontext
+        with admit(request, auth_context, request_id, seconds=1200) as control:
+            from contextlib import nullcontext
 
-        if history_runtime is not None:
-            history_runtime.check()
-        with (
-            analysis_guard.executing(auth_context, analysis_run_id)
-            if analysis_guard
-            else nullcontext()
-        ):
-            result = analysis_service.analyze(
-                question,
-                request_id=request_id,
-                auth_context=auth_context,
-                analysis_run_id=analysis_run_id,
-            )
+            if history_runtime is not None:
+                history_runtime.check()
+            with (
+                analysis_guard.executing(auth_context, analysis_run_id)
+                if analysis_guard
+                else nullcontext()
+            ):
+                result = analysis_service.analyze(
+                    question,
+                    request_id=request_id,
+                    auth_context=auth_context,
+                    analysis_run_id=analysis_run_id,
+                    execution_control=control,
+                )
+                control.checkpoint()
+    except AdmissionRejected as exc:
+        return exc.result
+    except ExecutionStopped:
+        return QueryFailure(
+            request_id, QueryErrorCode.QUERY_TIMEOUT, "分析执行超过保护时限"
+        )
     except AnalysisExecutionBusy:
         return QueryFailure(
             request_id,
@@ -1085,6 +1160,10 @@ class _FallbackScope:
     def __enter__(self) -> "_FallbackScope":
         return self
 
+    @property
+    def carrier(self) -> dict[str, str]:
+        return {}
+
     def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> bool:
         return False
 
@@ -1093,9 +1172,11 @@ class _FallbackScope:
 def _http_trace_scope(
     recorder: TraceRecorder | None,
     request_id: str,
+    *,
+    enabled: bool = True,
 ) -> Iterator[Any]:
     scope: Any = _FallbackScope()
-    if recorder is not None:
+    if recorder is not None and enabled:
         try:
             scope = recorder.query_trace(
                 QuerySource.HTTP,

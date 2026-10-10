@@ -1,13 +1,14 @@
 """基于本地 OpenTelemetry SDK 的安全、Fail-open Trace Adapter。"""
 
+import re
 from collections.abc import Mapping
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any
 
 from opentelemetry import trace
-from opentelemetry.trace import Span as OTelSpan
-from opentelemetry.trace import use_span
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import (
@@ -18,8 +19,10 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
 from opentelemetry.sdk.trace.sampling import ALWAYS_OFF, ALWAYS_ON
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.trace import Context, Link, SpanContext, TraceFlags, use_span
+from opentelemetry.trace import Span as OTelSpan
 
+from . import tracing_safety as _tracing_safety
 from .config import ObservabilityConfig
 from .contracts import (
     Attributes,
@@ -33,28 +36,51 @@ from .contracts import (
 )
 from .tracing_export import SafeExporter
 from .tracing_safety import (
-    _LOGGER,  # noqa: F401 - 保留测试和内部诊断使用的兼容名称。
     _SAFE_ERROR_TYPES,
     _SAFE_OUTCOMES,
+)
+from .tracing_safety import (
     is_safe_error_code as _is_safe_error_code,
+)
+from .tracing_safety import (
     new_trace_id as _new_trace_id,
+)
+from .tracing_safety import (
     safe_attributes as _safe_attributes,
+)
+from .tracing_safety import (
     safe_enum_value as _safe_enum_value,
+)
+from .tracing_safety import (
     safe_set_attribute as _safe_set_attribute,
+)
+from .tracing_safety import (
     safe_set_status as _safe_set_status,
+)
+from .tracing_safety import (
     safe_source as _safe_source,
+)
+from .tracing_safety import (
     safe_span_name as _safe_span_name,
+)
+from .tracing_safety import (
     safe_warning as _safe_warning,
+)
+from .tracing_safety import (
     trace_id_from_span as _trace_id_from_span,
+)
+from .tracing_safety import (
     valid_trace_id as _valid_trace_id,
 )
 
 # 保留现有测试和内部诊断使用的兼容名称；实现归属已移至 tracing_export.py。
 _SafeExporter = SafeExporter
+_LOGGER = _tracing_safety._LOGGER
 _ACTIVE_ROOT: ContextVar["_RootState | None"] = ContextVar(
     "chatbi_observability_active_root",
     default=None,
 )
+_TRACEPARENT_RE = re.compile(r"^00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$")
 
 
 @dataclass(slots=True)
@@ -78,6 +104,7 @@ class _NoopScope:
         self._root_token: Token[_RootState | None] | None = None
         self._entered = False
         self._ended = False
+        self._carrier = MappingProxyType({})
 
     @property
     def trace_id(self) -> str:
@@ -86,6 +113,10 @@ class _NoopScope:
     @property
     def owns_root(self) -> bool:
         return self._owns_root
+
+    @property
+    def carrier(self) -> Carrier:
+        return self._carrier
 
     def __enter__(self) -> "_NoopScope":
         if self._entered:
@@ -125,6 +156,7 @@ class _OtelScope:
         self._trace_id = _trace_id_from_span(span)
         self._owns_root = owns_root
         self._root_state = root_state
+        self._carrier = _carrier_for_span(span) if owns_root else MappingProxyType({})
         self._root_token: Token[_RootState | None] | None = None
         self._span_context: Any = use_span(
             span,
@@ -142,6 +174,10 @@ class _OtelScope:
     @property
     def owns_root(self) -> bool:
         return self._owns_root
+
+    @property
+    def carrier(self) -> Carrier:
+        return self._carrier
 
     def __enter__(self) -> "_OtelScope":
         if self._entered:
@@ -209,20 +245,23 @@ class OtelTraceRecorder:
         attributes: Attributes | None = None,
     ) -> TraceScope:
         try:
+            link = _link_from_carrier(carrier)
             active_root = _ACTIVE_ROOT.get()
-            if active_root is not None and active_root.active:
+            if link is None and active_root is not None and active_root.active:
                 return _BorrowedScope(active_root.trace_id)
 
-            # T1 不信任 HTTP Header；carrier 只保留 Contract 形状，真正的 HTTP
-            # 边界由后续任务决定。进程内 Context 由 OTel 当前上下文继续传播。
-            del carrier
             root_attributes = _safe_attributes(attributes)
             root_attributes["chatbi.request.source"] = _safe_source(source)
             # 内容采集开关只能来自受信任配置，调用方不能用同名属性覆盖。
             root_attributes["chatbi.content_capture.enabled"] = (
                 self._config.content_capture_enabled
             )
-            root = self._start_span("query.request", root_attributes)
+            root = self._start_span(
+                "query.request",
+                root_attributes,
+                context=Context(),
+                links=(link,) if link is not None else (),
+            )
             if root is None:
                 return _new_noop_root_scope()
             state = _RootState(_trace_id_from_span(root), root)
@@ -293,11 +332,19 @@ class OtelTraceRecorder:
         self,
         name: str,
         attributes: Mapping[str, Any],
+        *,
+        context: Context | None = None,
+        links: tuple[Link, ...] = (),
     ) -> OTelSpan | None:
         if self._tracer is None:
             return None
         try:
-            return self._tracer.start_span(name, attributes=attributes)
+            return self._tracer.start_span(
+                name,
+                context=context,
+                links=links,
+                attributes=attributes,
+            )
         except Exception:
             _safe_warning("span_start")
             return None
@@ -399,7 +446,15 @@ def _build_provider(config: ObservabilityConfig) -> TracerProvider:
         )
         # Export 开启时允许 SDK 记录 Span；关闭模式保持 AlwaysOff。
         provider = TracerProvider(resource=resource, sampler=ALWAYS_ON)
-        provider.add_span_processor(BatchSpanProcessor(SafeExporter(exporter)))
+        provider.add_span_processor(
+            BatchSpanProcessor(
+                SafeExporter(exporter),
+                max_queue_size=128,
+                schedule_delay_millis=1000,
+                max_export_batch_size=128,
+                export_timeout_millis=int(config.otlp_timeout_seconds * 1000),
+            )
+        )
     except Exception:
         _safe_warning("exporter_initialization")
         provider = TracerProvider(resource=resource, sampler=ALWAYS_OFF)
@@ -427,6 +482,48 @@ def _current_trace_id() -> str:
     except Exception:
         pass
     return _new_trace_id()
+
+
+def _carrier_for_span(span: OTelSpan) -> Carrier:
+    try:
+        context = span.get_span_context()
+        if not context.is_valid:
+            return MappingProxyType({})
+        traceparent = (
+            f"00-{context.trace_id:032x}-{context.span_id:016x}-"
+            f"{int(context.trace_flags):02x}"
+        )
+        return MappingProxyType({"traceparent": traceparent})
+    except Exception:
+        _safe_warning("carrier_create")
+        return MappingProxyType({})
+
+
+def _link_from_carrier(carrier: Carrier | None) -> Link | None:
+    if not isinstance(carrier, Mapping) or set(carrier) != {"traceparent"}:
+        return None
+    value = carrier.get("traceparent")
+    if not isinstance(value, str):
+        return None
+    match = _TRACEPARENT_RE.fullmatch(value)
+    if match is None:
+        return None
+    trace_id, span_id, flags = match.groups()
+    numeric_trace_id = int(trace_id, 16)
+    numeric_span_id = int(span_id, 16)
+    if numeric_trace_id == 0 or numeric_span_id == 0:
+        return None
+    try:
+        return Link(
+            SpanContext(
+                trace_id=numeric_trace_id,
+                span_id=numeric_span_id,
+                is_remote=True,
+                trace_flags=TraceFlags(int(flags, 16)),
+            )
+        )
+    except Exception:
+        return None
 
 
 def _new_noop_root_scope() -> TraceScope:

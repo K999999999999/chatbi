@@ -2,8 +2,11 @@
 
 import io
 import re
+import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import redirect_stderr, redirect_stdout
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 
 from opentelemetry import trace
@@ -155,7 +158,7 @@ class ObservabilityTracingTest(unittest.TestCase):
             recorder = create_trace_recorder(
                 ObservabilityConfig(
                     enabled=True,
-                    otlp_traces_endpoint="http://collector/v1/traces",
+                    otlp_traces_endpoint="https://collector/v1/traces",
                 )
             )
             with recorder.query_trace(QuerySource.INTERNAL) as root:
@@ -267,7 +270,7 @@ class ObservabilityTracingTest(unittest.TestCase):
 
         config = ObservabilityConfig(
             enabled=True,
-            otlp_traces_endpoint="http://collector/v1/traces",
+            otlp_traces_endpoint="https://collector/v1/traces",
         )
         with patch.object(tracing, "OTLPSpanExporter", FailingExporter):
             recorder = create_trace_recorder(config)
@@ -276,6 +279,11 @@ class ObservabilityTracingTest(unittest.TestCase):
         processors = provider._active_span_processor._span_processors
         self.assertEqual(len(processors), 1)
         self.assertIsInstance(processors[0], BatchSpanProcessor)
+        batch = processors[0]._batch_processor
+        self.assertEqual(batch._max_queue_size, 128)
+        self.assertEqual(batch._max_export_batch_size, 128)
+        self.assertEqual(batch._schedule_delay_millis, 1000)
+        self.assertEqual(batch._export_timeout_millis, 5000)
         with patch.object(
             provider, "force_flush", wraps=provider.force_flush
         ) as force_flush:
@@ -329,16 +337,108 @@ class ObservabilityTracingTest(unittest.TestCase):
             recorder = create_trace_recorder(
                 ObservabilityConfig(
                     enabled=True,
-                    otlp_traces_endpoint="http://collector/v1/traces",
+                    runtime_env="stable",
+                    otlp_traces_endpoint="https://collector/v1/traces",
                     otlp_timeout_seconds=2.5,
-                    otlp_headers={"Authorization": "Bearer secret"},
+                    otlp_headers={
+                        "Authentication": "Bearer synthetic",
+                        "x-arms-license-key": "synthetic-license",
+                        "x-arms-project": "synthetic-project",
+                        "x-cms-workspace": "synthetic-workspace",
+                    },
                 )
             )
 
-        self.assertEqual(captured["endpoint"], "http://collector/v1/traces")
+        self.assertEqual(captured["endpoint"], "https://collector/v1/traces")
         self.assertEqual(captured["timeout"], 2.5)
-        self.assertEqual(captured["headers"], {"Authorization": "Bearer secret"})
+        self.assertEqual(
+            captured["headers"],
+            {
+                "authentication": "Bearer synthetic",
+                "x-arms-license-key": "synthetic-license",
+                "x-arms-project": "synthetic-project",
+                "x-cms-workspace": "synthetic-workspace",
+            },
+        )
         recorder.shutdown()
+
+    def test_worker_root_uses_immutable_carrier_link_after_http_root_closes(
+        self,
+    ) -> None:
+        recorder, exporter = create_in_memory_recorder()
+        with recorder.query_trace(QuerySource.HTTP) as request_scope:
+            request_trace_id = request_scope.trace_id
+            carrier = request_scope.carrier
+
+        self.assertEqual(set(carrier), {"traceparent"})
+        with self.assertRaises(TypeError):
+            carrier["traceparent"] = "spoofed"
+
+        def run_worker() -> str:
+            with recorder.query_trace(QuerySource.EXECUTION, carrier=carrier) as scope:
+                return scope.trace_id
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            worker_trace_id = executor.submit(run_worker).result(timeout=5)
+
+        roots = [
+            span
+            for span in exporter.get_finished_spans()
+            if span.name == "query.request"
+        ]
+        self.assertEqual(len(roots), 2)
+        worker_root = next(
+            span for span in roots if span.context.trace_id == int(worker_trace_id, 16)
+        )
+        self.assertNotEqual(worker_trace_id, request_trace_id)
+        self.assertEqual(len(worker_root.links), 1)
+        self.assertEqual(
+            worker_root.links[0].context.trace_id, int(request_trace_id, 16)
+        )
+
+    def test_real_otlp_http_exporter_sends_only_safe_span_payload(self) -> None:
+        payloads: list[bytes] = []
+
+        class Collector(BaseHTTPRequestHandler):
+            def do_POST(self):
+                payloads.append(self.rfile.read(int(self.headers["Content-Length"])))
+                self.send_response(200)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+            def log_message(self, _format, *_args):
+                return
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Collector)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        recorder = create_trace_recorder(
+            ObservabilityConfig(
+                enabled=True,
+                runtime_env="local",
+                otlp_traces_endpoint=(
+                    f"http://127.0.0.1:{server.server_port}/v1/traces"
+                ),
+                otlp_timeout_seconds=1,
+            )
+        )
+        try:
+            with recorder.query_trace(
+                QuerySource.INTERNAL,
+                attributes={"chatbi.request.id": "otlp-safe-request"},
+            ):
+                with recorder.span("safe.stage"):
+                    pass
+            self.assertTrue(recorder._delegate._provider.force_flush(3000))
+        finally:
+            recorder.shutdown()
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+        self.assertEqual(len(payloads), 1)
+        self.assertIn(b"otlp-safe-request", payloads[0])
+        self.assertNotIn(b"raw-secret", payloads[0])
 
 
 if __name__ == "__main__":

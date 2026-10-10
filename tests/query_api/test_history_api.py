@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 from src.authorization.contracts import AuthContext, AuthorizationDecision
-from src.query_api.app import create_app
+from tests.operations_support import create_app
 from src.query_api.history_contracts import HistoryHeader
 
 

@@ -21,9 +21,14 @@ const stageLabels: Record<ExecutionStage, string> = {
   analysis_attribution: '计算归因证据', analysis_report_generation: '生成分析报告', result_saving: '保存正式结果',
 };
 const blockingErrors = new Set(['HISTORY_BUSY', 'HISTORY_STALE', 'HISTORY_CONTEXT_INCOMPATIBLE', 'HISTORY_SAVE_UNCONFIRMED', 'HISTORY_STORAGE_UNAVAILABLE', 'EXECUTION_LIMIT_REACHED']);
-const definiteErrors = new Set(['INVALID_REQUEST', 'AUTHORIZATION_DENIED', 'CANNOT_ANSWER', 'SQL_REJECTED', 'LLM_ERROR', 'CONTEXT_ERROR', 'DATABASE_ERROR',
+const definiteErrors = new Set(['SERVICE_NOT_READY', 'INVALID_REQUEST', 'AUTHORIZATION_DENIED', 'CANNOT_ANSWER', 'SQL_REJECTED', 'LLM_ERROR', 'CONTEXT_ERROR', 'DATABASE_ERROR',
   'QUERY_TIMEOUT', 'CLARIFICATION_REQUIRED', 'UNSUPPORTED_ANALYSIS', 'EXECUTION_LIMIT_REACHED', 'EXECUTION_UNAVAILABLE', 'HISTORY_BUSY', 'HISTORY_STALE', 'HISTORY_CONTEXT_INCOMPATIBLE',
   'HISTORY_SNAPSHOT_TOO_LARGE', 'HISTORY_SNAPSHOT_UNAVAILABLE', 'HISTORY_OPERATION_CONFLICT', 'HISTORY_UNAVAILABLE']);
+
+function wasSubmissionRejected(error: unknown): boolean {
+  return error instanceof APIError && (error.status < 500
+    || (error.status === 503 && error.code === 'SERVICE_NOT_READY'));
+}
 
 export function Chat({ user, onExpired }: { user: Identity; onExpired: () => void }) {
   const [mode, setMode] = useState<Mode>('query');
@@ -257,7 +262,7 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
       try {
         response = object(await request(path, body, user.user_id, AbortSignal.timeout(30000), value => { traceId = value; }));
       } catch (submissionError) {
-        if (submissionError instanceof APIError && submissionError.status < 500) throw submissionError;
+        if (wasSubmissionRejected(submissionError)) throw submissionError;
         try {
           response = object(await request(`/api/v1/executions/by-operation/${operationId}`, undefined, user.user_id, AbortSignal.timeout(30000)));
         } catch (recoveryError) {
@@ -307,7 +312,7 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
       let response: Record<string, unknown>;
       try { response = object(await request(path, body, user.user_id, AbortSignal.timeout(30000))); }
       catch (submissionError) {
-        if (submissionError instanceof APIError && submissionError.status < 500) throw submissionError;
+        if (wasSubmissionRejected(submissionError)) throw submissionError;
         response = object(await request(`/api/v1/executions/by-operation/${operationId}`, undefined, user.user_id, AbortSignal.timeout(30000)));
       }
       const next = historyHeader(response.history); const turn = historyTurn(response.turn); const execution = object(response.execution);
@@ -330,7 +335,7 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
       try {
         response = object(await request(pendingOperation.path, pendingOperation.body, user.user_id, AbortSignal.timeout(30000), value => { traceId = value; }));
       } catch (submissionError) {
-        if (submissionError instanceof APIError && submissionError.status < 500) throw submissionError;
+        if (wasSubmissionRejected(submissionError)) throw submissionError;
         try {
           response = object(await request(`/api/v1/executions/by-operation/${pendingOperation.operationId}`, undefined, user.user_id, AbortSignal.timeout(30000)));
         } catch (recoveryError) {

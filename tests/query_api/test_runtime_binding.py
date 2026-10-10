@@ -15,8 +15,9 @@ from src.authorization import (
     StaticIdentityProviderAdapter,
 )
 from src.online_query.contracts import QuerySuccess
-from src.query_api.app import create_app
+from tests.operations_support import create_app
 from src.query_api.runtime import RuntimeDependencies
+from tests.operations_support import ready_operations
 
 
 def test_runtime_factory_rejects_mixed_resource_ownership():
@@ -45,6 +46,7 @@ def test_lifespan_binds_current_service_and_releases_on_each_shutdown():
         )
         try:
             yield RuntimeDependencies(
+                operations=ready_operations(),
                 service=service,
                 audit_sink=InMemoryAuditSink(),
                 identity_provider=StaticIdentityProviderAdapter(
@@ -80,7 +82,9 @@ def test_binding_failure_releases_runtime_and_clears_state():
     def factory():
         try:
             yield RuntimeDependencies(
-                service=Mock(), analysis_service_factory=failing_analysis
+                operations=ready_operations(),
+                service=Mock(),
+                analysis_service_factory=failing_analysis,
             )
         finally:
             released.append(True)
@@ -123,6 +127,7 @@ def test_sqladmin_mount_uses_new_engine_after_repeated_lifespan():
         sessions = sessionmaker(engine)
         try:
             yield RuntimeDependencies(
+                operations=ready_operations(),
                 service=Mock(),
                 auth_service=AuthService(sessions),
                 admin_engine=engine,

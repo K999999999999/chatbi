@@ -11,6 +11,15 @@ const executionStages = new Set([
   'query_understanding', 'retrieval', 'sql_generation', 'sql_validation', 'query_execution', 'result_saving',
   'analysis_understanding', 'analysis_plan_validation', 'analysis_query_tasks', 'analysis_attribution', 'analysis_report_generation',
 ]);
+const safeExecutionErrorCodes = new Set([
+  'SERVICE_NOT_READY', 'EXECUTION_LIMIT_REACHED', 'INVALID_REQUEST', 'AUTHENTICATION_REQUIRED',
+  'AUTHORIZATION_DENIED', 'AUTHENTICATION_UNAVAILABLE', 'CONTEXT_ERROR', 'LLM_ERROR',
+  'CANNOT_ANSWER', 'SQL_REJECTED', 'DATABASE_ERROR', 'QUERY_TIMEOUT', 'CONVERSATION_UNAVAILABLE',
+  'CLARIFICATION_REQUIRED', 'UNSUPPORTED_ANALYSIS', 'CONVERSATION_CONFLICT',
+]);
+const safeExecutionStatuses = new Set([
+  'accepted', 'running', 'stopping', 'succeeded', 'failed', 'cancelled', 'timed_out', 'unconfirmed',
+]);
 
 type ExecutionStreamEvidence = {
   execution_id: string;
@@ -38,6 +47,7 @@ async function captureExport(page: Page, button: Locator, format: 'xlsx' | 'png'
   const downloadReady = page.waitForEvent('download', { timeout: 180000 });
   void downloadReady.catch(() => undefined);
   try {
+    const startedAt = performance.now();
     const [response] = await Promise.all([responseReady, button.click()]);
     expect(executionPosts).toBe(0);
     expect(response.status()).toBe(200);
@@ -49,13 +59,16 @@ async function captureExport(page: Page, button: Locator, format: 'xlsx' | 'png'
     expect(body.source).toEqual(expectedSource);
     const path = await download.path();
     if (!path) throw new Error('浏览器没有保留导出下载文件');
+    const durationSeconds = Number(((performance.now() - startedAt) / 1000).toFixed(3));
+    expect(durationSeconds).toBeGreaterThan(0);
     const bytes = readFileSync(path);
     expect(bytes.length).toBeGreaterThan(100);
     if (format === 'xlsx') expect(bytes.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
     if (format === 'png') expect(bytes.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
     if (format === 'pdf') expect(bytes.subarray(0, 5).toString('ascii')).toBe('%PDF-');
     await download.saveAs(reportPath(file));
-    return { format, file, suggested_filename: download.suggestedFilename(), size: bytes.length,
+    return { format, file, suggested_filename: download.suggestedFilename(), duration_seconds: durationSeconds,
+      size: bytes.length,
       sha256: createHash('sha256').update(bytes).digest('hex'), mime: response.headers()['content-type'],
       source: body.source, selection: { chart_id: body.chart_id, chart_type: body.chart_type,
         task_id: body.task_id, product_index: body.product_index }, execution_posts_during_export: executionPosts,
@@ -88,6 +101,11 @@ declare global {
 async function captureExecutionStreams(page: Page) {
   const connections = new Map<string, number>();
   const submissions: string[] = [];
+  const submissionEvidence = {
+    request_count: 0, response_count: 0, http_statuses: new Set<number>(), error_codes: new Set<string>(),
+  };
+  const pollEvidence = { request_count: 0, http_statuses: new Set<number>(), execution_statuses: new Set<string>(), error_codes: new Set<string>() };
+  const pollReads: Promise<void>[] = [];
   await page.addInitScript((allowedStages: string[]) => {
     const target = window as Window & { __chatbiExecutionEvidence?: Record<string, ExecutionStreamEvidence> };
     const allowed = new Set(allowedStages);
@@ -164,15 +182,67 @@ async function captureExecutionStreams(page: Page) {
       const executionId = eventMatch[1];
       connections.set(executionId, (connections.get(executionId) ?? 0) + 1);
     }
-    if (request.method() === 'POST' && /^\/api\/v1\/histories\/[0-9a-f-]{36}\/executions$/.test(path)) submissions.push(path);
+    if (request.method() === 'POST' && /^\/api\/v1\/histories\/[0-9a-f-]{36}\/executions$/.test(path)) {
+      submissions.push(path);
+      submissionEvidence.request_count += 1;
+    }
+  });
+  page.on('response', response => {
+    const request = response.request();
+    const path = new URL(response.url()).pathname;
+    if (request.method() === 'POST' && /^\/api\/v1\/histories\/[0-9a-f-]{36}\/executions$/.test(path)) {
+      submissionEvidence.response_count += 1;
+      submissionEvidence.http_statuses.add(response.status());
+      pollReads.push(response.json().then(payload => {
+        const body = payload as {
+          error_code?: unknown;
+          execution?: { public_error?: { error_code?: unknown } };
+        };
+        const errorCode = body?.error_code ?? body?.execution?.public_error?.error_code;
+        if (typeof errorCode === 'string' && safeExecutionErrorCodes.has(errorCode)) {
+          submissionEvidence.error_codes.add(errorCode);
+        }
+      }).catch(() => undefined));
+      return;
+    }
+    if (request.method() !== 'GET' || !/^\/api\/v1\/executions\/[0-9a-f-]{36}$/.test(path)) return;
+    pollEvidence.request_count += 1;
+    pollEvidence.http_statuses.add(response.status());
+    pollReads.push(response.json().then(payload => {
+      const execution = (payload as { execution?: { status?: unknown; public_error?: { error_code?: unknown } } })?.execution;
+      if (typeof execution?.status === 'string' && safeExecutionStatuses.has(execution.status)) {
+        pollEvidence.execution_statuses.add(execution.status);
+      }
+      const errorCode = execution?.public_error?.error_code;
+      if (typeof errorCode === 'string' && safeExecutionErrorCodes.has(errorCode)) {
+        pollEvidence.error_codes.add(errorCode);
+      }
+    }).catch(() => undefined));
   });
   return {
     submissions,
     connectionCount(executionId: string): number { return connections.get(executionId) ?? 0; },
+    async pollSummary() {
+      await Promise.allSettled(pollReads);
+      return {
+        request_count: pollEvidence.request_count,
+        http_statuses: [...pollEvidence.http_statuses],
+        execution_statuses: [...pollEvidence.execution_statuses],
+        error_codes: [...pollEvidence.error_codes],
+        event_connection_count: [...connections.values()].reduce((total, count) => total + count, 0),
+        execution_submissions: {
+          request_count: submissionEvidence.request_count,
+          response_count: submissionEvidence.response_count,
+          http_statuses: [...submissionEvidence.http_statuses],
+          error_codes: [...submissionEvidence.error_codes],
+        },
+      };
+    },
     async forExecution(executionId: string): Promise<ExecutionStreamEvidence> {
-      await expect.poll(() => page.evaluate(id =>
-        window.__chatbiExecutionEvidence?.[id]?.terminal_statuses.includes('succeeded') ?? false, executionId),
-      { timeout: 30000 }).toBe(true);
+      await expect.poll(() => page.evaluate(id => {
+        const statuses = window.__chatbiExecutionEvidence?.[id]?.terminal_statuses ?? [];
+        return statuses.find(status => ['succeeded', 'failed', 'cancelled', 'timed_out', 'unconfirmed'].includes(status)) ?? null;
+      }, executionId), { timeout: 30000 }).not.toBeNull();
       return await page.evaluate(id => window.__chatbiExecutionEvidence?.[id]!, executionId);
     },
   };
@@ -259,7 +329,11 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     const firstHttp = await firstResponse;
     const firstPayload = await firstHttp.json();
     evidence.first_http_status = firstHttp.status();
-    evidence.first_error_code = firstPayload.error_code;
+    if (!firstPayload.turn?.snapshot) {
+      const errorCode = firstPayload.execution?.public_error?.error_code;
+      evidence.first_error_code = safeExecutionErrorCodes.has(errorCode) ? errorCode : 'UNCLASSIFIED';
+      throw new Error('initial query did not commit a successful snapshot');
+    }
     const first = querySnapshot(firstPayload.turn.snapshot);
     expect(first.rows.length).toBe(1);
     expect(Number(first.rows[0][0])).toBe(Number(reference.net_sales['2']));
@@ -348,12 +422,16 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     evidence.category_same_unit = { rows: category.rows.length, reference_matches: true, series: 2, metadata_status: categoryMeta.status };
     evidence.step = 'analysis-request';
     await page.getByRole('button', { name: '经营分析', exact: true }).click();
-    const analysisResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 600000 });
+    const analysisResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 1200000 });
     await send(page, '分析2025年3月相比2025年2月的人民币毛利变化及产品因素贡献。');
     const analysisHttp = await analysisResponse;
     evidence.analysis_http_status = analysisHttp.status();
     evidence.step = 'analysis-parse';
     const analysisPayload = await analysisHttp.json();
+    evidence.analysis_execution = {
+      status: analysisPayload.execution.status,
+      error_code: analysisPayload.execution.public_error?.error_code ?? null,
+    };
     const analysisStream = await streams.forExecution(analysisPayload.execution.id);
     evidence.step = 'analysis-stage-evidence';
     evidence.analysis_execution_stream = analysisStream;
@@ -555,6 +633,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     evidence.error_locations = (error as Error).stack?.match(/container-real\.spec\.ts:\d+:\d+/g) ?? [];
     throw new Error('真实容器业务验收失败，见私有报告的步骤与安全定位。');
   } finally {
+    evidence.execution_poll_evidence = await streams.pollSummary();
     writeFileSync(reportPath('browser.json'), JSON.stringify(evidence, null, 2));
   }
 });

@@ -1,5 +1,16 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
+
+async function captureDownloadName(page: Page) {
+  await page.evaluate(() => {
+    document.addEventListener('click', event => {
+      const anchor = event.target;
+      if (anchor instanceof HTMLAnchorElement && anchor.hasAttribute('download')) {
+        document.documentElement.dataset.downloadName = anchor.download;
+      }
+    }, true);
+  });
+}
 
 test('成功问数轮次通过浏览器下载 XLSX 快照', async ({ page }) => {
   const exportBodies: Record<string, unknown>[] = [];
@@ -15,10 +26,11 @@ test('成功问数轮次通过浏览器下载 XLSX 快照', async ({ page }) => 
   await expect(page.getByRole('button', { name: '退出登录' })).toBeVisible();
   await page.getByRole('button', { name: '问数 · 浏览器导出验收历史', exact: true }).click();
   await expect(page.getByRole('table')).toBeVisible();
+  await captureDownloadName(page);
   const downloadReady = page.waitForEvent('download');
   await page.getByRole('button', { name: '下载 XLSX' }).click();
   const download = await downloadReady;
-  expect(download.suggestedFilename()).toMatch(/^浏览器导出验收历史-查询结果-\d{8}T\d{6}Z\.xlsx$/);
+  await expect(page.locator('html')).toHaveAttribute('data-download-name', /^浏览器导出验收历史-查询结果-\d{8}T\d{6}Z\.xlsx$/);
   const bytes = await readFile(await download.path());
   expect(bytes.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
   expect(bytes.length).toBeGreaterThan(1000);
@@ -76,10 +88,11 @@ test('成功查询图表按当前选择触发浏览器 PNG 下载', async ({ pag
   await page.getByRole('button', { name: '问数 · 浏览器导出验收历史', exact: true }).click();
   const pngButton = page.getByRole('button', { name: /下载.*PNG/ }).first();
   await expect(pngButton).toBeVisible();
+  await captureDownloadName(page);
   const downloadReady = page.waitForEvent('download');
   await pngButton.click();
   const download = await downloadReady;
-  expect(download.suggestedFilename()).toMatch(/^浏览器导出验收历史-图表-\d{8}T\d{6}Z\.png$/);
+  await expect(page.locator('html')).toHaveAttribute('data-download-name', /^浏览器导出验收历史-图表-\d{8}T\d{6}Z\.png$/);
   const bytes = await readFile(await download.path());
   expect(bytes.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
   expect(exportBodies).toHaveLength(1);

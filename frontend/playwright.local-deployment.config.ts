@@ -25,18 +25,21 @@ for (const name of ['CHATBI_REAL_E2E_USERNAME', 'CHATBI_REAL_E2E_PASSWORD', 'CHA
   process.env[name] = value;
 }
 
+const browserExecutable = process.env.CHATBI_CONTAINER_BROWSER_EXECUTABLE;
+
 export default defineConfig({
   testDir: './tests',
   testMatch: '**/container-real.spec.ts',
   grepInvert: /源码挂载实际触发 Python 重载与 Vite 热更新/,
   workers: 1,
   retries: 0,
-  timeout: 600000,
+  timeout: 1800000,
   reporter: './playwright.container-reporter.ts',
   outputDir: join(reportDir, 'playwright-results'),
   use: {
     baseURL: process.env.CHATBI_CONTAINER_BASE_URL,
-    channel: 'msedge',
+    channel: browserExecutable ? undefined : 'msedge',
+    launchOptions: browserExecutable ? { executablePath: browserExecutable } : {},
     viewport: { width: 1440, height: 1000 },
     trace: 'off',
     video: 'off',

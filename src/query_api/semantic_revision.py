@@ -59,6 +59,7 @@ def revise_semantic_query(
     question: str,
     *,
     query_understanding: object | None,
+    execution_control: ExecutionControl | None = None,
 ) -> ValidatedSemanticQuery:
     """把当前追问解析为 delta，并合并到上一轮已确认语义。"""
 
@@ -99,7 +100,20 @@ def revise_semantic_query(
             reason="REVISION_ADAPTER_NOT_CONFIGURED",
         )
     try:
-        candidate = understand_revision(previous, normalized_question)
+        if execution_control is not None:
+            execution_control.checkpoint()
+        controlled = getattr(
+            query_understanding, "understand_revision_with_control", None
+        )
+        candidate = (
+            controlled(previous, normalized_question, execution_control)
+            if execution_control is not None and callable(controlled)
+            else understand_revision(previous, normalized_question)
+        )
+        if execution_control is not None:
+            execution_control.checkpoint()
+    except ExecutionStopped:
+        raise
     except SemanticRevisionError:
         raise
     except Exception as exc:  # noqa: BLE001 - adapter must map to a safe error

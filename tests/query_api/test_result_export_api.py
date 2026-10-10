@@ -9,9 +9,11 @@ from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 
 from src.authorization.contracts import AuthContext, AuthorizationDecision
-from src.query_api.app import create_app
+from src.observability.contracts import QuerySource
+from src.observability.tracing import create_in_memory_recorder
 from src.query_api.export_runtime import ExportArtifact
 from src.query_api.history_contracts import HistoryError
+from tests.operations_support import create_app
 
 
 class Provider:
@@ -62,7 +64,7 @@ class Store:
         }
 
 
-def make_client(store=None):
+def make_client(store=None, *, trace_recorder=None):
     app = create_app(
         service=object(),
         identity_provider=Provider(),
@@ -70,6 +72,7 @@ def make_client(store=None):
         audit_sink=Audit(),
         history_store=store or Store(),
         history_runtime=object(),
+        trace_recorder=trace_recorder,
     )
     return TestClient(app), app.state.result_export_runtime
 
@@ -104,6 +107,55 @@ def test_query_snapshot_download_has_safe_file_headers_and_current_source_check(
     )
     assert filename.startswith("测试结果 1-查询结果-") and filename.endswith(".xlsx")
     assert runtime._owner_active == set()
+
+
+def test_export_generation_delivery_and_cleanup_have_linked_safe_traces():
+    recorder, exporter = create_in_memory_recorder()
+    client, _ = make_client(trace_recorder=recorder)
+    with client:
+        response = client.post(
+            "/api/v1/result-exports",
+            json={
+                "source": {
+                    "kind": "history_turn",
+                    "history_id": "e53ba3b9-1f11-4024-90f9-a7f2713cd56b",
+                    "turn_id": "6e5e18d9-1d9b-4c6d-a94f-19976814f03f",
+                },
+                "format": "xlsx",
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    spans = exporter.get_finished_spans()
+    roots = [span for span in spans if span.name == "query.request"]
+    export_roots = [
+        span
+        for span in roots
+        if span.attributes.get("chatbi.request.source") == QuerySource.EXPORT.value
+    ]
+    http_root = next(
+        span
+        for span in roots
+        if span.attributes.get("chatbi.request.source") == QuerySource.HTTP.value
+    )
+    assert len(export_roots) == 2
+    assert all(len(span.links) == 1 for span in export_roots)
+    assert all(
+        span.links[0].context.trace_id == http_root.context.trace_id
+        for span in export_roots
+    )
+    assert all(
+        span.attributes.get("chatbi.outcome") == "SUCCESS" for span in export_roots
+    )
+    assert {span.name for span in spans} >= {
+        "export.generate",
+        "export.delivery",
+        "export.cleanup",
+    }
+    assert all(
+        span.attributes.get("chatbi.export.format") == "xlsx" for span in export_roots
+    )
+    assert "销售额" not in repr(spans)
 
 
 def test_saved_query_result_download_uses_the_independent_saved_source():

@@ -24,6 +24,8 @@ USER root
 RUN test -n "${CHATBI_SOURCE_COMMIT}" \
     && printf '%s' "${CHATBI_SOURCE_COMMIT}" | grep -Eq '^[0-9a-f]{40}$' \
     && printf 'Acquire::Retries "3";\n' > /etc/apt/apt.conf.d/80-retries \
+    && sed -i '/^URIs:/ s#http://deb.debian.org#https://deb.debian.org#g' \
+        /etc/apt/sources.list.d/debian.sources \
     && apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates fontconfig \
         fonts-noto-cjk=1:20220127+repack1-1 fonts-wqy-zenhei=0.9.45-8 \
@@ -42,7 +44,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project \
     && /opt/venv/bin/playwright install --with-deps chromium
 COPY src ./src
-COPY scripts/__init__.py scripts/local_release.py ./scripts/
+COPY scripts/__init__.py scripts/local_release.py scripts/local_operations_status.py ./scripts/
 COPY scripts/local_compatibility.json /opt/chatbi-compatibility.json
 COPY scripts/metadata ./scripts/metadata
 COPY database ./database

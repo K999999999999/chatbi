@@ -17,7 +17,7 @@ from src.authorization import (
 from src.chatbi_control.bootstrap import seed_rbac
 from src.chatbi_control.models import Base, User
 from src.online_query.contracts import QuerySuccess
-from src.query_api.app import create_app
+from tests.operations_support import create_app
 from src.query_api.browser import COOKIE_NAME, BrowserSettings
 
 

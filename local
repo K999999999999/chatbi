@@ -10,18 +10,27 @@ PROJECT_NAME="chatbi-stable"
 source "$ROOT/scripts/local_port.sh"
 source "$ROOT/scripts/local_build_cache.sh"
 source "$ROOT/scripts/local_deployment_state.sh"
+source "$ROOT/scripts/local_backup.sh"
+source "$ROOT/scripts/local_runtime_binding.sh"
 
 # Compose reads only the dedicated stable files; developer-shell variables must not
 # override them or leak development credentials into this independent project.
 for key in \
     COMPOSE_FILE COMPOSE_PROFILES COMPOSE_PROJECT_NAME \
-    CHATBI_API_IMAGE CHATBI_DATABASE_IMAGE CHATBI_SOURCE_COMMIT \
+    CHATBI_API_IMAGE CHATBI_DATABASE_IMAGE CHATBI_SOURCE_COMMIT CHATBI_OPERATIONS_IMAGE \
     CHATBI_LOCAL_HTTP_PORT CHATBI_LOCAL_MODEL_DIR CHATBI_ADMIN_SECRET_KEY \
     CHATBI_LOCAL_UID CHATBI_LOCAL_GID CHATBI_LOCAL_SECCOMP_PROFILE \
+    CHATBI_BOUND_POSTGRES_VOLUME CHATBI_BOUND_QDRANT_VOLUME CHATBI_BOUND_RAG_DIR \
+    CHATBI_BOUND_OPERATIONS_API_DIR CHATBI_BOUND_OPERATIONS_API_RELATIVE \
+    CHATBI_BOUND_DATABASE_IMAGE CHATBI_BOUND_DATABASE_IMAGE_ID CHATBI_BOUND_STATE_DIR \
     POSTGRES_DB POSTGRES_MIGRATOR_USER POSTGRES_MIGRATOR_PASSWORD \
     POSTGRES_APP_PASSWORD POSTGRES_CONTROL_APP_PASSWORD \
     QDRANT_API_KEY LLM_API_KEY LLM_BASE_URL LLM_MODEL \
-    LLM_TEMPERATURE LLM_MAX_TOKENS LLM_TIMEOUT_SECONDS
+    LLM_TEMPERATURE LLM_MAX_TOKENS LLM_TIMEOUT_SECONDS \
+    CHATBI_OBSERVABILITY_ENABLED CHATBI_TRACE_CONTENT_ENABLED CHATBI_RUNTIME_ENV \
+    CHATBI_SERVICE_VERSION CHATBI_OTLP_TIMEOUT_SECONDS OTEL_SERVICE_NAME \
+    OTEL_RESOURCE_ATTRIBUTES OTEL_EXPORTER_OTLP_TRACES_ENDPOINT \
+    OTEL_EXPORTER_OTLP_HEADERS
 do
     unset "$key" || true
 done
@@ -29,6 +38,8 @@ done
 CHATBI_LOCAL_UID="$(id -u)"
 CHATBI_LOCAL_GID="$(id -g)"
 CHATBI_LOCAL_SECCOMP_PROFILE="$ROOT/docker/third-party/playwright-seccomp-profile.json"
+RESTORE_JOURNAL_EXIT_ID=''
+RESTORE_JOURNAL_EXIT_PHASE=''
 export CHATBI_LOCAL_UID CHATBI_LOCAL_GID CHATBI_LOCAL_SECCOMP_PROFILE
 
 fail() {
@@ -38,9 +49,16 @@ fail() {
 
 acquire_operation_lock() {
     case "${1:-help}" in
-        init-config|build|infra|migrate|create-admin|prepare-model|build-rag|up|down|upgrade|rollback)
+        init-config|build|build-operations|init-backup|backup|infra|migrate|create-admin|prepare-model|build-rag|up|down|upgrade|rollback|restore|restore-activate|restore-recover)
             command -v flock >/dev/null 2>&1 || fail '稳定环境写操作需要 util-linux 提供的 flock。'
             mkdir -p "$ROOT/.local" || fail '无法创建稳定环境本地状态目录。'
+            [[ ! -L "$ROOT/.local" && ! -L "$ROOT/.local/operation.lock" ]] \
+                || fail '稳定环境操作锁路径存在符号链接；拒绝写入。'
+            if [[ -e "$ROOT/.local/operation.lock" ]]; then
+                [[ -f "$ROOT/.local/operation.lock" && "$(stat -c '%u' "$ROOT/.local/operation.lock")" == "$(id -u)" ]] \
+                    || fail '稳定环境操作锁归属未确认。'
+            fi
+            check_operations_root
             local lock_fd
             exec {lock_fd}>>"$ROOT/.local/operation.lock" \
                 || fail '无法打开稳定环境操作锁。'
@@ -58,6 +76,10 @@ ChatBI 本地稳定环境（与开发 Compose、开发 .env、开发数据卷隔
 
   init-config    创建独立配置并生成一次性数据库、管理员和 Qdrant 随机密钥
   build          从当前 clean commit 构建带身份的 API / PostgreSQL 固定版本镜像
+  build-operations  从clean commit构建固定age/PG16备份工具
+  init-backup    显式初始化备份密钥；重复执行不覆盖
+  backup         备份实际运行版本，完整解密校验后登记
+  backup-list    只读列出已登记加密副本
   infra          启动稳定 PostgreSQL / Qdrant 并等待基础合成数据初始化
   migrate        显式安装应用库、RBAC 和 checkpoint Schema
   create-admin   交互创建首个管理员，密码不回显
@@ -66,9 +88,12 @@ ChatBI 本地稳定环境（与开发 Compose、开发 .env、开发数据卷隔
   up             检查镜像、数据库、模型和索引后后台启动 API
   upgrade <SHA>  兼容检查后迁移并启动指定完整 commit
   rollback <SHA> 兼容检查后回滚到指定完整 commit，不执行 migration
+  restore <ID>   在隔离项目完整恢复并交互核验登录与历史
+  restore-activate <恢复ID> 记录 journal 后显式切换已核验候选
+  restore-recover <恢复ID> --previous|--candidate 显式选择中断后的资源
   down           停止稳定环境服务并保留全部数据和资产
   status         查看稳定环境服务状态与本机地址
-  logs [服务]    查看 api、postgres 或 qdrant 日志
+  logs [服务]    查看 api、postgres、qdrant 或 backup 安全日志
 
 配置后需在 .env.local 中填写外部 LLM_API_KEY。此入口不会读取或复制开发 .env。
 EOF
@@ -85,10 +110,11 @@ read_config_value() {
 }
 
 require_config() {
-    [[ -f "$CONFIG_FILE" ]] || fail '缺少 .env.local；先运行 ./local init-config。'
-    [[ -f "$SECRET_FILE" ]] || fail '缺少 .env.local.secrets；运行 ./local init-config，不会覆盖现有配置。'
+    [[ -f "$CONFIG_FILE" && ! -L "$CONFIG_FILE" ]] || fail '缺少 .env.local；先运行 ./local init-config。'
+    [[ -f "$SECRET_FILE" && ! -L "$SECRET_FILE" ]] || fail '缺少 .env.local.secrets；运行 ./local init-config，不会覆盖现有配置。'
     local mode
     for file in "$CONFIG_FILE" "$SECRET_FILE"; do
+        [[ "$(stat -c '%u' "$file")" == "$(id -u)" ]] || fail '配置文件归属未确认。'
         mode="$(stat -c '%a' "$file" 2>/dev/null)" || fail "无法检查配置文件权限：${file##*/}"
         if (( (8#$mode & 077) != 0 )); then
             fail "${file##*/} 权限过宽；请执行 chmod 600 '${file##*/}'。"
@@ -98,7 +124,15 @@ require_config() {
 }
 
 require_release() {
-    [[ -f "$RELEASE_FILE" ]] || fail '尚无本地固定版本镜像；先运行 ./local build。'
+    [[ -f "$RELEASE_FILE" && ! -L "$RELEASE_FILE" ]] \
+        || fail '尚无安全的本地固定版本记录；先运行 ./local build。'
+    [[ "$(stat -c '%u' "$RELEASE_FILE")" == "$(id -u)" ]] \
+        || fail '本地发布记录归属未确认。'
+    local release_mode
+    release_mode="$(stat -c '%a' "$RELEASE_FILE" 2>/dev/null)" \
+        || fail '无法检查本地发布记录权限。'
+    (( (8#$release_mode & 077) == 0 )) \
+        || fail '本地发布记录权限过宽。'
     CHATBI_SOURCE_COMMIT=''
     CHATBI_API_IMAGE=''
     CHATBI_API_IMAGE_ID=''
@@ -143,7 +177,7 @@ stable_container_ids() {
 
 stop_stable_services() {
     local service container state found=false
-    for service in api postgres qdrant; do
+    for service in backup api postgres qdrant; do
         while IFS= read -r container; do
             [[ -n "$container" ]] || continue
             found=true
@@ -162,6 +196,7 @@ stop_stable_services() {
 
 show_stable_status() {
     local source_commit='未构建' port=8080
+    printf '活动资源绑定: %s\n' "$CHATBI_BOUND_ENVIRONMENT_ID"
     if [[ -f "$CONFIG_FILE" ]]; then
         port="$(read_config_value CHATBI_LOCAL_HTTP_PORT)"
         [[ -n "$port" ]] || port=8080
@@ -182,13 +217,29 @@ show_stable_status() {
     docker ps --all \
         --filter "label=com.docker.compose.project=$PROJECT_NAME" \
         --format '{{.Label "com.docker.compose.service"}} | {{.Status}} | {{.Ports}}'
+    if [[ -d "$ROOT/.local/operations" ]]; then
+        python3 "$ROOT/scripts/local_restore_state.py" journal-show --root "$ROOT/.local" \
+            | python3 -c 'import json,sys; result=json.load(sys.stdin).get("result"); print("恢复切换: 无未完成日志" if not result else "恢复切换: id=%s state=%s phase=%s" % (result["id"],result["state"],result["phase"]))' \
+            || printf '恢复切换: 日志状态无法核验。\n'
+        python3 "$ROOT/scripts/local_restore_state.py" list-records --root "$ROOT/.local" \
+            | python3 -c 'import json,sys; items=json.load(sys.stdin).get("result",[]); [print("恢复候选: %s status=%s" % (item["id"],item["status"])) for item in items]' \
+            || printf '恢复候选: 本机登记无法核验。\n'
+    fi
+    local container
+    container="$(stable_container_ids api | head -1)"
+    printf '运行就绪证据：'
+    if [[ -n "$container" ]] && docker exec "$container" python -m scripts.local_operations_status 2>/dev/null; then
+        :
+    else
+        printf '未确认（API未运行或当前版本尚无运行状态入口）。\n'
+    fi
 }
 
 show_stable_logs() {
-    local -a services=(api postgres qdrant)
+    local -a services=(api postgres qdrant backup)
     if (( $# > 0 )); then
-        (( $# == 1 )) && [[ "$1" =~ ^(api|postgres|qdrant)$ ]] \
-            || fail '日志服务仅支持 api、postgres、qdrant；不支持额外过滤参数。'
+        (( $# == 1 )) && [[ "$1" =~ ^(api|postgres|qdrant|backup)$ ]] \
+            || fail '日志服务仅支持 api、postgres、qdrant、backup；不支持额外过滤参数。'
         services=("$1")
     fi
     local service container found
@@ -206,6 +257,592 @@ show_stable_logs() {
     done
 }
 
+restore_state_cli() {
+    python3 "$ROOT/scripts/local_restore_state.py" "$@" --root "$ROOT/.local"
+}
+
+restore_tool() {
+    compose run --rm -T --no-deps restore-tool "$@"
+}
+
+run_restore_prepare_locked() {
+    local backup_id="$1" restore_id="$2"
+    docker run --rm --user "$CHATBI_LOCAL_UID:$CHATBI_LOCAL_GID" \
+        --mount "type=bind,source=$ROOT/.local/operations,target=/state/operations" \
+        --mount "type=bind,source=$ROOT/.local/backups,target=/state/backups,readonly" \
+        --mount "type=bind,source=$ROOT/.local/backup-keys,target=/state/backup-keys,readonly" \
+        --mount "type=bind,source=$ROOT/.local/operation.lock,target=/state/operation.lock" \
+        --entrypoint python3 "$CHATBI_OPERATIONS_IMAGE" -m scripts.local_restore prepare \
+        --root /state --backup-id "$backup_id" --restore-id "$restore_id" --host-locked
+}
+
+candidate_project_container_ids() {
+    local project="$1"
+    docker ps --all --quiet --filter "label=com.docker.compose.project=$project"
+}
+
+stop_candidate_project() {
+    local project="$1" container running
+    while IFS= read -r container; do
+        [[ -n "$container" ]] || continue
+        running="$(docker inspect --format '{{.State.Running}}' "$container" 2>/dev/null || true)"
+        if [[ "$running" == true ]]; then
+            docker stop "$container" >/dev/null || fail '无法确认隔离恢复项目已停止；资源保留。'
+        fi
+    done < <(candidate_project_container_ids "$project")
+}
+
+cleanup_candidate_project() {
+    local project="$1" container running
+    while IFS= read -r container; do
+        [[ -n "$container" ]] || continue
+        running="$(docker inspect --format '{{.State.Running}}' "$container" 2>/dev/null || true)"
+        [[ "$running" == true ]] && docker stop "$container" >/dev/null 2>&1 || true
+    done < <(candidate_project_container_ids "$project")
+}
+
+cleanup_candidate_service() {
+    local project="$1" service="$2" container
+    while IFS= read -r container; do
+        [[ -n "$container" ]] || continue
+        [[ "$(docker inspect --format '{{.Config.Labels "com.docker.compose.service"}}' "$container" 2>/dev/null || true)" == "$service" ]] || continue
+        docker stop "$container" >/dev/null 2>&1 || true
+    done < <(candidate_project_container_ids "$project")
+}
+
+stop_candidate_service() {
+    local project="$1" service="$2" container running
+    while IFS= read -r container; do
+        [[ -n "$container" ]] || continue
+        [[ "$(docker inspect --format '{{.Config.Labels "com.docker.compose.service"}}' "$container" 2>/dev/null || true)" == "$service" ]] || continue
+        running="$(docker inspect --format '{{.State.Running}}' "$container" 2>/dev/null || true)"
+        if [[ "$running" == true ]]; then
+            docker stop "$container" >/dev/null || fail "无法确认隔离候选 ${service} 已停止。"
+        fi
+    done < <(candidate_project_container_ids "$project")
+}
+
+require_candidate_project_stopped() {
+    local project="$1" container running
+    while IFS= read -r container; do
+        [[ -n "$container" ]] || continue
+        running="$(docker inspect --format '{{.State.Running}}' "$container" 2>/dev/null || true)"
+        [[ "$running" != true ]] || fail '隔离恢复项目仍有运行容器；拒绝切换。'
+    done < <(candidate_project_container_ids "$project")
+}
+
+require_restore_volume_labels() {
+    local restore_id="$1" kind="$2" name="$3"
+    [[ "$(docker volume inspect --format '{{.Name}}' "$name" 2>/dev/null || true)" == "$name" ]] \
+        || fail '隔离恢复卷不存在；拒绝自动新建空卷替代恢复数据。'
+    [[ "$(docker volume inspect --format '{{index .Labels "com.chatbi.restore-id"}}' "$name" 2>/dev/null || true)" == "$restore_id" \
+        && "$(docker volume inspect --format '{{index .Labels "com.chatbi.product"}}' "$name" 2>/dev/null || true)" == chatbi-engine \
+        && "$(docker volume inspect --format '{{index .Labels "com.chatbi.resource-kind"}}' "$name" 2>/dev/null || true)" == "$kind" ]] \
+        || fail '隔离恢复卷标签与登记记录不符；拒绝复用。'
+}
+
+create_restore_volumes() {
+    local restore_id="$1" postgres="$2" qdrant="$3"
+    if docker volume inspect "$postgres" >/dev/null 2>&1 || docker volume inspect "$qdrant" >/dev/null 2>&1; then
+        fail '本次恢复卷名已存在；不复用或覆盖未知资源。'
+    fi
+    docker volume create --label "com.chatbi.restore-id=$restore_id" \
+        --label com.chatbi.product=chatbi-engine --label com.chatbi.resource-kind=postgres "$postgres" >/dev/null \
+        || fail '无法创建隔离 PostgreSQL 卷；保留已登记的恢复状态。'
+    docker volume create --label "com.chatbi.restore-id=$restore_id" \
+        --label com.chatbi.product=chatbi-engine --label com.chatbi.resource-kind=qdrant "$qdrant" >/dev/null \
+        || fail '无法创建隔离 Qdrant 卷；保留已登记的恢复状态。'
+    require_restore_volume_labels "$restore_id" postgres "$postgres"
+    require_restore_volume_labels "$restore_id" qdrant "$qdrant"
+}
+
+apply_restore_context() {
+    local restore_id="$1" state_dir="$ROOT/.local/operations/restores/$1"
+    local parsed
+    parsed="$(python3 -c 'import sys; from scripts.local_restore_state import load_record; from scripts.local_runtime_binding import binding_environment; print(binding_environment(load_record(sys.argv[1], sys.argv[2])["binding"]), end="")' \
+        "$ROOT/.local/operations" "$restore_id")" || fail '恢复登记记录无效；拒绝继续。'
+    apply_binding_environment "$parsed"
+    CHATBI_BOUND_STATE_DIR="$state_dir/state"
+    export CHATBI_BOUND_STATE_DIR
+}
+
+require_restore_model_cache() {
+    local model_path
+    model_path="$(read_config_value CHATBI_LOCAL_MODEL_DIR)"
+    if [[ "$model_path" != /* ]]; then model_path="$ROOT/$model_path"; fi
+    model_path="$(realpath -m -- "$model_path")"
+    [[ "$model_path" == "$(realpath -m -- "$ROOT/.model-cache/bge-m3-5617a9f61b02")" \
+        && -f "$model_path/config.json" ]] \
+        || fail '恢复要求复用已准备的固定 BGE-M3 模型缓存；未修改其他模型目录。'
+}
+
+verify_candidate_release_assets() {
+    verify_release_images
+    local expected actual expected_digest
+    local -a identity
+    expected="$(python3 -c 'import sys; from scripts.local_restore_state import load_record; r=load_record(sys.argv[1],sys.argv[2]); print("\n".join((r["source_commit"],r["api_image"],r["api_image_id"],r["database_image"],r["database_image_id"],r["compatibility_sha256"])))' \
+        "$ROOT/.local/operations" "$CHATBI_BOUND_ENVIRONMENT_ID")" \
+        || fail '恢复候选登记记录无法核验。'
+    mapfile -t identity <<< "$expected"
+    (( ${#identity[@]} == 6 )) \
+        || fail '恢复候选登记身份格式错误。'
+    [[ "$CHATBI_SOURCE_COMMIT" == "${identity[0]}" \
+        && "$CHATBI_API_IMAGE" == "${identity[1]}" \
+        && "$CHATBI_API_IMAGE_ID" == "${identity[2]}" \
+        && "$CHATBI_DATABASE_IMAGE" == "${identity[3]}" \
+        && "$CHATBI_BOUND_DATABASE_IMAGE" == "${identity[3]}" \
+        && "$CHATBI_BOUND_DATABASE_IMAGE_ID" == "${identity[4]}" ]] \
+        || fail '恢复候选发布记录与资源登记不一致。'
+    expected_digest="$(python3 -c 'import hashlib,sys; from scripts.local_backup import secure_file; print(hashlib.sha256(secure_file(sys.argv[1])).hexdigest())' \
+        "$ROOT/.local/operations/restores/$CHATBI_BOUND_ENVIRONMENT_ID/compatibility.json")" \
+        || fail '恢复兼容性声明权限或内容无效。'
+    [[ "$expected_digest" == "${identity[5]}" ]] \
+        || fail '恢复兼容性声明与 verified 登记不一致。'
+    expected="$(cat "$ROOT/.local/operations/restores/$CHATBI_BOUND_ENVIRONMENT_ID/compatibility.json")" \
+        || fail '恢复兼容性声明缺失。'
+    actual="$(docker run --rm --entrypoint /bin/cat "$CHATBI_API_IMAGE" /opt/chatbi-compatibility.json 2>/dev/null)" \
+        || fail '候选 API 镜像无法读取兼容性声明。'
+    [[ "$actual" == "$expected" ]] \
+        || fail '备份兼容性声明与固定 API 镜像不一致；拒绝恢复。'
+}
+
+capture_previous_runtime() {
+    local service container running total active fallback identity source_commit actual_id
+    local -a containers
+    for service in api postgres; do
+        mapfile -t containers < <(stable_container_ids "$service")
+        (( ${#containers[@]} > 0 )) || fail "原 stable ${service} 容器缺失；无法登记 exact previous runtime。"
+        total=0
+        active=''
+        fallback=''
+        for container in "${containers[@]}"; do
+            [[ -n "$container" ]] || continue
+            total=$((total + 1))
+            [[ -n "$fallback" ]] || fallback="$container"
+            running="$(docker inspect --format '{{.State.Running}}' "$container" 2>/dev/null || true)"
+            if [[ "$running" == true ]]; then
+                [[ -z "$active" ]] || fail "原 stable ${service} 有多个运行容器；拒绝模糊 previous。"
+                active="$container"
+            fi
+        done
+        if [[ "$service" == api ]]; then
+            [[ -n "$active" ]] && container="$active" || { (( total == 1 )) || fail '原 stable API 容器身份不唯一。'; container="$fallback"; }
+            identity="$(docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}|{{.Config.Image}}|{{.Image}}' "$container")"
+            IFS='|' read -r source_commit PREVIOUS_RUNTIME_API_IMAGE PREVIOUS_RUNTIME_API_IMAGE_ID <<< "$identity"
+            [[ "$source_commit" =~ ^[0-9a-f]{40}$ \
+                && "$PREVIOUS_RUNTIME_API_IMAGE" =~ ^chatbi-local-api:[A-Za-z0-9_.-]+$ \
+                && "$PREVIOUS_RUNTIME_API_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+                || fail '原 stable API runtime identity 无效。'
+            PREVIOUS_RUNTIME_RELEASE_FILE="$RELEASE_DIR/$source_commit.env"
+            [[ -f "$PREVIOUS_RUNTIME_RELEASE_FILE" && ! -L "$PREVIOUS_RUNTIME_RELEASE_FILE" ]] \
+                || fail '原 stable API 的不可变 release 文件缺失。'
+            PREVIOUS_RUNTIME_RELEASE_REF="${PREVIOUS_RUNTIME_RELEASE_FILE#"$ROOT/"}"
+            local RELEASE_FILE="$PREVIOUS_RUNTIME_RELEASE_FILE"
+            local CHATBI_SOURCE_COMMIT='' CHATBI_API_IMAGE='' CHATBI_API_IMAGE_ID='' CHATBI_DATABASE_IMAGE='' CHATBI_DATABASE_IMAGE_ID=''
+            require_release
+            [[ "$CHATBI_SOURCE_COMMIT" == "$source_commit" \
+                && "$CHATBI_API_IMAGE" == "$PREVIOUS_RUNTIME_API_IMAGE" \
+                && "$CHATBI_API_IMAGE_ID" == "$PREVIOUS_RUNTIME_API_IMAGE_ID" ]] \
+                || fail '原 stable API 与其不可变 release 文件不匹配。'
+            actual_id="$(docker image inspect --format '{{.Id}}' "$PREVIOUS_RUNTIME_API_IMAGE" 2>/dev/null || true)"
+            [[ "$actual_id" == "$PREVIOUS_RUNTIME_API_IMAGE_ID" ]] \
+                || fail '原 stable API 镜像 tag 与运行 image ID 不匹配。'
+        else
+            [[ -n "$active" ]] && container="$active" || { (( total == 1 )) || fail '原 stable PostgreSQL 容器身份不唯一。'; container="$fallback"; }
+            identity="$(docker inspect --format '{{.Config.Image}}|{{.Image}}' "$container")"
+            IFS='|' read -r PREVIOUS_RUNTIME_DATABASE_IMAGE PREVIOUS_RUNTIME_DATABASE_IMAGE_ID <<< "$identity"
+            [[ "$PREVIOUS_RUNTIME_DATABASE_IMAGE" =~ ^chatbi-local-postgres:[A-Za-z0-9_.-]+$ \
+                && "$PREVIOUS_RUNTIME_DATABASE_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+                || fail '原 stable PostgreSQL runtime identity 无效。'
+            actual_id="$(docker image inspect --format '{{.Id}}' "$PREVIOUS_RUNTIME_DATABASE_IMAGE" 2>/dev/null || true)"
+            [[ "$actual_id" == "$PREVIOUS_RUNTIME_DATABASE_IMAGE_ID" ]] \
+                || fail '原 stable PostgreSQL image tag 与运行 image ID 不匹配。'
+        fi
+    done
+}
+
+restore_project_compose() {
+    local restore_id="$CHATBI_BOUND_ENVIRONMENT_ID"
+    local PROJECT_NAME="chatbi-restore-$restore_id"
+    compose "$@"
+}
+
+wait_for_restore_postgres() {
+    local container state attempt database user
+    database="$(read_config_value POSTGRES_DB)"
+    user="$(read_config_value POSTGRES_MIGRATOR_USER)"
+    [[ "$database" == chatbi_mvp && "$user" == chatbi_migrator ]] \
+        || fail '恢复目标数据库或管理角色不符合固定 Contract。'
+    for attempt in $(seq 1 90); do
+        container="$(restore_project_compose ps -q postgres)"
+        if [[ -n "$container" ]]; then
+            state="$(docker inspect --format '{{.State.Status}}' "$container" 2>/dev/null || true)"
+            [[ "$state" != exited && "$state" != dead ]] || return 1
+            if docker exec "$container" pg_isready --username "$user" --dbname "$database" >/dev/null 2>&1; then
+                return 0
+            fi
+        fi
+        sleep 2
+    done
+    return 1
+}
+
+wait_for_restore_api() {
+    local container health attempt port
+    port="$CHATBI_LOCAL_HTTP_PORT"
+    for attempt in $(seq 1 90); do
+        container="$(restore_project_compose ps -q api)"
+        if [[ -n "$container" ]]; then
+            health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container" 2>/dev/null || true)"
+            if [[ "$health" == healthy ]] && local_loopback_http_health_ok "$port"; then
+                [[ "$(docker port "$container" 8000/tcp 2>/dev/null || true)" == "127.0.0.1:$port" ]] || return 1
+                return 0
+            fi
+            [[ "$health" != unhealthy && "$health" != exited && "$health" != dead ]] \
+                || return 1
+        fi
+        sleep 2
+    done
+    return 1
+}
+
+write_restore_verification() {
+    local login_json="$1" duration="$2" path="$ROOT/.local/operations/restores/$CHATBI_BOUND_ENVIRONMENT_ID/verification.json"
+    printf '%s' "$login_json" | python3 -c 'import json,os,sys; auth=json.load(sys.stdin); seconds=int(sys.argv[1]); assert auth == {"history": True, "login": True}; value={"readiness": True, "login": auth["login"], "history": auth["history"], "index_ready": True, "duration_seconds": seconds}; fd=os.open(sys.argv[2], os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW, 0o600); stream=os.fdopen(fd,"w"); json.dump(value,stream,sort_keys=True); stream.flush(); os.fsync(stream.fileno())' \
+        "$duration" "$path" || fail '恢复核验结果无效；候选保持未验证。'
+}
+
+restore_backup() {
+    local backup_id="$1" restore_id project state_dir port model_path prepared login_result duration credentials
+    [[ "$backup_id" =~ ^[0-9a-f]{32}$ ]] || fail 'restore 只接受已登记备份 ID。'
+    require_docker
+    prepare_operations_directories
+    require_operations_image
+    [[ -x "$ROOT/.venv/bin/python" ]] || fail '隔离登录核验需要仓库虚拟环境中的 Argon2 工具；未创建恢复资源。'
+    restore_id="$(openssl rand -hex 16)" || fail '无法生成隔离恢复 ID。'
+    local RESTORE_STARTED="$SECONDS"
+    local CONFIG_FILE="$ROOT/.local/operations/restores/$restore_id/config.env"
+    local SECRET_FILE="$ROOT/.local/operations/restores/$restore_id/secrets.env"
+    local RELEASE_FILE="$ROOT/.local/operations/restores/$restore_id/release.env"
+    local PROJECT_NAME="chatbi-restore-$restore_id"
+    local CHATBI_BOUND_ENVIRONMENT_ID="$restore_id"
+    local CHATBI_BOUND_POSTGRES_VOLUME="chatbi_restore_${restore_id}_postgres_data"
+    local CHATBI_BOUND_QDRANT_VOLUME="chatbi_restore_${restore_id}_qdrant_data"
+    local CHATBI_BOUND_RAG_DIR="$ROOT/.local/operations/restores/$restore_id/rag"
+    local CHATBI_BOUND_OPERATIONS_API_DIR="$ROOT/.local/operations/restores/$restore_id/api"
+    local CHATBI_BOUND_OPERATIONS_API_RELATIVE="restores/$restore_id/api"
+    local CHATBI_BOUND_DATABASE_IMAGE='' CHATBI_BOUND_DATABASE_IMAGE_ID=''
+    local CHATBI_BOUND_STATE_DIR="$ROOT/.local/operations/restores/$restore_id/state"
+    local CHATBI_LOCAL_HTTP_PORT=''
+    export CHATBI_BOUND_ENVIRONMENT_ID CHATBI_BOUND_POSTGRES_VOLUME CHATBI_BOUND_QDRANT_VOLUME
+    export CHATBI_BOUND_RAG_DIR CHATBI_BOUND_OPERATIONS_API_DIR CHATBI_BOUND_OPERATIONS_API_RELATIVE
+    export CHATBI_BOUND_DATABASE_IMAGE CHATBI_BOUND_DATABASE_IMAGE_ID CHATBI_BOUND_STATE_DIR CHATBI_LOCAL_HTTP_PORT
+
+    port="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')" \
+        || fail '无法分配隔离候选回环端口。'
+    CHATBI_LOCAL_HTTP_PORT="$port"
+    local candidate_context_active=false temp_identity_active=false restore_prepared=false
+    restore_failure_cleanup() {
+        local result=$?
+        trap - EXIT
+        if [[ "$temp_identity_active" == true ]]; then
+            cleanup_candidate_service "$PROJECT_NAME" api
+            restore_tool temp-identity --identity-action cleanup --root /state \
+                --restore-id "$restore_id" --host-locked >/dev/null 2>&1 \
+                || printf '临时核验账号未能清理；隔离数据库保留且候选不可激活。\n' >&2
+            temp_identity_active=false
+            credentials=''
+        fi
+        if [[ "$candidate_context_active" == true && $result -ne 0 ]]; then
+            cleanup_candidate_project "$PROJECT_NAME"
+            printf '未验证候选已停止；恢复卷和登记记录保留在本机供检查。\n' >&2
+        fi
+        if [[ "$restore_prepared" == true && $result -ne 0 ]]; then
+            restore_tool clear-payload --root /state --restore-id "$restore_id" --host-locked \
+                >/dev/null 2>&1 \
+                || printf '恢复失败后的明文暂存未能清理；请检查隔离恢复目录归属。\n' >&2
+            restore_prepared=false
+        fi
+    }
+    trap restore_failure_cleanup EXIT
+
+    # prepare creates only a private candidate record and encrypted-copy staging.
+    prepared="$(run_restore_prepare_locked "$backup_id" "$restore_id")" \
+        || fail '备份解密、清单、角色或固定来源核验失败；未创建数据库卷。'
+    [[ "$prepared" == *"\"status\": \"success\""* || "$prepared" == *"\"status\":\"success\""* ]] \
+        || fail '隔离恢复登记未成功。'
+    restore_prepared=true
+    apply_restore_context "$restore_id"
+    CONFIG_FILE="$ROOT/.local/operations/restores/$restore_id/config.env"
+    SECRET_FILE="$ROOT/.local/operations/restores/$restore_id/secrets.env"
+    RELEASE_FILE="$ROOT/.local/operations/restores/$restore_id/release.env"
+    require_config
+    require_release
+    CHATBI_BOUND_DATABASE_IMAGE="$CHATBI_DATABASE_IMAGE"
+    CHATBI_BOUND_DATABASE_IMAGE_ID="$CHATBI_DATABASE_IMAGE_ID"
+    export CHATBI_BOUND_DATABASE_IMAGE CHATBI_BOUND_DATABASE_IMAGE_ID
+    verify_candidate_release_assets
+    require_restore_model_cache
+    model_path="$(read_config_value CHATBI_LOCAL_MODEL_DIR)"
+    [[ "$model_path" == /* ]] || model_path="$ROOT/$model_path"
+    if ! local_loopback_port_is_free "$port"; then
+        fail "隔离候选回环端口 ${port} 已被占用；不会停止占用进程。"
+    fi
+    mkdir -m 700 "$CHATBI_BOUND_STATE_DIR"
+    create_restore_volumes "$restore_id" "$CHATBI_BOUND_POSTGRES_VOLUME" "$CHATBI_BOUND_QDRANT_VOLUME"
+    candidate_context_active=true
+    check_compose_config
+    restore_project_compose up -d postgres qdrant \
+        || fail '隔离 PostgreSQL / Qdrant 启动失败；卷保留且不会触及稳定环境。'
+    wait_for_restore_postgres \
+        || fail '隔离 PostgreSQL 未就绪；卷保留且不会触及稳定环境。'
+    restore_project_compose exec -T postgres sh /workspace/database/init/wait_for_base_initialization.sh \
+        || fail '隔离 PostgreSQL 基础初始化失败；卷保留。'
+    restore_project_compose run --rm -T qdrant-check wait-qdrant \
+        || fail '隔离 Qdrant 未就绪；卷保留。'
+    restore_tool restore-databases --root /state --restore-id "$restore_id" --host-locked \
+        || fail '隔离数据库导入或全表指纹核验失败；候选不会标记为 verified。'
+    restore_project_compose run --rm -T --no-deps model build-rag \
+        || fail '固定模型 RAG 重建失败；候选不会标记为 verified。'
+    restore_project_compose run --rm -T --no-deps verify verify-runtime \
+        || fail '隔离候选兼容 / RAG / readiness 门禁失败。'
+    credentials="$("$ROOT/.venv/bin/python" "$ROOT/scripts/local_restore_credentials.py" --restore-id "$restore_id")" \
+        || fail '无法生成一次性恢复核验账号；候选不会标记为 verified。'
+    [[ -n "$credentials" ]] || fail '一次性恢复核验账号为空。'
+    temp_identity_active=true
+    printf '%s' "$credentials" | restore_tool temp-identity --identity-action prepare \
+        --root /state --restore-id "$restore_id" --host-locked \
+        || fail '无法建立隔离临时账号和历史快照副本；候选不会标记为 verified。'
+    restore_project_compose up -d --no-deps api \
+        || fail '隔离候选 API 启动失败；候选资源保留。'
+    wait_for_restore_api \
+        || fail '隔离候选 API HTTP 健康检查失败；候选资源保留。'
+    login_result="$(printf '%s' "$credentials" | python3 "$ROOT/scripts/local_restore_login.py" \
+        --port "$port" --credentials-stdin)" \
+        || fail '候选登录或历史只读核验失败；候选不会标记为 verified。'
+    duration=$(( SECONDS - RESTORE_STARTED ))
+    (( duration <= 1800 )) || fail '完整恢复超过 30 分钟目标；未登记为达标候选。'
+    # Stop the app writer and remove the temporary identity before recording proof.
+    stop_candidate_service "$PROJECT_NAME" api
+    restore_tool temp-identity --identity-action cleanup --root /state \
+        --restore-id "$restore_id" --host-locked \
+        || fail '临时核验账号 / 历史副本未能清理；候选保持未验证。'
+    temp_identity_active=false
+    credentials=''
+    write_restore_verification "$login_result" "$duration"
+    restore_tool mark-verified --root /state --restore-id "$restore_id" \
+        --verification-file "/state/operations/restores/$restore_id/verification.json" --host-locked \
+        || fail 'Session / execution fencing 未通过；候选保持未验证。'
+    rm -f -- "$ROOT/.local/operations/restores/$restore_id/verification.json"
+    stop_candidate_project "$PROJECT_NAME"
+    require_candidate_project_stopped "$PROJECT_NAME"
+    [[ -z "$(docker ps --quiet --filter "volume=$CHATBI_BOUND_POSTGRES_VOLUME")" \
+        && -z "$(docker ps --quiet --filter "volume=$CHATBI_BOUND_QDRANT_VOLUME")" ]] \
+        || fail '隔离恢复卷仍有运行容器附着；候选保持未验证。'
+    restore_tool clear-payload --root /state --restore-id "$restore_id" --host-locked \
+        || fail '候选已验证，但隔离明文 staging 清理失败；人工检查后再激活。'
+    candidate_context_active=false
+    trap - EXIT
+    printf '隔离恢复已验证并停止：%s\n数据库 / 全表指纹、角色与 grants、会话撤销、运行代际、RAG readiness、交互登录和历史只读均已核验。\n候选数据卷已保留；激活需单独执行 ./local restore-activate %s。\n' \
+        "$restore_id" "$restore_id"
+}
+
+mark_restore_journal_interrupted() {
+    local restore_id="$1" phase="$2"
+    restore_state_cli journal-phase --restore-id "$restore_id" --phase "$phase" \
+        --state interrupted >/dev/null 2>&1 || true
+}
+
+restore_activate() {
+    local restore_id="$1" phase=candidate-stopping previous_environment_id="$CHATBI_BOUND_ENVIRONMENT_ID"
+    local previous_config="$CONFIG_FILE"
+    local previous_secret="$SECRET_FILE" previous_release="$RELEASE_FILE"
+    local PREVIOUS_RUNTIME_RELEASE_FILE='' PREVIOUS_RUNTIME_RELEASE_REF=''
+    local PREVIOUS_RUNTIME_API_IMAGE='' PREVIOUS_RUNTIME_API_IMAGE_ID=''
+    local PREVIOUS_RUNTIME_DATABASE_IMAGE='' PREVIOUS_RUNTIME_DATABASE_IMAGE_ID=''
+    [[ "$restore_id" =~ ^[0-9a-f]{32}$ ]] || fail 'restore-activate 只接受完整恢复 ID。'
+    require_docker
+    prepare_operations_directories
+    require_operations_image
+    require_config
+    if [[ "$previous_environment_id" == legacy ]]; then
+        capture_previous_runtime
+        previous_release="$PREVIOUS_RUNTIME_RELEASE_FILE"
+        RELEASE_FILE="$previous_release"
+        require_release
+    else
+        require_release
+    fi
+    verify_release_images
+    if [[ "$previous_environment_id" != legacy ]]; then
+        verify_bound_database_image
+    fi
+    verify_bound_volume postgres || fail '原 stable PostgreSQL 卷归属未确认；拒绝丢失 previous。'
+    verify_bound_volume qdrant || fail '原 stable Qdrant 卷归属未确认；拒绝丢失 previous。'
+    verify_bound_single_writer
+    apply_restore_context "$restore_id"
+    local CONFIG_FILE="$ROOT/.local/operations/restores/$restore_id/config.env"
+    local SECRET_FILE="$ROOT/.local/operations/restores/$restore_id/secrets.env"
+    local RELEASE_FILE="$ROOT/.local/operations/restores/$restore_id/release.env"
+    local PROJECT_NAME=chatbi-stable
+    require_config
+    require_release
+    [[ -f "$previous_config" && -f "$previous_secret" && -f "$previous_release" ]] \
+        || fail '原稳定环境的配置或固定发布记录缺失；无法保留可恢复的 previous。'
+    verify_candidate_release_assets
+    require_restore_model_cache
+    require_restore_volume_labels "$restore_id" postgres "$CHATBI_BOUND_POSTGRES_VOLUME"
+    require_restore_volume_labels "$restore_id" qdrant "$CHATBI_BOUND_QDRANT_VOLUME"
+    [[ -d "$CHATBI_BOUND_RAG_DIR" && ! -L "$CHATBI_BOUND_RAG_DIR" \
+        && -d "$CHATBI_BOUND_OPERATIONS_API_DIR" && ! -L "$CHATBI_BOUND_OPERATIONS_API_DIR" ]] \
+        || fail '已验证候选的 RAG 或运行状态目录缺失。'
+    if [[ "$previous_environment_id" == legacy ]]; then
+        restore_state_cli journal-begin --restore-id "$restore_id" \
+            --previous-release-file "$PREVIOUS_RUNTIME_RELEASE_REF" \
+            --previous-database-image "$PREVIOUS_RUNTIME_DATABASE_IMAGE" \
+            --previous-database-image-id "$PREVIOUS_RUNTIME_DATABASE_IMAGE_ID" >/dev/null \
+            || fail '恢复候选未验证，或已有未完成切换日志；先核对 ./local status。'
+    else
+        restore_state_cli journal-begin --restore-id "$restore_id" >/dev/null \
+            || fail '恢复候选未验证，或已有未完成切换日志；先核对 ./local status。'
+    fi
+    local restore_activation_phase="$phase"
+    RESTORE_JOURNAL_EXIT_ID="$restore_id"
+    RESTORE_JOURNAL_EXIT_PHASE="$restore_activation_phase"
+    restore_activation_exit() {
+        local result=$?
+        trap - EXIT
+        if (( result != 0 )); then
+            mark_restore_journal_interrupted "$RESTORE_JOURNAL_EXIT_ID" "$RESTORE_JOURNAL_EXIT_PHASE"
+            printf '切换阶段未完成；所有资源与 journal 均保留，请显式执行 restore-recover。\n' >&2
+        fi
+    }
+    trap restore_activation_exit EXIT
+
+    stop_candidate_project "chatbi-restore-$restore_id"
+    require_candidate_project_stopped "chatbi-restore-$restore_id"
+    [[ -z "$(docker ps --quiet --filter "volume=$CHATBI_BOUND_POSTGRES_VOLUME")" \
+        && -z "$(docker ps --quiet --filter "volume=$CHATBI_BOUND_QDRANT_VOLUME")" ]] \
+        || fail '候选卷仍被隔离项目中的运行容器占用。'
+    restore_state_cli journal-phase --restore-id "$restore_id" --phase candidate-stopped \
+        --state activating >/dev/null || fail '无法记录候选停止阶段。'
+    RESTORE_JOURNAL_EXIT_PHASE=candidate-stopped
+    phase=previous-stopping
+    restore_activation_phase="$phase"
+    RESTORE_JOURNAL_EXIT_PHASE="$restore_activation_phase"
+    restore_state_cli journal-phase --restore-id "$restore_id" --phase "$phase" \
+        --state activating >/dev/null || fail '无法记录 previous 停止阶段。'
+    stop_stable_services
+    [[ -z "$(docker ps --quiet --filter "volume=$CHATBI_BOUND_POSTGRES_VOLUME")" ]] \
+        || fail '切换目标 PostgreSQL 卷仍有运行 writer。'
+    restore_state_cli journal-phase --restore-id "$restore_id" --phase previous-stopped \
+        --state activating >/dev/null || fail '无法记录 previous 停止完成。'
+    RESTORE_JOURNAL_EXIT_PHASE=previous-stopped
+    phase=binding-switched
+    restore_activation_phase="$phase"
+    RESTORE_JOURNAL_EXIT_PHASE="$restore_activation_phase"
+    restore_state_cli activate-select --restore-id "$restore_id" >/dev/null \
+        || fail '无法原子切换活动资源绑定。'
+    resolve_runtime_binding
+    require_config
+    require_release
+    prepare_host_directories
+    ensure_bound_volumes
+    verify_candidate_release_assets
+    phase=candidate-starting
+    restore_activation_phase="$phase"
+    RESTORE_JOURNAL_EXIT_PHASE="$restore_activation_phase"
+    restore_state_cli journal-phase --restore-id "$restore_id" --phase "$phase" \
+        --state activating >/dev/null || fail '无法记录候选启动阶段。'
+    start_infrastructure true
+    compose run --rm -T --no-deps verify verify-runtime \
+        || fail '活动候选启动前 readiness / 数据兼容门禁失败；绑定保持候选状态。'
+    record_deployment_state begin up "$CHATBI_SOURCE_COMMIT" restore-activate transitioning
+    run_target_api up "$CHATBI_SOURCE_COMMIT" restore-activate
+    phase=candidate-verified
+    restore_activation_phase="$phase"
+    RESTORE_JOURNAL_EXIT_PHASE="$restore_activation_phase"
+    restore_state_cli journal-phase --restore-id "$restore_id" --phase "$phase" \
+        --state activating >/dev/null || fail '无法记录候选服务核验完成。'
+    restore_state_cli record-activated --restore-id "$restore_id" >/dev/null \
+        || fail '候选已运行，但无法原子登记 activated 状态。'
+    restore_state_cli journal-complete --restore-id "$restore_id" >/dev/null \
+        || fail '候选已运行，但切换 journal 未能完成；需显式 recover。'
+    trap - EXIT
+    RESTORE_JOURNAL_EXIT_ID=''
+    RESTORE_JOURNAL_EXIT_PHASE=''
+    start_backup_scheduler
+    printf '恢复候选已切换为稳定资源：%s\n原 stable 卷、RAG 与配置保留；如需选择环境，运行 ./local restore-recover %s --previous|--candidate。\n' \
+        "$restore_id" "$restore_id"
+}
+
+restore_recover() {
+    local restore_id="$1" choice="$2" phase=recover-stopping
+    [[ "$restore_id" =~ ^[0-9a-f]{32}$ && "$choice" =~ ^(previous|candidate)$ ]] \
+        || fail '用法：./local restore-recover <恢复ID> --previous|--candidate'
+    require_docker
+    prepare_operations_directories
+    require_operations_image
+    local PROJECT_NAME=chatbi-stable
+    restore_state_cli recover-begin --restore-id "$restore_id" --choice "$choice" >/dev/null \
+        || fail '恢复 journal 不存在、已完成或 ID 不匹配；不会推测切换方向。'
+    RESTORE_JOURNAL_EXIT_ID="$restore_id"
+    RESTORE_JOURNAL_EXIT_PHASE="$phase"
+    restore_recovery_exit() {
+        local result=$?
+        trap - EXIT
+        if (( result != 0 )); then
+            mark_restore_journal_interrupted "$RESTORE_JOURNAL_EXIT_ID" "$RESTORE_JOURNAL_EXIT_PHASE"
+            printf '显式恢复尚未完成；资源与 journal 保留，请按状态核对后再次指定方向。\n' >&2
+        fi
+    }
+    trap restore_recovery_exit EXIT
+    stop_candidate_project "chatbi-restore-$restore_id"
+    require_candidate_project_stopped "chatbi-restore-$restore_id"
+    stop_stable_services
+    phase=recover-stopped
+    RESTORE_JOURNAL_EXIT_PHASE="$phase"
+    restore_state_cli journal-phase --restore-id "$restore_id" --phase "$phase" \
+        --state recovering --choice "$choice" >/dev/null \
+        || fail '无法记录显式恢复的停止完成阶段。'
+    phase=recover-binding-switched
+    RESTORE_JOURNAL_EXIT_PHASE="$phase"
+    restore_state_cli recover-select --restore-id "$restore_id" --choice "$choice" >/dev/null \
+        || fail '无法切换到操作者明确选择的资源绑定。'
+    resolve_runtime_binding
+    require_config
+    require_release
+    [[ -d "$CHATBI_BOUND_RAG_DIR" && ! -L "$CHATBI_BOUND_RAG_DIR" ]] \
+        || fail '显式选择的 RAG 目录缺失或类型错误；不会创建空目录替代 previous/candidate。'
+    require_restore_model_cache
+    verify_bound_volume postgres
+    verify_bound_volume qdrant
+    verify_bound_single_writer
+    prepare_host_directories
+    verify_release_images
+    phase=recover-starting
+    RESTORE_JOURNAL_EXIT_PHASE="$phase"
+    restore_state_cli journal-phase --restore-id "$restore_id" --phase "$phase" \
+        --state recovering --choice "$choice" >/dev/null \
+        || fail '无法记录所选资源启动阶段。'
+    start_infrastructure true
+    compose run --rm -T --no-deps verify verify-runtime \
+        || fail '显式选择的资源未通过 compatibility / readiness 门禁；journal 保留。'
+    record_deployment_state begin up "$CHATBI_SOURCE_COMMIT" restore-recover transitioning
+    run_target_api up "$CHATBI_SOURCE_COMMIT" restore-recover
+    if [[ "$choice" == candidate ]]; then
+        restore_state_cli record-activated --restore-id "$restore_id" >/dev/null \
+            || fail '候选已恢复运行，但 activated 登记失败。'
+    fi
+    restore_state_cli journal-complete --restore-id "$restore_id" >/dev/null \
+        || fail '所选资源已运行，但 journal 未能完成；请再次显式核验。'
+    trap - EXIT
+    RESTORE_JOURNAL_EXIT_ID=''
+    RESTORE_JOURNAL_EXIT_PHASE=''
+    start_backup_scheduler
+    printf '已按显式选择恢复 %s 资源绑定：%s。\n' "$choice" "$restore_id"
+}
+
 prepare_host_directories() {
     local model_path
     model_path="$(read_config_value CHATBI_LOCAL_MODEL_DIR)"
@@ -213,7 +850,18 @@ prepare_host_directories() {
     if [[ "$model_path" != /* ]]; then
         model_path="$ROOT/$model_path"
     fi
-    mkdir -p "$ROOT/.local/rag" "$model_path"
+    if [[ "$CHATBI_BOUND_ENVIRONMENT_ID" == legacy ]]; then
+        mkdir -p "$CHATBI_BOUND_RAG_DIR"
+    else
+        [[ -d "$CHATBI_BOUND_RAG_DIR" && ! -L "$CHATBI_BOUND_RAG_DIR" ]] \
+            || fail '已登记恢复环境的 RAG 目录缺失或类型无效；拒绝静默创建替代目录。'
+    fi
+    mkdir -p "$model_path"
+    prepare_operations_directories
+    if [[ "$CHATBI_BOUND_ENVIRONMENT_ID" != legacy ]]; then
+        [[ -d "$CHATBI_BOUND_OPERATIONS_API_DIR" && ! -L "$CHATBI_BOUND_OPERATIONS_API_DIR" ]] \
+            || fail '已登记恢复环境的 API 状态目录缺失或类型无效。'
+    fi
 }
 
 check_compose_config() {
@@ -240,6 +888,11 @@ verify_release_images() {
         || fail 'API 镜像缺少兼容性声明；拒绝启动、升级或回滚。'
     [[ -n "$compatibility_json" ]] \
         || fail 'API 镜像兼容性声明为空；拒绝启动、升级或回滚。'
+
+    if [[ -n "$CHATBI_BOUND_DATABASE_IMAGE" || -n "$CHATBI_BOUND_DATABASE_IMAGE_ID" ]]; then
+        verify_bound_database_image
+        return 0
+    fi
 
     actual_id="$(docker image inspect --format '{{.Id}}' "$CHATBI_DATABASE_IMAGE" 2>/dev/null)" \
         || fail '当前 PostgreSQL 镜像不存在；运行 ./local build。'
@@ -367,6 +1020,7 @@ initialize_config() {
             openssl rand -hex 32
             printf 'QDRANT_API_KEY='
             openssl rand -hex 32
+            printf 'OTEL_EXPORTER_OTLP_HEADERS=\n'
         } > "$secret_tmp"
         chmod 600 "$secret_tmp"
         mv -n "$secret_tmp" "$SECRET_FILE"
@@ -385,6 +1039,7 @@ start_infrastructure() {
     require_release
     require_docker
     prepare_host_directories
+    ensure_bound_volumes
     check_compose_config
     local selected_database_image="$CHATBI_DATABASE_IMAGE" database_container runtime_database_image
     if [[ "$preserve_database_image" == true ]]; then
@@ -660,6 +1315,10 @@ upgrade_release() {
     prepare_host_directories
     check_compose_config
     verify_release_images
+    if [[ "$operation" == upgrade ]]; then
+        # Source capture reads Docker's old active identity, never the selected target.
+        run_manual_backup
+    fi
     start_infrastructure true
     if ! compose run --rm -T --no-deps verify verify-runtime; then
         fail '目标发布与当前持久化状态不兼容；API 未停止，数据未修改。'
@@ -690,6 +1349,7 @@ upgrade_release() {
         record_deployment_state phase "$operation" "$source_commit" starting-api stopped
     fi
     run_target_api "$operation" "$source_commit" starting-api
+    start_backup_scheduler
     printf 'ChatBI %s 完成：http://127.0.0.1:%s/\n版本：%s\n' \
         "$operation" "$(read_config_value CHATBI_LOCAL_HTTP_PORT)" "$source_commit"
 }
@@ -722,6 +1382,10 @@ main() {
     acquire_operation_lock "$command_name"
     shift || true
     case "$command_name" in
+        help|-h|--help|build|build-operations) initialize_runtime_binding_defaults ;;
+        *) resolve_runtime_binding ;;
+    esac
+    case "$command_name" in
         help|-h|--help)
             usage
             ;;
@@ -731,9 +1395,30 @@ main() {
         build)
             build_images
             ;;
+        build-operations)
+            [[ -z "${1:-}" ]] || fail './local build-operations 不接受额外参数。'
+            build_operations_image
+            ;;
+        init-backup|backup|backup-list)
+            [[ -z "${1:-}" ]] || fail "./local $command_name 不接受额外参数。"
+            require_docker
+            require_config
+            require_release
+            [[ "$command_name" == backup-list ]] || prepare_operations_directories
+            require_operations_image
+            case "$command_name" in
+                init-backup) compose run --rm -T --no-deps operations init --host-locked ;;
+                backup)
+                    verify_bound_existing_resources
+                    run_manual_backup
+                    ;;
+                backup-list) compose run --rm -T --no-deps operations list ;;
+            esac
+            ;;
         down)
             [[ -z "${1:-}" ]] || fail './local down 不接受额外参数。'
             require_docker
+            verify_bound_existing_resources
             local state_api_image_id='' fallback_api_image_id='' candidate_api_image_id state_api_container state_running
             while IFS= read -r state_api_container; do
                 [[ -n "$state_api_container" ]] || continue
@@ -752,6 +1437,7 @@ main() {
         status)
             [[ -z "${1:-}" ]] || fail './local status 不接受额外参数。'
             require_docker
+            verify_bound_existing_resources
             show_stable_status
             ;;
         logs)
@@ -823,6 +1509,7 @@ main() {
                         printf 'ChatBI 稳定环境已启动：http://127.0.0.1:%s/\n版本：%s\n' \
                             "$(read_config_value CHATBI_LOCAL_HTTP_PORT)" "$CHATBI_SOURCE_COMMIT"
                     fi
+                    start_backup_scheduler
                     ;;
             esac
             ;;
@@ -831,6 +1518,22 @@ main() {
             local target_commit="$1"
             select_release "$target_commit"
             upgrade_release "$command_name" "$CHATBI_SOURCE_COMMIT"
+            ;;
+        restore)
+            (( $# == 1 )) || fail '用法：./local restore <已登记备份ID>'
+            restore_backup "$1"
+            ;;
+        restore-activate)
+            (( $# == 1 )) || fail '用法：./local restore-activate <已验证恢复ID>'
+            restore_activate "$1"
+            ;;
+        restore-recover)
+            (( $# == 2 )) || fail '用法：./local restore-recover <恢复ID> --previous|--candidate'
+            case "$2" in
+                --previous) restore_recover "$1" previous ;;
+                --candidate) restore_recover "$1" candidate ;;
+                *) fail '必须明确选择 --previous 或 --candidate。' ;;
+            esac
             ;;
         *)
             usage >&2

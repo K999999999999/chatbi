@@ -177,7 +177,7 @@ X-Request-ID: 可选
 - 带 `conversation_id` 的请求必须先由当前认证身份校验会话归属、过期状态和并发状态；失败时不得进入 `AuthorizedQueryService`、Retrieval、LLM、SQL Guard 或数据库。
 - 会话只保存最后一次成功查询的指标、时间范围、维度和过滤条件，不保存原始对话、候选 SQL、最终 SQL 或结果行。
 - 会话使用 30 分钟无成功状态更新的 Idle TTL；服务重启后会话失效。
-- 同一会话同一时刻只允许一个进行中的轮次；并发请求返回 `CONVERSATION_CONFLICT`，不调用下游、不提交状态。
+- [R7运行保障](local-operations-v1.md)将同步入口纳入就绪和共享业务额度；就绪失败503 SERVICE_NOT_READY，额度不足429 EXECUTION_LIMIT_REACHED，不排队/重试。账号沿用1、单API4的默认额度。额度允许时，同一会话同一时刻只允许一个进行中的轮次；会话占用返回409 CONVERSATION_CONFLICT，不调用下游、不提交状态。正常成功/业务拒绝DTO兼容，新增保护错误仍沿QueryFailure外壳。
 - 同一语义槽位的新值替换旧值，不同语义槽位的新条件叠加。维度默认追加；用户明确说“分组维度改成 / 换成 / 替换为 / 替换成某维度”时，替换全部已有维度。维度操作同时包含互相冲突的替换与追加措辞，或否定了替换表达时，必须澄清且不执行查询。歧义和超出单条查询修订范围的问题不执行查询。
 - 每一轮都重新使用当前认证身份和当前授权策略；历史状态不能赋予新的权限。
 
@@ -212,7 +212,7 @@ GET /health
 | 未知、过期或不属于当前用户的会话 | `404` | `CONVERSATION_UNAVAILABLE` |
 | 指标口径不明确或无法唯一解析的多轮追问 | `422` | `CLARIFICATION_REQUIRED` |
 | 超出 V1 单条查询修订范围 | `422` | `UNSUPPORTED_ANALYSIS` |
-| 同一会话存在并发轮次 | `409` | `CONVERSATION_CONFLICT` |
+| 当前有执行额度但同一会话存在并发轮次 | `409` | `CONVERSATION_CONFLICT` |
 
 API 对请求体解析失败时，也必须返回上述 `QueryFailure` 形状，而不是 FastAPI 默认的 `detail` 响应。
 
@@ -291,3 +291,5 @@ API 对请求体解析失败时，也必须返回上述 `QueryFailure` 形状，
 | `time_axis` | `{granularity,keys}`或null；day/week/month/quarter/year，ISO日期键与返回行对齐 |
 
 说明失败只降级显示，不改变查询成功、会话提交、数据授权或SQL Guard。每次请求绑定本轮说明，不能复用上一轮元数据冒充本轮；不存在任何说明时仍保留表格。分析旧Checkpoint未含可选字段时默认为None，新说明不进入报告模型输入。
+
+R7同步问数/追问及经营分析共用后台owner/API容量，真实调用完成后释放；外层等待/断开不能提前释放活工作。同步入口不创建history/execution持久记录、不重复取分析run lease；沿现有180秒问数、1200秒分析总保护和单次LLM/SQL超时。就绪观察/幂等重放不计入新执行，导出1/2独立计数。实现进度和运行证据见R7工作项；文档不代表当前stable已升级。

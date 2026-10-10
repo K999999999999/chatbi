@@ -6,6 +6,48 @@ from src.observability.config import ObservabilityConfig
 
 
 class ObservabilityConfigTest(unittest.TestCase):
+    def test_aliyun_headers_are_preserved_with_existing_authentication(self) -> None:
+        expected = {
+            "authorization": "Bearer synthetic",
+            "authentication": "synthetic-auth",
+            "x-arms-license-key": "synthetic-license",
+            "x-arms-project": "synthetic-project",
+            "x-cms-workspace": "synthetic-workspace",
+        }
+        config = ObservabilityConfig.from_env(
+            {
+                "OTEL_EXPORTER_OTLP_HEADERS": ",".join(
+                    f"{key}={value}" for key, value in expected.items()
+                )
+                + ",tenant=unapproved"
+            }
+        )
+        self.assertEqual(dict(config.otlp_headers), expected)
+        for value in expected.values():
+            self.assertNotIn(value, repr(config))
+
+    def test_aliyun_headers_keep_duplicate_length_and_control_protection(self) -> None:
+        duplicate = ObservabilityConfig.from_env(
+            {
+                "OTEL_EXPORTER_OTLP_HEADERS": "x-arms-project=synthetic-one,X-Arms-Project=synthetic-two",
+            }
+        )
+        self.assertEqual(dict(duplicate.otlp_headers), {})
+        direct = ObservabilityConfig(
+            otlp_headers={
+                "X-Arms-License-Key": "x" * 1025,
+                "x-arms-project": "synthetic\nInjected",
+                "x-cms-workspace": "synthetic-workspace",
+                "tenant": "unapproved",
+            }
+        )
+        self.assertEqual(
+            dict(direct.otlp_headers),
+            {
+                "x-cms-workspace": "synthetic-workspace",
+            },
+        )
+
     def test_content_capture_is_fail_closed_by_default_and_unknown_env(self) -> None:
         default_config = ObservabilityConfig.from_env({})
         unknown_config = ObservabilityConfig.from_env(
@@ -101,8 +143,9 @@ class ObservabilityConfigTest(unittest.TestCase):
         config = ObservabilityConfig.from_env(
             {
                 "CHATBI_OBSERVABILITY_ENABLED": "true",
-                "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://collector/v1/traces",
-                "OTEL_EXPORTER_OTLP_HEADERS": "Authorization=Bearer secret,tenant=t1",
+                "CHATBI_RUNTIME_ENV": "stable",
+                "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "https://collector/v1/traces",
+                "OTEL_EXPORTER_OTLP_HEADERS": "Authentication=secret,tenant=t1",
                 "CHATBI_OTLP_TIMEOUT_SECONDS": "2.5",
             }
         )
@@ -112,9 +155,53 @@ class ObservabilityConfigTest(unittest.TestCase):
 
         self.assertTrue(config.enabled)
         self.assertEqual(config.otlp_timeout_seconds, 2.5)
-        self.assertEqual(config.otlp_endpoint, "http://collector/v1/traces")
-        self.assertEqual(config.otlp_headers["tenant"], "t1")
+        self.assertEqual(config.otlp_endpoint, "https://collector/v1/traces")
+        self.assertEqual(dict(config.otlp_headers), {"authentication": "secret"})
         self.assertEqual(invalid_timeout.otlp_timeout_seconds, 5.0)
+
+    def test_endpoint_timeout_and_headers_have_bounded_stable_allowlist(self) -> None:
+        rejected = ObservabilityConfig.from_env(
+            {
+                "CHATBI_RUNTIME_ENV": "stable",
+                "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": (
+                    "https://collector/v1/traces?token=secret"
+                ),
+                "CHATBI_OTLP_TIMEOUT_SECONDS": "60",
+                "OTEL_EXPORTER_OTLP_HEADERS": (
+                    "Authorization=Bearer secret,tenant=unapproved,"
+                    "Authentication=token\nInjected=yes"
+                ),
+            }
+        )
+        loopback = ObservabilityConfig.from_env(
+            {
+                "CHATBI_RUNTIME_ENV": "dev",
+                "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://127.0.0.1:4318/v1/traces",
+            }
+        )
+
+        self.assertIsNone(rejected.otlp_endpoint)
+        self.assertEqual(rejected.otlp_timeout_seconds, 5.0)
+        self.assertEqual(dict(rejected.otlp_headers), {})
+        self.assertEqual(loopback.otlp_endpoint, "http://127.0.0.1:4318/v1/traces")
+
+    def test_resource_attributes_reject_values_that_look_like_secrets(self) -> None:
+        config = ObservabilityConfig.from_env(
+            {
+                "CHATBI_RUNTIME_ENV": "stable",
+                "OTEL_SERVICE_NAME": "api-key-secret",
+                "CHATBI_SERVICE_VERSION": "Bearer-token",
+                "OTEL_RESOURCE_ATTRIBUTES": (
+                    "deployment.environment.name=authorization"
+                ),
+            }
+        )
+
+        self.assertEqual(config.service_name, "chatbi-engine")
+        self.assertEqual(config.service_version, "0.1.0")
+        self.assertEqual(config.deployment_environment, "")
+        self.assertNotIn("api-key-secret", repr(config))
+        self.assertNotIn("Bearer-token", repr(config))
 
 
 if __name__ == "__main__":

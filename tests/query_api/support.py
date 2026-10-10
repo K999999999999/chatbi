@@ -12,7 +12,7 @@ from src.online_query.query_understanding import (
     SemanticQueryCandidate,
     ValidatedSemanticQuery,
 )
-from src.query_api.app import create_app
+from tests.operations_support import create_app
 
 
 class _DefaultRevisionAdapter:

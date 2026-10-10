@@ -10,8 +10,11 @@ import shutil
 import socket
 import subprocess
 import sys
+import time
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
+from urllib.error import HTTPError, URLError
+from urllib.request import ProxyHandler, build_opener
 
 from scripts.local_acceptance import (
     LocalAcceptanceError,
@@ -29,6 +32,26 @@ def _ps_quote(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+def validate_api_isolation(item: dict) -> None:
+    api_env = dict(value.split("=", 1) for value in item["Config"]["Env"])
+    expected_mounts = {
+        "/opt/chatbi-model/bge-m3-5617a9f61b02": False,
+        "/opt/chatbi-rag": False,
+        "/opt/chatbi-runtime": True,
+    }
+    mounts = item["Mounts"]
+    if (
+        any("MIGRATOR" in key for key in api_env)
+        or len(mounts) != len(expected_mounts)
+        or {m["Destination"] for m in mounts} != set(expected_mounts)
+        or any(
+            m["Type"] != "bind" or m["RW"] is not expected_mounts[m["Destination"]]
+            for m in mounts
+        )
+    ):
+        raise LocalAcceptanceError("API 凭据或挂载隔离检查失败")
+
+
 class Acceptance:
     def __init__(self, root: Path, commit: str) -> None:
         self.root = root
@@ -40,6 +63,13 @@ class Acceptance:
         self.work = root / ".local" / "acceptance" / self.run_id
         self.report = self.work / "report"
         self.env = clean_compose_environment(dict(os.environ))
+        self.browser_executable = os.getenv("CHATBI_ACCEPTANCE_BROWSER_EXECUTABLE", "")
+        if self.browser_executable and (
+            not PureWindowsPath(self.browser_executable).is_absolute()
+            or PureWindowsPath(self.browser_executable).suffix.lower() != ".exe"
+            or any(char in self.browser_executable for char in "\r\n\0")
+        ):
+            raise LocalAcceptanceError("隔离浏览器必须指定 Windows 绝对 EXE 路径")
         self.windows_workspace: Path | None = None
         self.compose: list[str] = []
         self.sequence = 0
@@ -101,6 +131,61 @@ class Acceptance:
         (self.report / name).write_text(
             json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8"
         )
+
+    def wait_ready(
+        self, stage: str, *, timeout: float = 60, interval: float = 1
+    ) -> None:
+        """只对本次隔离 API 等待动态就绪；不保存响应正文或异常。"""
+        started = time.monotonic()
+        deadline = started + timeout
+        opener = build_opener(ProxyHandler({}))
+        samples = []
+        while (remaining := deadline - time.monotonic()) > 0:
+            status = None
+            state = "unknown"
+            try:
+                try:
+                    response = opener.open(
+                        f"http://127.0.0.1:{self.port}/ready",
+                        timeout=min(5, remaining),
+                    )
+                except HTTPError as error:
+                    response = error
+                with response:
+                    status = response.code
+                    payload = json.loads(response.read(4097))
+                    candidate = (
+                        payload.get("status") if isinstance(payload, dict) else None
+                    )
+                    if isinstance(candidate, str) and candidate in {
+                        "ready",
+                        "not_ready",
+                        "unknown",
+                    }:
+                        state = candidate
+            except (OSError, URLError, ValueError):
+                pass
+            samples.append({"http_status": status, "state": state})
+            if status == 200 and state == "ready":
+                self.save(
+                    f"readiness-{stage}.json",
+                    {
+                        "status": "ready",
+                        "samples": samples,
+                        "elapsed_seconds": round(time.monotonic() - started, 3),
+                    },
+                )
+                return
+            time.sleep(max(0, min(interval, deadline - time.monotonic())))
+        self.save(
+            f"readiness-{stage}.json",
+            {
+                "status": "timeout",
+                "samples": samples,
+                "elapsed_seconds": round(time.monotonic() - started, 3),
+            },
+        )
+        raise LocalAcceptanceError("隔离 API 未在限时内就绪；未提交业务请求")
 
     def external_state(self) -> list[dict]:
         ids = self.run(
@@ -281,7 +366,10 @@ class Acceptance:
             "CHATBI_CONTAINER_BASE_URL": f"http://127.0.0.1:{self.port}",
             "CHATBI_CONTAINER_COMMIT": self.commit,
             "CHATBI_CONTAINER_GIT_DIRTY": "false",
-            "CHATBI_CONTAINER_TARGET": "local-fixed-image-windows-edge",
+            "CHATBI_CONTAINER_TARGET": "local-fixed-image-windows-browser"
+            if self.browser_executable
+            else "local-fixed-image-windows-edge",
+            "CHATBI_CONTAINER_BROWSER_EXECUTABLE": self.browser_executable,
             "CHATBI_CONTAINER_REPORT_DIR": windows_report,
             "CHATBI_CONTAINER_CREDENTIALS_FILE": windows_report + "\\credentials.env",
         }
@@ -497,8 +585,9 @@ class Acceptance:
             )
             self.support("prepare")
             frontend = self.edge_workspace()
+            self.wait_ready("startup")
             self.phase(
-                "运行 Windows Edge：真实问数 / 追问 / 分析 / 历史 / 成果 / 三种导出。"
+                "运行 Windows 浏览器：真实问数 / 追问 / 分析 / 历史 / 成果 / 三种导出。"
             )
             self.edge(frontend, 0)
             before = json.loads(self.support("acceptance-snapshot").stdout)
@@ -512,6 +601,7 @@ class Acceptance:
             self.dc("run", "--rm", "--no-deps", "-T", "qdrant-check")
             self.dc("run", "--rm", "--no-deps", "-T", "verify")
             self.dc("up", "-d", "--wait", "--wait-timeout", "180", "api")
+            self.wait_ready("restart")
             after = json.loads(self.support("acceptance-snapshot").stdout)
             self.save("after-restart.json", after)
             if before != after:
@@ -545,13 +635,7 @@ class Acceptance:
                 "if x.parent.name != str(os.getpid()) and x.exists()); print('导出临时资源已回收。')",
             )
             item = self.assert_container(self.dc("ps", "-q", "api").stdout.strip())
-            api_env = dict(value.split("=", 1) for value in item["Config"]["Env"])
-            if (
-                any("MIGRATOR" in key for key in api_env)
-                or len(item["Mounts"]) != 2
-                or not all(not m["RW"] for m in item["Mounts"])
-            ):
-                raise LocalAcceptanceError("API 凭据或挂载隔离检查失败")
+            validate_api_isolation(item)
             credentials = parse_env_text((self.report / "credentials.env").read_text())
             self.support("cleanup")
             cleanup_done = True
@@ -583,7 +667,12 @@ class Acceptance:
                     "release": release,
                     "project": self.project,
                     "volumes": acceptance_volume_names(self.run_id),
-                    "browser_channel": "msedge",
+                    "browser_channel": "custom-executable"
+                    if self.browser_executable
+                    else "msedge",
+                    "browser_version": json.loads(
+                        (self.report / "browser.json").read_text()
+                    )["browser"],
                     "model_config_sha256": hashlib.sha256(
                         (model_dir / "config.json").read_bytes()
                     ).hexdigest(),
@@ -607,6 +696,7 @@ class Acceptance:
                     "persistent_state_preserved": before == after,
                     "external_resources_unchanged": True,
                     "api_readonly_asset_mounts": True,
+                    "api_writes_only_private_runtime_mount": True,
                     "api_has_no_migrator_identity": True,
                     "chromium_sandbox_launch": True,
                     "export_temporary_resources_clean": True,
@@ -671,7 +761,11 @@ def main() -> int:
             file=sys.stderr,
         )
         return 2
-    acceptance = Acceptance(ROOT, commit)
+    try:
+        acceptance = Acceptance(ROOT, commit)
+    except LocalAcceptanceError as error:
+        print(f"本地部署验收配置无效：{error}", file=sys.stderr)
+        return 2
     try:
         acceptance.execute()
     except (

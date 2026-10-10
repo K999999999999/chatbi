@@ -1,6 +1,7 @@
 """Query API Adapter（查询接口适配层）测试。"""
 
 from datetime import UTC, datetime, timedelta
+from dataclasses import replace
 from threading import Event, Thread
 from unittest import TestCase
 from unittest.mock import Mock
@@ -24,7 +25,7 @@ from src.online_query.query_understanding import (
     QueryType,
     ValidatedSemanticQuery,
 )
-from src.query_api.app import create_app
+from tests.operations_support import create_app
 from src.query_api.conversation import InMemoryConversationStore
 from tests.query_api.support import create_test_app
 
@@ -121,7 +122,7 @@ class _InitialQueryApiAppTest(TestCase):
             },
         )
         self.assertEqual(
-            service.requests,
+            [replace(item, execution_control=None) for item in service.requests],
             [QueryRequest(question="查询产品销售额", request_id="req-123")],
         )
 
@@ -468,7 +469,7 @@ class QueryApiAppTest(TestCase):
         self.assertEqual(retry_response.status_code, 200)
         self.assertEqual(retry_response.json()["conversation_id"], conversation_id)
 
-    def test_concurrent_turn_returns_conflict_and_does_not_enter_downstream(
+    def test_concurrent_turn_returns_capacity_limit_and_does_not_enter_downstream(
         self,
     ) -> None:
         service = _BlockingAfterFirstService()
@@ -505,11 +506,11 @@ class QueryApiAppTest(TestCase):
         service.release.set()
         thread.join(timeout=5)
 
-        self.assertEqual(conflict_response.status_code, 409)
+        self.assertEqual(conflict_response.status_code, 429)
         self.assertEqual(
-            conflict_response.json()["error_code"],
-            "CONVERSATION_CONFLICT",
+            conflict_response.json()["error_code"], "EXECUTION_LIMIT_REACHED"
         )
+
         self.assertEqual(len(service.requests), 2)
         self.assertEqual(
             getattr(first_turn_response["response"], "status_code", None),
@@ -545,7 +546,7 @@ class QueryApiAppTest(TestCase):
         generated_request_id = response.json()["request_id"]
         self.assertTrue(generated_request_id)
         self.assertEqual(
-            service.requests,
+            [replace(item, execution_control=None) for item in service.requests],
             [
                 QueryRequest(
                     question="查询没有数据的产品", request_id=generated_request_id
@@ -614,7 +615,7 @@ class QueryApiAppTest(TestCase):
         self.assertEqual(response.json()["error_code"], "INVALID_REQUEST")
         self.assertEqual(response.json()["request_id"], "req-invalid")
         self.assertEqual(
-            service.requests,
+            [replace(item, execution_control=None) for item in service.requests],
             [QueryRequest(question="   ", request_id="req-invalid")],
         )
 

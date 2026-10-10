@@ -33,18 +33,35 @@ class ExecutionRuntimeClosed(RuntimeError):
     """API 正在关闭，不能再受理执行。"""
 
 
+class OwnerCapacityLease:
+    """只持有共享容量，不创建history/analysis持久状态。"""
+
+    def __init__(self, runtime, owner):
+        self._runtime = runtime
+        self._owner = owner
+        self._lock = Lock()
+        self._released = False
+
+    def release(self):
+        with self._lock:
+            if self._released:
+                return
+            self._released = True
+        self._runtime._release_owner(self._owner)
+
+
 class ExecutionLease:
     """持有一个已预留额度和下游互斥锁的可转交执行租约。"""
 
     def __init__(
         self,
         runtime: ExecutionRuntime,
-        owner_id: int,
         history_lease: object,
         analysis_lease: object | None,
+        capacity_lease: OwnerCapacityLease,
     ) -> None:
         self._runtime = runtime
-        self._owner_id = owner_id
+        self._capacity_lease = capacity_lease
         self._history_lease = history_lease
         self._analysis_lease = analysis_lease
         self._lock = Lock()
@@ -82,7 +99,7 @@ class ExecutionLease:
                 try:
                     self._history_lease.release()
                 finally:
-                    self._runtime._release_owner(self._owner_id)
+                    self._capacity_lease.release()
 
 
 class ExecutionRuntime:
@@ -169,16 +186,8 @@ class ExecutionRuntime:
         """先同步预留额度，再取得 history / analysis 的互斥租约。"""
 
         if isinstance(owner_id, bool) or not isinstance(owner_id, int) or owner_id < 1:
-            raise ValueError("owner_id 必须为正整数")
-        with self._condition:
-            if not self._accepting:
-                raise ExecutionRuntimeClosed()
-            if self._active_by_user.get(owner_id, 0) >= self._max_per_user:
-                raise ExecutionCapacityExceeded("user")
-            if self._active_total >= self._max_total:
-                raise ExecutionCapacityExceeded("process")
-            self._active_by_user[owner_id] = self._active_by_user.get(owner_id, 0) + 1
-            self._active_total += 1
+            raise ValueError("owner_id必须为正整数")
+        capacity_lease = self.reserve_owner(owner_id)
 
         history_lease = None
         analysis_lease = None
@@ -191,14 +200,49 @@ class ExecutionRuntime:
             with self._condition:
                 if not self._accepting:
                     raise ExecutionRuntimeClosed()
-            return ExecutionLease(self, owner_id, history_lease, analysis_lease)
+            return ExecutionLease(self, history_lease, analysis_lease, capacity_lease)
         except BaseException:
             if analysis_lease is not None:
                 analysis_lease.release()
             if history_lease is not None:
                 history_lease.release()
-            self._release_owner(owner_id)
+            capacity_lease.release()
             raise
+
+    def reserve_owner(self, owner_id) -> OwnerCapacityLease:
+        if not (
+            (
+                isinstance(owner_id, int)
+                and not isinstance(owner_id, bool)
+                and owner_id > 0
+            )
+            or (
+                isinstance(owner_id, tuple)
+                and len(owner_id) == 2
+                and all(isinstance(value, str) and value for value in owner_id)
+            )
+        ):
+            raise ValueError("owner必须是有效账号ID或服务端Provider/Subject身份")
+        with self._condition:
+            if not self._accepting:
+                raise ExecutionRuntimeClosed()
+            if self._active_by_user.get(owner_id, 0) >= self._max_per_user:
+                raise ExecutionCapacityExceeded("user")
+            if self._active_total >= self._max_total:
+                raise ExecutionCapacityExceeded("process")
+            self._active_by_user[owner_id] = self._active_by_user.get(owner_id, 0) + 1
+            self._active_total += 1
+
+        return OwnerCapacityLease(self, owner_id)
+
+    def capacity_snapshot(self):
+        with self._condition:
+            return {
+                "active": self._active_total,
+                "max_total": self._max_total,
+                "max_per_user": self._max_per_user,
+                "accepting": self._accepting,
+            }
 
     def attach_progress(self, lease: ExecutionLease, execution):
         """为已持久受理的 execution 安装仅存活于当前 worker 的进度通道。"""

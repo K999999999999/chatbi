@@ -12,7 +12,7 @@ from sqlalchemy.pool import StaticPool
 from src.authorization import AuthService, hash_password
 from src.chatbi_control.bootstrap import seed_rbac
 from src.chatbi_control.models import Base, User
-from src.query_api.app import create_app
+from tests.operations_support import create_app
 
 
 class AuthApiTest(TestCase):

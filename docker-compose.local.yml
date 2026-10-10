@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: ${CHATBI_DATABASE_IMAGE:?run ./local build first}
+    image: ${CHATBI_BOUND_DATABASE_IMAGE:-${CHATBI_DATABASE_IMAGE:?run ./local build first}}
     restart: "no"
     labels: &stable-labels
       com.chatbi.environment: stable
@@ -42,7 +42,11 @@ services:
     labels: *stable-labels
     environment: &runtime-environment
       CHATBI_ENV: development
+      CHATBI_RUNTIME_ENV: stable
+      CHATBI_LOCAL_OPERATIONS_ENABLED: "true"
+      CHATBI_OPERATIONS_SOCKET_PATH: /opt/chatbi-runtime/status.sock
       CHATBI_SOURCE_COMMIT: ${CHATBI_SOURCE_COMMIT:?run ./local build first}
+      CHATBI_SERVICE_VERSION: ${CHATBI_SOURCE_COMMIT:-unknown}
       CHATBI_LOCAL_HTTP_PORT: ${CHATBI_LOCAL_HTTP_PORT:-8080}
       CHATBI_ADMIN_SECRET_KEY: ${CHATBI_ADMIN_SECRET_KEY:?run ./local init-config}
       CHATBI_WEB_ORIGIN: http://127.0.0.1:${CHATBI_LOCAL_HTTP_PORT:-8080}
@@ -71,8 +75,13 @@ services:
       RAG_EMBEDDING_USE_FP16: "false"
       RAG_EMBEDDING_DIMENSION: "1024"
       RAG_EMBEDDING_BATCH_SIZE: "8"
-      CHATBI_OBSERVABILITY_ENABLED: "false"
+      CHATBI_OBSERVABILITY_ENABLED: ${CHATBI_OBSERVABILITY_ENABLED:-false}
       CHATBI_TRACE_CONTENT_ENABLED: "false"
+      CHATBI_OTLP_TIMEOUT_SECONDS: ${CHATBI_OTLP_TIMEOUT_SECONDS:-5}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-chatbi-engine-stable}
+      OTEL_RESOURCE_ATTRIBUTES: deployment.environment.name=stable
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
     ports:
       - target: 8000
         published: "${CHATBI_LOCAL_HTTP_PORT:-8080}"
@@ -86,9 +95,20 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: .local/rag
+        source: ${CHATBI_BOUND_RAG_DIR:-.local/rag}
         target: /opt/chatbi-rag
         read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: .local/operations/public
+        target: /opt/chatbi-operations
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${CHATBI_BOUND_OPERATIONS_API_DIR:-.local/operations/api}
+        target: /opt/chatbi-runtime
         bind:
           create_host_path: false
     depends_on:
@@ -171,7 +191,7 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: .local/rag
+        source: ${CHATBI_BOUND_RAG_DIR:-.local/rag}
         target: /opt/chatbi-rag
         bind:
           create_host_path: false
@@ -197,7 +217,7 @@ services:
     environment: *runtime-environment
     volumes:
       - type: bind
-        source: .local
+        source: ${CHATBI_BOUND_STATE_DIR:-.local}
         target: /opt/chatbi-state
       - type: bind
         source: ${CHATBI_LOCAL_MODEL_DIR:-.model-cache/bge-m3-5617a9f61b02}
@@ -206,14 +226,68 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: .local/rag
+        source: ${CHATBI_BOUND_RAG_DIR:-.local/rag}
         target: /opt/chatbi-rag
         read_only: true
         bind:
           create_host_path: false
 
+
+  operations:
+    image: ${CHATBI_OPERATIONS_IMAGE:-chatbi-local-operations:uninitialized}
+    profiles: [tools]
+    restart: "no"
+    init: true
+    labels: *stable-labels
+    user: "${CHATBI_LOCAL_UID:-1000}:${CHATBI_LOCAL_GID:-1000}"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-chatbi_mvp}
+      POSTGRES_CONTROL_DB: chatbi_control
+      POSTGRES_MIGRATOR_USER: ${POSTGRES_MIGRATOR_USER:-chatbi_migrator}
+      POSTGRES_MIGRATOR_PASSWORD: ${POSTGRES_MIGRATOR_PASSWORD:?run ./local init-config}
+      CHATBI_OPERATIONS_SOCKET_PATH: /state/operations/${CHATBI_BOUND_OPERATIONS_API_RELATIVE:-api}/status.sock
+    volumes:
+      - type: bind
+        source: .local/operations
+        target: /state/operations
+        bind:
+          create_host_path: false
+      - type: bind
+        source: .local/backups
+        target: /state/backups
+        bind:
+          create_host_path: false
+      - type: bind
+        source: .local/backup-keys
+        target: /state/backup-keys
+        bind:
+          create_host_path: false
+      - type: bind
+        source: .local/operation.lock
+        target: /state/operation.lock
+        bind:
+          create_host_path: false
+
+  restore-tool:
+    extends:
+      service: operations
+    profiles: [tools]
+    entrypoint: ["python3", "-m", "scripts.local_restore"]
+    command: ["--help"]
+
+  backup:
+    extends:
+      service: operations
+    profiles: []
+    entrypoint: ["python3", "-m", "scripts.local_backup_schedule"]
+    command: []
+    stop_grace_period: 30s
+
 volumes:
   postgres_data:
-    name: chatbi_stable_postgres_data
+    name: ${CHATBI_BOUND_POSTGRES_VOLUME:-chatbi_stable_postgres_data}
+    external: true
   qdrant_data:
-    name: chatbi_stable_qdrant_data
+    name: ${CHATBI_BOUND_QDRANT_VOLUME:-chatbi_stable_qdrant_data}
+    external: true

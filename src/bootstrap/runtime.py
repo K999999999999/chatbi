@@ -13,9 +13,8 @@ from src.authorization import (
     PersistentAuditSink,
     RoleAuthorizationPolicyStore,
 )
-from src.chatbi_control.history import PostgresHistoryStore
-from src.query_api.history_runtime import HistoryRuntime
 from src.chatbi_control.database import ControlDatabaseConfig, create_control_engine
+from src.chatbi_control.history import PostgresHistoryStore
 from src.observability.tracing import create_trace_recorder
 from src.online_query.database import PsycopgQueryExecutor
 from src.online_query.llm import LangChainSQLGenerator
@@ -25,10 +24,15 @@ from src.online_query.retrieval.rag_runtime import RagRuntime
 from src.online_query.service import OnlineQueryService
 from src.query_api.browser import BrowserSettings
 from src.query_api.config import load_local_environment, validate_runtime_configuration
+from src.query_api.history_runtime import HistoryRuntime
+from src.query_api.operations import OperationsState
 from src.query_api.runtime import RuntimeDependencies
 
 from .analysis import build_analysis_application
+from .backup_status import read_backup_status
 from .lifecycle import register_async_cleanup, register_cleanup
+from .operations import ObservedModel, OperationsMonitor
+from .operations_socket import OperationsSocket, runtime_snapshot
 from .readiness import verify_startup_dependencies
 
 
@@ -45,6 +49,11 @@ async def create_runtime() -> AsyncIterator[RuntimeDependencies]:
         raise RuntimeError("production 的 CHATBI_ADMIN_SECRET_KEY 至少需要 32 个字符")
 
     async with AsyncExitStack() as resources:
+        operations = OperationsState(backup_provider=read_backup_status)
+
+        def observe_model(model):
+            return ObservedModel(model, operations.record_model)
+
         recorder = create_trace_recorder()
         register_cleanup(resources, "tracing", recorder.shutdown)
         config = ControlDatabaseConfig.from_environment(require_migrator=False)
@@ -72,12 +81,14 @@ async def create_runtime() -> AsyncIterator[RuntimeDependencies]:
                 trace_recorder=recorder,
                 http_client=http_client,
                 http_async_client=http_async_client,
+                model_wrapper=observe_model,
             )
         service = OnlineQueryService(
             LangChainSQLGenerator.from_env(
                 trace_recorder=recorder,
                 http_client=http_client,
                 http_async_client=http_async_client,
+                model_wrapper=observe_model,
             ),
             executor,
             retrieval_provider=retriever,
@@ -91,6 +102,13 @@ async def create_runtime() -> AsyncIterator[RuntimeDependencies]:
             query_executor=executor,
         )
 
+        monitor = OperationsMonitor(operations)
+        register_cleanup(resources, "operations_monitor", monitor.close)
+        monitor.start()
+        status_socket = OperationsSocket(lambda: runtime_snapshot(operations))
+        register_cleanup(resources, "operations_socket", status_socket.close)
+        status_socket.start()
+
         history_store = PostgresHistoryStore(engine)
         history_runtime = HistoryRuntime(engine, config.app_connection_kwargs())
         register_cleanup(resources, "history", history_runtime.close)
@@ -100,6 +118,8 @@ async def create_runtime() -> AsyncIterator[RuntimeDependencies]:
                 authorized_service,
                 http_client=http_client,
                 http_async_client=http_async_client,
+                model_wrapper=observe_model,
+                trace_recorder=recorder,
             )
             register_cleanup(resources, "business_analysis", analysis.close)
             register_cleanup(resources, "history_drain", history_runtime.drain)
@@ -107,6 +127,7 @@ async def create_runtime() -> AsyncIterator[RuntimeDependencies]:
 
         yield RuntimeDependencies(
             service=service,
+            operations=operations,
             history_store=history_store,
             history_runtime=history_runtime,
             browser_settings=BrowserSettings.from_environment(os.environ),

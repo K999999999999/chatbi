@@ -10,6 +10,9 @@ const turn = { id: tid, history_id: id, ordinal: 1, question: '销售额', statu
 test('刷新按URL读取已保存快照，不触发执行', async ({ page }) => {
   let writes = 0;
   await page.route('**/auth/browser/me', route => route.fulfill({ json: { user_id: 1, username: 'analyst', permissions: ['query.execute'], must_change_password: false } }));
+  await page.route('**/api/v1/operations/status', route => route.fulfill({ json: {
+    version: 1, status: 'ready', checked_at: null, query_available: true, message: '',
+  } }));
   await page.route('**/api/v1/histories**', route => {
     const path = new URL(route.request().url()).pathname;
     if (route.request().method() !== 'GET') writes++;

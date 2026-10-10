@@ -78,6 +78,7 @@ class LangChainQueryUnderstanding:
         trace_recorder: TraceRecorder | None = None,
         http_client: object | None = None,
         http_async_client: object | None = None,
+        model_wrapper: object | None = None,
     ) -> "LangChainQueryUnderstanding":
         source = os.environ if environ is None else environ
         api_key = source.get("LLM_API_KEY", "").strip()
@@ -122,6 +123,8 @@ class LangChainQueryUnderstanding:
             )
         except Exception as exc:
             raise LLMError("LLM 配置无效") from exc
+        if model_wrapper is not None:
+            model = model_wrapper(model)
         return cls(model, trace_recorder=trace_recorder)
 
     def understand(self, question: str) -> QueryUnderstandingResult:

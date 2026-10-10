@@ -16,6 +16,8 @@ from src.online_query.contracts import (
 )
 from src.query_api.app import create_app
 from src.query_api.conversation import InMemoryConversationStore
+from src.query_api.execution_runtime import ExecutionRuntime
+from src.query_api.operations import DEPENDENCIES, OperationsState
 
 from .multi_turn_evaluation import ConversationResponse
 
@@ -34,6 +36,9 @@ class QueryApiConversationClient:
             identity_provider="test",
             subject_id=subject_id,
         )
+        operations = OperationsState(clock=lambda: 0.0)
+        operations.record_checks(dict.fromkeys(DEPENDENCIES, "ready"))
+        self._execution_runtime = ExecutionRuntime(None, None)
         app = create_app(
             service,
             identity_provider=identity_provider,
@@ -44,7 +49,12 @@ class QueryApiConversationClient:
             audit_sink=InMemoryAuditSink(),
             conversation_store=InMemoryConversationStore(),
             query_understanding=query_understanding,
+            operations=operations,
         )
+        # This in-process evaluation runtime has no lifespan factory; give the
+        # synchronous Query route the same explicit ready/capacity boundary as
+        # the isolated HTTP test applications.
+        app.state.execution_runtime = self._execution_runtime
         self._client = TestClient(app)
 
     def query(
@@ -100,6 +110,7 @@ class QueryApiConversationClient:
 
     def close(self) -> None:
         self._client.close()
+        self._execution_runtime.close()
 
 
 __all__ = ["QueryApiConversationClient"]

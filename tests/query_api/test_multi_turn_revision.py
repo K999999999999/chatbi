@@ -29,7 +29,7 @@ from src.online_query.query_understanding import (
     ValidatedSemanticQuery,
     ValidatedTime,
 )
-from src.query_api.app import create_app
+from tests.operations_support import create_app
 from tests.query_api.support import create_test_app
 
 

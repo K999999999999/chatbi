@@ -262,7 +262,7 @@ npm run dev
 - 网页成功 / 受控错误后展开“查看请求信息”，读取独立的请求编号和链路编号；Header 缺失不当作业务失败。
 - Header 缺失时不代表查询失败，也不应人为把 JSON Body 中的字段当作 Trace ID。
 
-定位一次查询时，以同一个 `trace_id` 从 `query.request` 根节点开始，依次查看固定节点：
+定位一次同步查询时，以同一个 `trace_id` 从 `query.request` 根节点开始，依次查看固定节点：
 
 ```text
 query.request -> retrieval -> llm -> sql -> database
@@ -270,7 +270,15 @@ query.request -> retrieval -> llm -> sql -> database
 
 优先结合固定 `status`、`error_code`、节点耗时和 `trace_id` 判断失败节点或最慢节点。Production（生产）只查看这些固定状态、错误码、耗时和链路编号；不要查看或传播原始异常、Prompt、候选/最终 SQL、RAG 正文、结果行、API Key 或完整请求头。
 
-如果没有配置或连接 Trace Exporter（链路导出器），服务仍可以正常运行，Query API 仍会返回链路编号；这只表示本地链路上下文可用，不等于 Trace 已经导出到后端。`GET /health` 只检查 HTTP 服务存活，不创建 Query Trace，因此正常不会返回 `X-Trace-ID`。
+后台执行和导出会建立独立 Root Trace，并通过服务签发的内部 carrier / Link 关联受理请求；HTTP Root 结束不会提前结束 worker Trace。导出还会记录生成、交付和临时资源回收阶段。原始问题、Prompt、SQL、结果、Secret 与原始异常不进入这些 Trace。
+
+GET 历史 / 执行状态轮询及 SSE 观察保留本地 `X-Trace-ID`，但不导出业务 Root Trace，避免页面轮询生成高频噪声。`GET /health` 在观测中间件之外，只检查 HTTP 存活且不返回 `X-Trace-ID`。
+
+稳定环境的 Trace 默认为关闭。要在后续获准的稳定运行窗口启用时，在权限为 600 的 `.env.local` 中填写 `CHATBI_OBSERVABILITY_ENABLED=true`、阿里云控制台提供的 HTTPS OTLP Trace Endpoint 和 `CHATBI_OTLP_TIMEOUT_SECONDS`（1–10 秒，默认 5）；认证 Header 放在权限为 600 的 `.env.local.secrets`，只支持 `Authorization`、`Authentication` 和阿里云固定的 `x-arms-license-key`、`x-arms-project`、`x-cms-workspace`（最多五项）。如供应商把 Token 放入 Endpoint 路径，该文件同样按 Secret 保护。`./local` 会清除宿主 shell 同名变量，稳定 Compose 固定 `deployment.environment.name=stable` 并强制 `CHATBI_TRACE_CONTENT_ENABLED=false`。非法 Endpoint 会关闭导出，不合规 Header 会被丢弃；两者都不阻断查询。有限 Batch 队列满时允许丢弃 Trace，业务继续运行。
+
+阿里云提供的通用 `OTEL_EXPORTER_OTLP_ENDPOINT` 在本项目中转换为专用的 `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`：通用地址末尾追加 `/v1/traces`，已含该路径的 Trace 地址直接使用。服务名使用 `OTEL_SERVICE_NAME=chatbi`；实现固定使用 HTTP/protobuf，无需另设协议变量。保存配置不会使已运行容器自动加载；启用与云端可见性仍需要对应运行验收。隔离验收默认不复制云端认证；在获准的当前候选验收中，显式设置 `CHATBI_ACCEPTANCE_TRACE_ENABLED=1` 才读取这两份私有配置并启用导出，临时运行的数据库及管理员凭据仍独立生成。验收在首次和重启后业务请求前等待专属 `/ready` 最多60秒，失败时停止。
+
+如果没有配置或连接 Trace Exporter，服务仍可以正常运行并提供本地链路编号；这只表示本地诊断上下文可用，不等于 Trace 已导出到阿里云。只有在当前候选上执行真实入口并能在用户配置的阿里云控制台查询到 Trace，才能记录云接入 PASS；以前的验收记录不代表当前 stable 已接通。
 
 ## 7. 构建 RAG Offline 资产
 
@@ -642,3 +650,41 @@ uv run --frozen python -m scripts.verify_local_deployment
 ### 本机下载接管导致 PDF 空响应
 
 若网页提示“导出文件大小无效”，浏览器收到 PDF 的 204 / 空内容而 API 访问日志为 200，先做客户端对照，不把它直接归因于服务器生成失败。本机下载管理器可能接管文件；检查 IDM 等软件的浏览器集成与文件类型设置。IDM 官方提供按站点排除自动接管和关闭浏览器集成的设置，见 [IDM Options](https://www.internetdownloadmanager.com/support/using_idm/options.html)。如需临时修改，先记录原设置、确认对其他下载的影响，验收后恢复。Agent 未获用户明确授权时不得调整本机下载管理器或用户浏览器配置。本机实测已确认IDM的PDF接管可导致该现象；完整R6验收在临时取消PDF接管的条件下通过，随后已恢复原设置。日常PDF下载需暂停接管或由用户明确设置本机站点例外。R6证据与验证限制见 [本地部署Acceptance](acceptance/local-deployment-v1.md)。
+
+隔离验收可通过 `CHATBI_ACCEPTANCE_BROWSER_EXECUTABLE` 显式指定本机已有 Windows 浏览器的绝对 EXE 路径，运行 `uv run --frozen python -m scripts.verify_local_deployment`。默认仍为 Edge；该选项只影响专属临时 Profile，不改变用户配置或安装浏览器。先确认该浏览器能完整接收合成 PDF，报告会记录实际版本和 `custom-executable` 启动类型；其他浏览器通过不代表日常 Edge 的 IDM 接管已解除，也不替代真实业务文件解析。
+
+## R7 动态运行状态（候选隔离验收通过；Stable已切至R7，六小时自动备份周期通过）
+
+R7 Contract见[Spec](specs/local-operations-v1.md)，机制见[Design](designs/local-operations-v1.md)。Ticket 01–06本地实现与Review完成；Ticket 07 clean候选`6d764ac`的Linux Playwright完整业务验收、12份导出、资源基线、四类依赖60秒故障/恢复矩阵及额度释放回归已通过。R6备份隔离恢复条件RTO为84秒。2026-10-10用户授权后，本机Stable已执行R6→R7兼容升级；`/health`和`/ready`为200，依赖ready。连续运行期间，调度器于18:30:58+08:00自动登记六小时周期备份`a0fa7ba4dd9748b88de3b12983386541`，复核时服务healthy、backup known/not-overdue；24小时逾期提醒逻辑已有23项定向测试通过，但未在Active Stable人为触发。切换后Stable业务Trace已由用户确认在阿里云ARMS验收通过（未提供Trace ID或时间戳）；详细证据见[R7 Acceptance](acceptance/local-operations-v1.md)。
+
+`/health`继续只证明HTTP存活；`/ready`公开最小status/checked_at，ready返回200，其余503。每15秒一轮有界独立进程探测，单轮最多10秒；30秒未更新则unknown。稳定镜像复用R6发布门禁，验证Control/业务库、Qdrant、固定业务/RAG/版本资产；不执行定时LLM调用。未知和失败均不能用旧正常结果替代。
+
+登录后页面每10秒刷新运行状态，网络请求最多8秒。普通账号只显示不可用提示；具备既有admin.audit权限且无需改密的管理员可见详细依赖、最近模型调用和安全备份状态。该入口使用readonly身份认证，不修改last_seen或Cookie，不延长30分钟Idle/8小时Absolute；身份过期返回登录。模型只显示最近15分钟最后一次真实调用成功/失败，过期则未知，不能保证下一次调用。
+
+`./local status`核对Docker真实状态，在明确stable API容器内读取600权限的Unix socket详细安全快照；不会创建或续期Session。旧镜像没有socket、API已停止或证据读取失败显示unknown。当前active Stable为R7，状态快照显示Control DB、业务DB、Qdrant、资产ready，备份状态known且未逾期，模型状态unknown（切换后尚无新的真实调用）；`/health` HTTP 200仍只代表liveness。升级前R6和升级后R7加密副本均已登记，隔离恢复耗时84秒；实际结果见[R7 Acceptance](acceptance/local-operations-v1.md)。
+
+R7受理保护使用同一ExecutionRuntime容量：默认每账号1、API进程4，同步问数/分析与后台任务合计；429 `EXECUTION_LIMIT_REACHED`表示额度已满，503 `SERVICE_NOT_READY`表示当前就绪未证实，请等待恢复后由用户重新发起。已受理任务/重放沿原R4；服务不自动排队或重试。同步执行不会为了额度写入伪history，超时中断仍等待真实工作退出再释放。管理员状态和本机socket显示业务/导出各自的当前总数与上限，不暴露其他用户ID。
+
+### R7 手工加密备份、隔离恢复与显式切换（Stable已切换；六小时周期通过）
+
+从 clean commit 执行 `./local build-operations` 构建固定 age v1.3.2 / PG16 工具，随后**显式**执行 `./local init-backup`。初始化不会覆盖已有私钥；`.local/backup-keys/identity.txt` 为恢复必需，私钥和目录分别600/700。当前本机已初始化密钥并创建首份登记副本`2e1a0cc185ac467a8f91e2adc2ca783f`；实际恢复和RTO证据见[R7 Acceptance](acceptance/local-operations-v1.md)。应另存私钥，不能把它与密文当作同一个备份。私钥丢失时既有密文无法恢复，不能通过重新初始化解开旧副本。
+
+`./local backup` 核对实际运行 API/PG 身份，再在锁内备份双库、配置与固定发布资产。Control dump及全表指纹共用exported snapshot，业务库独立快照并核对前后内容。最新build不是备份来源。工具完整解密、检查固定成员/摘要与dump TOC后才登记；`./local backup-list`只读列出known catalog。本地代码已接入自动调度与升级前门禁；Ticket 05 已实现隔离恢复和显式切换，Ticket 06本地实现与Review已完成。active Stable已切至R7，R6升级前副本与R7升级后副本均已登记；连续运行六小时周期于18:30:58+08:00自动登记副本`a0fa7ba4dd9748b88de3b12983386541`，24小时逾期提醒逻辑已有23项定向测试通过但未在active Stable人为触发；切换后Stable业务Trace已由用户确认在阿里云ARMS验收通过（未提供Trace ID或时间戳），见[R7 Acceptance](acceptance/local-operations-v1.md)。
+
+`.local/backups/`仅存密文；`.local/operations/`包含可信目录和受限明文staging，API只挂安全public状态及独立socket目录，不读取私钥/catalog/source。仅已登记ID与匹配密文摘要可作为后续恢复来源，不接受任意路径。不要手工改catalog、删除已有副本或在local操作进行时改稳定配置/RAG。
+
+缺key、锁冲突、PG/工具失败、超时、wrong key或损坏均失败退出，保留原服务/旧副本，清理本次明文。网页管理员安全提示可能显示未初始化/未确认或最近失败，普通账号无备份详情。磁盘空间应同时容纳dump、打包、校验解密及既有密文；空间不足不得把半成品登记为成功。强制杀死容器或主机断电后的受限残留需由后续恢复/验收入口核对归属，不能删除不明文件。
+
+隔离机制验收：`python3 -m scripts.verify_local_backup`（先构建开发验证工具tag）；创建随机专用PG/network、生成测试key、并发写入与dump/空库恢复指纹核对，并通过注入时钟让真实调度器立即走到6小时边界，不必等待现实时间。验证容器只触及本次隔离资源并在结束时清理。它证明隔离机制与调度边界；Active Stable的连续运行周期仍要单独观察。
+
+### R7 隔离恢复和显式切换
+
+`./local restore <backup-id>`只接受本机known catalog中的完整备份ID。它在专属Compose project、带恢复ID标签的空PG/Qdrant卷和独立配置/RAG/运行目录中恢复，核对数据库全表指纹、批准角色与权限、Session撤销和运行代际，再重建固定模型对应的RAG并执行readiness、临时账号登录及历史/成果只读核验。只有全部检查通过且总耗时不超过30分钟，候选才标为verified并停止；本命令不会改变active binding或实际stable服务。
+
+通过输出中的恢复ID后，操作者可显式执行 `./local restore-activate <restore-id>`。该命令先记录previous/candidate与切换阶段，停止候选和旧stable writer，再原子切换binding并启动候选；中断时保留journal和两边资源，必须明确选择 `./local restore-recover <restore-id> --previous` 或 `--candidate` 完成恢复。不要手动编辑 `.local/runtime-binding.json` 或在journal未完成时启动其他 `./local` 写操作。
+
+恢复成功或普通失败退出时会清除解密归档payload；candidate专属的受限配置、Secret、release、卷和登记记录会保留，以支持检查或显式切换。若工具报告明文暂存清理失败，先核对恢复ID及目录归属，再按安全流程处理；不要清理未知资源。Ticket 05 已在独立stable clone中完成恢复、候选激活和previous回退核验，2026-10-08实际stable/dev运行身份与健康状态前后未变。2026-10-09实际active R6备份`2e1a0cc185ac467a8f91e2adc2ca783f`已在隔离候选`0b4e8f4c3b7f62c71261f7f57703cfda`恢复并完成核验，84秒满足条件RTO；候选停止、恢复卷保留，未执行激活。该状态截至2026-10-09。次日经用户授权执行R6→R7兼容升级，R6升级前副本与R7升级后副本均已登记；当前active Stable为R7，连续运行六小时周期已于18:30:58+08:00自动登记新副本。24小时逾期提醒回归通过但未在active Stable人为触发；切换后Stable业务Trace已由用户确认在阿里云ARMS验收通过（未提供Trace ID或时间戳），详见[R7 Acceptance](acceptance/local-operations-v1.md)及[R7 Ticket 07](../.scratch/local-operations-v1/issues/07-acceptance.md)。
+
+R7候选的`up`随服务启动独立backup工具，运行时每6小时尝试，无/超过24小时副本启动即尝试；失败/锁竞争不热循环，下一次常规尝试间隔6小时。`down`先停止backup再停止API/依赖，保留数据、密钥和catalog。未构建工具时up警告但不撤销已运行API；必须先build-operations/init-backup，不能据此宣称RPO有保障。`./local logs backup`只提供安全分类。
+
+`upgrade <SHA>`在停止旧API/迁移前先备份实际旧active；缺key、工具/来源/PG失败均退出，原API保持。最新目标镜像不会成为旧版本的备份来源。校验成功后才按7天清理已知expired副本，保留边界恰好7天、未知文件和原环境；cleanup中断可能留下未登记密文，保留并核查归属。完整跨版本与断电恢复矩阵留最终隔离验收。
