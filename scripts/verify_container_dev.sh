@@ -124,6 +124,8 @@ web_id=$("${compose[@]}" ps -q web)
 run_browser() {
 docker run --rm --network "container:$web_id" --user "$(id -u):$(id -g)" \
     --env-file "$work/report/credentials.env" \
+    -e LANG=C.UTF-8 \
+    -e LC_ALL=C.UTF-8 \
     -e CHATBI_CONTAINER_REAL_E2E=1 \
     -e "CHATBI_CONTAINER_RESTART_PHASE=${CHATBI_CONTAINER_RESTART_PHASE:-0}" \
     -e "CHATBI_CONTAINER_BASE_URL=http://127.0.0.1:${CHATBI_DEV_WEB_PORT:-5173}" \

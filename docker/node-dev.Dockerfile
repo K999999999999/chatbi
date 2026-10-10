@@ -12,7 +12,9 @@ CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--configLoader", "runner"]
 
 FROM dev AS browser
 USER root
-ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     printf 'Acquire::Retries "3";\n' > /etc/apt/apt.conf.d/80-retries \
     && npx playwright install --with-deps chromium

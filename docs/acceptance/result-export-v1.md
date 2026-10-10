@@ -43,3 +43,11 @@ Status: Ticket 01–04 与 R5 本地候选完整验收通过；最终 clean cand
 ## Evaluation 与发布范围
 
 未重跑 AI Evaluation：R5 只从已提交快照导出，不更改模型生成、Retrieval 或 SQL Guard 行为；本次真实问数仅用于端到端验收。历史 Evaluation 仍绑定其原报告候选，不迁移为 `71d72d2` 的新结果。R5 本地候选实现和验收完成后，经 PR56 合并至 `master`；这不构成生产部署或目标环境验收。
+
+## Linux Chromium 文件名补充核验（2026-10-10）
+
+隔离浏览器运行 `20261009T170425Z-444d837d` 使用 Chromium `153.0.8010.12`；12 次 Blob 下载的 `suggested_filename` 均为 `download`，但文件内容与格式解析通过。对照实验发现浏览器容器未设置 `LANG` / `LC_ALL` 时中文保存名会退化；同一 Chromium 在设置 UTF-8 locale 后，Blob `download` 属性和 HTTP `Content-Disposition` 的 UTF-8 `filename*` 均保留中文名。前后端导出实现已经提供并解析 UTF-8 文件名，因此根因是浏览器验收环境，不是 R5 文件内容或导出功能。
+
+修复在 `docker/node-dev.Dockerfile` 的 browser 阶段设置 `LANG=C.UTF-8`、`LC_ALL=C.UTF-8`，并由 `scripts/verify_container_dev.sh` 显式传给浏览器容器。构建后的 Chromium `153.0.8010.12` 报告 locale charmap `UTF-8`；Blob XLSX 与 UTF-8 `filename*` PNG 的隔离下载探针均得到完整中文 `suggestedFilename`。既有运行报告仍保留原始结果，不改称在该 locale 下验收通过；本补充不改变 R5 产品 Contract 或 PR56 的历史身份。
+
+2026-10-10 在候选代码提交 `f3f02da`（基线 `1d6402d`）上重新构建 browser 镜像并运行隔离 Chromium 下载探针：镜像默认 `LANG/LC_ALL=C.UTF-8`、`locale charmap=UTF-8`；Chromium `153.0.8010.12` 对 Blob XLSX 与 `filename*` PNG 分别返回完整中文名 `浏览器导出验收历史-查询结果-20261010T000000Z.xlsx`、`浏览器导出验收历史-图表-20261010T000000Z.png`。`bash -n scripts/verify_container_dev.sh`、Markdown 本地链接检查和候选 `git diff --check` 通过。未重跑完整业务 E2E：前后端产品行为未改变，已有 R5 Playwright 文件名断言继续覆盖实际导出链路。
