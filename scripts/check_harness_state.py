@@ -16,8 +16,12 @@ FIELDS = {
     "Active work item",
     "Follow-up work item",
     "Ticket files",
+    "Harness review",
+    "Harness evidence",
+    "Harness follow-up work item",
 }
 STATUSES = {"open", "in-progress", "blocked", "done"}
+HARNESS_REVIEW_STATUSES = {"no-gap", "gap-found"}
 
 
 def git(repo: Path, *args: str) -> str:
@@ -119,6 +123,78 @@ def inspect(repo: Path) -> dict:
                         item,
                         f"后续由工作项 {target} 接手；不继承授权",
                     )
+
+        review_fields = (
+            "Harness review",
+            "Harness evidence",
+            "Harness follow-up work item",
+        )
+        review_fields_present = [key in values for key in review_fields]
+        if any(review_fields_present):
+            if not all(review_fields_present):
+                add(
+                    "ERROR",
+                    "HARNESS_REVIEW_INVALID",
+                    item,
+                    "Harness 复盘字段必须全部填写",
+                )
+            else:
+                review = values["Harness review"]
+                evidence = values["Harness evidence"]
+                follow_up = values["Harness follow-up work item"]
+                if review not in HARNESS_REVIEW_STATUSES:
+                    add(
+                        "ERROR",
+                        "HARNESS_REVIEW_INVALID",
+                        item,
+                        "Harness review 只能是 no-gap 或 gap-found",
+                    )
+                if not evidence:
+                    add(
+                        "ERROR",
+                        "HARNESS_REVIEW_INVALID",
+                        item,
+                        "Harness evidence 不能为空",
+                    )
+                follow_up_targets = references(follow_up)
+                if len(follow_up_targets) > 1:
+                    add(
+                        "ERROR",
+                        "HARNESS_REVIEW_INVALID",
+                        item,
+                        "Harness follow-up work item 只能引用一个工作项",
+                    )
+                elif review == "no-gap" and follow_up != "None":
+                    add(
+                        "ERROR",
+                        "HARNESS_REVIEW_INVALID",
+                        item,
+                        "no-gap 复盘必须将 Harness follow-up work item 设为 None",
+                    )
+                elif review == "gap-found" and not follow_up_targets:
+                    add(
+                        "ERROR",
+                        "HARNESS_REVIEW_INVALID",
+                        item,
+                        "gap-found 复盘必须引用一个 Harness follow-up work item",
+                    )
+                elif follow_up_targets:
+                    target = follow_up_targets[0]
+                    if target == item:
+                        add(
+                            "ERROR",
+                            "HARNESS_REVIEW_INVALID",
+                            item,
+                            "Harness follow-up work item 不能引用当前工作项",
+                        )
+                    elif target not in records:
+                        add(
+                            "ERROR",
+                            "REFERENCE_MISSING",
+                            item,
+                            "Harness follow-up work item 引用的当前记录不存在或无效",
+                        )
+
         for relative in references(values.get("Ticket files", "")):
             declared = Path(relative)
             ticket = (root / declared).resolve()

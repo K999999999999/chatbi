@@ -108,8 +108,9 @@
 
 <!-- PR 合并后填写。检查 Agent 是否因项目背景、规则、工具或验证方式不足而误解、漏验、返工或需要用户纠正。 -->
 
-- 复盘结论：无新增缺口 / 发现缺口
+- Harness review：no-gap / gap-found
+- Harness evidence：PR、Spec、验收或验证记录引用；不得为空
 - 观察到的问题与根因：无 / 描述
-- 后续 Harness 改进项：N/A / 链接
+- Harness follow-up work item：no-gap 使用 None；gap-found 填一个已登记的工作项 ID
 - 合并事实对路线图的影响、内容一致性复核位置与结果 / 不适用理由：
 - 主工作项及关联实时记录的当前字段 / 下一步同步结果：

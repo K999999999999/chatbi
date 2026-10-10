@@ -86,6 +86,14 @@ Ticket files: .scratch/example/issues/01-example.md
 
 `Related work items` / `Ticket files` 使用逗号分隔；另外两项只接受一个 ID 或 `None`。字段放在当前部分，历史正文使用 `## 历史…` 或 `## History…` 标题；字段示例放在代码块。旧记录无需批量迁移。产品汇总引用子工作项的 Ticket、PR、验证及授权证据，避免复制成另一份可独立过期的进度；产品总体状态与产品级决定仍由总目标保存。关联只用于发现与交接，不继承或扩大授权。显式暂缓 / 被后续工作接手的候选保留其独立生命周期、原因及 `Follow-up work item`，直到替代交付与归档核实完成。
 
+PR 合并复盘结束后，将以下字段写入当前实时记录顶部；PR 正文使用同名字段：
+
+- `Harness review`：只能是 `no-gap` 或 `gap-found`。
+- `Harness evidence`：至少列出本次实际检查的 PR 和相关 Spec / 验收 / 验证证据，不得为空。
+- `Harness follow-up work item`：`no-gap` 时必须是 `None`；`gap-found` 时必须引用一个与当前工作项不同、已登记的工作项 ID。只允许一个 ID。
+
+`scripts.check_harness_state` 对已提供字段检查完整性、枚举、证据、相互约束和引用存在性。为了兼容旧实时记录，三个字段都没有时不报错；只要出现其中一个，三个字段必须完整且有效。该检查不读取 PR 正文、不证明证据内容充分，也不从自由文本推断复盘结论。新 PR 的合并后复盘必须使用这些字段；历史记录不批量补造。
+
 会话恢复、PR 合并收尾和新目标实施前运行：
 
 ```bash
@@ -95,7 +103,7 @@ python -m scripts.check_harness_state --json
 
 入口只读本机 Git、Git common-dir 的 `work-items/*/status.md` 及显式 Ticket；支持 linked worktree，不读取同目录历史快照，不访问远端、不更新记录、不清理分支。`--repo` 可指定目标 worktree。Git 命令关闭可选写锁。
 
-- `ERROR`：当前字段无效 / 重复、引用缺失、active 子工作项已完成、done 工作项声明的 Ticket 未完成、Ticket 越出仓库，或检查未完成；退出码 1，修复后才能宣称收尾完整。
+- `ERROR`：当前字段无效 / 重复、引用缺失、active 子工作项已完成、done 工作项声明的 Ticket 未完成、Ticket 越出仓库、已提供的 Harness 复盘字段不完整 / 自相矛盾，或检查未完成；退出码 1，修复后才能宣称收尾完整。
 - `REVIEW`：未完成目标、工作区有修改、保留分支有 master 不可达提交，或缺少本机记录 / master。逐项结合授权、真实 PR、归属与保留原因核对；明确处置或后续引用，不能默默忽略，也不自动阻止其他无冲突目标。
 - 仅含 `INFO` / `REVIEW` 时退出 0；这只表示没有发现可确定错误，不表示所有工作完成。时间较旧或文档出现历史关键词不构成错误；不可达提交不能单独证明未合并，Squash 后仍可能不可达。
 

@@ -263,3 +263,85 @@ def test_single_active_reference_cannot_contain_multiple_items(repo: Path) -> No
     exit_code, report = check(repo)
     assert exit_code == 1
     assert "REFERENCE_INVALID" in codes(report)
+
+
+@pytest.mark.parametrize(
+    ("review", "follow_up"),
+    [("no-gap", "None"), ("gap-found", "repair")],
+)
+def test_valid_harness_review_dispositions_pass(
+    repo: Path, review: str, follow_up: str
+) -> None:
+    if follow_up != "None":
+        record(repo, follow_up, "in-progress")
+    record(
+        repo,
+        "delivery",
+        "done",
+        f"Harness review: {review}\n"
+        "Harness evidence: PR #52; acceptance.md\n"
+        f"Harness follow-up work item: {follow_up}\n",
+    )
+    exit_code, report = check(repo)
+    assert exit_code == 0
+    assert not any(f["level"] == "ERROR" for f in report["findings"])
+
+
+@pytest.mark.parametrize(
+    ("fields", "expected_code"),
+    [
+        ("Harness review: no-gap\n", "HARNESS_REVIEW_INVALID"),
+        (
+            "Harness review: maybe\nHarness evidence: PR #52\nHarness follow-up work item: None\n",
+            "HARNESS_REVIEW_INVALID",
+        ),
+        (
+            "Harness review: no-gap\nHarness evidence: \nHarness follow-up work item: None\n",
+            "HARNESS_REVIEW_INVALID",
+        ),
+        (
+            "Harness review: no-gap\nHarness evidence: PR #52\nHarness follow-up work item: repair\n",
+            "HARNESS_REVIEW_INVALID",
+        ),
+        (
+            "Harness review: gap-found\nHarness evidence: PR #52\nHarness follow-up work item: None\n",
+            "HARNESS_REVIEW_INVALID",
+        ),
+        (
+            "Harness review: gap-found\nHarness evidence: PR #52\nHarness follow-up work item: repair, other\n",
+            "HARNESS_REVIEW_INVALID",
+        ),
+        (
+            "Harness review: gap-found\nHarness evidence: PR #52\nHarness follow-up work item: delivery\n",
+            "HARNESS_REVIEW_INVALID",
+        ),
+        (
+            "Harness review: gap-found\nHarness evidence: PR #52\nHarness follow-up work item: missing\n",
+            "REFERENCE_MISSING",
+        ),
+    ],
+)
+def test_invalid_harness_review_disposition_fails(
+    repo: Path, fields: str, expected_code: str
+) -> None:
+    record(repo, "repair", "in-progress")
+    record(repo, "other", "in-progress")
+    record(repo, "delivery", "done", fields)
+    exit_code, report = check(repo)
+    assert exit_code == 1
+    assert expected_code in codes(report)
+
+
+def test_harness_review_fields_are_ignored_in_history(repo: Path) -> None:
+    path = record(repo, "delivery", "done")
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + "## 历史复盘\n"
+        + "Harness review: gap-found\n"
+        + "Harness evidence: old\n"
+        + "Harness follow-up work item: missing\n",
+        encoding="utf-8",
+    )
+    exit_code, report = check(repo)
+    assert exit_code == 0
+    assert "HARNESS_REVIEW_INVALID" not in codes(report)
