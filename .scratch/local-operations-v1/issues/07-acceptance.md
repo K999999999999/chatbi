@@ -3,6 +3,11 @@
 Status: in-progress
 Authorization: 用户2026-10-08确认七项拆分与全部本地实施、验证、Review和Commit；用户后续授权stable备份密钥、首份加密备份及隔离恢复；用户于2026-10-10明确确认active Stable由R6切到已验收候选6d764ac、验证备份调度/RPO并在失败时回退原R6；02:21授权Push并创建目标master的Draft PR #62，剩余R7验收通过前保持Draft；未授权转Ready/Auto-merge、restore-activate或云部署。
 Canonical Source: [Spec](../spec.md)、[Design](../design.md)；共同约束见 [已确认拆分](../tickets-draft.md)。
+Acceptance: 已按Spec完成。业务验收通过；交付工作项仍in-progress，PR #62保持Draft，待用户授权转Ready / Auto-merge。
+
+## 2026-10-10 24小时逾期提醒验收结论
+
+Spec的Testing Decisions要求确定性覆盖备份的6小时、启动逾期和升级门禁；Observable Behavior要求管理员看见超过24小时的持续提醒。未要求在Active Stable制造超过24小时无备份的状态。现由`tests/bootstrap/test_operations.py::test_backup_projection_marks_success_over_24_hours_overdue`覆盖23小时不逾期和25小时逾期，`tests/scripts/test_local_backup_schedule.py::test_start_missing_or_overdue_backup_attempts_immediately`覆盖启动补备份，`frontend/tests/operations.spec.ts`覆盖管理员提示。Active Stable真实启动补备份和连续六小时周期均已通过，因此不需要等待或人为停止调度器来完成R7验收。
 
 ## 2026-10-10 最新候选验收与剩余条件
 
@@ -25,7 +30,7 @@ clean candidate `6d764aca6428bd225afe30395723dfaeb4ae0e0b` 由 `./local build` �
 
 R7副本`ce589d79d5a643c48af315756a72ff22`在`2026-10-09T17:29:47.676877Z`创建，6小时到期约`2026-10-09T23:29:47Z`。电脑在到期窗口关闭；用户于次日12:30+08:00执行`./local up`。`up`于`04:30:22.937612Z`成功；Scheduler在`04:30:27.027116Z`自动记尝试，随后登记R7来源备份`f501b61cd4154a9491f9cadb32ca1abe`（`04:30:27.853880Z`，`187357` bytes，SHA-256 `a1c8ce5e1ab92bb048db4cee535182559f55e86e41ec42233580773009d45b31`，source commit `6d764ac`）。`./local logs backup`为success/registered；`./local status`显示API healthy、全部必要依赖ready、备份known/not-overdue。没有手工调用`./local backup`。
 
-此结果验证电脑关机错过到期窗口后，重新`up`会自动补做已到期备份。clean `b7f64e5`隔离验证已用注入时钟通过真实调度器6小时边界；随后Active Stable连续运行跨越完整6小时周期，调度器于`2026-10-10T10:30:58.732143Z`自动登记副本`a0fa7ba4dd9748b88de3b12983386541`（189107 bytes，SHA-256 `9a71843124ba3ec0e7146eda5aeb69ccbf13e01bf7bbef55a902d69b35771367`，source `6d764ac`）。服务healthy、依赖ready、备份known/not-overdue，日志为success/registered，未手动执行`./local backup`。24小时Active Stable逾期提醒本轮未触发，确定性测试已覆盖。用户已确认切换后Stable业务Trace在ARMS验收通过，未提供Trace ID或时间戳。R7 Acceptance保持incomplete。
+此结果验证电脑关机错过到期窗口后，重新`up`会自动补做已到期备份。clean `b7f64e5`隔离验证已用注入时钟通过真实调度器6小时边界；随后Active Stable连续运行跨越完整6小时周期，调度器于`2026-10-10T10:30:58.732143Z`自动登记副本`a0fa7ba4dd9748b88de3b12983386541`（189107 bytes，SHA-256 `9a71843124ba3ec0e7146eda5aeb69ccbf13e01bf7bbef55a902d69b35771367`，source `6d764ac`）。服务healthy、依赖ready、备份known/not-overdue，日志为success/registered，未手动执行`./local backup`。24小时提醒由后端阈值、启动补备份和管理员提示确定性测试覆盖；新增回归`tests/bootstrap/test_operations.py::test_backup_projection_marks_success_over_24_hours_overdue`，23小时不逾期、25小时逾期。Active Stable未人为进入逾期状态，Spec没有要求这项实机演练。用户已确认切换后Stable业务Trace在ARMS验收通过，未提供Trace ID或时间戳。R7 Acceptance已完成；工作项仍待PR #62转Ready授权及自动合并收尾。
 
 Linux Chromium下载名`download`的历史结果已由后续隔离实验定位为浏览器验收容器未设置UTF-8 locale；R5环境修复在独立本地候选中验证，未纳入R7 PR #62。
 

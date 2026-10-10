@@ -1,6 +1,6 @@
 # R7 本地运行保障验收
 
-Status: incomplete. Ticket 01–06实现/Review及clean候选`6d764ac`隔离验收完成；Active Stable R7切换通过。12:30+08:00启动补备份副本`f501b61cd4154a9491f9cadb32ca1abe`后，Stable于2026-10-10 18:30:58+08:00在连续运行中自动登记副本`a0fa7ba4dd9748b88de3b12983386541`，跨越完整6小时周期通过；复核时服务healthy、依赖ready、备份known且未逾期。24小时逾期提醒的Active Stable实机演练未触发，23项定向回归已覆盖该逻辑，因此R7验收仍为incomplete。用户已确认切换后的Stable业务Trace在阿里云ARMS验收通过；未提供可独立关联的Trace ID或时间戳，按用户人工验收结论记录。Linux Chromium中文下载名退化已定位为验收容器缺少UTF-8 locale，作为R5验收环境修复独立跟进；没有启动Windows浏览器或IDM。
+Status: complete（按已确认Spec要求验收）。Ticket 01–06实现/Review及clean候选`6d764ac`隔离验收完成；Active Stable R7切换通过。12:30+08:00启动补备份副本`f501b61cd4154a9491f9cadb32ca1abe`后，Stable于2026-10-10 18:30:58+08:00在连续运行中自动登记副本`a0fa7ba4dd9748b88de3b12983386541`，跨越完整6小时周期通过；复核时服务healthy、依赖ready、备份known且未逾期。24小时逾期提醒已由确定性阈值、启动补备份及管理员提示测试覆盖；没有人为制造Active Stable逾期状态。Spec要求确定性测试，不要求对Stable做24小时故障演练。用户已确认切换后的Stable业务Trace在阿里云ARMS验收通过；未提供可独立关联的Trace ID或时间戳，按用户人工验收结论记录。Linux Chromium中文下载名退化已定位为验收容器缺少UTF-8 locale，作为R5验收环境修复独立跟进；没有启动Windows浏览器或IDM。
 
 ## 候选与证据身份
 
@@ -34,7 +34,7 @@ Status: incomplete. Ticket 01–06实现/Review及clean候选`6d764ac`隔离验�
 | 实际R6备份与隔离恢复 | PASS（条件RTO） | 首份R6副本及隔离恢复`0b4e8f4c3b7f62c71261f7f57703cfda`完成，84秒。 |
 | Active Stable R7切换与启动 | PASS（`6d764ac`） | 用户授权后执行`./local upgrade`；首页、`/health`、`/ready`均HTTP 200，Control DB、业务DB、Qdrant、资产均ready；原PostgreSQL/Qdrant持续运行。 |
 | 升级前备份与R7备份 | PASS（升级门禁/手工） | 升级前R6备份`9d01c195caeb4b71ad5cdb7ca726bfae`及升级后R7副本`ce589d79d5a643c48af315756a72ff22`成功登记；ready状态backup known、overdue=false。 |
-| Active Stable自动调度与逾期提醒 | 部分完成 | 23项定向回归通过。关机错过到期窗口后，12:30执行`./local up`自动登记补备份`f501b61cd4154a9491f9cadb32ca1abe`；连续运行跨越下一个完整6小时周期后，调度器于18:30:58+08:00自动登记副本`a0fa7ba4dd9748b88de3b12983386541`（189107 bytes，SHA-256 `9a71843124ba3ec0e7146eda5aeb69ccbf13e01bf7bbef55a902d69b35771367`，source `6d764ac`），服务healthy、依赖ready、备份known/not-overdue。clean `b7f64e5`隔离PG16/age调度边界验证也通过。Active Stable的24小时逾期提醒未人为触发，仍由23项定向回归覆盖。 |
+| Active Stable自动调度与逾期提醒 | PASS（确定性测试与运行观察） | 23项既有定向回归通过，并新增`tests/bootstrap/test_operations.py::test_backup_projection_marks_success_over_24_hours_overdue`，验证23小时不逾期、25小时逾期；`tests/scripts/test_local_backup_schedule.py::test_start_missing_or_overdue_backup_attempts_immediately`覆盖启动补备份，`frontend/tests/operations.spec.ts`覆盖管理员逾期提示。关机错过到期窗口后，12:30执行`./local up`自动登记补备份`f501b61cd4154a9491f9cadb32ca1abe`；连续运行跨越下一个完整6小时周期后，调度器于18:30:58+08:00自动登记副本`a0fa7ba4dd9748b88de3b12983386541`（189107 bytes，SHA-256 `9a71843124ba3ec0e7146eda5aeb69ccbf13e01bf7bbef55a902d69b35771367`，source `6d764ac`），服务healthy、依赖ready、备份known/not-overdue。clean `b7f64e5`隔离PG16/age调度边界验证也通过。没有人为制造Active Stable逾期状态；这不是Spec要求的验收条件。 |
 | 阿里云Trace控制台查询 | PASS（用户确认） | 用户确认在切换后的Stable请求中，阿里云ARMS Trace验收无问题。此次确认未提供Trace ID或时间戳；此前01:10–01:13列表仍作为切换前历史记录。 |
 | 最终日志凭据检查与总体门禁 | PASS（`6d764ac`） | `logs_no_known_secrets=true`；旧候选报告继续绑定各自运行身份，不改写历史结果。 |
 
@@ -66,7 +66,7 @@ Linux 文件名偏差的后续根因核验：
 
 切换后首页、`/health`和`/ready`均返回HTTP 200。`./local status`的详细快照中Control DB、业务DB、Qdrant和资产均ready；模型状态为unknown（切换后没有新的真实模型调用），备份状态为known且`overdue=false`。独立`chatbi-stable-backup-1`持续运行，进程为`python3 -m scripts.local_backup_schedule`，`./local logs backup`没有失败记录。升级后执行一次在线手工`./local backup`，副本`ce589d79d5a643c48af315756a72ff22`于`2026-10-10T01:29:47+08:00`成功登记，来源commit为R7 `6d764ac`。
 
-升级前备份门禁、调度周期和过期状态相关23项定向回归通过。Stable最后一个R7副本`ce589d79d5a643c48af315756a72ff22`创建于`2026-10-09T17:29:47.676877+00:00`，6小时到期约为次日`23:29:47Z`（07:29:47+08:00）。电脑在到期窗口关闭；用户于12:30+08:00启动Stable后，调度器自动补做并登记副本`f501b61cd4154a9491f9cadb32ca1abe`。随后Stable连续运行跨越下一完整6小时周期，调度器于`2026-10-10T10:30:58.732143Z`（18:30:58+08:00）自动登记副本`a0fa7ba4dd9748b88de3b12983386541`，大小189107 bytes，SHA-256 `9a71843124ba3ec0e7146eda5aeb69ccbf13e01bf7bbef55a902d69b35771367`，来源commit `6d764aca6428bd225afe30395723dfaeb4ae0e0b`。`./local status`显示服务healthy、依赖ready、备份known且`overdue=false`；`./local logs backup`只有success/registered记录，未手工调用`./local backup`。连续运行6小时周期通过；Active Stable 24小时逾期提醒仍未人为触发，23项确定性回归已覆盖，不因此伪称实机逾期告警通过。切换后Stable业务Trace已由用户确认通过；未提供Trace ID或时间戳。Linux文件名问题根因是验收locale，R5环境修复单独跟进。
+升级前备份门禁、调度周期和过期状态回归通过。Stable最后一个R7副本`ce589d79d5a643c48af315756a72ff22`创建于`2026-10-09T17:29:47.676877+00:00`，6小时到期约为次日`23:29:47Z`（07:29:47+08:00）。电脑在到期窗口关闭；用户于12:30+08:00启动Stable后，调度器自动补做并登记副本`f501b61cd4154a9491f9cadb32ca1abe`。随后Stable连续运行跨越下一完整6小时周期，调度器于`2026-10-10T10:30:58.732143Z`（18:30:58+08:00）自动登记副本`a0fa7ba4dd9748b88de3b12983386541`，大小189107 bytes，SHA-256 `9a71843124ba3ec0e7146eda5aeb69ccbf13e01bf7bbef55a902d69b35771367`，来源commit `6d764aca6428bd225afe30395723dfaeb4ae0e0b`。`./local status`显示服务healthy、依赖ready、备份known且`overdue=false`；`./local logs backup`只有success/registered记录，未手工调用`./local backup`。连续运行6小时周期通过；24小时提醒由后端阈值、启动补备份和管理员提示确定性测试覆盖，没有人为制造Active Stable逾期状态；Spec不要求此项实机演练。切换后Stable业务Trace已由用户确认通过；未提供Trace ID或时间戳。Linux文件名问题根因是验收locale，R5环境修复单独跟进。R7 Acceptance已完成。
 
 ## Stable 开机后的自动补备份（2026-10-10）
 

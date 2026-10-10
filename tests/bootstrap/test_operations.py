@@ -173,6 +173,28 @@ def test_backup_projection_is_bounded_and_does_not_echo_untrusted_fields(tmp_pat
     assert read_backup_status(path)["status"] == "unknown"
 
 
+def test_backup_projection_marks_success_over_24_hours_overdue(tmp_path):
+    import json
+    from datetime import UTC, datetime, timedelta
+
+    from src.bootstrap.backup_status import read_backup_status
+
+    path = tmp_path / "backup.json"
+    now = datetime.now(UTC)
+    for age_hours, expected_overdue in ((23, False), (25, True)):
+        path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "last_success": (now - timedelta(hours=age_hours)).isoformat(),
+                }
+            )
+        )
+        result = read_backup_status(path)
+        assert result["status"] == "known"
+        assert result["overdue"] is expected_overdue
+
+
 def test_status_socket_refuses_unknown_existing_file(tmp_path):
     path = tmp_path / "status.sock"
     path.write_text("user content")
