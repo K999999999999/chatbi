@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+branch="$(git branch --show-current)"
+if [[ -z "$branch" ]]; then
+  printf '拒绝在 detached HEAD 上提交；请先切换到命名 Feature branch。\n' >&2
+  exit 1
+fi
+
+if [[ "$branch" == "master" ]]; then
+  printf '拒绝直接在 master 上提交；请从 master 创建并切换到命名 Feature branch。\n' >&2
+  exit 1
+fi

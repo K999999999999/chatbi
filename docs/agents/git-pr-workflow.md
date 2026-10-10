@@ -213,8 +213,9 @@ PR 确认已 `MERGED` 后，每个交付都必须完成一次简短 Harness 复�
 
 检查本次 Agent 工作是否因项目背景、规则、工具或验证方式不足而发生误解、漏验、返工或需要用户纠正：
 
-- 没有发现缺口：在 PR 的“合并后 Harness 复盘”栏记录“无新增缺口”。
-- 发现缺口：记录具体表现和根因，创建后续 Harness 改进项并关联到 PR；改进项要说明要调整的规则、文档、Skill、工具或验证方式，以及如何检查改进有效。
+- 每次复盘在 PR 正文与实时工作记录当前字段中填写 `Harness review`、`Harness evidence`、`Harness follow-up work item`。`Harness review` 使用 `no-gap` 或 `gap-found`；证据列出本次检查过的 PR 与相关事实源 / 验收 / 验证记录。
+- `no-gap` 时 `Harness follow-up work item` 为 `None`。`gap-found` 时，记录具体表现和根因，创建一个独立后续 Harness 改进工作项并引用其 ID；改进项要说明调整的规则、文档、Skill、工具或验证方式，以及如何检查改进有效。
+- 合并后的当前实时记录须保留三项结构化字段。运行 `scripts.check_harness_state` 时，字段不完整、值无效、组合矛盾或后续记录无法解析会产生 `ERROR`。
 - 如果问题来自产品实现本身，按产品 Bug / Regression 处理；如果 Agent 的工作环境也导致问题，同时创建 Harness 改进项。
 
 复盘只记录可行动的缺口，不要求每个 PR 另写一份复盘文档。已合并的产品 PR 不因复盘发现而追加无关改动；Harness 改进按独立目标交付。

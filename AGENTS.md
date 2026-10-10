@@ -51,6 +51,7 @@
 ## Git & Delivery
 
 - 新的 Feature、Bug Fix 或工程目标从已同步的 `master` 和干净工作区开始；一个目标默认使用一个 active branch 和一个 active worktree。
+- 新 clone 在首次提交前运行 `bash scripts/install_git_hooks.sh` 启用本仓库的提交前分支护栏。脚本发现已有其他有效 `core.hooksPath` 时会拒绝覆盖；此时先保留原 Hook 设置并按 Runbook 说明处置。
 - 默认只做本地 Commit。发布前在聊天中说明 PR 目标、提交范围、风险、验证结果和目标仓库的 Auto-merge 行为，并取得用户明确发布授权；PR 正文不是请求授权或交接的唯一位置。授权在同一目标和范围内覆盖 CI 修复、PR 更新、复盘和安全清理，不重复询问。普通独立 PR 按目标仓库真实规则默认 Auto-merge；依赖 PR 按前置关系保护。Agent 不直接人工 Merge。详细候选、验证、PR、Auto-merge 和清理规则见 [`docs/agents/git-pr-workflow.md`](docs/agents/git-pr-workflow.md)。
 - 只提交当前目标相关改动；Contract、适用验证、Review 和 Diff 检查完成后才能 Commit。高风险链路及验证级别按 Git / PR 流程执行。
 - 交付报告用中文列出提交内容、验证结果和剩余问题。未运行的验证要明确标注。

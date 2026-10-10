@@ -42,6 +42,7 @@ Vite Web（开发容器 / 宿主调试；宿主回环端口 5173；打包后由 
 前提为 WSL / Linux、Git、Bash、Docker Engine / Compose。已有开发配置和数据可以直接复用；新 clone 复制 `.env.example` 为 `.env`，填写数据库密码、随机管理员签名 Key 与 LLM 配置，随后显式执行：
 
 ```bash
+bash scripts/install_git_hooks.sh
 ./dev build
 ./dev infra
 ./dev migrate
@@ -52,6 +53,8 @@ Vite Web（开发容器 / 宿主调试；宿主回环端口 5173；打包后由 
 ```
 
 打开 `http://127.0.0.1:5173`。日常只需 `./dev up`；`./dev down` 停止四个服务并保留全部数据，`./dev status` 查看状态，`./dev logs --follow` 跟踪日志。前后端手动启动后后台运行，电脑 / Docker 重启后不自动启动；数据库与 Qdrant 保留现有策略。
+
+`scripts/install_git_hooks.sh` 为当前 Git clone 启用提交前分支护栏，只在本仓库 local Git 配置设置 `core.hooksPath=.githooks`。如果任何有效 Git 配置来源已将 `core.hooksPath` 指向其他位置，脚本会停止且保留原配置；不要为了安装而覆盖既有 Hook。安装后运行 `git config --show-origin --get-all core.hooksPath` 核实配置。若以后需要撤销，只有确认 `git config --local --get core.hooksPath` 仍严格输出 `.githooks` 时，才执行 `git config --local --unset core.hooksPath`；若值已变化，先保留并调查。
 
 后端源码变更自动重载，前端 Vite 热更新。后端重载 / 重启会清空旧 API 的进程内多轮会话；网页使用 R3 持久历史，刷新只读保存结果，续聊重新认证当前业务定义。停止旧 API 进程后再启动新进程，不能并行运行两个 history runtime。依赖锁文件和新增根配置变化后执行 `./dev build` 再 `./dev up`。容器依赖不使用本机 `.venv` / `node_modules`。
 
