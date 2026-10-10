@@ -109,6 +109,78 @@
 - Auto-merge：请求满足条件后自动合并；
 - Merge：实际合并 PR。
 
+#### PR 正文更新的 REST 备用方式
+
+正常使用 `gh pr edit <PR> --body-file <完整正文文件>`。若它明确因 GitHub Projects classic GraphQL 弃用错误（例如 `repository.pullRequest.projectCards`）失败，才使用 REST fallback；权限、网络、PR 不匹配或其他错误应报告原错误并停止，不要把它们当作同一故障处理。
+
+正文文件必须包含完整目标正文，因为 PATCH 会替换整个 PR 正文。首次编辑前，通过明确的仓库身份读取并保存 PR 的状态、head SHA 和正文快照，然后尝试 CLI 更新：
+
+```bash
+owner="<OWNER>"
+repo="<REPOSITORY>"
+number="<PR_NUMBER>"
+body_file="<完整正文文件路径>"
+baseline_file="<编辑前PR快照JSON路径>"
+current_file="<CLI失败后PR快照JSON路径>"
+payload_file="<JSON payload 文件路径>"
+
+gh pr view "$number" --repo "$owner/$repo" \
+  --json state,headRefOid,body > "$baseline_file"
+gh pr edit "$number" --repo "$owner/$repo" --body-file "$body_file"
+```
+
+只有 CLI 明确返回前述 Projects classic GraphQL 弃用错误时才继续。先读取同一 PR 的最新状态，并确认正文 / head SHA 没有并发变化且 PR 仍为 OPEN；否则停止，不覆盖远端编辑：
+
+```bash
+gh pr view "$number" --repo "$owner/$repo" \
+  --json state,headRefOid,body > "$current_file"
+
+python3 - "$baseline_file" "$current_file" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+before, after = (json.loads(Path(path).read_text(encoding="utf-8")) for path in sys.argv[1:])
+if before["state"] != "OPEN" or after["state"] != "OPEN":
+    raise SystemExit("PR is not open")
+for field in ("headRefOid", "body"):
+    if before[field] != after[field]:
+        raise SystemExit(f"PR {field} changed; stop and review concurrent edits")
+PY
+```
+
+确认状态未变后，使用 JSON 编码生成 REST payload，避免 shell 字符串插值破坏多行 Markdown、引号或反斜杠：
+
+```bash
+python3 - "$body_file" "$payload_file" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+body = Path(sys.argv[1]).read_text(encoding="utf-8")
+Path(sys.argv[2]).write_text(
+    json.dumps({"body": body}, ensure_ascii=False), encoding="utf-8"
+)
+PY
+
+gh api --method PATCH "repos/$owner/$repo/pulls/$number" --input "$payload_file"
+
+set -o pipefail
+gh pr view "$number" --repo "$owner/$repo" --json body |
+python3 -c '
+import json
+import sys
+from pathlib import Path
+
+expected = Path(sys.argv[1]).read_text(encoding="utf-8")
+actual = json.load(sys.stdin)["body"]
+if actual != expected:
+    raise SystemExit("PR body does not match the intended body")
+' "$body_file"
+```
+
+REST 返回成功但读回不一致时，停止并调查；不能只凭命令退出码报告正文更新完成。
+
 当前仓库的 `.github/workflows/enable-auto-merge.yml` 会在符合条件的 PR 事件后请求 Squash Auto-merge。动作前会读取 GitHub 上的实时 PR，核对 `state`、Draft、head SHA、base branch 和 head repository 是否仍与事件快照一致；旧事件、状态未知、PR 已关闭、仍为 Draft、base 不再是 `master` 或 head 已变化时跳过，不调用启用动作。普通独立 PR 以 required checks 自动合并为默认，不额外要求用户 PR Review；Agent 不直接人工 Merge。依赖 PR 必须依照依赖门禁保持 Draft，直到前置 PR、最终 base 和适用检查均满足。聊天授权前必须说明目标仓库的真实 Auto-merge 行为，之后核实 PR 的真实状态。Stacked / 依赖 PR 不得提前启用 Auto-merge。
 
 ### 6. PR 后状态检查与自动收尾
