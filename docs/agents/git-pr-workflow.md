@@ -75,6 +75,7 @@
 - 当前 branch 和最终 HEAD；
 - `git_dirty=false`，没有未跟踪文件；
 - Contract、相关测试、Diff Review 和 `git diff --check` 已完成；
+- 对代码质量检查记录实际命令、工具版本和覆盖目录 / 文件；局部定向检查必须标明范围，不能表述为全量通过。Python 格式与 lint 统一运行 `bash scripts/check_python_quality.sh`，该入口同时由 CI 调用；
 - 已核对 `docs/roadmap.md`，按 [路线图维护规则](agent-harness.md#路线图读取与维护) 同步受影响的目标、依赖和验收状态，并对照产品范围 / Spec 检查需求状态、当前能力、不包含 / 后续范围无矛盾；记录核对位置与结果，或不适用理由；优先级与范围变化已经用户确认；
 - 高风险链路是否需要 Real E2E；
 - 当前 PR 目标、commit 范围、未执行验证和剩余风险。

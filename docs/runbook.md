@@ -387,7 +387,13 @@ uv run --python 3.11 --locked python -m pytest -q
 
 ### 8.4 PR 前本地验收流程
 
-PR 前的分支、candidate、用户授权、验收和交付顺序以 [`docs/agents/git-pr-workflow.md`](agents/git-pr-workflow.md) 为准。本节只列本地验证入口：按改动运行 §8.1 软件回归、§8.2 PostgreSQL 集成测试；涉及 Retrieval、RAG、Embedding、Qdrant、LLM 或 SQL 生成行为时，按仓库规则再执行 §9 的真实 Evaluation。
+PR 前的分支、candidate、用户授权、验收和交付顺序以 [`docs/agents/git-pr-workflow.md`](agents/git-pr-workflow.md) 为准。Python 格式与 lint 的全量质量检查使用和 CI 相同的入口：
+
+```bash
+bash scripts/check_python_quality.sh
+```
+
+该命令固定使用 Ruff 0.16.8，检查 `src/`、`evaluation/`、`tests/`。只对改动文件运行的定向检查属于局部结果，不能代替以上全量检查。其他本地验证按改动运行 §8.1 软件回归、§8.2 PostgreSQL 集成测试；涉及 Retrieval、RAG、Embedding、Qdrant、LLM 或 SQL 生成行为时，按仓库规则再执行 §9 的真实 Evaluation。
 
 ## 9. 运行真实 LLM Evaluation
 
