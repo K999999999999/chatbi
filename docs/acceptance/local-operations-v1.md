@@ -1,6 +1,6 @@
 # R7 本地运行保障验收
 
-Status: incomplete. Ticket 01–06本地实现与Review完成；clean候选`6d764ac`的Linux Playwright完整隔离验收通过。用户于2026-10-10授权将本机Stable从R6切至R7：`./local upgrade`成功，升级前R6备份`9d01c195caeb4b71ad5cdb7ca726bfae`已登记；升级后创建并校验绑定R7的备份`ce589d79d5a643c48af315756a72ff22`。Stable首页、`/health`、`/ready`为HTTP 200，依赖ready，备份状态known且未逾期，独立调度进程运行。23项备份/提醒定向测试通过；下一个真实6小时周期尚未到达，持续RPO仍待观察，活动Stable逾期提醒未人为触发。阿里云Trace控制台查询已由用户只读核验：可查到chatbi链路；显示时间早于Stable切换，详见下文。Linux Chromium中文Blob下载名为`download`，保留为R5跨浏览器兼容问题；没有启动Windows浏览器或IDM。
+Status: incomplete. Ticket 01–06实现/Review及clean候选`6d764ac`隔离验收完成；Active Stable R7切换通过。2026-10-10 12:30+08:00，`./local up`在上次R7备份已超过6小时后自动触发补备份，副本`f501b61cd4154a9491f9cadb32ca1abe`登记成功；Ready、依赖和备份状态通过。此证据验证重启后到期补备份，持续运行跨越下一完整6小时周期仍待观察；未人为制造Active Stable的24小时逾期。阿里云控制台可查`chatbi`链路已由用户核验，但列表早于Stable切换，R7切换后的Stable业务Trace仍未核验。Linux Chromium中文下载名退化已定位为验收容器缺少UTF-8 locale，作为R5验收环境修复独立跟进；没有启动Windows浏览器或IDM。
 
 ## 候选与证据身份
 
@@ -27,15 +27,15 @@ Status: incomplete. Ticket 01–06本地实现与Review完成；clean候选`6d76
 | 经营分析 | PASS（`6d764ac`） | 真实分析、流式阶段、归因参考值、保存与重启后读取通过。 |
 | 历史/成果及重启续聊 | PASS（`6d764ac`） | 浏览器两阶段均通过；持久状态指纹、未完成执行恢复规则及成功成果保留通过。 |
 | 单用户资源及耗时基线 | PASS（`6d764ac`） | 10项查询/分析时长、12项导出时长与三服务 CPU/内存采样已记录；不构成并发容量或 p95 SLA。 |
-| Linux Chromium 中文文件名 | 未通过（文件内容仍通过） | Blob 下载的建议名与原生 Chrome 实际落盘名均为`download`；Windows Chromium 候选`0a97182`报告中的`suggested_filename`为预期中文名。属于 R5 跨浏览器兼容遗留，未改 R5 Contract。 |
+| Linux Chromium 中文文件名 | 历史运行未通过（文件内容通过） | 历史容器未设UTF-8 locale，浏览器建议名与原生 Chrome 落盘名均为`download`。后续隔离对照确认设`C.UTF-8`后恢复中文名；根因属R5浏览器验收环境，不是导出内容或产品文件名实现。独立R5修复未并入本R7候选。 |
 | 共享额度拒绝与释放 | PASS（软件回归） | `tests/query_api/test_operations_api.py::test_sync_query_shares_live_background_capacity_and_recovers`、`tests/query_api/test_execution_runtime.py`、两个导出失败释放回归共11项通过；验证后台占额时同步问数返回429、释放后可再次执行。此证据验证额度逻辑，不代表并发容量或SLA。 |
 | 临时资源回收与最终日志检查 | PASS（`6d764ac`） | 专属账号禁用、`active_sessions=0`、验收容器/网络/卷清理；最终 API 日志 Secret 检查通过，验收前后外部 Docker 资源快照相同。 |
 | 稳定服务（`6d764ac`候选验收期间） | 保持 R6 | 该候选的专属验收未包含 stable；R6 API/PostgreSQL healthy、Qdrant running，`/health` HTTP 200。没有升级、恢复激活或切换 stable。 |
 | 实际R6备份与隔离恢复 | PASS（条件RTO） | 首份R6副本及隔离恢复`0b4e8f4c3b7f62c71261f7f57703cfda`完成，84秒。 |
 | Active Stable R7切换与启动 | PASS（`6d764ac`） | 用户授权后执行`./local upgrade`；首页、`/health`、`/ready`均HTTP 200，Control DB、业务DB、Qdrant、资产均ready；原PostgreSQL/Qdrant持续运行。 |
 | 升级前备份与R7备份 | PASS（升级门禁/手工） | 升级前R6备份`9d01c195caeb4b71ad5cdb7ca726bfae`及升级后R7副本`ce589d79d5a643c48af315756a72ff22`成功登记；ready状态backup known、overdue=false。 |
-| Active Stable自动调度与逾期提醒 | 部分完成 | 独立调度进程运行；调度/升级前备份/逾期状态相关23项定向回归通过。下一次真实6小时周期尚未到达，未改写Stable状态伪造24小时逾期；长周期运行观察待完成。 |
-| 阿里云Trace控制台查询 | PASS（用户只读核验） | ARMS控制台可查到service=chatbi的query.request与retrieval.plan记录；具体Trace ID、耗时和时间边界见阿里云Trace控制台核验记录。 |
+| Active Stable自动调度与逾期提醒 | 部分完成 | 23项定向回归通过。真实到期后关机，12:30执行`./local up`后约5秒自动登记R7副本`f501b61cd4154a9491f9cadb32ca1abe`，证明启动补备份；持续运行下一完整6小时周期与Active Stable 24小时逾期提醒仍待观察，未伪造逾期状态。 |
+| 阿里云Trace控制台查询 | 部分通过 | 用户已确认ARMS可查`service=chatbi`的`query.request`与`retrieval.plan`；该列表时间早于Stable切换，尚不能证明R7 Active Stable切换后业务Trace可见。 |
 | 最终日志凭据检查与总体门禁 | PASS（`6d764ac`） | `logs_no_known_secrets=true`；旧候选报告继续绑定各自运行身份，不改写历史结果。 |
 
 ## 阿里云 Trace 控制台核验（2026-10-10）
@@ -52,7 +52,7 @@ clean 候选 `6d764aca6428bd225afe30395723dfaeb4ae0e0b` 绑定隔离运行 `2026
 
 验收结束时专属账号已禁用、`active_sessions=0`；专属容器、网络、卷清理完成；验收前后外部 Docker 资源一致；`logs_no_known_secrets=true`。安全报告与 12 个解析结果存于本机 ignored 目录 `reports/browser-real-artifacts/r6-local-deployment/6d764aca6428-20261009T170425Z-444d837d/`，运行明细位于 `.local/acceptance/20261009T170425Z-444d837d/`。
 
-需要单独记录 Linux 文件名兼容情况：本次 12 次 Chromium download 的 `suggested_filename` 都是 `download`，尽管服务端 UTF-8 `Content-Disposition` 与 DOM `download` 值包含中文名，文件字节与格式解析正确。独立原生 Chrome CDP 探针也观察到中文 Blob 文件实际保存名为 `download`；因此当前 Linux Chromium 下文件名行为未通过。此前 Windows Chromium `0a97182` 验收报告记录了预期中文`suggested_filename`，且 `frontend/src/api.ts` 与 `src/query_api/result_export_api.py` 自该候选以来未变。未在本次授权中改变 R5 下载 Contract 或生产代码。
+Linux 文件名偏差的后续根因核验：
 
 本次运行的 `browser.json` 明确记录浏览器版本 `153.0.8010.12`；由通用验收入口生成的 `runtime.json` 却写入 `browser_channel=msedge`。这是该 ignored Linux 适配器没有覆盖元数据字段造成的标签错误，不能据此称本次使用 Edge。
 
@@ -62,7 +62,13 @@ clean 候选 `6d764aca6428bd225afe30395723dfaeb4ae0e0b` 绑定隔离运行 `2026
 
 切换后首页、`/health`和`/ready`均返回HTTP 200。`./local status`的详细快照中Control DB、业务DB、Qdrant和资产均ready；模型状态为unknown（切换后没有新的真实模型调用），备份状态为known且`overdue=false`。独立`chatbi-stable-backup-1`持续运行，进程为`python3 -m scripts.local_backup_schedule`，`./local logs backup`没有失败记录。升级后执行一次在线手工`./local backup`，副本`ce589d79d5a643c48af315756a72ff22`于`2026-10-10T01:29:47+08:00`成功登记，来源commit为R7 `6d764ac`。
 
-升级前备份门禁、调度周期和过期状态相关23项定向回归通过。由于R7副本刚创建，下一次真实6小时自动周期预计不早于`2026-10-10 07:29:47 +08:00`；本次没有为制造证据而改写生产备份目录或伪造24小时逾期状态。因此自动周期的实际新副本及活动Stable逾期提醒仍待后续观察，不能据当前`overdue=false`宣称长周期RPO已完全验收。阿里云Trace控制台查询已由用户只读核验可见chatbi链路（记录早于Stable切换）；R5 Linux中文文件名仍为独立跟进。
+升级前备份门禁、调度周期和过期状态相关23项定向回归通过。Stable最后一个R7副本`ce589d79d5a643c48af315756a72ff22`创建于`2026-10-09T17:29:47.676877+00:00`，6小时到期约为次日`23:29:47Z`（07:29:47+08:00）。电脑在到期窗口关闭；用户于12:30+08:00启动Stable后，调度器自动补做并登记副本`f501b61cd4154a9491f9cadb32ca1abe`。因此重启补备份通过；持续运行跨越完整下一6小时周期及Active Stable逾期提醒仍待观察，不以`overdue=false`宣称长周期RPO完全验收。ARMS列表可查性已由用户确认，列表早于Stable切换；切换后Stable业务Trace待核验。Linux文件名问题根因是验收locale，R5环境修复单独跟进。
+
+## Stable 开机后的自动补备份（2026-10-10）
+
+本次R7备份`ce589d79d5a643c48af315756a72ff22`的成功时间为`2026-10-09T17:29:47.676877+00:00`；6小时到期点约为`2026-10-09T23:29:47Z`（2026-10-10 07:29:47+08:00）。电脑在到期时关闭。用户运行`./local up`的部署状态为`running/succeeded`，时间`2026-10-10T04:30:22.937612Z`；调度器在`04:30:27.027116Z`写入本次尝试，约0.8秒后创建并登记备份`f501b61cd4154a9491f9cadb32ca1abe`。副本创建时间`2026-10-10T04:30:27.853880+00:00`，来源commit`6d764aca6428bd225afe30395723dfaeb4ae0e0b`，大小`187357` bytes，SHA-256 `a1c8ce5e1ab92bb048db4cee535182559f55e86e41ec42233580773009d45b31`。`./local logs backup`返回`status=success` / `backup=registered`；`./local status`于`04:30:57Z`显示API healthy、Control DB/业务DB/Qdrant/资产ready、备份known且`overdue=false`。这证明调度器在启动时发现6小时以上的间隔并自动补做，不是手工运行`./local backup`。
+
+本次没有观察到电脑关闭期间执行备份。`./local status`于`2026-10-10T04:42:12Z`复核时，API仍healthy，Control DB、业务DB、Qdrant和资产均ready，最近成功备份仍为本副本且`overdue=false`。连续运行情况下，本副本后的下一次6小时周期约在`2026-10-10 18:30:27+08:00`到期，尚未等待；Active Stable的24小时逾期提醒仍由23项确定性回归覆盖，本轮没有人为改写状态制造逾期。模型状态在启动后显示unknown，因为本轮未发起新的真实模型请求。R7验收仍保持incomplete。
 
 ## `6c3c639` 依赖故障矩阵与历史 Linux Playwright 验收（2026-10-09）
 
@@ -137,7 +143,7 @@ clean 候选 `8f73ab12e0b078ffca7c6416ab8ae7ea055522a9` 的固定镜像构建通
 - `6c3c639` 已完成前一 clean 候选 Linux Playwright 完整业务验收、12份导出解析、重启续聊、日志 Secret 检查及资源回收；同一候选四类依赖60秒故障/恢复矩阵通过。旧候选中未记录提交证据的追问超时仍按历史事实保留，不将旧运行重标。
 - 当前候选 `6d764ac` 的单用户耗时与资源采样已完成；这些数据不构成并发容量或 p95 SLA。额度共用/释放逻辑已有11项软件回归通过，验证逻辑而非并发容量。
 - 条件RTO已验证：实际R6备份 `2e1a0cc185ac467a8f91e2adc2ca783f` 在隔离环境恢复为 `0b4e8f4c3b7f62c71261f7f57703cfda`，从恢复开始至数据库/RAG/readiness/登录/历史核验用时84秒。该恢复记录描述截至2026-10-09的状态：当时active Stable运行R6，R7每6小时调度及超过24小时提醒未在Stable启用，单份手工备份不足以证明持续24小时保障。2026-10-10用户授权切到R7后的观察见下文。早先来源校验拒绝及后续获准的R6 API维护重启见下文。
-- Linux Chromium 中文Blob下载的实际文件名为`download`，这是本次验收发现的R5跨浏览器兼容问题；文件内容正确，Windows Chromium候选`0a97182`报告的`suggested_filename`为预期中文名。未在R7 Ticket授权内修改R5下载行为，需独立决定是否修复。
+- Linux Chromium验收运行中中文Blob建议名为`download`，但后续对照已定位为测试容器缺少UTF-8 locale；文件内容正确，Windows Chromium候选`0a97182`的中文名结果不变。R5独立环境修复已在单独本地候选验证，不属于R7代码变更。
 - 本次未重跑正式 AI Evaluation；根据 Ticket/Spec 按实际 Diff 决定影响范围，Prompt、业务算法和模型资产未改时可复用原候选的适用行为基线，但不得冒称当前版本的新正式 Evaluation 基线。
 
 ## 实际 stable R6 加密备份与隔离恢复（2026-10-09）

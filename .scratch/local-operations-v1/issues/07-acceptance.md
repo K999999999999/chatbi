@@ -1,7 +1,7 @@
 # 07 — 当前候选完整业务、恢复与容量验收
 
 Status: in-progress
-Authorization: 用户2026-10-08确认七项拆分与全部本地实施、验证、Review和Commit；用户后续授权stable备份密钥、首份加密备份及隔离恢复；用户于2026-10-10明确确认active Stable由R6切到已验收候选6d764ac、验证备份调度/RPO并在失败时回退原R6；无restore-activate、Push/PR或云部署授权。
+Authorization: 用户2026-10-08确认七项拆分与全部本地实施、验证、Review和Commit；用户后续授权stable备份密钥、首份加密备份及隔离恢复；用户于2026-10-10明确确认active Stable由R6切到已验收候选6d764ac、验证备份调度/RPO并在失败时回退原R6；02:21授权Push并创建目标master的Draft PR #62，剩余R7验收通过前保持Draft；未授权转Ready/Auto-merge、restore-activate或云部署。
 Canonical Source: [Spec](../spec.md)、[Design](../design.md)；共同约束见 [已确认拆分](../tickets-draft.md)。
 
 ## 2026-10-10 最新候选验收与剩余条件
@@ -20,6 +20,14 @@ clean candidate `6d764aca6428bd225afe30395723dfaeb4ae0e0b` 由 `./local build` �
 候选`6d764aca6428bd225afe30395723dfaeb4ae0e0b`通过兼容只读预检后执行`./local upgrade`。升级前R6副本`9d01c195caeb4b71ad5cdb7ca726bfae`成功；migration与迁移后兼容检查通过，Stable API切到R7且healthy，PostgreSQL/Qdrant保持运行。切换后创建R7来源副本`ce589d79d5a643c48af315756a72ff22`。`./local status`显示依赖ready、backup known/not-overdue；独立调度容器进程运行，安全日志无失败。23项定向调度/逾期状态测试通过。六小时调度真实周期尚未到达，活动Stable上的24小时逾期状态未人为触发，因此长周期RPO仍待后续观察。
 
 完整验收记录见[正式Acceptance](../../../docs/acceptance/local-operations-v1.md#active-stable-r7切换与备份观察2026-10-10)。
+
+## Stable 开机后的自动补备份（2026-10-10）
+
+R7副本`ce589d79d5a643c48af315756a72ff22`在`2026-10-09T17:29:47.676877Z`创建，6小时到期约`2026-10-09T23:29:47Z`。电脑在到期窗口关闭；用户于次日12:30+08:00执行`./local up`。`up`于`04:30:22.937612Z`成功；Scheduler在`04:30:27.027116Z`自动记尝试，随后登记R7来源备份`f501b61cd4154a9491f9cadb32ca1abe`（`04:30:27.853880Z`，`187357` bytes，SHA-256 `a1c8ce5e1ab92bb048db4cee535182559f55e86e41ec42233580773009d45b31`，source commit `6d764ac`）。`./local logs backup`为success/registered；`./local status`显示API healthy、全部必要依赖ready、备份known/not-overdue。没有手工调用`./local backup`。
+
+此结果验证电脑关机错过到期窗口后，重新`up`会自动补做已到期备份。新副本后的连续运行下一6小时周期约于`2026-10-10 18:30:27+08:00`到期，尚未观察；24小时Active Stable逾期提醒本轮未触发，确定性测试已覆盖。阿里云控制台可查询`chatbi`的用户核验早于Stable切换，切换后业务Trace仍待确认。R7 Acceptance保持incomplete。
+
+Linux Chromium下载名`download`的历史结果已由后续隔离实验定位为浏览器验收容器未设置UTF-8 locale；R5环境修复在独立本地候选中验证，未纳入R7 PR #62。
 
 ## 2026-10-09 顺序处理授权与当前修复
 
