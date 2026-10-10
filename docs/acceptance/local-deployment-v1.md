@@ -1,6 +1,6 @@
 # R6 本地固定版本部署验收
 
-Status: Ticket 01–04 本地实施与适用验收完成；最终 clean runtime candidate `2b4a8c8` 的完整隔离入口通过，稳定环境已升级到该候选。PR60 已合并（`9a70601`），required CI 全部通过，交付与分支清理完成，见 [PR60](https://github.com/K999999999999/chatbi/pull/60)。R6候选本身未执行完整电脑重启；2026-10-10 Active Stable R7的Docker Desktop重启恢复核验通过，整台Windows电脑电源级重启仍未验收，见 [R7 Acceptance](local-operations-v1.md#active-stable-docker-desktop-重启恢复核验2026-10-10)。
+Status: Ticket 01–04 本地实施与适用验收完成；最终 clean runtime candidate `2b4a8c8` 的完整隔离入口通过，稳定环境已升级到该候选。PR60 已合并（`9a70601`），required CI 全部通过，交付与分支清理完成，见 [PR60](https://github.com/K999999999999/chatbi/pull/60)。R6候选本身未执行完整电脑重启；当前Active Stable R7已于2026-10-10通过Docker Desktop与Windows整机重启恢复核验，见 [R7 Acceptance](local-operations-v1.md)。
 
 范围以 [Contract](../specs/local-deployment-v1.md)、[实现设计](../designs/local-deployment-v1.md) 和 [R6 Spec](../../.scratch/r6-local-deployment/spec.md) 为准。
 
@@ -20,7 +20,7 @@ Windows Node 在临时目录安装锁定的浏览器测试依赖，Microsoft Edg
 
 ## 维护窗口与验证限制
 
-完整脚本只停止专用验收项目。R6候选 `2b4a8c8` 本身未经过完整系统 / Docker重启。2026-10-10已在Active Stable R7上重启Docker Desktop，显式执行 `./local up` 并核验服务、readiness、备份和重启前后数据 / 卷身份；该证据不等同于整台Windows电脑电源级重启。完整电脑重启仍待验证，R7运行记录见 [R7 Acceptance](local-operations-v1.md#active-stable-docker-desktop-重启恢复核验2026-10-10)。
+完整脚本只停止专用验收项目。R6候选 `2b4a8c8` 本身未经过完整系统 / Docker重启。2026-10-10已在Active Stable R7上重启Docker Desktop，显式执行 `./local up` 并核验服务、readiness、备份和重启前后数据 / 卷身份；该证据不等同于整台Windows电脑电源级重启。后续整机重启核验已在当前Active Stable R7上通过，R7运行记录见 [R7 Acceptance](local-operations-v1.md)。
 
 R1–R5 原 Acceptance 和 Evaluation 报告保留原候选身份。R6 部署及验收代码没有改变模型、Prompt、Domain、SQL Guard、业务资产或查询 / 分析应用行为，因此已有正式 AI Evaluation 作为原候选行为基线复用；完整 Edge 业务验收提供新运行环境证据，不等于重跑三套正式 AI Evaluation。动态 readiness、备份恢复、容量 / 可用性及监控告警属于 R7 运行保障范围，当前验收见 [R7 Acceptance](local-operations-v1.md)。
 
@@ -53,7 +53,7 @@ AI Evaluation 的复用边界还包括运行依赖变化：R6 将 PyPI `torch 2.
 
 完整验收通过后，`./local upgrade 2b4a8c811713adb663d22cdac4108e13e731165f` 成功，稳定地址 `http://127.0.0.1:8080/`。4 个用户、3 条历史、3 个 turn、0 个成果的前后完整行指纹一致；PostgreSQL 容器 / 运行镜像（733b074）与 Qdrant 容器 / 两命名卷身份不变。API `/health` 为 ok、容器 healthy；实际 seccomp JSON 与仓库 profile 一致，Chromium sandbox 启动实测通过；部署状态 running/succeeded、权限600。指纹及资源身份详见 `stable-upgrade.json`。
 
-定向软件回归 66 passed；Windows Edge 的历史 / 成果确定性回归 3 passed，报告路径测试此前 3 passed；TypeScript、Ruff、Bash、Compose、Markdown local links 与 Diff 检查适用证据通过。宿主 Linux Chrome 启动曾因缺安装与 libnspr4 失败，改在已有目标 Windows Edge 完成确定性回归，没有安装宿主浏览器依赖。最终证据变更为纯文档，复用未受影响软件证据。R6候选的整机重启未执行；2026-10-10当前R7 Stable的Docker Desktop重启恢复核验通过，但完整Windows电脑重启及三套正式AI Evaluation仍未执行。R6 远端交付已完成（PR60）；R7运行保障见[R7 Acceptance](local-operations-v1.md)，不以R6证据宣称整个产品或公网生产就绪。
+定向软件回归 66 passed；Windows Edge 的历史 / 成果确定性回归 3 passed，报告路径测试此前 3 passed；TypeScript、Ruff、Bash、Compose、Markdown local links 与 Diff 检查适用证据通过。宿主 Linux Chrome 启动曾因缺安装与 libnspr4 失败，改在已有目标 Windows Edge 完成确定性回归，没有安装宿主浏览器依赖。最终证据变更为纯文档，复用未受影响软件证据。R6候选`2b4a8c8`本身未执行整机重启；2026-10-10当前R7 Active Stable的Docker Desktop与Windows整机重启恢复核验均已通过，见[R7 Acceptance](local-operations-v1.md)。三套正式AI Evaluation未作为R6候选验收的一部分运行；产品V1最终候选的正式评测按[作品交付入口](product-v1-delivery.md)和Runbook第9.2节单独核验。R6 远端交付已完成（PR60）；R7运行保障见[R7 Acceptance](local-operations-v1.md)，不以R6证据宣称整个产品或公网生产就绪。
 
 ## 稳定服务恢复核验（2026-10-08）
 
