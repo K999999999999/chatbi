@@ -653,9 +653,9 @@ uv run --frozen python -m scripts.verify_local_deployment
 
 隔离验收可通过 `CHATBI_ACCEPTANCE_BROWSER_EXECUTABLE` 显式指定本机已有 Windows 浏览器的绝对 EXE 路径，运行 `uv run --frozen python -m scripts.verify_local_deployment`。默认仍为 Edge；该选项只影响专属临时 Profile，不改变用户配置或安装浏览器。先确认该浏览器能完整接收合成 PDF，报告会记录实际版本和 `custom-executable` 启动类型；其他浏览器通过不代表日常 Edge 的 IDM 接管已解除，也不替代真实业务文件解析。
 
-## R7 动态运行状态（候选隔离验收通过；Stable已切至R7，长周期验证进行中）
+## R7 动态运行状态（候选隔离验收通过；Stable已切至R7，六小时自动备份周期通过）
 
-R7 Contract见[Spec](specs/local-operations-v1.md)，机制见[Design](designs/local-operations-v1.md)。Ticket 01–06本地实现与Review完成；Ticket 07 clean候选`6d764ac`的Linux Playwright完整业务验收、12份导出、资源基线、四类依赖60秒故障/恢复矩阵及额度释放回归已通过。R6备份隔离恢复条件RTO为84秒。2026-10-10用户授权后，本机Stable已执行R6→R7兼容升级，R7来源备份登记成功；`/health`和`/ready`为200，依赖ready，自动备份调度进程运行且当前备份未逾期。下一次真实6小时自动备份周期与活动Stable的逾期提醒仍待观察；切换后Stable业务Trace已由用户确认在阿里云ARMS验收通过（未提供Trace ID或时间戳）；详细证据见[R7 Acceptance](acceptance/local-operations-v1.md)。
+R7 Contract见[Spec](specs/local-operations-v1.md)，机制见[Design](designs/local-operations-v1.md)。Ticket 01–06本地实现与Review完成；Ticket 07 clean候选`6d764ac`的Linux Playwright完整业务验收、12份导出、资源基线、四类依赖60秒故障/恢复矩阵及额度释放回归已通过。R6备份隔离恢复条件RTO为84秒。2026-10-10用户授权后，本机Stable已执行R6→R7兼容升级；`/health`和`/ready`为200，依赖ready。连续运行期间，调度器于18:30:58+08:00自动登记六小时周期备份`a0fa7ba4dd9748b88de3b12983386541`，复核时服务healthy、backup known/not-overdue；24小时逾期提醒逻辑已有23项定向测试通过，但未在Active Stable人为触发。切换后Stable业务Trace已由用户确认在阿里云ARMS验收通过（未提供Trace ID或时间戳）；详细证据见[R7 Acceptance](acceptance/local-operations-v1.md)。
 
 `/health`继续只证明HTTP存活；`/ready`公开最小status/checked_at，ready返回200，其余503。每15秒一轮有界独立进程探测，单轮最多10秒；30秒未更新则unknown。稳定镜像复用R6发布门禁，验证Control/业务库、Qdrant、固定业务/RAG/版本资产；不执行定时LLM调用。未知和失败均不能用旧正常结果替代。
 
@@ -665,11 +665,11 @@ R7 Contract见[Spec](specs/local-operations-v1.md)，机制见[Design](designs/l
 
 R7受理保护使用同一ExecutionRuntime容量：默认每账号1、API进程4，同步问数/分析与后台任务合计；429 `EXECUTION_LIMIT_REACHED`表示额度已满，503 `SERVICE_NOT_READY`表示当前就绪未证实，请等待恢复后由用户重新发起。已受理任务/重放沿原R4；服务不自动排队或重试。同步执行不会为了额度写入伪history，超时中断仍等待真实工作退出再释放。管理员状态和本机socket显示业务/导出各自的当前总数与上限，不暴露其他用户ID。
 
-### R7 手工加密备份、隔离恢复与显式切换（Stable已切换；周期运行观察待完成）
+### R7 手工加密备份、隔离恢复与显式切换（Stable已切换；六小时周期通过）
 
 从 clean commit 执行 `./local build-operations` 构建固定 age v1.3.2 / PG16 工具，随后**显式**执行 `./local init-backup`。初始化不会覆盖已有私钥；`.local/backup-keys/identity.txt` 为恢复必需，私钥和目录分别600/700。当前本机已初始化密钥并创建首份登记副本`2e1a0cc185ac467a8f91e2adc2ca783f`；实际恢复和RTO证据见[R7 Acceptance](acceptance/local-operations-v1.md)。应另存私钥，不能把它与密文当作同一个备份。私钥丢失时既有密文无法恢复，不能通过重新初始化解开旧副本。
 
-`./local backup` 核对实际运行 API/PG 身份，再在锁内备份双库、配置与固定发布资产。Control dump及全表指纹共用exported snapshot，业务库独立快照并核对前后内容。最新build不是备份来源。工具完整解密、检查固定成员/摘要与dump TOC后才登记；`./local backup-list`只读列出known catalog。本地代码已接入自动调度与升级前门禁；Ticket 05 已实现隔离恢复和显式切换，Ticket 06本地实现与Review已完成。active Stable已切至R7，R6升级前副本与R7升级后副本均已登记；自动调度进程运行，下一次真实6小时周期仍待观察，24小时逾期提醒逻辑已有23项定向测试通过但未在active Stable人为触发；切换后Stable业务Trace已由用户确认在阿里云ARMS验收通过（未提供Trace ID或时间戳），见[R7 Acceptance](acceptance/local-operations-v1.md)。
+`./local backup` 核对实际运行 API/PG 身份，再在锁内备份双库、配置与固定发布资产。Control dump及全表指纹共用exported snapshot，业务库独立快照并核对前后内容。最新build不是备份来源。工具完整解密、检查固定成员/摘要与dump TOC后才登记；`./local backup-list`只读列出known catalog。本地代码已接入自动调度与升级前门禁；Ticket 05 已实现隔离恢复和显式切换，Ticket 06本地实现与Review已完成。active Stable已切至R7，R6升级前副本与R7升级后副本均已登记；连续运行六小时周期于18:30:58+08:00自动登记副本`a0fa7ba4dd9748b88de3b12983386541`，24小时逾期提醒逻辑已有23项定向测试通过但未在active Stable人为触发；切换后Stable业务Trace已由用户确认在阿里云ARMS验收通过（未提供Trace ID或时间戳），见[R7 Acceptance](acceptance/local-operations-v1.md)。
 
 `.local/backups/`仅存密文；`.local/operations/`包含可信目录和受限明文staging，API只挂安全public状态及独立socket目录，不读取私钥/catalog/source。仅已登记ID与匹配密文摘要可作为后续恢复来源，不接受任意路径。不要手工改catalog、删除已有副本或在local操作进行时改稳定配置/RAG。
 
@@ -683,7 +683,7 @@ R7受理保护使用同一ExecutionRuntime容量：默认每账号1、API进程4
 
 通过输出中的恢复ID后，操作者可显式执行 `./local restore-activate <restore-id>`。该命令先记录previous/candidate与切换阶段，停止候选和旧stable writer，再原子切换binding并启动候选；中断时保留journal和两边资源，必须明确选择 `./local restore-recover <restore-id> --previous` 或 `--candidate` 完成恢复。不要手动编辑 `.local/runtime-binding.json` 或在journal未完成时启动其他 `./local` 写操作。
 
-恢复成功或普通失败退出时会清除解密归档payload；candidate专属的受限配置、Secret、release、卷和登记记录会保留，以支持检查或显式切换。若工具报告明文暂存清理失败，先核对恢复ID及目录归属，再按安全流程处理；不要清理未知资源。Ticket 05 已在独立stable clone中完成恢复、候选激活和previous回退核验，2026-10-08实际stable/dev运行身份与健康状态前后未变。2026-10-09实际active R6备份`2e1a0cc185ac467a8f91e2adc2ca783f`已在隔离候选`0b4e8f4c3b7f62c71261f7f57703cfda`恢复并完成核验，84秒满足条件RTO；候选停止、恢复卷保留，未执行激活。该状态截至2026-10-09。次日经用户授权执行R6→R7兼容升级，R6升级前副本与R7升级后副本均已登记；当前active Stable为R7，调度进程运行，下一次真实6小时周期待观察。24小时逾期提醒回归通过但未在active Stable人为触发；切换后Stable业务Trace已由用户确认在阿里云ARMS验收通过（未提供Trace ID或时间戳），详见[R7 Acceptance](acceptance/local-operations-v1.md)及[R7 Ticket 07](../.scratch/local-operations-v1/issues/07-acceptance.md)。
+恢复成功或普通失败退出时会清除解密归档payload；candidate专属的受限配置、Secret、release、卷和登记记录会保留，以支持检查或显式切换。若工具报告明文暂存清理失败，先核对恢复ID及目录归属，再按安全流程处理；不要清理未知资源。Ticket 05 已在独立stable clone中完成恢复、候选激活和previous回退核验，2026-10-08实际stable/dev运行身份与健康状态前后未变。2026-10-09实际active R6备份`2e1a0cc185ac467a8f91e2adc2ca783f`已在隔离候选`0b4e8f4c3b7f62c71261f7f57703cfda`恢复并完成核验，84秒满足条件RTO；候选停止、恢复卷保留，未执行激活。该状态截至2026-10-09。次日经用户授权执行R6→R7兼容升级，R6升级前副本与R7升级后副本均已登记；当前active Stable为R7，连续运行六小时周期已于18:30:58+08:00自动登记新副本。24小时逾期提醒回归通过但未在active Stable人为触发；切换后Stable业务Trace已由用户确认在阿里云ARMS验收通过（未提供Trace ID或时间戳），详见[R7 Acceptance](acceptance/local-operations-v1.md)及[R7 Ticket 07](../.scratch/local-operations-v1/issues/07-acceptance.md)。
 
 R7候选的`up`随服务启动独立backup工具，运行时每6小时尝试，无/超过24小时副本启动即尝试；失败/锁竞争不热循环，下一次常规尝试间隔6小时。`down`先停止backup再停止API/依赖，保留数据、密钥和catalog。未构建工具时up警告但不撤销已运行API；必须先build-operations/init-backup，不能据此宣称RPO有保障。`./local logs backup`只提供安全分类。
 

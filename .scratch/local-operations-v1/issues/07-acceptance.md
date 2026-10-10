@@ -25,7 +25,7 @@ clean candidate `6d764aca6428bd225afe30395723dfaeb4ae0e0b` 由 `./local build` �
 
 R7副本`ce589d79d5a643c48af315756a72ff22`在`2026-10-09T17:29:47.676877Z`创建，6小时到期约`2026-10-09T23:29:47Z`。电脑在到期窗口关闭；用户于次日12:30+08:00执行`./local up`。`up`于`04:30:22.937612Z`成功；Scheduler在`04:30:27.027116Z`自动记尝试，随后登记R7来源备份`f501b61cd4154a9491f9cadb32ca1abe`（`04:30:27.853880Z`，`187357` bytes，SHA-256 `a1c8ce5e1ab92bb048db4cee535182559f55e86e41ec42233580773009d45b31`，source commit `6d764ac`）。`./local logs backup`为success/registered；`./local status`显示API healthy、全部必要依赖ready、备份known/not-overdue。没有手工调用`./local backup`。
 
-此结果验证电脑关机错过到期窗口后，重新`up`会自动补做已到期备份。clean `b7f64e5`隔离验证已用注入时钟通过真实调度器6小时边界；新副本后的连续运行下一6小时周期约于`2026-10-10 18:30:27+08:00`到期，尚未观察；24小时Active Stable逾期提醒本轮未触发，确定性测试已覆盖。用户已确认切换后Stable业务Trace在ARMS验收通过，未提供Trace ID或时间戳。R7 Acceptance保持incomplete。
+此结果验证电脑关机错过到期窗口后，重新`up`会自动补做已到期备份。clean `b7f64e5`隔离验证已用注入时钟通过真实调度器6小时边界；随后Active Stable连续运行跨越完整6小时周期，调度器于`2026-10-10T10:30:58.732143Z`自动登记副本`a0fa7ba4dd9748b88de3b12983386541`（189107 bytes，SHA-256 `9a71843124ba3ec0e7146eda5aeb69ccbf13e01bf7bbef55a902d69b35771367`，source `6d764ac`）。服务healthy、依赖ready、备份known/not-overdue，日志为success/registered，未手动执行`./local backup`。24小时Active Stable逾期提醒本轮未触发，确定性测试已覆盖。用户已确认切换后Stable业务Trace在ARMS验收通过，未提供Trace ID或时间戳。R7 Acceptance保持incomplete。
 
 Linux Chromium下载名`download`的历史结果已由后续隔离实验定位为浏览器验收容器未设置UTF-8 locale；R5环境修复在独立本地候选中验证，未纳入R7 PR #62。
 

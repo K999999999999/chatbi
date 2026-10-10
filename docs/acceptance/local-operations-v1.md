@@ -1,6 +1,6 @@
 # R7 本地运行保障验收
 
-Status: incomplete. Ticket 01–06实现/Review及clean候选`6d764ac`隔离验收完成；Active Stable R7切换通过。2026-10-10 12:30+08:00，`./local up`在上次R7备份已超过6小时后自动触发补备份，副本`f501b61cd4154a9491f9cadb32ca1abe`登记成功；Ready、依赖和备份状态通过。此证据验证重启后到期补备份，持续运行跨越下一完整6小时周期仍待观察；未人为制造Active Stable的24小时逾期。用户已确认切换后的Stable业务Trace在阿里云ARMS验收通过；未提供可独立关联的Trace ID或时间戳，按用户人工验收结论记录。Linux Chromium中文下载名退化已定位为验收容器缺少UTF-8 locale，作为R5验收环境修复独立跟进；没有启动Windows浏览器或IDM。
+Status: incomplete. Ticket 01–06实现/Review及clean候选`6d764ac`隔离验收完成；Active Stable R7切换通过。12:30+08:00启动补备份副本`f501b61cd4154a9491f9cadb32ca1abe`后，Stable于2026-10-10 18:30:58+08:00在连续运行中自动登记副本`a0fa7ba4dd9748b88de3b12983386541`，跨越完整6小时周期通过；复核时服务healthy、依赖ready、备份known且未逾期。24小时逾期提醒的Active Stable实机演练未触发，23项定向回归已覆盖该逻辑，因此R7验收仍为incomplete。用户已确认切换后的Stable业务Trace在阿里云ARMS验收通过；未提供可独立关联的Trace ID或时间戳，按用户人工验收结论记录。Linux Chromium中文下载名退化已定位为验收容器缺少UTF-8 locale，作为R5验收环境修复独立跟进；没有启动Windows浏览器或IDM。
 
 ## 候选与证据身份
 
@@ -34,7 +34,7 @@ Status: incomplete. Ticket 01–06实现/Review及clean候选`6d764ac`隔离验�
 | 实际R6备份与隔离恢复 | PASS（条件RTO） | 首份R6副本及隔离恢复`0b4e8f4c3b7f62c71261f7f57703cfda`完成，84秒。 |
 | Active Stable R7切换与启动 | PASS（`6d764ac`） | 用户授权后执行`./local upgrade`；首页、`/health`、`/ready`均HTTP 200，Control DB、业务DB、Qdrant、资产均ready；原PostgreSQL/Qdrant持续运行。 |
 | 升级前备份与R7备份 | PASS（升级门禁/手工） | 升级前R6备份`9d01c195caeb4b71ad5cdb7ca726bfae`及升级后R7副本`ce589d79d5a643c48af315756a72ff22`成功登记；ready状态backup known、overdue=false。 |
-| Active Stable自动调度与逾期提醒 | 部分完成 | 23项定向回归通过。真实到期后关机，12:30执行`./local up`后约5秒自动登记R7副本`f501b61cd4154a9491f9cadb32ca1abe`，证明启动补备份。本轮另在clean `b7f64e5`构建固定运维镜像并重跑`python3 -m scripts.verify_local_backup`：隔离PG16/age备份与注入时钟推进至6小时边界的真实调度器均PASS；此快速验收不代替Active Stable连续运行下一完整6小时周期。Active Stable 24小时逾期提醒仍待观察，未伪造逾期状态。 |
+| Active Stable自动调度与逾期提醒 | 部分完成 | 23项定向回归通过。关机错过到期窗口后，12:30执行`./local up`自动登记补备份`f501b61cd4154a9491f9cadb32ca1abe`；连续运行跨越下一个完整6小时周期后，调度器于18:30:58+08:00自动登记副本`a0fa7ba4dd9748b88de3b12983386541`（189107 bytes，SHA-256 `9a71843124ba3ec0e7146eda5aeb69ccbf13e01bf7bbef55a902d69b35771367`，source `6d764ac`），服务healthy、依赖ready、备份known/not-overdue。clean `b7f64e5`隔离PG16/age调度边界验证也通过。Active Stable的24小时逾期提醒未人为触发，仍由23项定向回归覆盖。 |
 | 阿里云Trace控制台查询 | PASS（用户确认） | 用户确认在切换后的Stable请求中，阿里云ARMS Trace验收无问题。此次确认未提供Trace ID或时间戳；此前01:10–01:13列表仍作为切换前历史记录。 |
 | 最终日志凭据检查与总体门禁 | PASS（`6d764ac`） | `logs_no_known_secrets=true`；旧候选报告继续绑定各自运行身份，不改写历史结果。 |
 
@@ -66,13 +66,17 @@ Linux 文件名偏差的后续根因核验：
 
 切换后首页、`/health`和`/ready`均返回HTTP 200。`./local status`的详细快照中Control DB、业务DB、Qdrant和资产均ready；模型状态为unknown（切换后没有新的真实模型调用），备份状态为known且`overdue=false`。独立`chatbi-stable-backup-1`持续运行，进程为`python3 -m scripts.local_backup_schedule`，`./local logs backup`没有失败记录。升级后执行一次在线手工`./local backup`，副本`ce589d79d5a643c48af315756a72ff22`于`2026-10-10T01:29:47+08:00`成功登记，来源commit为R7 `6d764ac`。
 
-升级前备份门禁、调度周期和过期状态相关23项定向回归通过。Stable最后一个R7副本`ce589d79d5a643c48af315756a72ff22`创建于`2026-10-09T17:29:47.676877+00:00`，6小时到期约为次日`23:29:47Z`（07:29:47+08:00）。电脑在到期窗口关闭；用户于12:30+08:00启动Stable后，调度器自动补做并登记副本`f501b61cd4154a9491f9cadb32ca1abe`。因此重启补备份通过；持续运行跨越完整下一6小时周期及Active Stable逾期提醒仍待观察，不以`overdue=false`宣称长周期RPO完全验收。切换后Stable业务Trace已由用户确认通过；未提供Trace ID或时间戳。Linux文件名问题根因是验收locale，R5环境修复单独跟进。
+升级前备份门禁、调度周期和过期状态相关23项定向回归通过。Stable最后一个R7副本`ce589d79d5a643c48af315756a72ff22`创建于`2026-10-09T17:29:47.676877+00:00`，6小时到期约为次日`23:29:47Z`（07:29:47+08:00）。电脑在到期窗口关闭；用户于12:30+08:00启动Stable后，调度器自动补做并登记副本`f501b61cd4154a9491f9cadb32ca1abe`。随后Stable连续运行跨越下一完整6小时周期，调度器于`2026-10-10T10:30:58.732143Z`（18:30:58+08:00）自动登记副本`a0fa7ba4dd9748b88de3b12983386541`，大小189107 bytes，SHA-256 `9a71843124ba3ec0e7146eda5aeb69ccbf13e01bf7bbef55a902d69b35771367`，来源commit `6d764aca6428bd225afe30395723dfaeb4ae0e0b`。`./local status`显示服务healthy、依赖ready、备份known且`overdue=false`；`./local logs backup`只有success/registered记录，未手工调用`./local backup`。连续运行6小时周期通过；Active Stable 24小时逾期提醒仍未人为触发，23项确定性回归已覆盖，不因此伪称实机逾期告警通过。切换后Stable业务Trace已由用户确认通过；未提供Trace ID或时间戳。Linux文件名问题根因是验收locale，R5环境修复单独跟进。
 
 ## Stable 开机后的自动补备份（2026-10-10）
 
 本次R7备份`ce589d79d5a643c48af315756a72ff22`的成功时间为`2026-10-09T17:29:47.676877+00:00`；6小时到期点约为`2026-10-09T23:29:47Z`（2026-10-10 07:29:47+08:00）。电脑在到期时关闭。用户运行`./local up`的部署状态为`running/succeeded`，时间`2026-10-10T04:30:22.937612Z`；调度器在`04:30:27.027116Z`写入本次尝试，约0.8秒后创建并登记备份`f501b61cd4154a9491f9cadb32ca1abe`。副本创建时间`2026-10-10T04:30:27.853880+00:00`，来源commit`6d764aca6428bd225afe30395723dfaeb4ae0e0b`，大小`187357` bytes，SHA-256 `a1c8ce5e1ab92bb048db4cee535182559f55e86e41ec42233580773009d45b31`。`./local logs backup`返回`status=success` / `backup=registered`；`./local status`于`04:30:57Z`显示API healthy、Control DB/业务DB/Qdrant/资产ready、备份known且`overdue=false`。这证明调度器在启动时发现6小时以上的间隔并自动补做，不是手工运行`./local backup`。
 
-本次没有观察到电脑关闭期间执行备份。`./local status`于`2026-10-10T04:42:12Z`复核时，API仍healthy，Control DB、业务DB、Qdrant和资产均ready，最近成功备份仍为本副本且`overdue=false`。连续运行情况下，本副本后的下一次6小时周期约在`2026-10-10 18:30:27+08:00`到期，尚未等待；Active Stable的24小时逾期提醒仍由23项确定性回归覆盖，本轮没有人为改写状态制造逾期。模型状态在启动后显示unknown，因为本轮未发起新的真实模型请求。R7验收仍保持incomplete。
+本次没有观察到电脑关闭期间执行备份。`./local status`于`2026-10-10T04:42:12Z`复核时，API仍healthy，Control DB、业务DB、Qdrant和资产均ready，最近成功备份仍为本副本且`overdue=false`。当时预计下一次6小时周期约在`2026-10-10 18:30:27+08:00`到期；后续连续运行实测见[Active Stable 连续运行六小时周期](#active-stable-连续运行六小时周期2026-10-10)。Active Stable的24小时逾期提醒仍由23项确定性回归覆盖，本轮没有人为改写状态制造逾期。模型状态在启动后显示unknown，因为本轮未发起新的真实模型请求。R7验收仍保持incomplete。
+
+## Active Stable 连续运行六小时周期（2026-10-10）
+
+在前述12:30+08:00启动补备份后，Active Stable保持运行。预计18:30+08:00到期后复核到新副本`a0fa7ba4dd9748b88de3b12983386541`，登记时间`2026-10-10T10:30:58.732143Z`（18:30:58.732+08:00），大小189107 bytes，SHA-256 `9a71843124ba3ec0e7146eda5aeb69ccbf13e01bf7bbef55a902d69b35771367`，来源commit `6d764aca6428bd225afe30395723dfaeb4ae0e0b`。备份日志返回`success/registered`；未手动执行`./local backup`。同轮`./local status`显示API、PostgreSQL healthy，必要依赖ready，backup `known`、`overdue=false`。这证明Active Stable调度器在连续运行期间跨越完整6小时周期并生成、登记了新副本。24小时逾期提醒没有在Active Stable人为触发；相关23项定向回归通过，R7 Acceptance继续保持incomplete。
 
 ## `6c3c639` 依赖故障矩阵与历史 Linux Playwright 验收（2026-10-09）
 
@@ -158,7 +162,7 @@ clean 候选 `8f73ab12e0b078ffca7c6416ab8ae7ea055522a9` 的固定镜像构建通
 
 `./local restore 2e1a0cc185ac467a8f91e2adc2ca783f`生成候选`0b4e8f4c3b7f62c71261f7f57703cfda`，来源API及PostgreSQL镜像ID与备份一致。恢复记录为`verified`，`duration_seconds=84`，readiness、登录、历史、index_ready均为true；覆盖数据库全表指纹、角色与grants、Session撤销、运行代际、固定模型RAG重建和只读历史核验。临时核验账号与解密payload已清理；专属API、PostgreSQL、Qdrant容器均停止，恢复卷、受限配置及登记记录保留。没有执行`restore-activate`，active binding仍为legacy R6，实际stable未切换。
 
-该84秒结果满足Spec的条件RTO目标，因为备份、私钥、镜像和固定模型缓存均已在本机就绪；不包含下载时间。此段记录的是2026-10-09验收时状态。2026-10-10用户授权将Stable升级到R7并创建R7来源副本；升级后`./local status`已取得ready与backup known/not-overdue证据，调度进程运行。下一次真实6小时自动备份周期尚未到达，活动Stable上的24小时逾期提醒没有人为触发，因此持续RPO仍待周期观察。R7候选单用户资源与耗时采样已完成；阿里云Trace控制台查询已由用户核验可见chatbi链路，记录早于Stable切换。
+该84秒结果满足Spec的条件RTO目标，因为备份、私钥、镜像和固定模型缓存均已在本机就绪；不包含下载时间。此段记录的是当时验收状态。2026-10-10用户授权将Stable升级到R7并创建R7来源副本；升级后`./local status`已取得ready与backup known/not-overdue证据，调度进程运行。该条记录形成时下一次真实6小时周期尚未到达；后续连续运行周期已通过，见[Active Stable 连续运行六小时周期](#active-stable-连续运行六小时周期2026-10-10)。活动Stable上的24小时逾期提醒没有人为触发。R7候选单用户资源与耗时采样已完成；阿里云Trace控制台查询已由用户核验可见chatbi链路，记录早于Stable切换。
 
 ## 顺序处理与浏览器条件核验（2026-10-09）
 

@@ -1,6 +1,6 @@
 # R7 长期规划记录
 
-当前：01–06本地实现/Review完成；07仍in-progress。clean候选`6d764ac`于`20261009T170425Z-444d837d`完成Linux Playwright隔离验收；四依赖矩阵继续引用适用候选`6c3c639`。用户已授权R6备份隔离恢复（RTO 84秒）、Stable由R6切至R7候选并验证备份调度/RPO，以及将R7候选发布为保持Draft的PR #62。Stable升级前R6副本`9d01c195caeb4b71ad5cdb7ca726bfae`与升级后R7副本`ce589d79d5a643c48af315756a72ff22`均登记；2026-10-10 12:30+08:00重新up后自动补做并登记副本`f501b61cd4154a9491f9cadb32ca1abe`，12:42复核服务healthy、依赖ready、备份known/not-overdue。验收/路线图更新提交`7d1d08f`已推送，PR #62的8项required CI全部通过且仍为Draft。clean `b7f64e5`的隔离PG16/age调度边界验证通过（注入时钟）；下一完整6小时周期约18:30+08:00待观察；用户确认切换后Stable业务Trace在ARMS验收通过（未提供Trace ID或时间戳）。R5 locale环境修复候选`2328270`独立本地验证通过但未Push；没有启动Windows浏览器/IDM。PR #62不转Ready/Auto-merge；未授权restore-activate或云部署。实时阶段见Git公共目录记录。
+当前：01–06本地实现/Review完成；07仍in-progress。clean候选`6d764ac`于`20261009T170425Z-444d837d`完成Linux Playwright隔离验收；四依赖矩阵继续引用适用候选`6c3c639`。用户已授权R6备份隔离恢复（RTO 84秒）、Stable由R6切至R7候选并验证备份调度/RPO，以及将R7候选发布为保持Draft的PR #62。Stable升级前R6副本`9d01c195caeb4b71ad5cdb7ca726bfae`与升级后R7副本`ce589d79d5a643c48af315756a72ff22`均登记；12:30+08:00重新up后自动补做并登记副本`f501b61cd4154a9491f9cadb32ca1abe`。随后连续运行六小时周期于18:30:58+08:00自动登记副本`a0fa7ba4dd9748b88de3b12983386541`（SHA-256 `9a71843124ba3ec0e7146eda5aeb69ccbf13e01bf7bbef55a902d69b35771367`）；服务healthy、依赖ready、备份known/not-overdue。clean `b7f64e5`的隔离PG16/age调度边界验证通过（注入时钟）；Active Stable 24小时逾期提醒未人为触发，23项定向回归通过。用户确认切换后Stable业务Trace在ARMS验收通过（未提供Trace ID或时间戳）。R5 locale环境修复候选`2328270`独立本地验证通过但未Push；没有启动Windows浏览器/IDM。PR #62不转Ready/Auto-merge；未授权restore-activate或云部署。实时阶段见Git公共目录记录。
 
 ## 初始规划快照（拆分确认前）
 
