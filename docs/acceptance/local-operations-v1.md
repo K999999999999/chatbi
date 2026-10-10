@@ -130,7 +130,7 @@ clean 源码候选 `0a97182e6840ed5ae1e3fd0da012dfe98fb4d1b3` 绑定运行 `2026
 
 用户确认后，复用候选的本机模型配置和 `LangChainAnalysisSummarizer` 使用的 ChatOpenAI 构造方式，单独发送一次不含业务内容的合成 JSON 请求。流正常结束，返回内容非空且可解析为 JSON；没有捕获异常或 HTTP 错误。权限受限的 ignored 报告 `.local/acceptance/diagnostic-probes/20261009T1723-provider-stream.json` 只记录候选身份、结果分类与“不保存提示词/响应”的标记，不含模型名、端点、密钥、提示词或响应正文。
 
-该探针表明探针时刻当前配置可完成一次最小流式调用；它不覆盖真实经营分析的长提示词、实际结果或报告 Contract，也不是候选验收通过证据。因而不能据此定位两次 `LLM_ERROR` 的根因，经营分析验收仍失败且 Ticket 07 仍未完成。没有修改稳定服务或 Provider 配置。
+截至 2026-10-09 该次探针完成时，这项探针只表明当时的配置可完成一次最小流式调用；它不覆盖真实经营分析的长提示词、实际结果或报告 Contract，也不是候选验收通过证据。因而当时不能据此定位两次 `LLM_ERROR` 的根因，经营分析验收仍失败且 Ticket 07 尚未完成。后续源码诊断、修复与完整验收见本文文首及 2026-10-10 最终验收记录。该次探针没有修改稳定服务或 Provider 配置。
 
 ## 隔离分析诊断与本地修复（2026-10-09）
 
@@ -162,7 +162,7 @@ clean 候选 `8f73ab12e0b078ffca7c6416ab8ae7ea055522a9` 的固定镜像构建通
 
 临时账号已禁用、活动 Session 为 0；按本次 Compose project 标签复核，容器、网络、卷均为 0。稳定 R6 仍绑定 `2b4a8c8`，API/PostgreSQL healthy、Qdrant running，首页和 `/health` 均 HTTP 200。验收后本机默认 release 指针恢复为 `f1b98d7`。提交 `10a3a17` 已补充只记录执行提交请求计数、响应数、HTTP 状态及允许错误码的摘要，不记录执行 ID、请求/响应正文或业务数据；类型检查与Review通过。新的真实候选运行尚未执行。
 
-## 尚未满足的 Ticket 07 验收项
+## 截至 2026-10-09 尚未满足的 Ticket 07 阶段性验收项（历史记录）
 
 - `6c3c639` 已完成前一 clean 候选 Linux Playwright 完整业务验收、12份导出解析、重启续聊、日志 Secret 检查及资源回收；同一候选四类依赖60秒故障/恢复矩阵通过。旧候选中未记录提交证据的追问超时仍按历史事实保留，不将旧运行重标。
 - 当前候选 `6d764ac` 的单用户耗时与资源采样已完成；这些数据不构成并发容量或 p95 SLA。额度共用/释放逻辑已有11项软件回归通过，验证逻辑而非并发容量。
@@ -186,15 +186,15 @@ clean 候选 `8f73ab12e0b078ffca7c6416ab8ae7ea055522a9` 的固定镜像构建通
 
 只读核验当前本机 IDM 运行且 PDF 接管启用。使用合成空白 PDF 做独立 Windows Chromium 对照，浏览器 `149.0.7827.55` 收到 HTTP 200 / 431 bytes，与服务器字节数一致；该探针没有模型调用、业务内容或真实凭据，也没有修改 IDM / 用户浏览器配置。它只证明隔离浏览器下载条件可用，不代替真实业务 PDF、完整文件解析或整条候选验收。日常 Edge 仍受 IDM 设置影响；既有 [Runbook](../runbook.md) 的本机下载条件继续适用。
 
-## 软件验证
+## 软件验证（截至 2026-10-09 的阶段性记录）
 
 - `tests/scripts/test_local_acceptance.py`：10 passed。
 - 额度与资源释放回归：11 passed，包括同步问数与后台任务共用额度、拒绝后释放额度、导出错误/授权变化清理临时资源。
 - `npm run typecheck`：通过；`npm test -- --config=playwright.config.ts tests/helpers.spec.ts`：1 passed。
 - 完整测试套件最近一次在前置候选 `82b366e` 上通过：941 passed、41 skipped、139 subtests。随后改动集中于验收挂载、浏览器终态等待与安全错误分类记录；本次未重跑完整套件。
-- 本机 `python -m scripts.check_harness_state` 检查 22 份记录，无 ERROR；`chatbi-product-v1`、`local-operations-v1` 和 `r6-presubmit-coverage` 保留 REVIEW，需各自继续跟进。
+- 当时本机 `python -m scripts.check_harness_state` 检查 22 份记录，无 ERROR；`chatbi-product-v1`、`local-operations-v1` 和 `r6-presubmit-coverage` 保留 REVIEW，需各自继续跟进。该结果是截至当时的本机快照，不代表当前状态。
 
-结论：R7 Ticket 07 仍为 in-progress。当前候选只完成表中列出的部分证据，不能据此宣称 R7 全部验收通过或开始真实 stable 切换。未获本目标 Push/PR 授权。
+阶段性结论（截至 2026-10-09）：R7 Ticket 07 当时仍为 in-progress；当时的候选证据不足以宣称 R7 全部验收通过或开始真实 Stable 切换，且尚未获得本目标 Push/PR 授权。该结论随后由用户授权的 2026-10-10 完整验收、Stable 切换与重启证据更新；当前状态为文首所列 `complete`。
 
 ## 隔离浏览器复验与就绪前置（2026-10-09）
 
