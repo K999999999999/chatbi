@@ -10,11 +10,11 @@ ChatBI 的 MVP 核心能力已经形成：自然语言查询、Online Retrieval�
 
 历史完整 Evaluation 基线包括 commit `31a04549924f622777f106d4fe5a758bd2ca2beb` 和较新的 `564343216e4493f832f07efb345c03b058a04eb5`；后者的三套通过证据及此前多轮失败见[工作项验收记录](../.scratch/engineering-quality-gates/issues/04-current-candidate-evaluation-baseline.md#result)。历史通过结果不代表当前 HEAD 或模型稳定性。当前候选只有在三套正式报告均指向同一最终 clean commit、`git_dirty=false` 且各自 `0 FAIL`、`0 INVALID_CASE` 后才能标记为新的正式 AI Evaluation 基线。
 
-2026-10-09 R7 clean candidate `f1b98d7` 复跑的问数与 PNG / XLSX 通过，经营分析重复以 `LLM_ERROR` 失败；最小合成 Provider 流式探针可用。随后获准的隔离诊断捕获 `PROVIDER_STREAM_UNAVAILABLE`，源码定位为 R7 `ObservedModel` 未转发 `stream()`，导致摘要请求未发送到 Provider；修复已提交并构建候选 `515c253`。`515c253` Edge 首条问数未取得成功快照；后续 clean 候选 `2d907c0` 与 `8f73ab1` 的首条问数/SSE/XLSX通过，但追问阶段均未观察到终态响应而超时，经营分析未运行；`8f73ab1`只记录到首问执行详情GET。提交`10a3a17`已补充追问提交计数、响应数、HTTP状态及白名单错误码摘要；用户已要求按顺序继续处理；最新`59e1e34`本轮追问、经营分析和PNG/XLSX成功，分析修复得到实际验证，流程在PDF客户端204处停止。Ticket 07仍未完成。稳定环境曾停止，已按原 R6 发布恢复并核验，原因未确认。详细证据见 [R7 Acceptance](acceptance/local-operations-v1.md) 和 [R6 稳定服务重启核验](acceptance/local-deployment-v1.md#稳定服务重启核验2026-10-09)。
+2026-10-09 阶段性验收记录：R7 clean candidate `f1b98d7` 复跑的问数与 PNG / XLSX 通过，经营分析重复以 `LLM_ERROR` 失败；最小合成 Provider 流式探针可用。随后获准的隔离诊断捕获 `PROVIDER_STREAM_UNAVAILABLE`，源码定位为 R7 `ObservedModel` 未转发 `stream()`，导致摘要请求未发送到 Provider；修复已提交并构建候选 `515c253`。`515c253` Edge 首条问数未取得成功快照；后续 clean 候选 `2d907c0` 与 `8f73ab1` 的首条问数/SSE/XLSX通过，但追问阶段均未观察到终态响应而超时，经营分析未运行；`8f73ab1`只记录到首问执行详情GET。提交`10a3a17`已补充追问提交计数、响应数、HTTP状态及白名单错误码摘要；用户已要求按顺序继续处理；最新`59e1e34`本轮追问、经营分析和PNG/XLSX成功，分析修复得到实际验证，流程在PDF客户端204处停止。截至该次运行，Ticket 07 尚未完成；Stable 曾停止，随后按原 R6 发布恢复并核验，停止原因当时未确认。R7 后续完整验收与 Stable 重启恢复已于 2026-10-10 完成，当前结果见本节总览及 [R7 Acceptance](acceptance/local-operations-v1.md)。历史运行细节见 [R6 稳定服务重启核验](acceptance/local-deployment-v1.md#稳定服务重启核验2026-10-09)。
 
-2026-10-09 后续隔离候选 `7c12c1e` 首条提交收到 `503 / SERVICE_NOT_READY`，未进入执行；已补专属 `/ready` 验收前置等待，尚待新候选真实运行。用户提供并确认了阿里云 OTLP 配置，固定 Header 适配 `e1801a5` 的确定性验证通过，配置仅保存于私有本地文件；云端可查询性与 R7 完整验收仍未通过，实际 stable 未切换。
+2026-10-09 后续隔离候选 `7c12c1e` 首条提交收到 `503 / SERVICE_NOT_READY`，未进入执行；随后补充专属 `/ready` 验收前置等待。用户提供并确认了阿里云 OTLP 配置，固定 Header 适配 `e1801a5` 的确定性验证通过，配置仅保存于私有本地文件。截至本条阶段性记录，云端可查询性与 R7 完整验收尚未通过，实际 Stable 尚未切换；这些事项的最终结果见 2026-10-10 当前状态记录及 [R7 Acceptance](acceptance/local-operations-v1.md)。
 
-后续 `a01545f` 隔离运行通过首次就绪及首问，追问收到明确就绪拒绝；完整验收未通过。真实探针诊断确认重复导入耗时问题，正在按已授权范围修复并复验；独立阿里云合成连接探针导出成功，但云端可查询性与业务完整链路仍未确认，R7状态仍未完成。
+2026-10-09 后续候选 `a01545f` 隔离运行通过首次就绪及首问，追问收到明确就绪拒绝；当时完整验收未通过。真实探针诊断确认重复导入耗时问题，并按已授权范围修复、复验；独立阿里云合成连接探针导出成功，但本次记录形成时云端可查询性与业务完整链路仍未确认。R7 当前验收状态以 2026-10-10 完成记录为准，详见 [R7 Acceptance](acceptance/local-operations-v1.md)。
 
 2026-10-09 前一轮历史记录：clean候选 `efb2f5e` 的隔离Windows真实业务、pdf/png/xlsx独立解析及重启后历史/成果/续聊通过；当轮总流程因旧R6挂载断言退出，最终日志检查未运行。其后在 `0a97182` 上重新运行完整验收并通过，历史结果与后续候选记录见 [R7 Acceptance](acceptance/local-operations-v1.md)。
 
@@ -117,15 +117,15 @@ flowchart TD
 - Business Analysis 受当前已登记的指标和分析范围约束。
 - 电脑端 React / TypeScript / Vite 已通过 R4 后台 execution 与 SSE 提供真实状态、断连恢复、取消和报告草稿；同步 Query API 保留兼容。R2 可视化、R3 私人历史与成果继续适用，见 [R2 Spec](specs/result-visualization-v1.md)、[R3 Spec](specs/history-results-v1.md)、[R4 Spec](specs/execution-streaming-v1.md)。R3 / R4 已合并；R5 Ticket 01 XLSX 候选 `111980d`、Ticket 02 PNG 候选 `88f122c` 均已通过验证与 Review；R5 clean candidate `71d72d2` 本地实现与完整隔离验收通过；Ticket 01–04 完成，PR56 已合并（`367a42a`），required CI 全部通过；未部署到生产环境。
 
-## 后续生产工作
+## 已完成的 R6 / R7 本地运行保障
 
 R6 本地首版目标和验收已逐项确认，见[已确认完整 Spec](../.scratch/r6-local-deployment/spec.md)：本机固定版本构建、隔离环境、显式初始化、手动后台启停、长期数据保留与兼容回滚。它不等于云部署或生产运行就绪；R7 的完整 Spec、Design Review 和验收指标已确认；Ticket 01–06本地实现/Review已完成；Ticket 07 clean候选`6d764ac`通过完整Linux Playwright隔离验收（真实浏览器业务、12份导出解析、重启续聊、最终日志Secret检查、资源清理、导出耗时及单用户资源基线）；`6c3c639`四类依赖60秒故障/恢复矩阵仍适用于最新候选，两候选间仅验收测试/文档变化，业务源码和镜像定义未变。实际R6备份的隔离恢复84秒完成，条件RTO通过。Active Stable已于2026-10-10按授权切至R7候选`6d764ac`；升级前R6副本`9d01c195caeb4b71ad5cdb7ca726bfae`、升级后R7副本`ce589d79d5a643c48af315756a72ff22`均登记，调度进程运行且备份状态known/not-overdue；23项回归通过，启动后到期补备份已于2026-10-10成功；clean `b7f64e5`隔离PG16/age调度边界验证通过（注入时钟）；Active Stable连续运行六小时周期已于2026-10-10 18:30:58+08:00通过（副本`a0fa7ba4dd9748b88de3b12983386541`）；24小时逾期提醒由后端阈值、启动补备份和管理员提示确定性测试覆盖；Active Stable未人为触发逾期；阿里云ARMS切换后Stable业务Trace已由用户确认验收通过（未提供Trace ID或时间戳，按用户人工验收结论记录）。Linux Chromium中文文件名历史偏差已定位为验收容器未设UTF-8 locale；R5独立环境修复PR #64已于2026-10-10合并（merge commit `6dfc208`，8/8 required CI通过），不属于R7产品缺陷。额度拒绝与释放的11项软件回归已通过；R7 Acceptance按Spec完成，PR #62已于2026-10-10由仓库Squash Auto-merge合并（merge commit `4ecd0a5`，8/8 required CI通过），见[R7 Acceptance](acceptance/local-operations-v1.md)；Active Stable Docker Desktop与Windows整机重启恢复均已核验通过，详见[R7 Acceptance](acceptance/local-operations-v1.md#active-stable-windows-整机重启恢复核验2026-10-10)。
 
-R6 / R7 设计需显式处理以下现有运行边界；需求层交付顺序已确认，具体方案、指标及需求内顺序待确认：
+R6 / R7 本地运行保障已按确认范围完成。以下是已确认的支持边界和未来扩展前置条件，不是当前 R6 / R7 的待办：
 
-- 多轮会话保存在进程内；多 worker / 多副本之间不共享会话，必须定义请求路由与会话可见性策略，不能直接增加 worker 后宣称多轮能力可用。
-- `/health` 只反映启动后 HTTP 存活，不检测下游实时状态；需定义 liveness、动态 readiness、依赖故障与恢复验收。
-- 已有 SQL 超时与结果行数上限，但没有 API 限流；需根据目标流量明确并发 / 资源限制、容量与延迟要求，不预先指定网关、连接池或共享存储产品。
+- 当前目标是单机 Stable；多 worker / 多副本及共享会话状态不在已确认范围内。扩展部署拓扑前，需先确定会话可见性和请求路由策略。
+- R7 已定义并验收动态 readiness、依赖故障与恢复观察；`/health` 仍只表示 HTTP 存活，不代替 `/ready` 和下游状态。
+- R7 已验收问数/分析共享执行额度及独立导出额度；网关级每秒限流、多用户容量和延迟承诺仍不在已确认范围内。未来如需这些能力，应先明确目标流量和验收指标。
 
 ## 事实源
 
