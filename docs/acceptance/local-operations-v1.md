@@ -1,6 +1,6 @@
 # R7 本地运行保障验收
 
-Status: complete（按已确认Spec要求验收）。Ticket 01–06实现/Review及clean候选`6d764ac`隔离验收完成；Active Stable R7切换通过。12:30+08:00启动补备份副本`f501b61cd4154a9491f9cadb32ca1abe`后，Stable于2026-10-10 18:30:58+08:00在连续运行中自动登记副本`a0fa7ba4dd9748b88de3b12983386541`，跨越完整6小时周期通过；复核时服务healthy、依赖ready、备份known且未逾期。24小时逾期提醒已由确定性阈值、启动补备份及管理员提示测试覆盖；没有人为制造Active Stable逾期状态。Spec要求确定性测试，不要求对Stable做24小时故障演练。用户已确认切换后的Stable业务Trace在阿里云ARMS验收通过；未提供可独立关联的Trace ID或时间戳，按用户人工验收结论记录。Linux Chromium中文下载名退化已定位为验收容器缺少UTF-8 locale，作为R5验收环境修复独立跟进；没有启动Windows浏览器或IDM。
+Status: complete（按已确认Spec要求验收）。Ticket 01–06实现/Review及clean候选`6d764ac`隔离验收完成；Active Stable R7切换通过。12:30+08:00启动补备份副本`f501b61cd4154a9491f9cadb32ca1abe`后，Stable于2026-10-10 18:30:58+08:00在连续运行中自动登记副本`a0fa7ba4dd9748b88de3b12983386541`，跨越完整6小时周期通过；复核时服务healthy、依赖ready、备份known且未逾期。24小时逾期提醒已由确定性阈值、启动补备份及管理员提示测试覆盖；没有人为制造Active Stable逾期状态。Spec要求确定性测试，不要求对Stable做24小时故障演练。用户已确认切换后的Stable业务Trace在阿里云ARMS验收通过；未提供可独立关联的Trace ID或时间戳，按用户人工验收结论记录。2026-10-10 Docker Desktop重启后的Stable恢复核验也通过，详见下文。Linux Chromium中文下载名退化已定位为验收容器缺少UTF-8 locale，作为R5验收环境修复独立跟进；没有启动Windows浏览器或IDM。
 
 ## 候选与证据身份
 
@@ -72,11 +72,19 @@ Linux 文件名偏差的后续根因核验：
 
 本次R7备份`ce589d79d5a643c48af315756a72ff22`的成功时间为`2026-10-09T17:29:47.676877+00:00`；6小时到期点约为`2026-10-09T23:29:47Z`（2026-10-10 07:29:47+08:00）。电脑在到期时关闭。用户运行`./local up`的部署状态为`running/succeeded`，时间`2026-10-10T04:30:22.937612Z`；调度器在`04:30:27.027116Z`写入本次尝试，约0.8秒后创建并登记备份`f501b61cd4154a9491f9cadb32ca1abe`。副本创建时间`2026-10-10T04:30:27.853880+00:00`，来源commit`6d764aca6428bd225afe30395723dfaeb4ae0e0b`，大小`187357` bytes，SHA-256 `a1c8ce5e1ab92bb048db4cee535182559f55e86e41ec42233580773009d45b31`。`./local logs backup`返回`status=success` / `backup=registered`；`./local status`于`04:30:57Z`显示API healthy、Control DB/业务DB/Qdrant/资产ready、备份known且`overdue=false`。这证明调度器在启动时发现6小时以上的间隔并自动补做，不是手工运行`./local backup`。
 
-本次没有观察到电脑关闭期间执行备份。`./local status`于`2026-10-10T04:42:12Z`复核时，API仍healthy，Control DB、业务DB、Qdrant和资产均ready，最近成功备份仍为本副本且`overdue=false`。当时预计下一次6小时周期约在`2026-10-10 18:30:27+08:00`到期；后续连续运行实测见[Active Stable 连续运行六小时周期](#active-stable-连续运行六小时周期2026-10-10)。Active Stable的24小时逾期提醒仍由23项确定性回归覆盖，本轮没有人为改写状态制造逾期。模型状态在启动后显示unknown，因为本轮未发起新的真实模型请求。R7验收仍保持incomplete。
+本次没有观察到电脑关闭期间执行备份。`./local status`于`2026-10-10T04:42:12Z`复核时，API仍healthy，Control DB、业务DB、Qdrant和资产均ready，最近成功备份仍为本副本且`overdue=false`。当时预计下一次6小时周期约在`2026-10-10 18:30:27+08:00`到期；后续连续运行实测见[Active Stable 连续运行六小时周期](#active-stable-连续运行六小时周期2026-10-10)。Active Stable的24小时逾期提醒仍由23项确定性回归覆盖，本轮没有人为改写状态制造逾期。模型状态在启动后显示unknown，因为本轮未发起新的真实模型请求。该次早间核验时R7验收仍在进行；当前完成状态见文首和后续验收记录。
 
 ## Active Stable 连续运行六小时周期（2026-10-10）
 
-在前述12:30+08:00启动补备份后，Active Stable保持运行。预计18:30+08:00到期后复核到新副本`a0fa7ba4dd9748b88de3b12983386541`，登记时间`2026-10-10T10:30:58.732143Z`（18:30:58.732+08:00），大小189107 bytes，SHA-256 `9a71843124ba3ec0e7146eda5aeb69ccbf13e01bf7bbef55a902d69b35771367`，来源commit `6d764aca6428bd225afe30395723dfaeb4ae0e0b`。备份日志返回`success/registered`；未手动执行`./local backup`。同轮`./local status`显示API、PostgreSQL healthy，必要依赖ready，backup `known`、`overdue=false`。这证明Active Stable调度器在连续运行期间跨越完整6小时周期并生成、登记了新副本。24小时逾期提醒没有在Active Stable人为触发；相关23项定向回归通过，R7 Acceptance继续保持incomplete。
+在前述12:30+08:00启动补备份后，Active Stable保持运行。预计18:30+08:00到期后复核到新副本`a0fa7ba4dd9748b88de3b12983386541`，登记时间`2026-10-10T10:30:58.732143Z`（18:30:58.732+08:00），大小189107 bytes，SHA-256 `9a71843124ba3ec0e7146eda5aeb69ccbf13e01bf7bbef55a902d69b35771367`，来源commit `6d764aca6428bd225afe30395723dfaeb4ae0e0b`。备份日志返回`success/registered`；未手动执行`./local backup`。同轮`./local status`显示API、PostgreSQL healthy，必要依赖ready，backup `known`、`overdue=false`。这证明Active Stable调度器在连续运行期间跨越完整6小时周期并生成、登记了新副本。24小时逾期提醒没有在Active Stable人为触发；相关23项定向回归通过。当时R7验收仍在交付收尾中；当前完成状态见文首及后续验收记录。
+
+## Active Stable Docker Desktop 重启恢复核验（2026-10-10）
+
+用户授权后，通过 Windows 侧 `docker.exe desktop restart --detach` 重启 Docker Desktop。WSL 侧 CLI 因缺少 `/opt/docker-desktop/bin/com.docker.backend` 未能执行；Windows CLI 返回成功，Docker API 暂时不可连接后约20秒恢复。随后按 Runbook 显式执行 `./local up`，退出0，Stable source commit 仍为 `6d764aca6428bd225afe30395723dfaeb4ae0e0b`。API / PostgreSQL healthy，Qdrant 与备份调度容器运行；开发 PostgreSQL / Qdrant 也已恢复运行。
+
+重启前后只读核对一致：Stable API / PostgreSQL 镜像 ID 未变，`chatbi_stable_postgres_data` / `chatbi_stable_qdrant_data` 持久卷名称、创建时间与标签未变。数据库用户4条、历史4条、历史轮次4条、保存成果0条；Sales Mart Seed 为 `chatbi-sales-mart-dev-v3`，业务事实行1,166条，四类控制数据的完整行 SHA-256 均与重启前一致。`/health` 与 `/ready` 均为 HTTP 200；Control DB、业务 DB、Qdrant 和资产均 ready；备份状态为 `known`、`overdue=false`，最近成功副本仍为 `a0fa7ba4dd9748b88de3b12983386541`。
+
+本次证明当前 R7 Active Stable 可从 Docker Desktop / Engine 重启后通过 `./local up` 恢复并保留数据；不是整台 Windows 电脑电源级重启证据，也未重跑浏览器登录 / 问数 / 导出或发起模型请求。保存成果当前为空，因此没有成果导出步骤。原始重启前后快照位于本机 ignored `reports/browser-real-artifacts/r6-docker-restart-20261010/{before,after}.json`；未记录 Secret 或原始业务行。
 
 ## `6c3c639` 依赖故障矩阵与历史 Linux Playwright 验收（2026-10-09）
 
