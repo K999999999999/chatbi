@@ -1,6 +1,6 @@
 # R4 实施设计
 
-Status: [最终 Design Review](design-review.md) PASS；首轮发现已修订；Ticket 01 实施中。
+Status: 六项 Ticket 的实现、验收与 Review 已完成；PR #55 已合并（`ee92aca`）。本文件保留 R4 实施设计，当前进度以 Git 公共目录中的 `execution-streaming-v1` 实时记录为准。
 Owner: 当前主 Agent
 Baseline: `2019443020bb7a20a8c3d1a578a613544ad8148b`
 Canonical Contract: [已整体确认 Spec](spec.md)；设计只细化其行为；实施授权依据见 Spec Decision Record 与实时工作状态。

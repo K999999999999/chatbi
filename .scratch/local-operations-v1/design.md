@@ -1,6 +1,6 @@
 # R7 本机运行保障实现设计
 
-Status: 已确认Spec的Contract内实现设计；Design复审PASS，见 [复审](design-review-2.md)；01–04已本地实现，完整运行验收未完成。Canonical Source: 行为以 [Spec](spec.md) 为准；本文仅固化Contract内实施机制。Owner: 本目标实施维护者。Baseline: 0c77d80。
+Status: Contract 内实现设计及复审已完成（[Design Review](design-review-2.md) PASS）；七项 Ticket 的实现、验收与 Review 已完成；PR #62 已合并（`4ecd0a5`）。Canonical Source: 行为以 [Spec](spec.md) 为准；本文仅固化 Contract 内实施机制。Owner: 本目标实施维护者。Baseline: 0c77d80。
 
 ## 1. 边界与变更轴
 
