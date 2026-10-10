@@ -1,10 +1,10 @@
 # R3 历史与成果管理 Spec
 
-Status: 用户已整体确认Spec及F7完整恢复条件补齐方向；最终Design Review PASS，六项草案 /Readiness READY；六项拆分与整体本地实施已获用户确认，正在按整体授权实施与验证；尚未完成最终验收或提交。
+Status: 六项 Ticket 的实现、最终验收与 Review 已完成；PR #54 已合并（`2019443`）。本 Spec 保留需求与实施历史，当前进度以 Git 公共目录中的 `history-results-v1` 实时记录为准。
 Owner: 当前主 Agent
 Work item: history-results-v1
 Baseline: `afad5ac18452566199bfcfdcceb1585115576a77`
-Branch: `feat/history-results-v1`
+Historical branch: `feat/history-results-v1`（PR #54 合并后已清理）
 
 ## Problem Statement
 

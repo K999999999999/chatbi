@@ -1,9 +1,10 @@
 # 07 — 当前候选完整业务、恢复与容量验收
 
-Status: in-progress
-Authorization: 用户2026-10-08确认七项拆分与全部本地实施、验证、Review和Commit；用户后续授权stable备份密钥、首份加密备份及隔离恢复；用户于2026-10-10明确确认active Stable由R6切到已验收候选6d764ac、验证备份调度/RPO并在失败时回退原R6；02:21授权Push并创建目标master的Draft PR #62，剩余R7验收通过前保持Draft；未授权转Ready/Auto-merge、restore-activate或云部署。
+Status: done
+Authorization: 用户2026-10-08确认七项拆分及整体本地实施、验证、Review和Commit；后续授权 Stable R6→R7 升级、备份调度 / RPO 验收和失败回退；用户于2026-10-10授权 PR #62 转 Ready 并按仓库规则自动合并。PR #62 已于 2026-10-10 Squash 合并（`4ecd0a5`，8/8 required checks 通过）。授权不包括 restore-activate 或云部署。
 Canonical Source: [Spec](../spec.md)、[Design](../design.md)；共同约束见 [已确认拆分](../tickets-draft.md)。
-Acceptance: 已按Spec完成。业务验收通过；交付工作项仍in-progress，PR #62保持Draft，待用户授权转Ready / Auto-merge。
+Acceptance: 已按 Spec 完成；最终 R7 验收见[正式 Acceptance](../../../docs/acceptance/local-operations-v1.md)。
+Result: Ticket 01–07、R7 完整验收及 PR #62 交付均已完成。Active Stable 使用候选 `6d764ac`，Docker Desktop 与 Windows 整机重启恢复核验通过；完整浏览器业务、导出解析、依赖故障矩阵、备份恢复与运行保障证据见正式 Acceptance。PR #62 已合并，8/8 required checks 通过。以下按日期记录的阶段性状态保留为历史，不代表当前仍有待办。
 
 ## 2026-10-10 24小时逾期提醒验收结论
 
