@@ -1,6 +1,6 @@
 # R7 长期规划记录
 
-当前：01–06本地实现/Review完成；07仍in-progress。clean候选`6d764ac`于`20261009T170425Z-444d837d`完成Linux Playwright隔离验收；四依赖矩阵继续引用适用候选`6c3c639`。用户已授权R6备份隔离恢复（RTO 84秒）及2026-10-10将active Stable由R6切至R7候选`6d764ac`，失败时回退R6。Stable升级前R6副本`9d01c195caeb4b71ad5cdb7ca726bfae`和升级后R7副本`ce589d79d5a643c48af315756a72ff22`均登记；`/health`、`/ready`为200，依赖ready，备份状态known/not-overdue，调度进程运行。23项备份门禁/调度/逾期提醒定向回归通过；下一次真实6小时自动周期尚待观察，活动Stable逾期提醒未人为触发。阿里云控制台已由用户只读核验可查到chatbi链路（记录时间早于Stable切换）；Linux Chromium Blob中文文件名落盘为`download`，留作R5兼容跟进。没有启动Windows浏览器/IDM；无Push/PR或restore-activate授权。历史过程保留于下文，实时阶段见Git公共目录记录。
+当前：01–06本地实现/Review完成；07仍in-progress。clean候选`6d764ac`于`20261009T170425Z-444d837d`完成Linux Playwright隔离验收；四依赖矩阵继续引用适用候选`6c3c639`。用户已授权R6备份隔离恢复（RTO 84秒）、Stable由R6切至R7候选并验证备份调度/RPO，以及将R7候选发布为保持Draft的PR #62。Stable升级前R6副本`9d01c195caeb4b71ad5cdb7ca726bfae`与升级后R7副本`ce589d79d5a643c48af315756a72ff22`均登记；2026-10-10 12:30+08:00重新up后自动补做并登记副本`f501b61cd4154a9491f9cadb32ca1abe`，12:42复核服务healthy、依赖ready、备份known/not-overdue。验收/路线图更新提交`7d1d08f`已推送，PR #62的8项required CI全部通过且仍为Draft。下一完整6小时周期约18:30+08:00待观察；ARMS用户核验记录早于Stable切换，切换后Stable业务Trace仍待核验。R5 locale环境修复候选`2328270`独立本地验证通过但未Push；没有启动Windows浏览器/IDM。PR #62不转Ready/Auto-merge；未授权restore-activate或云部署。实时阶段见Git公共目录记录。
 
 ## 初始规划快照（拆分确认前）
 
