@@ -1,6 +1,6 @@
 # R7 本地运行保障验收
 
-Status: incomplete. Ticket 01–06实现/Review及clean候选`6d764ac`隔离验收完成；Active Stable R7切换通过。2026-10-10 12:30+08:00，`./local up`在上次R7备份已超过6小时后自动触发补备份，副本`f501b61cd4154a9491f9cadb32ca1abe`登记成功；Ready、依赖和备份状态通过。此证据验证重启后到期补备份，持续运行跨越下一完整6小时周期仍待观察；未人为制造Active Stable的24小时逾期。阿里云控制台可查`chatbi`链路已由用户核验，但列表早于Stable切换，R7切换后的Stable业务Trace仍未核验。Linux Chromium中文下载名退化已定位为验收容器缺少UTF-8 locale，作为R5验收环境修复独立跟进；没有启动Windows浏览器或IDM。
+Status: incomplete. Ticket 01–06实现/Review及clean候选`6d764ac`隔离验收完成；Active Stable R7切换通过。2026-10-10 12:30+08:00，`./local up`在上次R7备份已超过6小时后自动触发补备份，副本`f501b61cd4154a9491f9cadb32ca1abe`登记成功；Ready、依赖和备份状态通过。此证据验证重启后到期补备份，持续运行跨越下一完整6小时周期仍待观察；未人为制造Active Stable的24小时逾期。用户已确认切换后的Stable业务Trace在阿里云ARMS验收通过；未提供可独立关联的Trace ID或时间戳，按用户人工验收结论记录。Linux Chromium中文下载名退化已定位为验收容器缺少UTF-8 locale，作为R5验收环境修复独立跟进；没有启动Windows浏览器或IDM。
 
 ## 候选与证据身份
 
@@ -34,13 +34,17 @@ Status: incomplete. Ticket 01–06实现/Review及clean候选`6d764ac`隔离验�
 | 实际R6备份与隔离恢复 | PASS（条件RTO） | 首份R6副本及隔离恢复`0b4e8f4c3b7f62c71261f7f57703cfda`完成，84秒。 |
 | Active Stable R7切换与启动 | PASS（`6d764ac`） | 用户授权后执行`./local upgrade`；首页、`/health`、`/ready`均HTTP 200，Control DB、业务DB、Qdrant、资产均ready；原PostgreSQL/Qdrant持续运行。 |
 | 升级前备份与R7备份 | PASS（升级门禁/手工） | 升级前R6备份`9d01c195caeb4b71ad5cdb7ca726bfae`及升级后R7副本`ce589d79d5a643c48af315756a72ff22`成功登记；ready状态backup known、overdue=false。 |
-| Active Stable自动调度与逾期提醒 | 部分完成 | 23项定向回归通过。真实到期后关机，12:30执行`./local up`后约5秒自动登记R7副本`f501b61cd4154a9491f9cadb32ca1abe`，证明启动补备份；持续运行下一完整6小时周期与Active Stable 24小时逾期提醒仍待观察，未伪造逾期状态。 |
-| 阿里云Trace控制台查询 | 部分通过 | 用户已确认ARMS可查`service=chatbi`的`query.request`与`retrieval.plan`；该列表时间早于Stable切换，尚不能证明R7 Active Stable切换后业务Trace可见。 |
+| Active Stable自动调度与逾期提醒 | 部分完成 | 23项定向回归通过。真实到期后关机，12:30执行`./local up`后约5秒自动登记R7副本`f501b61cd4154a9491f9cadb32ca1abe`，证明启动补备份。本轮另在clean `b7f64e5`构建固定运维镜像并重跑`python3 -m scripts.verify_local_backup`：隔离PG16/age备份与注入时钟推进至6小时边界的真实调度器均PASS；此快速验收不代替Active Stable连续运行下一完整6小时周期。Active Stable 24小时逾期提醒仍待观察，未伪造逾期状态。 |
+| 阿里云Trace控制台查询 | PASS（用户确认） | 用户确认在切换后的Stable请求中，阿里云ARMS Trace验收无问题。此次确认未提供Trace ID或时间戳；此前01:10–01:13列表仍作为切换前历史记录。 |
 | 最终日志凭据检查与总体门禁 | PASS（`6d764ac`） | `logs_no_known_secrets=true`；旧候选报告继续绑定各自运行身份，不改写历史结果。 |
 
 ## 阿里云 Trace 控制台核验（2026-10-10）
 
 阿里云Trace控制台查询已由用户只读核验。用户于2026-10-10报告在ARMS控制台看到service=chatbi的记录：query.request（47.01s，Trace ID 6882f166f4a74d4224a26b2559bd3b00；67.58ms，fab0803c9cc0462e499cb7a2e97b606c；2.22s，562449c33f56c5989c0d7424bf6585ab；5.27ms，360c08fde3795347bc9943007e3c8c70）及retrieval.plan（121μs，9365985bf4298c7b00bf545ee9ebb25a）。这确认控制台可查询到chatbi链路；列表耗时本身不表示成功或失败，需进入详情查看状态和时间线。控制台显示时间为10/10 01:10–01:13，早于本机约01:28的Stable切换记录，因此不作为切换后Stable请求可见性的证据。本机合成探针记录.local/r7-cloud-connection-probe.json绑定另一Trace ID，不将本次列表冒称为该合成探针的精确ID匹配。阿里云[控制台文档](https://help.aliyun.com/zh/arms/application-monitoring/user-guide/trace-query)说明可按TraceId查询调用链详情。
+
+## Active Stable 切换后 Trace 验收（2026-10-10）
+
+用户随后确认已在阿里云ARMS检查切换后的Stable业务Trace，验收无问题。此次确认未提供Trace ID或时间戳，因此按用户人工验收结论记录，不声称本机可独立关联某个具体请求。01:10–01:13的记录继续保留为切换前历史证据。
 
 ## `6d764ac` 当前 clean 候选完整验收与单用户基线（2026-10-10）
 
@@ -62,7 +66,7 @@ Linux 文件名偏差的后续根因核验：
 
 切换后首页、`/health`和`/ready`均返回HTTP 200。`./local status`的详细快照中Control DB、业务DB、Qdrant和资产均ready；模型状态为unknown（切换后没有新的真实模型调用），备份状态为known且`overdue=false`。独立`chatbi-stable-backup-1`持续运行，进程为`python3 -m scripts.local_backup_schedule`，`./local logs backup`没有失败记录。升级后执行一次在线手工`./local backup`，副本`ce589d79d5a643c48af315756a72ff22`于`2026-10-10T01:29:47+08:00`成功登记，来源commit为R7 `6d764ac`。
 
-升级前备份门禁、调度周期和过期状态相关23项定向回归通过。Stable最后一个R7副本`ce589d79d5a643c48af315756a72ff22`创建于`2026-10-09T17:29:47.676877+00:00`，6小时到期约为次日`23:29:47Z`（07:29:47+08:00）。电脑在到期窗口关闭；用户于12:30+08:00启动Stable后，调度器自动补做并登记副本`f501b61cd4154a9491f9cadb32ca1abe`。因此重启补备份通过；持续运行跨越完整下一6小时周期及Active Stable逾期提醒仍待观察，不以`overdue=false`宣称长周期RPO完全验收。ARMS列表可查性已由用户确认，列表早于Stable切换；切换后Stable业务Trace待核验。Linux文件名问题根因是验收locale，R5环境修复单独跟进。
+升级前备份门禁、调度周期和过期状态相关23项定向回归通过。Stable最后一个R7副本`ce589d79d5a643c48af315756a72ff22`创建于`2026-10-09T17:29:47.676877+00:00`，6小时到期约为次日`23:29:47Z`（07:29:47+08:00）。电脑在到期窗口关闭；用户于12:30+08:00启动Stable后，调度器自动补做并登记副本`f501b61cd4154a9491f9cadb32ca1abe`。因此重启补备份通过；持续运行跨越完整下一6小时周期及Active Stable逾期提醒仍待观察，不以`overdue=false`宣称长周期RPO完全验收。切换后Stable业务Trace已由用户确认通过；未提供Trace ID或时间戳。Linux文件名问题根因是验收locale，R5环境修复单独跟进。
 
 ## Stable 开机后的自动补备份（2026-10-10）
 

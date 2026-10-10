@@ -12,7 +12,7 @@ clean candidate `6d764aca6428bd225afe30395723dfaeb4ae0e0b` 由 `./local build` �
 
 新发现的跨浏览器文件名问题：该次 Linux Chromium 对12次下载均建议名称`download`，独立原生Chrome CDP探针也实际保存中文Blob下载为`download`；文件内容与格式均正确。当前导出源码与此前 Windows Chromium 验收的 `0a97182` 相同，旧报告中的`suggested_filename`为预期中文名。未在本次R7授权内改变R5下载 Contract/产品代码。通用入口的 `runtime.json` 写有 `browser_channel=msedge`，但实际使用Linux Chromium executable，须以 `browser.json` 的153.0.8010.12版本和本机适配器命令为准。
 
-后续Stable验收（2026-10-10）：用户授权后`./local upgrade 6d764aca6428bd225afe30395723dfaeb4ae0e0b`成功，部署状态running/succeeded。升级前R6备份`9d01c195caeb4b71ad5cdb7ca726bfae`及升级后R7手工备份`ce589d79d5a643c48af315756a72ff22`均登记。Stable `/`、`/health`、`/ready`为200，依赖ready，自动备份进程运行，状态known且未逾期。23项调度/升级前门禁/逾期状态测试通过；真实下一次6小时自动备份尚待周期观察，未人为改写Stable状态来模拟24小时过期。阿里云Trace控制台查询已由用户只读核验：可查到service=chatbi的query.request与retrieval.plan记录；显示时间为10/10 01:10–01:13，早于约01:28的Stable切换，因此不作为切换后Stable请求证据。
+后续Stable验收（2026-10-10）：用户授权后`./local upgrade 6d764aca6428bd225afe30395723dfaeb4ae0e0b`成功，部署状态running/succeeded。升级前R6备份`9d01c195caeb4b71ad5cdb7ca726bfae`及升级后R7手工备份`ce589d79d5a643c48af315756a72ff22`均登记。Stable `/`、`/health`、`/ready`为200，依赖ready，自动备份进程运行，状态known且未逾期。23项调度/升级前门禁/逾期状态测试通过；真实下一次6小时自动备份尚待周期观察，未人为改写Stable状态来模拟24小时过期。随后在clean `b7f64e5`重建固定运维镜像`sha256:94cfdc8919e8cf09fbaf3cc7ea1c1800b316465d689591c112c8f20843c95aec`，`python3 -m scripts.verify_local_backup`通过；隔离PG16/age与注入时钟6小时边界的真实调度器均PASS，不替代Active Stable连续周期观察。阿里云Trace控制台查询已由用户只读核验：可查到service=chatbi的query.request与retrieval.plan记录；显示时间为10/10 01:10–01:13，早于约01:28的Stable切换，因此不作为切换后Stable请求证据。随后用户确认切换后Stable业务Trace验收通过；未提供Trace ID或时间戳，按人工验收结论记录。
 
 
 ## 2026-10-10 Active Stable R7切换
@@ -25,7 +25,7 @@ clean candidate `6d764aca6428bd225afe30395723dfaeb4ae0e0b` 由 `./local build` �
 
 R7副本`ce589d79d5a643c48af315756a72ff22`在`2026-10-09T17:29:47.676877Z`创建，6小时到期约`2026-10-09T23:29:47Z`。电脑在到期窗口关闭；用户于次日12:30+08:00执行`./local up`。`up`于`04:30:22.937612Z`成功；Scheduler在`04:30:27.027116Z`自动记尝试，随后登记R7来源备份`f501b61cd4154a9491f9cadb32ca1abe`（`04:30:27.853880Z`，`187357` bytes，SHA-256 `a1c8ce5e1ab92bb048db4cee535182559f55e86e41ec42233580773009d45b31`，source commit `6d764ac`）。`./local logs backup`为success/registered；`./local status`显示API healthy、全部必要依赖ready、备份known/not-overdue。没有手工调用`./local backup`。
 
-此结果验证电脑关机错过到期窗口后，重新`up`会自动补做已到期备份。新副本后的连续运行下一6小时周期约于`2026-10-10 18:30:27+08:00`到期，尚未观察；24小时Active Stable逾期提醒本轮未触发，确定性测试已覆盖。阿里云控制台可查询`chatbi`的用户核验早于Stable切换，切换后业务Trace仍待确认。R7 Acceptance保持incomplete。
+此结果验证电脑关机错过到期窗口后，重新`up`会自动补做已到期备份。clean `b7f64e5`隔离验证已用注入时钟通过真实调度器6小时边界；新副本后的连续运行下一6小时周期约于`2026-10-10 18:30:27+08:00`到期，尚未观察；24小时Active Stable逾期提醒本轮未触发，确定性测试已覆盖。用户已确认切换后Stable业务Trace在ARMS验收通过，未提供Trace ID或时间戳。R7 Acceptance保持incomplete。
 
 Linux Chromium下载名`download`的历史结果已由后续隔离实验定位为浏览器验收容器未设置UTF-8 locale；R5环境修复在独立本地候选中验证，未纳入R7 PR #62。
 
