@@ -1,6 +1,6 @@
 # R7 长期规划记录
 
-当前：01–06本地实现/Review完成；07仍in-progress。clean候选`6d764ac`于`20261009T170425Z-444d837d`完成Linux Playwright隔离验收；四依赖矩阵继续引用适用候选`6c3c639`。用户已授权R6备份隔离恢复（RTO 84秒）、Stable由R6切至R7候选并验证备份调度/RPO，以及将R7候选发布为保持Draft的PR #62。Stable升级前R6副本`9d01c195caeb4b71ad5cdb7ca726bfae`与升级后R7副本`ce589d79d5a643c48af315756a72ff22`均登记；12:30+08:00重新up后自动补做并登记副本`f501b61cd4154a9491f9cadb32ca1abe`。随后连续运行六小时周期于18:30:58+08:00自动登记副本`a0fa7ba4dd9748b88de3b12983386541`（SHA-256 `9a71843124ba3ec0e7146eda5aeb69ccbf13e01bf7bbef55a902d69b35771367`）；服务healthy、依赖ready、备份known/not-overdue。clean `b7f64e5`的隔离PG16/age调度边界验证通过（注入时钟）；Active Stable 24小时逾期提醒未人为触发，23项定向回归通过。用户确认切换后Stable业务Trace在ARMS验收通过（未提供Trace ID或时间戳）。R5 locale环境修复候选`2328270`独立本地验证通过但未Push；没有启动Windows浏览器/IDM。PR #62不转Ready/Auto-merge；未授权restore-activate或云部署。实时阶段见Git公共目录记录。
+当前：01–07本地实现、Review与验收完成；PR #62已Squash合并。clean候选`6d764ac`于`20261009T170425Z-444d837d`完成Linux Playwright隔离验收；四依赖矩阵继续引用适用候选`6c3c639`。用户已授权R6备份隔离恢复（RTO 84秒）、Stable由R6切至R7候选并验证备份调度/RPO，以及将R7候选发布为保持Draft的PR #62。Stable升级前R6副本`9d01c195caeb4b71ad5cdb7ca726bfae`与升级后R7副本`ce589d79d5a643c48af315756a72ff22`均登记；12:30+08:00重新up后自动补做并登记副本`f501b61cd4154a9491f9cadb32ca1abe`。随后连续运行六小时周期于18:30:58+08:00自动登记副本`a0fa7ba4dd9748b88de3b12983386541`（SHA-256 `9a71843124ba3ec0e7146eda5aeb69ccbf13e01bf7bbef55a902d69b35771367`）；服务healthy、依赖ready、备份known/not-overdue。clean `b7f64e5`的隔离PG16/age调度边界验证通过（注入时钟）；Active Stable 24小时逾期提醒未人为触发，23项定向回归通过。用户确认切换后Stable业务Trace在ARMS验收通过（未提供Trace ID或时间戳）。R5 locale环境修复候选`2328270`独立本地验证通过但未Push；没有启动Windows浏览器/IDM。PR #62于2026-10-10由仓库Squash Auto-merge合并（merge commit `4ecd0a5`，8/8 required CI通过）；未授权restore-activate或云部署。实时阶段见Git公共目录记录。
 
 ## 初始规划快照（拆分确认前）
 
@@ -25,3 +25,10 @@ Ticket04本地实现/Review PASS：6h/24h/7d、失败冷却/锁/已知清理/升
 Ticket05本地实现/Review PASS：本地恢复测试与binding测试纳入118项R7本地回归，Ruff与diff检查通过；真实加密备份恢复至隔离PG/Qdrant、全表指纹/角色权限/session与epoch、RAG readiness、临时登录/历史/成果核验通过。独立stable clone完成candidate激活与previous回退；另验证恢复失败会清除解密payload。stable/dev运行容器和身份前后未变，未初始化实际stable key、未切换实际stable。详见 [Ticket 05](issues/05-isolated-restore.md) 和 [Review](review-05.md)。开始06。
 
 Ticket06本地实现与Code Review PASS：immutable carrier/Link覆盖后台问数、分析和导出worker，受限OTLP配置、内容硬关闭、有界Batch及只读状态轮询通过。受影响回归334 passed、2 skipped、26 subtests passed；实际阿里云Trace未使用历史证据代替，留Ticket07当前候选验收。稳定配置未启用OTLP，stable/dev服务未修改。详见 [Ticket 06](issues/06-safe-traces.md) 和 [Review](review-06.md)。继续07。
+
+
+## Active Stable Docker Desktop重启恢复核验（2026-10-10）
+
+用户授权后，Windows侧`docker.exe desktop restart --detach`成功重启Docker Desktop；WSL侧同名入口因缺少`/opt/docker-desktop/bin/com.docker.backend`未能执行，改用Windows已安装的Docker CLI完成。Docker API短暂不可连接后约20秒恢复；随后`./local up`退出0，Stable仍运行R7源码`6d764aca6428bd225afe30395723dfaeb4ae0e0b`。Stable API / PostgreSQL healthy，Qdrant与备份调度器运行，开发PostgreSQL / Qdrant也恢复。
+
+重启前后Stable API / PostgreSQL镜像ID、Stable PostgreSQL / Qdrant命名卷身份与创建时间、用户4条、历史4条、历史轮次4条、保存成果0条、Sales Mart Seed v3和1,166条业务事实完全一致；四类表记录的完整行SHA-256一致。`/health`和`/ready` HTTP 200，依赖ready，备份known且not-overdue。原始安全快照保存在ignored `reports/browser-real-artifacts/r6-docker-restart-20261010/{before,after}.json`。此证据覆盖当前R7 Stable的Docker Desktop重启恢复，不代表整台Windows电脑电源级重启、浏览器业务重验或新模型请求；整机重启仍未验收。

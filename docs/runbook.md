@@ -6,7 +6,7 @@
 
 推荐使用 WSL / Linux 的容器开发入口：Compose 管理四个常驻服务及一次性初始化工具，不要求宿主安装 Python、uv 或 Node。宿主调试入口仍保留；Dev Container 配置保留，不作为本次支持或验收入口。
 
-ChatBI 当前处于 MVP 向生产演进阶段。本 Runbook 覆盖本地开发 / 内部验证及 R6 本地稳定运行流程；R6 的版本升级 / 兼容回滚及完整 Windows 浏览器 / 专用服务恢复验收已通过，见 [Acceptance](acceptance/local-deployment-v1.md)；电脑 / Docker重启待维护窗口，不代表公网生产部署或完整生产就绪。自动测试使用隔离 PostgreSQL 和 CI Fixture；黄金评测复用开发库 `chatbi_mvp`；云端生产数据库不属于本文档范围。
+ChatBI 当前处于 MVP 向生产演进阶段。本 Runbook 覆盖本地开发 / 内部验证及本机稳定运行流程；R6 的版本升级 / 兼容回滚及完整 Windows 浏览器 / 专用服务恢复验收已通过，见 [R6 Acceptance](acceptance/local-deployment-v1.md)。Active Stable R7 的 Docker Desktop 重启恢复已于2026-10-10核验通过；整台Windows电脑电源级重启仍未验收。该本地恢复验证不代表公网生产部署或完整生产就绪。自动测试使用隔离 PostgreSQL 和 CI Fixture；黄金评测复用开发库 `chatbi_mvp`；云端生产数据库不属于本文档范围。
 
 按目标选择流程：
 
@@ -645,7 +645,7 @@ PNG / PDF 使用镜像内固定的 Playwright / Chromium 与离线 bundle；PNG 
 uv run --frozen python -m scripts.verify_local_deployment
 ```
 
-验收入口新建带 run ID 的空 PostgreSQL / Qdrant 卷和 RAG 目录，完成 Windows Edge 业务 / 导出 / 重启恢复与失败检查；通过账号和资源归属校验后清理本次临时资源。它会进行少量真实模型调用，证据与验证限制见 [R6 Acceptance](acceptance/local-deployment-v1.md)。电脑 / Docker 重启需另选维护窗口，按同页步骤手动核验。
+验收入口新建带 run ID 的空 PostgreSQL / Qdrant 卷和 RAG 目录，完成 Windows Edge 业务 / 导出 / 重启恢复与失败检查；通过账号和资源归属校验后清理本次临时资源。它会进行少量真实模型调用，证据与验证限制见 [R6 Acceptance](acceptance/local-deployment-v1.md)。R6候选的电脑重启没有执行；当前R7 Stable Docker Desktop重启恢复记录见 [R7 Acceptance](acceptance/local-operations-v1.md#active-stable-docker-desktop-重启恢复核验2026-10-10)，整台Windows电脑重启仍待验收。
 
 ### 本机下载接管导致 PDF 空响应
 
