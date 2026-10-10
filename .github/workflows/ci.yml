@@ -89,15 +89,8 @@ jobs:
       - name: Verify lockfile
         run: uv lock --check
 
-      - name: Check formatting
-        run: >-
-          uv run --python 3.11 --locked --with ruff==0.16.8
-          ruff format --check src evaluation tests
-
-      - name: Run lint
-        run: >-
-          uv run --python 3.11 --locked --with ruff==0.16.8
-          ruff check --select E4,E7,E9,F src evaluation tests
+      - name: Check Python quality
+        run: bash scripts/check_python_quality.sh
 
   sql-guard-tests:
     name: SQL Guard tests
