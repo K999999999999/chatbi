@@ -77,6 +77,8 @@ scripts/verify_container_dev.sh real
 
 两种模式顺序执行：热更新检查会临时修改源码并恢复。`isolated` 验证空卷首次初始化并清理经项目标签核实的临时卷；`real` 复用现有开发资产。专用账号在结束后禁用并撤销会话，现有用户和数据保留。证据身份及限制见[容器验收记录](acceptance/container-dev-environment-20261003.md)。
 
+验收使用 `docker/node-dev.Dockerfile` 的 `browser` target；日常网页使用 `dev` target。两个 target 共享锁文件对应的 npm 依赖，浏览器的 Chromium / 系统依赖在复制前端源码前安装。仅修改 `frontend/src` 或 Vite 配置后重新构建时，有效的 Docker 缓存可复用依赖安装层；依赖清单、锁文件、Node 基础镜像或浏览器安装指令变化时，相关依赖层会重新构建。首次构建或缓存被清理后仍需安装依赖；缓存命中只证明构建复用，不代替业务验收。
+
 ### 保留：宿主调试
 
 以下 §4–§9 的 `uv run` / `npm` 命令是宿主调试和既有评测入口，需本机 Python / uv / Node。日常容器开发不需要执行这些宿主命令。
