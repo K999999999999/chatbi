@@ -220,6 +220,17 @@ class AuthService:
         new_hash = hash_password(new_password)
         with self._session_factory() as session, session.begin():
             record = self._valid_record(session, token_hash, now)
+            user = session.scalar(
+                select(User)
+                .where(User.id == record.user_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if user is None:
+                raise SessionExpired("Session 已失效")
+            record = self._valid_record(
+                session, token_hash, now, populate_existing=True
+            )
             if not verify_password(current_password, record.user.password_hash):
                 raise AuthenticationFailed("用户名或密码错误")
             record.user.password_hash = new_hash
@@ -345,10 +356,17 @@ class AuthService:
         )
 
     @staticmethod
-    def _valid_record(session: Session, token_hash: str, now: datetime) -> UserSession:
-        record = session.scalar(
-            select(UserSession).where(UserSession.token_hash == token_hash)
-        )
+    def _valid_record(
+        session: Session,
+        token_hash: str,
+        now: datetime,
+        *,
+        populate_existing: bool = False,
+    ) -> UserSession:
+        statement = select(UserSession).where(UserSession.token_hash == token_hash)
+        if populate_existing:
+            statement = statement.execution_options(populate_existing=True)
+        record = session.scalar(statement)
         if record is None or record.revoked_at is not None or not record.user.is_active:
             raise SessionExpired("Session 已失效")
         if now >= _as_utc(record.expires_at) or now >= _as_utc(
