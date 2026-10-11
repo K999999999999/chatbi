@@ -44,7 +44,7 @@ QueryRequest
 | `database.py` | 使用 psycopg 进行只读查询、超时控制和结果截断 |
 | `service.py` | 保留 Query Understanding、请求校验、Retrieval、Prompt、LLM、SQL Guard、Database 主链路并统一转换错误 |
 | `retrieval/` | Online Retrieval 的运行时、资源检索、关系解析、上下文组装和请求规划 |
-| `sql_guard/` | SQL Guard 核心、Join 校验、多指标校验和异常类型 |
+| `sql_guard/` | SQL Guard 核心、Join 校验、公共指标口径校验、多指标结构校验和异常类型 |
 | `__init__.py` | 只导出公共请求和结果 Contract；OnlineQueryService 由组合根按内部下游使用 |
 
 ## 核心 Contract（契约）
@@ -68,6 +68,10 @@ QueryRequest
 - 依赖调整：项目代码不再直接调用 OpenAI SDK 时，用 `langchain-openai` 替换 `pyproject.toml` 中直接声明的 `openai`，并更新 `uv.lock`。
 
 ## SQL Guard 规则
+
+指标公式及固定口径的当前实现：`sql_guard_metrics.py` 提供单指标和多指标共用的 AST 检查。先将候选与权威表达式中的表别名规范化为认证物理表和字段，去除无意义括号，再比较公式；聚合输出必须完整且按认证指标顺序匹配。全部固定过滤条件必须作为顶层 `WHERE` 的 AND 子条件存在。单指标附加筛选中的合法 OR 不会自动被拒绝，但不能用 OR 绕过固定条件。
+
+`sql_guard.py` 对实体类保留既有基础 / Join 检查，对单指标调用公共公式和固定条件检查；`sql_guard_multi_metric.py` 保留多指标专用结构、分组和 Join 限制，复用相同口径检查，不维护第二份公式算法。历史问数仍额外调用 `validate_restoration_sql()` 核对完整业务条件。非法候选返回 `SQL_REJECTED`，数据库不执行；未提供认证指标约束的显式静态模式不猜测指标。
 
 - 必须是纯 SQL，且只能有一条语句。
 - 顶层只能是 `SELECT` 或 `WITH ... SELECT`。

@@ -112,13 +112,16 @@ QueryRequest
 ## SQL 安全规则
 
 - 只允许一条 SQL。
-- V1 只允许单层 `SELECT`；事实表作为主表时，维表只能使用 Relationship Graph（关系图）认证的直接 `LEFT JOIN`，禁止中间表、多跳 Join、`RIGHT JOIN`、`FULL JOIN` 和 `CROSS JOIN`。
+- V1 只允许单层 `SELECT`；AST 中任何位置出现嵌套 `SELECT`（包括 `FROM` 派生表、`EXISTS` 和标量子查询）都返回 `SQL_REJECTED`。事实表作为主表时，维表只能使用 Relationship Graph（关系图）认证的直接 `LEFT JOIN`，禁止中间表、多跳 Join、`RIGHT JOIN`、`FULL JOIN` 和 `CROSS JOIN`。
 - 只能访问 `mart_sales`。
 - 表和字段必须存在于当前结构目录。
 - 禁止 `INSERT`、`UPDATE`、`DELETE`、`DROP`、`ALTER`、`TRUNCATE` 和 `COPY`。
 - 禁止访问 `pg_catalog`、`information_schema` 和其他 Schema。
 - 校验失败返回 `SQL_REJECTED`，不得执行、自动修改或自动重试。
 - SQL 通过校验后仍然必须使用 `chatbi_app` 只读数据库身份执行。
+- 只要本次上下文包含认证 `metric_constraints`，单指标和多指标都必须确定性校验输出聚合表达式与权威指标公式一致，并要求全部固定过滤条件作为顶层 `WHERE` 的必需 AND 子条件存在。遗漏、替换、增加指标、改变公式或通过 `OR` / `NOT` 绕过固定口径时返回 `SQL_REJECTED`，不得执行数据库。
+- 公式和固定条件通过 SQLGlot AST 与认证物理字段规范化比较；允许表别名、空白、函数大小写及无意义括号差异，不进行通用数学或布尔等价推理。单指标保留既有合法附加筛选、时间分组表达式和 `HAVING` 行为，不继承多指标专用结构限制。历史问数的完整业务条件校验继续在此基础上执行。
+- 显式静态模式未提供认证指标约束时，保持原有基础校验，不从原始问题、Prompt、SQL 输出别名或结果列名反推指标定义。
 
 ## 运行限制
 

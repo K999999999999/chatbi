@@ -157,8 +157,9 @@ LLM 不得：
 ### 8. LLM、SQL Guard 和执行
 
 - LLM 一次调用只允许返回一条 SQL 或精确的 `CANNOT_ANSWER`。
-- SQL Guard 失败时返回 `CANNOT_ANSWER`，不再次调用 LLM，不执行未通过检查的 SQL。
+- SQL Guard 失败时按 Online Query Contract 返回 `SQL_REJECTED`，不再次调用 LLM，不执行未通过检查的 SQL。
 - SQL 只能使用结构化上下文和 Graph 允许的表、列、指标和 Join。
+- 单指标和多指标都必须由公共 SQL Guard 按本次认证 `metric_constraints` 核对输出公式和固定过滤条件；固定条件必须是顶层 `WHERE` 的必需 AND 子条件，不得通过 `OR` / `NOT` 绕过。不符合口径时按 Online Query 的 `SQL_REJECTED` 返回，不执行、不改写 SQL、不再次调用模型。多指标专用结构限制及历史问数完整条件校验分别继续适用。
 - V1 SQL 形态限制为单层 `SELECT`，一个主表，直接 `LEFT JOIN`，以及可选的 `WHERE`、`GROUP BY`、`ORDER BY` 和 `LIMIT`。
 - 不支持 CTE、子查询、窗口函数、UNION、多 SQL、条件聚合和复杂分析。
 - LLM 超过 30 秒返回 `LLM_ERROR`，不自动重试。
