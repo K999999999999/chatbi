@@ -6,6 +6,7 @@ from sqlglot.errors import SqlglotError
 from ..contracts import QueryContext, ValidatedSQL
 from .sql_guard_errors import SQLRejectedError
 from .sql_guard_join import validate_join_constraints
+from .sql_guard_metrics import validate_metric_filters, validate_metric_formulas
 from .sql_guard_multi_metric import validate_multi_metric_expression
 from .sql_guard_scope import (
     ALLOWED_SCHEMA,
@@ -90,8 +91,18 @@ class _ValidationSession:
                 self._context,
                 allow_expression_dimensions=self._allow_expression_dimensions,
             )
-        elif expression.args.get("joins"):
-            validate_join_constraints(expression, self._context)
+        else:
+            if expression.args.get("joins"):
+                validate_join_constraints(expression, self._context)
+            if self._context.metric_constraints:
+                bindings = _table_bindings(expression)
+                validate_metric_filters(expression, self._context, bindings)
+                projections = [
+                    projection.this if isinstance(projection, exp.Alias) else projection
+                    for projection in expression.expressions
+                    if projection.find(exp.AggFunc) is not None
+                ]
+                validate_metric_formulas(projections, self._context, bindings)
 
         return ValidatedSQL(sql=self._candidate)
 
