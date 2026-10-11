@@ -112,7 +112,7 @@ QueryRequest
 ## SQL 安全规则
 
 - 只允许一条 SQL。
-- V1 只允许单层 `SELECT`；事实表作为主表时，维表只能使用 Relationship Graph（关系图）认证的直接 `LEFT JOIN`，禁止中间表、多跳 Join、`RIGHT JOIN`、`FULL JOIN` 和 `CROSS JOIN`。
+- V1 只允许单层 `SELECT`；AST 中任何位置出现嵌套 `SELECT`（包括 `FROM` 派生表、`EXISTS` 和标量子查询）都返回 `SQL_REJECTED`。事实表作为主表时，维表只能使用 Relationship Graph（关系图）认证的直接 `LEFT JOIN`，禁止中间表、多跳 Join、`RIGHT JOIN`、`FULL JOIN` 和 `CROSS JOIN`。
 - 只能访问 `mart_sales`。
 - 表和字段必须存在于当前结构目录。
 - 禁止 `INSERT`、`UPDATE`、`DELETE`、`DROP`、`ALTER`、`TRUNCATE` 和 `COPY`。

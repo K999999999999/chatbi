@@ -177,6 +177,8 @@ def _parse_single_select(sql: str) -> exp.Select:
     expression = statements[0]
     if not isinstance(expression, exp.Select):
         raise SQLRejectedError("只允许单层 SELECT")
+    if any(node is not expression for node in expression.find_all(exp.Select)):
+        raise SQLRejectedError("只允许单层 SELECT，不支持子查询")
     return expression
 
 
