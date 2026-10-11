@@ -55,13 +55,19 @@ def validate_user_mutation(
     is_active: bool,
     roles: list[Role] | tuple[Role, ...],
 ) -> None:
-    """在同一 SQLAlchemy transaction（事务）内保护最后一个 active admin。"""
+    """在同一事务内串行检查并保护最后一个 active admin。"""
 
     role_names = {role.name for role in roles}
     if not role_names.issubset(FIXED_ROLE_NAMES):
         raise AdminPolicyError("只能分配代码固定的 admin 或 analyst 角色")
     if is_active and "admin" in role_names:
         return
+
+    admin_role_id = session.scalar(
+        select(Role.id).where(Role.name == "admin").with_for_update()
+    )
+    if admin_role_id is None:
+        raise AdminPolicyError("固定 admin 角色不存在，无法安全修改用户")
 
     remaining_admins = session.scalar(
         select(func.count(User.id))

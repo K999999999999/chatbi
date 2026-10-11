@@ -2,6 +2,7 @@
 
 import os
 import threading
+import time
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import UTC, datetime, timedelta
@@ -18,7 +19,8 @@ from langgraph.graph import END, START, StateGraph
 from psycopg.conninfo import make_conninfo
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
-from sqlalchemy import text
+from sqlalchemy import event, func, select, text
+from sqlalchemy.orm import sessionmaker
 
 from src.business_analysis.run_store import (
     AnalysisRunConflict,
@@ -30,6 +32,12 @@ from src.chatbi_control.database import (
     create_control_engine,
     verify_control_schema,
 )
+from src.chatbi_control.admin import (
+    LastAdminError,
+    set_user_roles,
+    validate_user_mutation,
+)
+from src.chatbi_control.models import Role, User
 
 
 class _CheckpointState(TypedDict):
@@ -399,6 +407,154 @@ class PostgresDevelopmentEnvironmentTest(unittest.TestCase):
                     """
             )
             self.assertEqual(cursor.fetchone(), (True, True, True, True, True))
+
+    def test_concurrent_admin_removals_preserve_one_active_admin(self) -> None:
+        config = ControlDatabaseConfig.from_environment(require_migrator=False)
+        engine = create_control_engine(config)
+        session_factory = sessionmaker(engine, expire_on_commit=False)
+        suffix = uuid4().hex
+        first_name = f"concurrent-admin-a-{suffix}"
+        second_name = f"concurrent-admin-b-{suffix}"
+        with session_factory() as session:
+            admin_role = session.scalar(select(Role).where(Role.name == "admin"))
+            first_admin = User(
+                username=first_name,
+                password_hash="integration-test-hash",
+                is_active=True,
+                must_change_password=False,
+                roles=[admin_role],
+            )
+            second_admin = User(
+                username=second_name,
+                password_hash="integration-test-hash",
+                is_active=True,
+                must_change_password=False,
+                roles=[admin_role],
+            )
+            session.add_all((first_admin, second_admin))
+            session.commit()
+            first_admin_id = first_admin.id
+            second_admin_id = second_admin.id
+
+        first_session = session_factory()
+        second_lock_query_started = threading.Event()
+        second_lock_pid: list[int] = []
+        worker_outcomes: list[tuple[str, Exception | None]] = []
+
+        @event.listens_for(engine, "before_cursor_execute")
+        def identify_second_admin_lock(
+            connection,
+            cursor,
+            statement,
+            parameters,
+            context,
+            executemany,
+        ) -> None:
+            del cursor, parameters, context, executemany
+            if threading.current_thread().name != "remove-second-admin":
+                return
+            normalized = statement.lstrip().casefold()
+            if normalized.startswith("select count("):
+                second_lock_query_started.set()
+            if "for update" in normalized:
+                second_lock_pid.append(
+                    connection.connection.driver_connection.info.backend_pid
+                )
+                second_lock_query_started.set()
+
+        def remove_second_admin() -> None:
+            try:
+                set_user_roles(
+                    session_factory,
+                    user_id=second_admin_id,
+                    role_names={"analyst"},
+                )
+            except Exception as exc:
+                worker_outcomes.append(("rejected", exc))
+            else:
+                worker_outcomes.append(("changed", None))
+
+        worker = threading.Thread(
+            target=remove_second_admin,
+            name="remove-second-admin",
+        )
+        try:
+            first_admin = first_session.get(User, first_admin_id)
+            analyst_role = first_session.scalar(
+                select(Role).where(Role.name == "analyst")
+            )
+            validate_user_mutation(
+                first_session,
+                user_id=first_admin_id,
+                is_active=True,
+                roles=[analyst_role],
+            )
+
+            worker.start()
+            self.assertTrue(second_lock_query_started.wait(timeout=5))
+            self.assertTrue(
+                second_lock_pid,
+                "the second transaction did not acquire the admin-role guard",
+            )
+
+            with (
+                self._connect(
+                    "chatbi_control",
+                    user_variable="POSTGRES_CONTROL_APP_USER",
+                    password_variable="POSTGRES_CONTROL_APP_PASSWORD",
+                ) as observer,
+                observer.cursor() as cursor,
+            ):
+                wait_event = None
+                for _ in range(100):
+                    cursor.execute(
+                        "SELECT wait_event_type FROM pg_stat_activity WHERE pid = %s",
+                        (second_lock_pid[0],),
+                    )
+                    wait_event = cursor.fetchone()
+                    if wait_event == ("Lock",):
+                        break
+                    time.sleep(0.01)
+                self.assertEqual(
+                    wait_event,
+                    ("Lock",),
+                    "the second transaction should wait on the first admin mutation",
+                )
+
+            first_admin.roles = [analyst_role]
+            first_session.commit()
+            worker.join(timeout=10)
+            self.assertFalse(worker.is_alive(), "second admin change did not finish")
+            self.assertEqual(len(worker_outcomes), 1)
+            self.assertEqual(worker_outcomes[0][0], "rejected")
+            self.assertIsInstance(worker_outcomes[0][1], LastAdminError)
+
+            with session_factory() as session:
+                remaining_admins = session.scalar(
+                    select(func.count(User.id))
+                    .join(User.roles)
+                    .where(User.is_active.is_(True), Role.name == "admin")
+                )
+            self.assertEqual(remaining_admins, 1)
+        finally:
+            if first_session.in_transaction():
+                first_session.rollback()
+            first_session.close()
+            worker.join(timeout=10)
+            event.remove(engine, "before_cursor_execute", identify_second_admin_lock)
+            with (
+                self._connect(
+                    "chatbi_control",
+                    user_variable="POSTGRES_MIGRATOR_USER",
+                    password_variable="POSTGRES_MIGRATOR_PASSWORD",
+                ) as cleanup,
+                cleanup.cursor() as cursor,
+            ):
+                cursor.execute(
+                    "DELETE FROM users WHERE username IN (%s, %s)",
+                    (first_name, second_name),
+                )
+            engine.dispose()
 
     def test_analysis_runs_are_owner_bound_checkpointed_and_expired(self) -> None:
         config = ControlDatabaseConfig.from_environment(require_migrator=False)
