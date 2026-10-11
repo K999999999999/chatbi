@@ -46,3 +46,16 @@ Harness 无 ERROR；相关 OPEN_WORK_ITEM 与 DIRTY_WORKTREE 归属为本项实�
 - `src/online_query/sql_guard/sql_guard_metrics.py`：`b092247ad61bc720cfe08a88d316601ca16884da39529fa480f1b3ec18d8c8c1`
 - `src/online_query/sql_guard/sql_guard_multi_metric.py`：`599d501540c7537c6f96ba3390ea60f1cb89b73097bdb74de4db096893176a38`
 - `tests/online_query/test_metric_certification.py`：`31cfc81c2a19ac127b9cb3740cefff5b66d22c1d1407eb40cfdc52e2f18ef48a`
+
+
+## 整合发布候选验证（2026-10-11）
+
+- 基线：`b7dd82386d877ccf6669bd2e02698e81da19f975`。
+- 整合候选：`fix/sql-guard-certification-boundaries`，验证时 HEAD `89eca4b11168ca22a84330e906b3c9c50c24a104`；包含本工作与 `nested-select-sql-guard` 两个已 Review 的候选，合并后无代码冲突。
+- 全量：`uv run --python 3.11 --locked python -m pytest -q`：**1035 passed / 41 skipped / 142 subtests passed**，串行执行。
+- 质量：`bash scripts/check_python_quality.sh`、compileall、Markdown links、module boundaries、`git diff --check` 全部 PASS；309 个 Python 文件格式检查通过。
+- PostgreSQL：整合候选上的 `uv run --python 3.11 --locked python scripts/run_database_tests.py`：**5 passed**；隔离 PostgreSQL 16 CI profile，本次新增嵌套 SELECT 路径没有数据库写入。
+- 整合 Review：**PASS**。已审查整合 Diff 和两项 Spec；指标公式与固定过滤条件提取为共享确定性 AST 校验，嵌套 SELECT 在同一公共解析入口拒绝；多指标既有限制保留。未发现 Contract 越界或阻塞 Finding。
+- 执行说明：曾并行启动两份全量测试，宿主机 Query API socket / 导出运行资源冲突造成无关用例失败；停止并行后串行全量回归通过。该并行结果不计作通过证据，也未修改对应产品代码。
+- 不运行 AI Evaluation、浏览器业务验收或 Stable：本目标只改确定性 Guard，未修改模型 / 检索、HTTP / 前端或持久化；Gold SQL 兼容与隔离数据库证据见上文。
+- 路线图：重新核对 `docs/roadmap.md`；只落实已有 SQL Guard Contract，不改变目标 / 优先级 / 依赖 / 完成状态，无需更新。
