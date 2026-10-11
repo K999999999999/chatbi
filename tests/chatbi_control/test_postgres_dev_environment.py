@@ -37,7 +37,7 @@ from src.chatbi_control.admin import (
     set_user_roles,
     validate_user_mutation,
 )
-from src.chatbi_control.models import Role, User
+from src.chatbi_control.models import Role, User, UserSession
 
 
 class _CheckpointState(TypedDict):
@@ -772,6 +772,174 @@ class PostgresDevelopmentEnvironmentTest(unittest.TestCase):
         ):
             cursor.execute("SELECT count(*) FROM users")
             self.assertEqual(cursor.fetchone(), (1,))
+
+    def test_concurrent_login_failures_count_each_attempt_and_lock_account(
+        self,
+    ) -> None:
+        from src.authorization.auth_service import AuthenticationFailed, AuthService
+        from src.authorization.passwords import hash_password
+        from src.authorization import auth_service as auth_service_module
+
+        config = ControlDatabaseConfig.from_environment(require_migrator=False)
+        engine = create_control_engine(config)
+        session_factory = sessionmaker(engine, expire_on_commit=False)
+        username = f"concurrent-login-{uuid4().hex}"
+        password = "valid-integration-password-123"
+        with session_factory() as session:
+            user = User(
+                username=username,
+                password_hash=hash_password(password),
+                is_active=True,
+                must_change_password=False,
+                failed_login_count=3,
+            )
+            session.add(user)
+            session.commit()
+            user_id = user.id
+
+        def cleanup_test_user() -> None:
+            try:
+                with (
+                    self._connect(
+                        "chatbi_control",
+                        user_variable="POSTGRES_MIGRATOR_USER",
+                        password_variable="POSTGRES_MIGRATOR_PASSWORD",
+                    ) as connection,
+                    connection.transaction(),
+                    connection.cursor() as cursor,
+                ):
+                    cursor.execute("DELETE FROM users WHERE username = %s", (username,))
+            finally:
+                engine.dispose()
+
+        self.addCleanup(cleanup_test_user)
+
+        first_verification_started = threading.Event()
+        release_first_verification = threading.Event()
+        second_login_query_started = threading.Event()
+        second_backend_pid: list[int] = []
+        outcomes: list[tuple[str, Exception | None]] = []
+        verify_password = auth_service_module.verify_password
+
+        def controlled_verify(candidate: str, password_hash: str) -> bool:
+            if threading.current_thread().name == "login-first-failure":
+                first_verification_started.set()
+                if not release_first_verification.wait(timeout=10):
+                    raise TimeoutError("first login verification was not released")
+            return verify_password(candidate, password_hash)
+
+        @event.listens_for(engine, "before_cursor_execute")
+        def identify_second_login_query(
+            connection,
+            cursor,
+            statement,
+            parameters,
+            context,
+            executemany,
+        ) -> None:
+            del cursor, parameters, context, executemany
+            if threading.current_thread().name != "login-second-failure":
+                return
+            normalized = statement.lstrip().casefold()
+            if normalized.startswith("select"):
+                second_backend_pid.append(
+                    connection.connection.driver_connection.info.backend_pid
+                )
+                second_login_query_started.set()
+
+        def attempt_login(name: str) -> None:
+            try:
+                service.login(username, "wrong-integration-password-123")
+            except Exception as exc:
+                outcomes.append((name, exc))
+            else:
+                outcomes.append((name, None))
+
+        service = AuthService(session_factory)
+        first = threading.Thread(
+            target=attempt_login,
+            args=("first",),
+            name="login-first-failure",
+        )
+        second = threading.Thread(
+            target=attempt_login,
+            args=("second",),
+            name="login-second-failure",
+        )
+        observed_lock_wait = False
+        try:
+            with patch.object(
+                auth_service_module, "verify_password", controlled_verify
+            ):
+                first.start()
+                self.assertTrue(
+                    first_verification_started.wait(timeout=5),
+                    "first login did not reach password verification",
+                )
+                second.start()
+                self.assertTrue(
+                    second_login_query_started.wait(timeout=5),
+                    "second login did not query the account",
+                )
+                self.assertTrue(second_backend_pid)
+
+                with (
+                    self._connect(
+                        "chatbi_control",
+                        user_variable="POSTGRES_MIGRATOR_USER",
+                        password_variable="POSTGRES_MIGRATOR_PASSWORD",
+                    ) as observer,
+                    observer.cursor() as cursor,
+                ):
+                    for _ in range(100):
+                        cursor.execute(
+                            "SELECT wait_event_type FROM pg_stat_activity WHERE pid = %s",
+                            (second_backend_pid[0],),
+                        )
+                        row = cursor.fetchone()
+                        if row is not None and row[0] == "Lock":
+                            observed_lock_wait = True
+                            break
+                        time.sleep(0.05)
+                release_first_verification.set()
+                first.join(timeout=10)
+                second.join(timeout=10)
+        finally:
+            release_first_verification.set()
+            if first.ident is not None:
+                first.join(timeout=10)
+            if second.ident is not None:
+                second.join(timeout=10)
+            event.remove(engine, "before_cursor_execute", identify_second_login_query)
+
+        self.assertTrue(
+            second_login_query_started.is_set(),
+            "second login did not query the account",
+        )
+        self.assertTrue(second_backend_pid)
+        self.assertTrue(
+            observed_lock_wait,
+            "second login did not wait for the first login's account lock",
+        )
+        self.assertEqual(len(outcomes), 2)
+        self.assertTrue(
+            all(isinstance(error, AuthenticationFailed) for _, error in outcomes),
+            outcomes,
+        )
+        with session_factory() as session:
+            saved_user = session.get(User, user_id)
+            saved_session_count = session.scalar(
+                select(func.count())
+                .select_from(UserSession)
+                .where(UserSession.user_id == user_id)
+            )
+        self.assertIsNotNone(saved_user)
+        assert saved_user is not None
+        self.assertEqual(saved_user.failed_login_count, 5)
+        self.assertIsNotNone(saved_user.locked_until)
+        self.assertEqual(saved_session_count, 0)
+        with self.assertRaises(AuthenticationFailed):
+            service.login(username, password)
 
     @staticmethod
     def _seed_summary(connection: psycopg.Connection) -> tuple[object, ...]:

@@ -68,7 +68,9 @@ class AuthService:
         context: AuthContext | None = None
         with self._session_factory() as session, session.begin():
             user = session.scalar(
-                select(User).where(User.username == normalized_username)
+                select(User)
+                .where(User.username == normalized_username)
+                .with_for_update()
             )
             if (
                 user is None
