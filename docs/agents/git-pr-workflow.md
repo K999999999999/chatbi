@@ -129,7 +129,7 @@ gh pr view "$number" --repo "$owner/$repo" \
 gh pr edit "$number" --repo "$owner/$repo" --body-file "$body_file"
 ```
 
-只有 CLI 明确返回前述 Projects classic GraphQL 弃用错误时才继续。先读取同一 PR 的最新状态，并确认正文 / head SHA 没有并发变化且 PR 仍为 OPEN；否则停止，不覆盖远端编辑：
+只有 CLI 明确返回前述 Projects classic GraphQL 弃用错误时才继续。先读取同一 PR 的最新状态，并重新比较正文 / head SHA。REST fallback 允许 PR 在快照和复查之间由 `OPEN` 变为 `MERGED`，也允许两个快照都为 `MERGED`；`CLOSED`、其他状态变化、head SHA 变化或正文变化都必须停止并人工检查，不得覆盖已观察到的远端编辑：
 
 ```bash
 gh pr view "$number" --repo "$owner/$repo" \
@@ -141,15 +141,18 @@ import sys
 from pathlib import Path
 
 before, after = (json.loads(Path(path).read_text(encoding="utf-8")) for path in sys.argv[1:])
-if before["state"] != "OPEN" or after["state"] != "OPEN":
-    raise SystemExit("PR is not open")
+allowed_states = {"OPEN", "MERGED"}
+if before["state"] not in allowed_states or after["state"] not in allowed_states:
+    raise SystemExit("PR is neither open nor merged")
+if before["state"] == "MERGED" and after["state"] != "MERGED":
+    raise SystemExit("merged PR state changed; stop and review")
 for field in ("headRefOid", "body"):
     if before[field] != after[field]:
         raise SystemExit(f"PR {field} changed; stop and review concurrent edits")
 PY
 ```
 
-确认状态未变后，使用 JSON 编码生成 REST payload，避免 shell 字符串插值破坏多行 Markdown、引号或反斜杠：
+确认状态和快照字段满足上述条件后，使用 JSON 编码生成 REST payload，避免 shell 字符串插值破坏多行 Markdown、引号或反斜杠。PATCH 只发送 `body`，不得同时修改 PR state、head、base 或其他字段：
 
 ```bash
 python3 - "$body_file" "$payload_file" <<'PY'
@@ -179,7 +182,7 @@ if actual != expected:
 ' "$body_file"
 ```
 
-REST 返回成功但读回不一致时，停止并调查；不能只凭命令退出码报告正文更新完成。
+REST 返回成功但读回不一致时，停止并调查；不能只凭命令退出码报告正文更新完成。状态 / head / 正文快照比较是尽力而为的并发检测，不是远端原子锁；GitHub REST 对 unsafe methods（包括 PATCH）的条件请求默认不支持，见 [GitHub REST API 条件请求说明](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api#conditional-requests)。缩短复查到 PATCH 的间隔，并在 PATCH 后立即读回；如发现正文不一致，停止自动重试或覆盖修正，交由人工检查。该路径实际更新已合并 PR 的能力仍以目标仓库当次 API 返回和读回结果为准。
 
 当前仓库的 `.github/workflows/enable-auto-merge.yml` 会在符合条件的 PR 事件后请求 Squash Auto-merge。动作前会读取 GitHub 上的实时 PR，核对 `state`、Draft、head SHA、base branch 和 head repository 是否仍与事件快照一致；旧事件、状态未知、PR 已关闭、仍为 Draft、base 不再是 `master` 或 head 已变化时跳过，不调用启用动作。普通独立 PR 以 required checks 自动合并为默认，不额外要求用户 PR Review；Agent 不直接人工 Merge。依赖 PR 必须依照依赖门禁保持 Draft，直到前置 PR、最终 base 和适用检查均满足。聊天授权前必须说明目标仓库的真实 Auto-merge 行为，之后核实 PR 的真实状态。Stacked / 依赖 PR 不得提前启用 Auto-merge。
 
