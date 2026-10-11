@@ -2,7 +2,7 @@
 
 ## 产品定位
 
-ChatBI 是面向业务数据分析的 Domain AI Engine（领域 AI 引擎）。当前处于 **MVP 向生产演进** 阶段：核心用户链路已经实现，当前工程重点是资源一致性、全新环境初始化、正确性证据和生产运行准备。R6 提供当前 Windows + WSL2 + Docker 电脑上的固定版本本地部署，范围见 [本地部署 Contract](specs/local-deployment-v1.md)，四项本地实施与适用运行验收已完成（runtime `2b4a8c8`），验证条件、电脑重启未执行等限制见 [Acceptance](acceptance/local-deployment-v1.md)；已获远端发布授权，交付状态见 [PR60](https://github.com/K999999999999/chatbi/pull/60)。仓库中的本地开发 Runbook 和历史 Acceptance 不构成生产部署证明。
+ChatBI 是面向业务数据分析的 Domain AI Engine（领域 AI 引擎）。当前处于 **MVP 向生产演进** 阶段：核心用户链路已经实现，当前工程重点是资源一致性、全新环境初始化、正确性证据和生产运行准备。R6 提供当前 Windows + WSL2 + Docker 电脑上的固定版本本地部署，范围见 [本地部署 Contract](specs/local-deployment-v1.md)，四项本地实施与适用运行验收已完成（runtime `2b4a8c8`）；R6 候选本身没有经过电脑重启验收，限制见 [R6 Acceptance](acceptance/local-deployment-v1.md)。后续 R7 已在 Active Stable 完成 Docker Desktop 和整台 Windows 电脑重启恢复核验，证据见 [R7 Acceptance](acceptance/local-operations-v1.md)。R6 交付见 [PR60](https://github.com/K999999999999/chatbi/pull/60)。仓库中的本地开发 Runbook 和历史 Acceptance 不构成公网生产部署证明。
 
 ## 当前 MVP Contract
 
@@ -58,7 +58,7 @@ ChatBI 是面向业务数据分析的 Domain AI Engine（领域 AI 引擎）。�
 - 任意 PostgreSQL 数据库、多个 Schema 或多租户支持。
 - 超出当前 Semantic Contract 的指标、维度、跨事实表 Join、多跳 Join 或超过 5 个指标的组合。
 - 任意复杂分析 Agent、SQL 自动修复、多模型投票或开放式任务编排。
-- 手机适配和 WebSocket；当前网页通过同源 HTTP / SSE 提供执行反馈。成功快照文件导出属于 R5，范围与阶段状态见下方 R5。
+- 手机适配和 WebSocket；当前网页通过同源 HTTP / SSE 提供执行反馈。成功快照文件导出已实现并作为 R5 交付，范围与阶段状态见下方 R5。
 - 生产环境部署方案、容量 / 可用性承诺、生产数据迁移和流量发布流程；这些不由 MVP 本地运行证据自动满足。
 
 ## 生产演进中的当前基线工作
