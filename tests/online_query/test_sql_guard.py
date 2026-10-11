@@ -88,6 +88,50 @@ class SQLGuardTest(unittest.TestCase):
 
         self.assertEqual(validated.sql, sql)
 
+    def test_rejects_nested_selects_in_from_exists_and_scalar_expression(self) -> None:
+        candidates = (
+            "SELECT x.order_id FROM ("
+            "SELECT f.order_id FROM mart_sales.fct_sales_order_line AS f "
+            "CROSS JOIN mart_sales.dim_customer AS c) AS x",
+            "SELECT f.order_id FROM mart_sales.fct_sales_order_line AS f "
+            "WHERE EXISTS (SELECT 1 FROM mart_sales.dim_customer AS c)",
+            "SELECT (SELECT 1) AS value FROM mart_sales.fct_sales_order_line AS f",
+        )
+
+        for sql in candidates:
+            with self.subTest(sql=sql):
+                with self.assertRaises(SQLRejectedError):
+                    validate_sql(sql, self.context)
+
+    def test_rejects_nested_select_in_single_metric_query(self) -> None:
+        constraint = MetricConstraint(
+            ordinal=1,
+            requested_text="人民币净销售额",
+            document_id="metric:net_sales",
+            metric_name="人民币净销售额",
+            formula="SUM(f.net_sales_amount_cny)",
+            data_source="mart_sales.fct_sales_order_line",
+            time_field="fct_sales_order_line.completion_date_key -> dim_date.full_date",
+            filters=("f.order_status = 'completed'",),
+            depends_on=(),
+        )
+        context = QueryContext(
+            prompt_context=self.context.prompt_context,
+            allowed_tables=self.context.allowed_tables,
+            allowed_columns=self.context.allowed_columns,
+            metric_constraints=(constraint,),
+            join_constraints=self.context.join_constraints,
+        )
+        sql = (
+            "SELECT SUM(f.net_sales_amount_cny) "
+            "FROM mart_sales.fct_sales_order_line AS f "
+            "WHERE f.order_status = 'completed' AND EXISTS ("
+            "SELECT 1 FROM mart_sales.dim_customer AS c)"
+        )
+
+        with self.assertRaises(SQLRejectedError):
+            validate_sql(sql, context)
+
     def test_direct_join_rejects_wrong_direction_or_unregistered_key(self) -> None:
         candidates = (
             (
