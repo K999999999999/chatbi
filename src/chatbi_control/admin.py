@@ -215,6 +215,13 @@ class UserAdmin(ModelView, model=User):
             session = inspect(model).session
             if session is None:
                 raise AdminPolicyError("无法确认用户变更事务")
+            if raw_password or data.get("is_active", model.is_active) is False:
+                session.scalar(
+                    select(User)
+                    .where(User.id == model.id)
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
             roles = _resolve_roles(
                 session,
                 data.get("roles"),
