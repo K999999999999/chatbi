@@ -216,6 +216,7 @@ PR 确认已 `MERGED` 后，每个交付都必须完成一次简短 Harness 复�
 - 每次复盘在 PR 正文与实时工作记录当前字段中填写 `Harness review`、`Harness evidence`、`Harness follow-up work item`。`Harness review` 使用 `no-gap` 或 `gap-found`；证据列出本次检查过的 PR 与相关事实源 / 验收 / 验证记录。
 - `no-gap` 时 `Harness follow-up work item` 为 `None`。`gap-found` 时，记录具体表现和根因，创建一个独立后续 Harness 改进工作项并引用其 ID；改进项要说明调整的规则、文档、Skill、工具或验证方式，以及如何检查改进有效。
 - 合并后的当前实时记录须保留三项结构化字段。运行 `scripts.check_harness_state` 时，字段不完整、值无效、组合矛盾或后续记录无法解析会产生 `ERROR`。
+- 更新 PR 正文后，使用 `gh pr view <PR> --repo <OWNER>/<REPOSITORY> --json body` 读回 GitHub 当前保存的完整正文；逐项确认三项字段都存在、值与本机实时记录一致且没有模板占位内容。未读回、缺字段、值不一致或存在模板残留时，不得报告复盘完成；修正后再次读回核对。
 - 如果问题来自产品实现本身，按产品 Bug / Regression 处理；如果 Agent 的工作环境也导致问题，同时创建 Harness 改进项。
 
 复盘只记录可行动的缺口，不要求每个 PR 另写一份复盘文档。已合并的产品 PR 不因复盘发现而追加无关改动；Harness 改进按独立目标交付。
