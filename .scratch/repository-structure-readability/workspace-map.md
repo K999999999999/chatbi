@@ -1,5 +1,7 @@
 # Workspace Map（Ticket 01 Baseline）
 
+> **历史快照**：本地图记录 2026-09-17 的 checkout / branch 和当时的项目结构，已经被后续产品迭代取代。它不应作为当前代码、功能或入口的导航依据；当前入口请读 [`docs/project-guide.md`](../../docs/project-guide.md)、[`README.md`](../../README.md)、[`docs/architecture.md`](../../docs/architecture.md) 和 [`docs/runbook.md`](../../docs/runbook.md)。本文保留用于追溯此前结构整理工作的基线和结论。
+
 ## 1. 核对基线
 
 本地图基于 2026-09-17 在仓库根目录的只读盘点生成。它记录当前工作区事实、入口关系、后续结构整理候选和保留边界，不替代 Architecture（架构）、Module Spec（模块规格）或 Feature Contract（Feature 契约）。

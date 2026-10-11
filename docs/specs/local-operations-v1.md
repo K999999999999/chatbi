@@ -1,6 +1,6 @@
 # R7 本机稳定环境运行保障 Spec
 
-Status: 用户2026-10-08确认完整Contract和七项整体本地实施；实施中。本文定义目标行为，不代表所有能力已实现或已在稳定环境部署。
+Status: Contract 已确认，实施与验收完成；PR #62 已合并。最终实现和 Stable 验收证据见 [Acceptance](../acceptance/local-operations-v1.md)。本文定义行为 Contract，不代表公网生产部署。
 
 ## Problem Statement
 

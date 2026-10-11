@@ -60,13 +60,13 @@ bash scripts/install_git_hooks.sh
 
 `.env` 的宿主回环地址保持原值，容器配置覆盖为内部服务地址，不修改现有文件。API不挂载`.env`，没有迁移身份。模型主机目录在容器内保持解析后的相同绝对路径，兼容现有manifest的模型身份校验；RAG输出挂入固定路径。已有模型和索引复用，工具写入保持宿主UID / GID。默认CPU / FP32；首次构建可能较慢。
 
-服务启动不自动迁移、创建用户或重建索引。PostgreSQL 首次健康检查依赖 checkpoint，必须先显式 `migrate`；配置缺失、端口占用、依赖失败时返回非零。`up` 的基础依赖 / HTTP 检查不等于真实问数已通过，动态 readiness 仍属于 R7。端口只发布至本机，不开放局域网。
+服务启动不自动迁移、创建用户或重建索引。PostgreSQL 首次健康检查依赖 checkpoint，必须先显式 `migrate`；配置缺失、端口占用、依赖失败时返回非零。`up` 的基础依赖 / HTTP 检查不等于真实问数已通过，也不替代 Stable R7 的动态 readiness（见本 Runbook 的 R7 动态运行状态章节）。端口只发布至本机，不开放局域网。
 
 `CHATBI_DEV_ENV_FILE` 可选择本地配置文件；`CHATBI_DEV_API_PORT` / `CHATBI_DEV_WEB_PORT` 可调整应用宿主端口，网页 Origin 随 Web 端口更新。`CHATBI_DEV_COMPOSE_OVERRIDE` 用于隔离验收的附加 Compose 文件。默认不更改基础项目名称，避免误用另一套数据卷。
 
 构建镜像使用明确版本 / digest。受网络限制时，可通过 `CHATBI_DEV_PYTHON_BASE` / `CHATBI_DEV_NODE_BASE` 指向可信镜像地址，保持相同版本 / digest；不关闭 TLS 校验或修改系统证书。原生依赖随 `uv.lock` 安装，CPU执行不意味着镜像中不含锁定的CUDA包。
 
-运行语义见[开发环境 Contract](specs/container-dev-environment.md)。R6 §15 提供当前电脑上的固定版本本地稳定环境；正式公网生产镜像、HTTPS 与云部署不在 R6 范围内。R6 本地版本升级 / 兼容回滚已由 Ticket 03 实施和验收；容量、动态 readiness、备份恢复和监控验收属于后续 R7。
+运行语义见[开发环境 Contract](specs/container-dev-environment.md)。R6 §15 提供当前电脑上的固定版本本地稳定环境；正式公网生产镜像、HTTPS 与云部署不在 R6 范围内。R6 本地版本升级 / 兼容回滚已由 Ticket 03 实施和验收。后续 R7 已增加 Stable 动态 readiness、依赖状态观察、备份恢复和监控；其具体边界及证据见 [R7 Spec](specs/local-operations-v1.md) 与 [R7 Acceptance](acceptance/local-operations-v1.md)。这些本机验收不构成公网部署、多用户容量或延迟承诺。
 
 容器运行验收使用以下入口，要求干净候选提交和可用的真实 LLM 配置，会产生少量模型调用费用。隔离模式需 Compose ≥2.24.4：
 
@@ -358,8 +358,10 @@ uv run --env-file .env python -m src.bootstrap build-rag
 
 ### 8.1 纯软件回归
 
+本地 `.env` 通常将 `CHATBI_WEB_ORIGIN` 配置为回环 HTTP 地址；纯软件测试中的 production 启动用例也会读取 `.env`，production 配置不接受回环 HTTP。为隔离测试配置，为测试进程临时覆盖为保留的无效域名 HTTPS Origin。测试不会向该地址发请求，也不会修改 `.env`：
+
 ```bash
-uv run --python 3.11 --locked python -m pytest -q
+CHATBI_WEB_ORIGIN=https://example.invalid uv run --python 3.11 --locked python -m pytest -q
 ```
 
 ### 8.2 隔离 PostgreSQL 集成测试
@@ -381,7 +383,7 @@ uv run python scripts/run_database_tests.py --profile development
 两种集成测试都不启动真实 LLM。日常纯软件测试仍可在没有 PostgreSQL 的情况下运行：
 
 ```bash
-uv run --python 3.11 --locked python -m pytest -q
+CHATBI_WEB_ORIGIN=https://example.invalid uv run --python 3.11 --locked python -m pytest -q
 ```
 
 测试数量记录只作为对应 Commit 的证据快照，不作为当前 checkout 的基线；真实 LLM Evaluation 仍按显式授权流程执行，不能用纯软件测试替代。
