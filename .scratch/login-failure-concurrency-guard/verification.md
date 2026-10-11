@@ -4,6 +4,7 @@
 
 - 基线：`b7dd82386d877ccf6669bd2e02698e81da19f975`，与 `origin/master` 同步。
 - 分支：`fix/serialize-login-failures`。
+- 代码候选：`6e9e316825fe54e3afe5dc7830e5844523fb0fd2`；全部软件验证在其代码与测试内容提交前完成，提交后未改变这些文件。
 - 变更：认证服务对用户行使用 PostgreSQL `FOR UPDATE`，使锁定状态检查、失败计数、成功重置和 Session 创建按同一账号串行；正式登录 Contract 补充并发判定；新增隔离 PostgreSQL 并发回归。
 - 范围外：AI Evaluation、真实模型、Stable、Push / PR。
 
