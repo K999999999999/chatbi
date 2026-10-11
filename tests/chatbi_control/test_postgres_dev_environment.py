@@ -1,12 +1,15 @@
 """Integration checks for a freshly initialized local development PostgreSQL."""
 
+import asyncio
 import os
 import threading
+import time
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import UTC, datetime, timedelta
 from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TypedDict
 from unittest.mock import patch
 from uuid import uuid4
@@ -18,7 +21,9 @@ from langgraph.graph import END, START, StateGraph
 from psycopg.conninfo import make_conninfo
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
-from sqlalchemy import text
+from sqlalchemy import event, func, select, text
+from sqlalchemy.orm import sessionmaker
+from starlette.requests import Request
 
 from src.business_analysis.run_store import (
     AnalysisRunConflict,
@@ -30,6 +35,15 @@ from src.chatbi_control.database import (
     create_control_engine,
     verify_control_schema,
 )
+from src.authorization import AuthService, hash_password
+from src.authorization.passwords import verify_password
+from src.chatbi_control.admin import (
+    LastAdminError,
+    UserAdmin,
+    set_user_roles,
+    validate_user_mutation,
+)
+from src.chatbi_control.models import Role, User, UserSession
 
 
 class _CheckpointState(TypedDict):
@@ -89,6 +103,174 @@ class PostgresDevelopmentEnvironmentTest(unittest.TestCase):
                 for thread in remaining
             )
         )
+
+    def test_sqladmin_password_reset_wins_over_inflight_self_change(self) -> None:
+        config = ControlDatabaseConfig.from_environment(require_migrator=False)
+        engine = create_control_engine(config)
+        sessions = sessionmaker(engine, expire_on_commit=False)
+        username = f"password-race-{uuid4().hex}"
+        initial_password = "initial-password-123"
+        self_password = "self-change-password-123"
+        reset_password = "admin-reset-password-123"
+        user_id: int | None = None
+        change_ready_to_commit = threading.Event()
+        allow_change_commit = threading.Event()
+        reset_started = threading.Event()
+        reset_completed = threading.Event()
+        errors: list[BaseException] = []
+
+        with sessions.begin() as session:
+            admin_role = session.scalar(select(Role).where(Role.name == "admin"))
+            assert admin_role is not None
+            user = User(
+                username=username,
+                password_hash=hash_password(initial_password),
+                is_active=True,
+                must_change_password=False,
+                roles=[admin_role],
+            )
+            session.add(user)
+            session.flush()
+            user_id = user.id
+
+        service = AuthService(sessions)
+        login = service.login(username, initial_password)
+
+        def pause_before_self_session_revocation(
+            session, target_user_id: int, now: datetime
+        ) -> None:
+            if threading.current_thread().name == "self-password-change":
+                change_ready_to_commit.set()
+                if not allow_change_commit.wait(timeout=10):
+                    raise TimeoutError("self password change was not released")
+            original_revoke(session, target_user_id, now)
+
+        def change_password() -> None:
+            try:
+                service.change_password(
+                    login.token,
+                    current_password=initial_password,
+                    new_password=self_password,
+                )
+            except BaseException as exc:
+                errors.append(exc)
+
+        request = Request(
+            {
+                "type": "http",
+                "headers": [],
+                "app": SimpleNamespace(state=SimpleNamespace(audit_sink=None)),
+            }
+        )
+
+        def reset_password_as_admin() -> None:
+            try:
+                reset_started.set()
+                with sessions() as session, session.begin():
+                    session.execute(
+                        text("SET application_name = 'chatbi-password-reset-race'")
+                    )
+                    user = session.get(User, user_id)
+                    assert user is not None
+                    data = {"password_hash": reset_password}
+                    asyncio.run(UserAdmin().on_model_change(data, user, False, request))
+                    user.password_hash = data["password_hash"]
+                    user.must_change_password = data["must_change_password"]
+                reset_completed.set()
+            except BaseException as exc:
+                errors.append(exc)
+
+        from src.authorization import auth_service as auth_service_module
+
+        original_revoke = auth_service_module._revoke_user_sessions
+        change_thread = threading.Thread(
+            target=change_password, name="self-password-change"
+        )
+        reset_thread: threading.Thread | None = None
+        try:
+            with patch(
+                "src.authorization.auth_service._revoke_user_sessions",
+                side_effect=pause_before_self_session_revocation,
+            ):
+                change_thread.start()
+                self.assertTrue(
+                    change_ready_to_commit.wait(timeout=10),
+                    "self password change did not reach session revocation",
+                )
+
+                reset_thread = threading.Thread(
+                    target=reset_password_as_admin, name="admin-password-reset"
+                )
+                reset_thread.start()
+                self.assertTrue(reset_started.wait(timeout=10))
+                lock_wait_observed = False
+                deadline = time.monotonic() + 5
+                while time.monotonic() < deadline and not reset_completed.is_set():
+                    with (
+                        self._connect(
+                            "chatbi_control",
+                            user_variable="POSTGRES_CONTROL_MIGRATOR_USER",
+                            password_variable="POSTGRES_MIGRATOR_PASSWORD",
+                        ) as connection,
+                        connection.cursor() as cursor,
+                    ):
+                        cursor.execute(
+                            """
+                            SELECT wait_event_type
+                            FROM pg_stat_activity
+                            WHERE application_name = 'chatbi-password-reset-race'
+                              AND state = 'active'
+                            """
+                        )
+                        activity = cursor.fetchone()
+                    if activity is not None and activity[0] == "Lock":
+                        lock_wait_observed = True
+                        break
+                    time.sleep(0.02)
+                allow_change_commit.set()
+                change_thread.join(timeout=10)
+                reset_thread.join(timeout=10)
+
+            self.assertFalse(change_thread.is_alive())
+            assert reset_thread is not None
+            self.assertFalse(reset_thread.is_alive())
+            self.assertEqual(errors, [])
+
+            with sessions() as session:
+                saved_user = session.get(User, user_id)
+                saved_session = session.scalar(
+                    select(UserSession).where(UserSession.user_id == user_id)
+                )
+            self.assertIsNotNone(saved_user)
+            assert saved_user is not None
+            self.assertTrue(saved_user.must_change_password)
+            self.assertTrue(verify_password(reset_password, saved_user.password_hash))
+            self.assertFalse(verify_password(self_password, saved_user.password_hash))
+            self.assertIsNotNone(saved_session)
+            assert saved_session is not None
+            self.assertIsNotNone(saved_session.revoked_at)
+            self.assertTrue(
+                lock_wait_observed,
+                "PostgreSQL should report SQLAdmin waiting for the user row lock",
+            )
+        finally:
+            allow_change_commit.set()
+            if change_thread.is_alive():
+                change_thread.join(timeout=10)
+            if reset_thread is not None and reset_thread.is_alive():
+                reset_thread.join(timeout=10)
+            with (
+                self._connect(
+                    "chatbi_control",
+                    user_variable="POSTGRES_CONTROL_MIGRATOR_USER",
+                    password_variable="POSTGRES_MIGRATOR_PASSWORD",
+                ) as connection,
+                connection.cursor() as cursor,
+            ):
+                cursor.execute("DELETE FROM sessions WHERE user_id = %s", (user_id,))
+                cursor.execute("DELETE FROM user_roles WHERE user_id = %s", (user_id,))
+                cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
+            engine.dispose()
 
     def test_synthetic_seed_covers_dates_dimensions_statuses_and_metrics(self) -> None:
         with (
@@ -400,6 +582,154 @@ class PostgresDevelopmentEnvironmentTest(unittest.TestCase):
             )
             self.assertEqual(cursor.fetchone(), (True, True, True, True, True))
 
+    def test_concurrent_admin_removals_preserve_one_active_admin(self) -> None:
+        config = ControlDatabaseConfig.from_environment(require_migrator=False)
+        engine = create_control_engine(config)
+        session_factory = sessionmaker(engine, expire_on_commit=False)
+        suffix = uuid4().hex
+        first_name = f"concurrent-admin-a-{suffix}"
+        second_name = f"concurrent-admin-b-{suffix}"
+        with session_factory() as session:
+            admin_role = session.scalar(select(Role).where(Role.name == "admin"))
+            first_admin = User(
+                username=first_name,
+                password_hash="integration-test-hash",
+                is_active=True,
+                must_change_password=False,
+                roles=[admin_role],
+            )
+            second_admin = User(
+                username=second_name,
+                password_hash="integration-test-hash",
+                is_active=True,
+                must_change_password=False,
+                roles=[admin_role],
+            )
+            session.add_all((first_admin, second_admin))
+            session.commit()
+            first_admin_id = first_admin.id
+            second_admin_id = second_admin.id
+
+        first_session = session_factory()
+        second_lock_query_started = threading.Event()
+        second_lock_pid: list[int] = []
+        worker_outcomes: list[tuple[str, Exception | None]] = []
+
+        @event.listens_for(engine, "before_cursor_execute")
+        def identify_second_admin_lock(
+            connection,
+            cursor,
+            statement,
+            parameters,
+            context,
+            executemany,
+        ) -> None:
+            del cursor, parameters, context, executemany
+            if threading.current_thread().name != "remove-second-admin":
+                return
+            normalized = statement.lstrip().casefold()
+            if normalized.startswith("select count("):
+                second_lock_query_started.set()
+            if "for update" in normalized:
+                second_lock_pid.append(
+                    connection.connection.driver_connection.info.backend_pid
+                )
+                second_lock_query_started.set()
+
+        def remove_second_admin() -> None:
+            try:
+                set_user_roles(
+                    session_factory,
+                    user_id=second_admin_id,
+                    role_names={"analyst"},
+                )
+            except Exception as exc:
+                worker_outcomes.append(("rejected", exc))
+            else:
+                worker_outcomes.append(("changed", None))
+
+        worker = threading.Thread(
+            target=remove_second_admin,
+            name="remove-second-admin",
+        )
+        try:
+            first_admin = first_session.get(User, first_admin_id)
+            analyst_role = first_session.scalar(
+                select(Role).where(Role.name == "analyst")
+            )
+            validate_user_mutation(
+                first_session,
+                user_id=first_admin_id,
+                is_active=True,
+                roles=[analyst_role],
+            )
+
+            worker.start()
+            self.assertTrue(second_lock_query_started.wait(timeout=5))
+            self.assertTrue(
+                second_lock_pid,
+                "the second transaction did not acquire the admin-role guard",
+            )
+
+            with (
+                self._connect(
+                    "chatbi_control",
+                    user_variable="POSTGRES_CONTROL_APP_USER",
+                    password_variable="POSTGRES_CONTROL_APP_PASSWORD",
+                ) as observer,
+                observer.cursor() as cursor,
+            ):
+                wait_event = None
+                for _ in range(100):
+                    cursor.execute(
+                        "SELECT wait_event_type FROM pg_stat_activity WHERE pid = %s",
+                        (second_lock_pid[0],),
+                    )
+                    wait_event = cursor.fetchone()
+                    if wait_event == ("Lock",):
+                        break
+                    time.sleep(0.01)
+                self.assertEqual(
+                    wait_event,
+                    ("Lock",),
+                    "the second transaction should wait on the first admin mutation",
+                )
+
+            first_admin.roles = [analyst_role]
+            first_session.commit()
+            worker.join(timeout=10)
+            self.assertFalse(worker.is_alive(), "second admin change did not finish")
+            self.assertEqual(len(worker_outcomes), 1)
+            self.assertEqual(worker_outcomes[0][0], "rejected")
+            self.assertIsInstance(worker_outcomes[0][1], LastAdminError)
+
+            with session_factory() as session:
+                remaining_admins = session.scalar(
+                    select(func.count(User.id))
+                    .join(User.roles)
+                    .where(User.is_active.is_(True), Role.name == "admin")
+                )
+            self.assertEqual(remaining_admins, 1)
+        finally:
+            if first_session.in_transaction():
+                first_session.rollback()
+            first_session.close()
+            worker.join(timeout=10)
+            event.remove(engine, "before_cursor_execute", identify_second_admin_lock)
+            with (
+                self._connect(
+                    "chatbi_control",
+                    user_variable="POSTGRES_MIGRATOR_USER",
+                    password_variable="POSTGRES_MIGRATOR_PASSWORD",
+                ) as cleanup,
+                cleanup.cursor() as cursor,
+            ):
+                cursor.execute(
+                    "DELETE FROM users WHERE username IN (%s, %s)",
+                    (first_name, second_name),
+                )
+            engine.dispose()
+
     def test_analysis_runs_are_owner_bound_checkpointed_and_expired(self) -> None:
         config = ControlDatabaseConfig.from_environment(require_migrator=False)
         engine = create_control_engine(config)
@@ -616,6 +946,174 @@ class PostgresDevelopmentEnvironmentTest(unittest.TestCase):
         ):
             cursor.execute("SELECT count(*) FROM users")
             self.assertEqual(cursor.fetchone(), (1,))
+
+    def test_concurrent_login_failures_count_each_attempt_and_lock_account(
+        self,
+    ) -> None:
+        from src.authorization.auth_service import AuthenticationFailed, AuthService
+        from src.authorization.passwords import hash_password
+        from src.authorization import auth_service as auth_service_module
+
+        config = ControlDatabaseConfig.from_environment(require_migrator=False)
+        engine = create_control_engine(config)
+        session_factory = sessionmaker(engine, expire_on_commit=False)
+        username = f"concurrent-login-{uuid4().hex}"
+        password = "valid-integration-password-123"
+        with session_factory() as session:
+            user = User(
+                username=username,
+                password_hash=hash_password(password),
+                is_active=True,
+                must_change_password=False,
+                failed_login_count=3,
+            )
+            session.add(user)
+            session.commit()
+            user_id = user.id
+
+        def cleanup_test_user() -> None:
+            try:
+                with (
+                    self._connect(
+                        "chatbi_control",
+                        user_variable="POSTGRES_MIGRATOR_USER",
+                        password_variable="POSTGRES_MIGRATOR_PASSWORD",
+                    ) as connection,
+                    connection.transaction(),
+                    connection.cursor() as cursor,
+                ):
+                    cursor.execute("DELETE FROM users WHERE username = %s", (username,))
+            finally:
+                engine.dispose()
+
+        self.addCleanup(cleanup_test_user)
+
+        first_verification_started = threading.Event()
+        release_first_verification = threading.Event()
+        second_login_query_started = threading.Event()
+        second_backend_pid: list[int] = []
+        outcomes: list[tuple[str, Exception | None]] = []
+        verify_password = auth_service_module.verify_password
+
+        def controlled_verify(candidate: str, password_hash: str) -> bool:
+            if threading.current_thread().name == "login-first-failure":
+                first_verification_started.set()
+                if not release_first_verification.wait(timeout=10):
+                    raise TimeoutError("first login verification was not released")
+            return verify_password(candidate, password_hash)
+
+        @event.listens_for(engine, "before_cursor_execute")
+        def identify_second_login_query(
+            connection,
+            cursor,
+            statement,
+            parameters,
+            context,
+            executemany,
+        ) -> None:
+            del cursor, parameters, context, executemany
+            if threading.current_thread().name != "login-second-failure":
+                return
+            normalized = statement.lstrip().casefold()
+            if normalized.startswith("select"):
+                second_backend_pid.append(
+                    connection.connection.driver_connection.info.backend_pid
+                )
+                second_login_query_started.set()
+
+        def attempt_login(name: str) -> None:
+            try:
+                service.login(username, "wrong-integration-password-123")
+            except Exception as exc:
+                outcomes.append((name, exc))
+            else:
+                outcomes.append((name, None))
+
+        service = AuthService(session_factory)
+        first = threading.Thread(
+            target=attempt_login,
+            args=("first",),
+            name="login-first-failure",
+        )
+        second = threading.Thread(
+            target=attempt_login,
+            args=("second",),
+            name="login-second-failure",
+        )
+        observed_lock_wait = False
+        try:
+            with patch.object(
+                auth_service_module, "verify_password", controlled_verify
+            ):
+                first.start()
+                self.assertTrue(
+                    first_verification_started.wait(timeout=5),
+                    "first login did not reach password verification",
+                )
+                second.start()
+                self.assertTrue(
+                    second_login_query_started.wait(timeout=5),
+                    "second login did not query the account",
+                )
+                self.assertTrue(second_backend_pid)
+
+                with (
+                    self._connect(
+                        "chatbi_control",
+                        user_variable="POSTGRES_MIGRATOR_USER",
+                        password_variable="POSTGRES_MIGRATOR_PASSWORD",
+                    ) as observer,
+                    observer.cursor() as cursor,
+                ):
+                    for _ in range(100):
+                        cursor.execute(
+                            "SELECT wait_event_type FROM pg_stat_activity WHERE pid = %s",
+                            (second_backend_pid[0],),
+                        )
+                        row = cursor.fetchone()
+                        if row is not None and row[0] == "Lock":
+                            observed_lock_wait = True
+                            break
+                        time.sleep(0.05)
+                release_first_verification.set()
+                first.join(timeout=10)
+                second.join(timeout=10)
+        finally:
+            release_first_verification.set()
+            if first.ident is not None:
+                first.join(timeout=10)
+            if second.ident is not None:
+                second.join(timeout=10)
+            event.remove(engine, "before_cursor_execute", identify_second_login_query)
+
+        self.assertTrue(
+            second_login_query_started.is_set(),
+            "second login did not query the account",
+        )
+        self.assertTrue(second_backend_pid)
+        self.assertTrue(
+            observed_lock_wait,
+            "second login did not wait for the first login's account lock",
+        )
+        self.assertEqual(len(outcomes), 2)
+        self.assertTrue(
+            all(isinstance(error, AuthenticationFailed) for _, error in outcomes),
+            outcomes,
+        )
+        with session_factory() as session:
+            saved_user = session.get(User, user_id)
+            saved_session_count = session.scalar(
+                select(func.count())
+                .select_from(UserSession)
+                .where(UserSession.user_id == user_id)
+            )
+        self.assertIsNotNone(saved_user)
+        assert saved_user is not None
+        self.assertEqual(saved_user.failed_login_count, 5)
+        self.assertIsNotNone(saved_user.locked_until)
+        self.assertEqual(saved_session_count, 0)
+        with self.assertRaises(AuthenticationFailed):
+            service.login(username, password)
 
     @staticmethod
     def _seed_summary(connection: psycopg.Connection) -> tuple[object, ...]:
