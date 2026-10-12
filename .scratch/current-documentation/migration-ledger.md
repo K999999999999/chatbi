@@ -58,3 +58,5 @@
 | `docs/specs/result-visualization-v1.md` | `docs/specs/result-visualization-v1.md` | `.scratch/result-visualization-v1/history/documentation-docs--specs--result-visualization-v1.md` | 当前规则保留，过程章节归工作记录；章节按能力整理 |
 | `docs/specs/web-dialogue-v1.md` | `docs/specs/web-dialogue-v1.md` | `.scratch/current-documentation/history/documentation-docs--specs--web-dialogue-v1.md` | 按已确认历史/执行扩展整合当前Web，不再保留刷新清空与退役Streamlit阶段限制 |
 | `README.md` | `README.md` | `原过程已有工作记录；当前规则在原路径保留，基线可追溯` | 合并原guide定位能力，唯一人类入口；操作细节与行为规则链接权威文档 |
+| `docs/agents/agent-harness.md` | `已归档；现行规则分别见 AGENTS、issue-tracker、git-pr-workflow 与 documentation` | `.scratch/current-documentation/history/documentation--agent-harness.md` | 完整原文保留为 fenced Markdown 快照；重复 Harness 总览移除，路线图维护、Skill 依赖和会话恢复分别落入稳定入口或专属规则；所有当前与历史消费者链接已修复 |
+| `docs/agents/issue-tracker.md`、`docs/specs/container-dev-environment.md` | 原路径保留 | `.scratch/container-dev-environment/history/acceptance--container-dev-environment-20261003.md` | 修复迁移后仍指向已移除 `docs/acceptance/` 的说明；Ticket 边界改指向当前事实源及所属历史验收 |

@@ -32,6 +32,6 @@
 
 基础Compose不隐式启动应用；Dev Container保留原配置，不是本次验收入口。端口冲突不杀未知进程；故障修复后重试，停止应用后可回本机入口，数据保留。
 
-运行验收覆盖独立空卷初始化、热更新、持久性、故障、实际Compose网页的真实两轮查询和账号清理；证据绑定候选 / 资源。日期化结果见`docs/acceptance/`，不改写历史Evaluation身份。
+运行验收覆盖独立空卷初始化、热更新、持久性、故障、实际Compose网页的真实两轮查询和账号清理；证据绑定候选 / 资源。日期化结果见[历史验收记录](../../.scratch/container-dev-environment/history/acceptance--container-dev-environment-20261003.md)，不改写历史 Evaluation 身份。
 
 操作见[Runbook](../runbook.md)，初始化见[Bootstrap](bootstrap.md)，网页行为见[Web Spec](web-dialogue-v1.md)。

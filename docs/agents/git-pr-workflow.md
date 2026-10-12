@@ -76,7 +76,7 @@
 - `git_dirty=false`，没有未跟踪文件；
 - Contract、相关测试、Diff Review 和 `git diff --check` 已完成；
 - 对代码质量检查记录实际命令、工具版本和覆盖目录 / 文件；局部定向检查必须标明范围，不能表述为全量通过。Python 格式与 lint 统一运行 `bash scripts/check_python_quality.sh`，该入口同时由 CI 调用；
-- 已核对 `docs/roadmap.md`，按 [路线图维护规则](agent-harness.md#路线图读取与维护) 同步受影响的目标、依赖和验收状态，并对照产品范围 / Spec 检查需求状态、当前能力、不包含 / 后续范围无矛盾；记录核对位置与结果，或不适用理由；优先级与范围变化已经用户确认；
+- 已核对 `docs/roadmap.md`，按[文档维护规则](documentation.md#更新与归档)同步受影响的目标、依赖和验收状态，并对照产品范围 / Spec 检查需求状态、当前能力、不包含 / 后续范围无矛盾；记录核对位置与结果，或不适用理由；优先级与范围变化已经用户确认；
 - 高风险链路是否需要 Real E2E；
 - 当前 PR 目标、commit 范围、未执行验证和剩余风险。
 
@@ -210,7 +210,7 @@ gh pr view <PR> --json number,url,state,isDraft,mergedAt,mergeStateStatus,headRe
 
 PR 确认已 `MERGED` 后，每个交付都必须完成一次简短 Harness 复盘，再清理 Feature branch。即使自动清理因工作区修改或其他依赖而暂停，也要完成复盘。
 
-同时核对合并事实是否影响路线图状态；沿用 [路线图维护规则](agent-harness.md#路线图读取与维护) 复核受影响能力的当前描述，记录核对位置与结果或不适用理由，并同步主工作项及关联实时记录的顶部当前字段和下一步，不能只追加末尾收尾记录。不将合并或 CI 通过视为真实 Evaluation 或生产验收通过。
+同时核对合并事实是否影响路线图状态；沿用[文档维护规则](documentation.md#更新与归档)复核受影响能力的当前描述，记录核对位置与结果或不适用理由，并同步主工作项及关联实时记录的顶部当前字段和下一步，不能只追加末尾收尾记录。不将合并或 CI 通过视为真实 Evaluation 或生产验收通过。
 
 列出本次交付涉及的工作项记录和关联产品汇总，逐项同步后运行 `python -m scripts.check_harness_state`，记录 ERROR 数及每项 REVIEW 的处置。无法核对的事项如实保留；存在未解释的相关发现时不得写“无新增缺口”或“全部收尾完成”。工具无 ERROR 不替代路线图 / 产品范围 / Spec 的语义核对，也不自动授权发布其他候选。
 

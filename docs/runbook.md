@@ -380,7 +380,9 @@ uv run python scripts/run_database_tests.py --profile development
 
 ### 8.3 GitHub Actions CI
 
-`.github/workflows/ci.yml` 在 `master` 的 Push、Pull Request 和手动触发时执行锁文件检查、纯软件回归、PostgreSQL 集成测试和 API / 打包 Web 登录、首次改密与退出的 Smoke Test（冒烟测试）。CI 使用 Python 3.11 和锁定的 `uv` 版本；PostgreSQL 集成测试使用 `database/ci/bootstrap.sql` 中的 CI-only 合成 Fixture（测试夹具），不使用本地业务数据。CI 不调用真实 LLM，也不替代 AI Evaluation（AI 评测）或 Business Acceptance（业务验收）。
+本地文档链接与结构检查使用 CI 相同的组合入口：`uv run --python 3.11 --locked python -m scripts.check_documentation`。它检查所有 Git 跟踪及未忽略 Markdown 的本地链接，并检查正式文档的标题层级和正文章节引用。
+
+`.github/workflows/ci.yml` 在 `master` 的 Push、Pull Request 和手动触发时执行锁文件检查、文档链接与结构检查、纯软件回归、PostgreSQL 集成测试和 API / 打包 Web 登录、首次改密与退出的 Smoke Test（冒烟测试）。CI 使用 Python 3.11 和锁定的 `uv` 版本；PostgreSQL 集成测试使用 `database/ci/bootstrap.sql` 中的 CI-only 合成 Fixture（测试夹具），不使用本地业务数据。CI 不调用真实 LLM，也不替代 AI Evaluation（AI 评测）或 Business Acceptance（业务验收）。
 
 ### 8.4 PR 前本地验收流程
 

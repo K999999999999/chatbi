@@ -1,3 +1,8 @@
+# Agent Harness 历史说明
+
+> 来源：规划基线 `c7f7e7438bc40890670720d9d389947d8807255b` 的 `docs/agents/agent-harness.md`。完整保留原内容供追溯；当前规则已按职责迁入 `AGENTS.md`、`docs/agents/issue-tracker.md`、`docs/agents/git-pr-workflow.md` 和 `docs/agents/documentation.md`。
+
+~~~~markdown
 # Agent Harness Engineering 项目说明
 
 本仓库采用 Harness Engineering 思路维护 AI Coding Agent 的项目工作环境。这样，后续进入仓库的 AI 不必依赖之前的对话，也能发现项目规则、事实源、验证方式和交付流程。
@@ -55,3 +60,4 @@ Agent 可依据明确证据更新完成状态、依赖事实和过期描述，�
 - 当 `AGENTS.md`、文档地图、工程工作流程、验证入口或 Skill 依赖发生变化，且这些变化让本文的说明不再准确时，更新本文。
 - 普通产品功能或业务规则变化，更新它所属的 Spec、Design、Domain 文档、测试、Evaluation 或验收记录；只有 Harness 入口或组成随之改变时才更新本文。
 - 不把本文当作每次功能更新的变更日志，也不在这里重复维护各事实源里的规则。
+~~~~

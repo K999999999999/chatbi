@@ -52,9 +52,9 @@ jobs:
       - name: Compile Python sources
         run: uv run --python 3.11 --locked python -m compileall -q src evaluation tests
 
-      - name: Check Markdown links and module boundaries
+      - name: Check documentation and module boundaries
         run: |
-          uv run --python 3.11 --locked python -m scripts.check_markdown_links
+          uv run --python 3.11 --locked python -m scripts.check_documentation
           uv run --python 3.11 --locked python -m scripts.check_module_boundaries
 
       - name: Collect pytest tests

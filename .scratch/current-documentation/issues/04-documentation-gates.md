@@ -1,6 +1,6 @@
 # Ticket 04：维护规则、门禁与 Review 形成可验证闭环
 
-Status: open
+Status: done
 Canonical Source: [Spec](../spec.md)、[设计](../design.md)；用户已确认四项拆分与整体本地实施。
 
 Change Profile: 持续维护工程工具与项目规则 / 中等脚本、测试、CI 和文档变更 / 漏报与误报、协作保护丢失风险 / fixture 回归和最终迁移 Review / 本地候选。
@@ -45,7 +45,7 @@ Done When: 规则可发现、确定性问题可拦截、语义 Review 可追溯�
 
 ## Result
 
-待实施与验证。
+Ticket 04 实现及 Review 完成，Review PASS（[review-04.md](../review-04.md)）。新增共享 Markdown 行解析和 `scripts.check_documentation` 组合入口；保留原链接命令及 `--root`，将结构检查接入现有 CI job，并更新 AGENTS、文档维护规则、Runbook、PR 模板与迁移台账。旧 Harness 说明完整归档，`docs/acceptance/` 残留引用已修复。验证命令及边界见 Review 记录；只做本地交付。
 
 ## Comments
 
