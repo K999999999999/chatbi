@@ -43,19 +43,16 @@ class HistoryApplication:
     def restore(self, state):
         semantic = decode_query_state(state)
         if self.certifier is None:
-            raise HistoryError("CONTEXT_ERROR", "当前业务认证服务不可用", 422)
+            raise HistoryError("CONTEXT_ERROR", "当前业务认证服务不可用")
         try:
             current = self.certifier(semantic)
         except SemanticCertificationError:
             raise HistoryError(
                 "HISTORY_CONTEXT_INCOMPATIBLE",
                 "相关业务定义或认证映射已变化，请新开对话",
-                422,
             ) from None
         except Exception:  # noqa: BLE001 - retrieval故障不得冒充定义变化
-            raise HistoryError(
-                "CONTEXT_ERROR", "当前业务上下文暂时不可用", 422
-            ) from None
+            raise HistoryError("CONTEXT_ERROR", "当前业务上下文暂时不可用") from None
         if current["provenance"] != state["provenance"]:
             changed_sections = sorted(
                 key
@@ -69,13 +66,12 @@ class HistoryApplication:
             raise HistoryError(
                 "HISTORY_CONTEXT_INCOMPATIBLE",
                 "相关业务定义或认证映射已变化，请新开对话",
-                422,
             )
         return semantic
 
     def authorize(self, auth, request_id, *, audit=True):
         if auth.user_id is None:
-            raise HistoryError("AUTHENTICATION_REQUIRED", "需要本地有效账号", 401)
+            raise HistoryError("AUTHENTICATION_REQUIRED", "需要本地有效账号")
         request = QueryRequest("历史管理", request_id=request_id)
         rejection = (
             self.query_service.authorize(request, auth_context=auth)
@@ -86,14 +82,7 @@ class HistoryApplication:
         )
         if rejection is not None:
             code = rejection.error_code.value
-            status = (
-                401
-                if code == "AUTHENTICATION_REQUIRED"
-                else 503
-                if code == "AUTHENTICATION_UNAVAILABLE"
-                else 403
-            )
-            raise HistoryError(code, rejection.error_message, status)
+            raise HistoryError(code, rejection.error_message)
 
     def _finish_attempt(self, owner, token, snapshot, error, execution_id=None):
         if execution_id is not None:
@@ -145,7 +134,7 @@ class HistoryApplication:
                 )
         except AnalysisExecutionBusy:
             raise HistoryError(
-                "HISTORY_BUSY", "原分析运行仍在执行，请稍后刷新", 409
+                "HISTORY_BUSY", "原分析运行仍在执行，请稍后刷新"
             ) from None
 
     def resume_analysis(
@@ -154,7 +143,7 @@ class HistoryApplication:
         self.authorize(auth, request_id)
         header = self.store.header(auth.user_id, history_id)
         if header.kind != "analysis":
-            raise HistoryError("INVALID_REQUEST", "问数历史不能恢复分析运行", 400)
+            raise HistoryError("INVALID_REQUEST", "问数历史不能恢复分析运行")
         if header.last_success_turn_id is not None:
             return self.store.turn(
                 auth.user_id, history_id, header.last_success_turn_id
@@ -163,7 +152,6 @@ class HistoryApplication:
             raise HistoryError(
                 "HISTORY_CONTEXT_INCOMPATIBLE",
                 "原分析任务已过期或无法恢复，请新建分析",
-                422,
             )
         with self.runtime.executing(history_id):
             accepted = self.store.begin_analysis_attempt(
@@ -199,7 +187,7 @@ class HistoryApplication:
         self.authorize(auth, request_id)
         header = self.store.header(auth.user_id, history_id)
         if header.kind != "query":
-            raise HistoryError("INVALID_REQUEST", "分析历史不能提交问数追问", 400)
+            raise HistoryError("INVALID_REQUEST", "分析历史不能提交问数追问")
         with self.runtime.executing(history_id):
             accepted = self.store.begin_attempt(
                 auth.user_id,
@@ -317,7 +305,6 @@ class HistoryApplication:
             raise HistoryError(
                 "HISTORY_BUSY",
                 "原分析运行仍在执行，请稍后刷新",
-                409,
                 history_id=history_id,
                 turn_id=accepted.turn.id,
             ) from None
@@ -349,7 +336,6 @@ class HistoryApplication:
                     raise HistoryError(
                         "HISTORY_CONTEXT_INCOMPATIBLE",
                         "来源缺少完整查询条件，不能重新查询",
-                        422,
                     )
             semantic = None
             if accepted.base_state is not None:
@@ -372,10 +358,10 @@ class HistoryApplication:
                     if execution_control is not None:
                         execution_control.checkpoint()
                 except SemanticRevisionError as exc:
-                    raise HistoryError(exc.error_code.value, str(exc), 422) from None
+                    raise HistoryError(exc.error_code.value, str(exc)) from None
             if kind == "analysis":
                 if self.analysis_service is None:
-                    raise HistoryError("CONTEXT_ERROR", "分析服务暂时不可用", 503)
+                    raise HistoryError("CONTEXT_ERROR", "分析服务暂时不可用")
                 analysis_options: dict[str, object] = {}
                 if execution_control is not None:
                     analysis_options["execution_control"] = execution_control
@@ -406,9 +392,7 @@ class HistoryApplication:
                 execution_control.checkpoint()
             current_auth = reauthenticate()
             if current_auth.user_id != auth.user_id:
-                raise HistoryError(
-                    "AUTHORIZATION_DENIED", "当前身份不可交付该结果", 403
-                )
+                raise HistoryError("AUTHORIZATION_DENIED", "当前身份不可交付该结果")
             self.authorize(current_auth, request_id)
             self.runtime.check()
             if isinstance(result, QueryFailure):
@@ -442,9 +426,7 @@ class HistoryApplication:
                     source_question=question,
                 )
             else:
-                raise HistoryError(
-                    "HISTORY_SNAPSHOT_UNAVAILABLE", "查询结果不可保存", 422
-                )
+                raise HistoryError("HISTORY_SNAPSHOT_UNAVAILABLE", "查询结果不可保存")
             finishing = True
             if execution_control is not None:
                 execution_control.checkpoint()
@@ -461,7 +443,6 @@ class HistoryApplication:
                 raise HistoryError(
                     "HISTORY_SAVE_UNCONFIRMED",
                     "结果未确认，请刷新历史",
-                    503,
                     history_id=history_id,
                     turn_id=token.turn_id,
                 ) from None
@@ -485,7 +466,6 @@ class HistoryApplication:
                     raise HistoryError(
                         "HISTORY_SAVE_UNCONFIRMED",
                         "结果未确认，请刷新历史",
-                        503,
                         history_id=history_id,
                         turn_id=token.turn_id,
                     ) from None
@@ -493,7 +473,6 @@ class HistoryApplication:
                 raise HistoryError(
                     "HISTORY_SAVE_UNCONFIRMED",
                     "结果未确认，请刷新历史",
-                    503,
                     history_id=history_id,
                     turn_id=token.turn_id,
                 ) from None
@@ -502,7 +481,6 @@ class HistoryApplication:
             raise HistoryError(
                 "HISTORY_SAVE_UNCONFIRMED",
                 "结果未确认，请刷新历史；本请求不会自动重试",
-                503,
                 history_id=history_id,
                 turn_id=token.turn_id,
             ) from None

@@ -103,6 +103,12 @@
 
 不增加重启自动续跑。旧执行迟到结果不能覆盖新状态、已删除历史或别的账号。旧分析 checkpoint 已完成但网页未确认保存的情形按 历史与成果 协调规则处理，不把模型 / checkpoint 完成等同于网页成功。
 
+### HTTP 错误响应
+
+执行受理错误沿用 `request_id`、`error_code`、`error_message` 和适用的 `history_id` / `turn_id` / `execution_id`。`EXECUTION_UNAVAILABLE` 在执行记录不存在或对当前账号不可见时返回404；执行 Runtime 关闭或已受理后 worker 调度失败时返回503。两种情形使用同一错误码，由服务端内部失败分类供 HTTP Adapter 映射，不增加响应或持久化字段。
+
+`EXECUTION_BUSY`、`HISTORY_STALE`、`HISTORY_OPERATION_CONFLICT` 返回409；`EXECUTION_LIMIT_REACHED`、`EXECUTION_SUBSCRIBER_LIMIT` 返回429；非法请求返回400；身份与权限错误沿用401 /403；未能验证或存储结果不确定返回503。已受理执行的业务终态通过状态读取返回200及受控终态错误。
+
 ### 身份与权限失效
 
 - 新接口检查当前身份、历史 / 执行归属及当前权限；Cookie 写操作保留 CSRF。执行编号、操作编号不是授权凭证。

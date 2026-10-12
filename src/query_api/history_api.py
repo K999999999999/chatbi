@@ -16,8 +16,40 @@ from src.authorization.contracts import (
 )
 
 from .history_codec import public_snapshot
-from .history_contracts import HistoryError, storage_unavailable
+from .history_contracts import HistoryError, HistoryFailureKind, storage_unavailable
 from .query_response import HTTP_STATUS_BY_ERROR
+
+
+_HISTORY_ERROR_HTTP_STATUS_BY_KIND = {
+    (
+        "EXECUTION_UNAVAILABLE",
+        HistoryFailureKind.EXECUTION_RUNTIME_UNAVAILABLE,
+    ): 503,
+    (
+        "HISTORY_RESULT_NOT_SAVABLE",
+        HistoryFailureKind.ANALYSIS_ALREADY_COMPLETED,
+    ): 409,
+}
+_HISTORY_ERROR_HTTP_STATUS_BY_CODE = {
+    "EXECUTION_UNAVAILABLE": 404,
+    "EXECUTION_SUBSCRIBER_LIMIT": 429,
+}
+
+
+def _history_error_http_status(error: HistoryError) -> int:
+    if error.failure_kind is not None:
+        return _HISTORY_ERROR_HTTP_STATUS_BY_KIND.get(
+            (error.code, error.failure_kind), 500
+        )
+    if error.code in _HISTORY_ERROR_HTTP_STATUS_BY_CODE:
+        return _HISTORY_ERROR_HTTP_STATUS_BY_CODE[error.code]
+    return HTTP_STATUS_BY_ERROR.get(error.code, 500)
+
+
+def _public_error_http_status(error_code: str) -> int:
+    if error_code in _HISTORY_ERROR_HTTP_STATUS_BY_CODE:
+        return _HISTORY_ERROR_HTTP_STATUS_BY_CODE[error_code]
+    return HTTP_STATUS_BY_ERROR.get(error_code, 500)
 
 
 class CreateHistoryBody(BaseModel):
@@ -102,15 +134,11 @@ def _identity(request):
             raise IdentityProviderUnavailable("身份响应非法")
         return auth
     except AuthenticationRequired:
-        raise HistoryError("AUTHENTICATION_REQUIRED", "需要有效身份认证", 401) from None
+        raise HistoryError("AUTHENTICATION_REQUIRED", "需要有效身份认证") from None
     except IdentityProviderUnavailable:
-        raise HistoryError(
-            "AUTHENTICATION_UNAVAILABLE", "身份认证暂时不可用", 503
-        ) from None
+        raise HistoryError("AUTHENTICATION_UNAVAILABLE", "身份认证暂时不可用") from None
     except Exception:  # noqa: BLE001 - 未知身份故障必须Fail Closed
-        raise HistoryError(
-            "AUTHENTICATION_UNAVAILABLE", "身份认证暂时不可用", 503
-        ) from None
+        raise HistoryError("AUTHENTICATION_UNAVAILABLE", "身份认证暂时不可用") from None
 
 
 def _application(request):
@@ -152,7 +180,7 @@ def mount_history_api(app):
     @app.exception_handler(HistoryError)
     async def history_error(request: Request, exc: HistoryError):
         return JSONResponse(
-            status_code=exc.status,
+            status_code=_history_error_http_status(exc),
             content={
                 "request_id": _request_id(request),
                 "error_code": exc.code,
@@ -193,7 +221,7 @@ def mount_history_api(app):
                 "q",
             }
         ):
-            raise HistoryError("INVALID_REQUEST", "分页参数非法", 400)
+            raise HistoryError("INVALID_REQUEST", "分页参数非法")
         application, auth = _application(request), _identity(request)
         application.authorize(auth, _request_id(request))
         headers, next_cursor = application.store.list_histories(
@@ -237,7 +265,7 @@ def mount_history_api(app):
             or cursor < 0
             or set(request.query_params) - {"limit", "cursor"}
         ):
-            raise HistoryError("INVALID_REQUEST", "分页参数非法", 400)
+            raise HistoryError("INVALID_REQUEST", "分页参数非法")
         application, auth = _application(request), _identity(request)
         application.authorize(auth, _request_id(request))
         items, next_cursor = application.store.turns(
@@ -269,8 +297,8 @@ def mount_history_api(app):
         )
         if result.public_error is not None:
             return JSONResponse(
-                status_code=HTTP_STATUS_BY_ERROR.get(
-                    result.public_error["error_code"], 422
+                status_code=_public_error_http_status(
+                    result.public_error["error_code"]
                 ),
                 content={
                     **result.public_error,
@@ -299,8 +327,8 @@ def mount_history_api(app):
         )
         if result.public_error is not None:
             return JSONResponse(
-                status_code=HTTP_STATUS_BY_ERROR.get(
-                    result.public_error["error_code"], 422
+                status_code=_public_error_http_status(
+                    result.public_error["error_code"]
                 ),
                 content={
                     **result.public_error,
@@ -326,8 +354,8 @@ def mount_history_api(app):
         )
         if result.public_error is not None:
             return JSONResponse(
-                status_code=HTTP_STATUS_BY_ERROR.get(
-                    result.public_error["error_code"], 422
+                status_code=_public_error_http_status(
+                    result.public_error["error_code"]
                 ),
                 content={
                     **result.public_error,
@@ -372,7 +400,7 @@ def mount_history_api(app):
             or len(q.strip()) > 200
             or set(request.query_params) - {"kind", "q", "limit", "cursor"}
         ):
-            raise HistoryError("INVALID_REQUEST", "分页参数非法", 400)
+            raise HistoryError("INVALID_REQUEST", "分页参数非法")
         application, auth = authorized(request)
         items, next_cursor = application.store.list_saved_results(
             auth.user_id, kind, limit, cursor, q.strip()
@@ -427,9 +455,7 @@ def mount_history_api(app):
         )
         if turn.public_error:
             return JSONResponse(
-                status_code=HTTP_STATUS_BY_ERROR.get(
-                    turn.public_error["error_code"], 422
-                ),
+                status_code=_public_error_http_status(turn.public_error["error_code"]),
                 content={
                     **turn.public_error,
                     "history_id": header.id,

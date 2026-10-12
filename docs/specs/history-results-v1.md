@@ -92,6 +92,14 @@
 
 程序须保证快照与网页续聊提交一致；不能页面显示成功、刷新后缺失结果，或保存失败后下一轮仍继承未提交上下文。销售业务查询仍只读；不会为恢复历史重放已执行请求。独立分析 checkpoint 可能已推进，不因此把网页历史保存失败认作成功；再次恢复必须由用户显式触发并遵守既有归属 / 期限规则。
 
+### 错误响应与状态
+
+历史 API 的公开错误使用现有 `request_id`、`error_code`、`error_message` 及适用的历史 / 轮次标识，不暴露内部失败分类。已持久化的失败轮次只保存公开错误码和消息，HTTP status 按错误码映射；`CONTEXT_ERROR` 返回503，包括历史恢复期间发生的上下文依赖故障。
+
+`HISTORY_BUSY`、`HISTORY_STALE`、`HISTORY_OPERATION_CONFLICT` 返回409；`HISTORY_UNAVAILABLE` 返回404；`HISTORY_CONTEXT_INCOMPATIBLE`、`HISTORY_SNAPSHOT_UNAVAILABLE` 返回422；`HISTORY_SNAPSHOT_TOO_LARGE` 返回413；`HISTORY_STORAGE_UNAVAILABLE`、`HISTORY_SAVE_UNCONFIRMED` 返回503。输入错误返回400；身份与权限错误沿用401 /403。
+
+`HISTORY_RESULT_NOT_SAVABLE` 在来源结果不符合保存条件时返回422；对已成功的分析再次请求恢复属于受理冲突，返回409。两种情形沿用同一错误码，由服务端内部分类供 HTTP Adapter 区分，不增加响应字段或持久化字段。
+
 ### 并发、断连、重启与迟到结果
 
 - 同一问数对话 / 同一独立分析任务同时只受理一个执行请求；其他页面提示正在执行，不排队、不自动重试，不进入下游执行。

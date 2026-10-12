@@ -118,7 +118,7 @@ def test_success_failure_and_duplicate_are_durable(history_env):
     assert store.turn(owner, header.id, success.id).snapshot == snapshot
     with pytest.raises(HistoryError) as cross_owner:
         store.header(owner + 100000, header.id)
-    assert cross_owner.value.status == 404
+    assert cross_owner.value.code == "HISTORY_UNAVAILABLE"
 
 
 def test_restart_fences_old_token_and_retains_success(history_env):
@@ -282,7 +282,7 @@ def test_saved_copy_survives_source_deletion_and_stale_delete_is_rejected(histor
     store.delete_history(owner, header.id, current.record_revision, "local:test")
     with pytest.raises(HistoryError) as missing:
         store.turn(owner, header.id, turn.id)
-    assert missing.value.status == 404
+    assert missing.value.code == "HISTORY_UNAVAILABLE"
     assert store.saved_result(owner, saved.id)[1] == snapshot
     renamed = store.rename_saved_result(
         owner, saved.id, "新名称", saved.record_revision
@@ -356,7 +356,7 @@ def test_saved_deletion_does_not_change_source_or_other_owner_visibility(history
     saved = store.copy_result(owner, header.id, turn.id, "成果")
     with pytest.raises(HistoryError) as cross:
         store.saved_result(owner + 100000, saved.id)
-    assert cross.value.status == 404
+    assert cross.value.code == "HISTORY_UNAVAILABLE"
     store.delete_saved_result(owner, saved.id, saved.record_revision)
     assert store.turn(owner, header.id, turn.id).snapshot == snapshot
     assert store.header(owner, header.id).context_revision == 1
@@ -374,7 +374,7 @@ def test_literal_search_keyset_and_lazy_turn_summary(history_env):
     assert tail[0].id == first.id and final is None
     with pytest.raises(HistoryError) as invalid:
         store.list_histories(owner, "analysis", 1, cursor)
-    assert invalid.value.status == 400
+    assert invalid.value.code == "INVALID_REQUEST"
     summaries, _ = store.turns(owner, first.id, 20, 0)
     assert summaries[0].status == "succeeded" and summaries[0].snapshot is None
 

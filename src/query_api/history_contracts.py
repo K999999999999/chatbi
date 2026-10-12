@@ -3,43 +3,52 @@
 import json
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from hashlib import sha256
 from typing import Protocol
 
 
+class HistoryFailureKind(str, Enum):
+    """区分相同错误码对应的不同业务失败语义。"""
+
+    EXECUTION_RUNTIME_UNAVAILABLE = "EXECUTION_RUNTIME_UNAVAILABLE"
+    ANALYSIS_ALREADY_COMPLETED = "ANALYSIS_ALREADY_COMPLETED"
+
+
 class HistoryError(RuntimeError):
-    """可公开的历史操作错误。"""
+    """与传输协议无关的历史操作错误。"""
 
     def __init__(
         self,
         code: str,
         message: str,
-        status: int,
         *,
+        failure_kind: HistoryFailureKind | None = None,
         history_id=None,
         turn_id=None,
         execution_id=None,
     ):
         super().__init__(message)
-        self.code, self.message, self.status = code, message, status
+        self.code, self.message = code, message
+        self.failure_kind = failure_kind
         self.history_id, self.turn_id = history_id, turn_id
         self.execution_id = execution_id
 
 
 def unavailable() -> HistoryError:
-    return HistoryError("HISTORY_UNAVAILABLE", "记录不可用", 404)
+    return HistoryError("HISTORY_UNAVAILABLE", "记录不可用")
 
 
 def busy() -> HistoryError:
-    return HistoryError("HISTORY_BUSY", "当前记录正在执行，请稍后刷新", 409)
+    return HistoryError("HISTORY_BUSY", "当前记录正在执行，请稍后刷新")
 
 
 def stale() -> HistoryError:
-    return HistoryError("HISTORY_STALE", "记录已更新，请刷新后再操作", 409)
+    return HistoryError("HISTORY_STALE", "记录已更新，请刷新后再操作")
 
 
 def storage_unavailable() -> HistoryError:
-    return HistoryError("HISTORY_STORAGE_UNAVAILABLE", "历史存储暂时不可用", 503)
+    return HistoryError("HISTORY_STORAGE_UNAVAILABLE", "历史存储暂时不可用")
 
 
 def operation_hash(value) -> str:

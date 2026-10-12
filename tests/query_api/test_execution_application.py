@@ -7,13 +7,15 @@ from time import monotonic
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
+
 from src.authorization.contracts import AuthContext
 from src.observability.contracts import ErrorType, QuerySource, TraceOutcome
 from src.observability.tracing import create_in_memory_recorder
 from src.query_api.execution import ExecutionApplication, _trace_result_classification
 from src.query_api.execution_contracts import ExecutionRecord
 from src.query_api.execution_runtime import ExecutionRuntime
-from src.query_api.history_contracts import HistoryError
+from src.query_api.history_contracts import HistoryError, HistoryFailureKind
 
 
 def test_background_trace_classifies_business_failure_timeout_and_technical_error():
@@ -58,7 +60,7 @@ class HistoryRuntime:
 
     def reserve(self, history_id):
         if history_id in self.running:
-            raise HistoryError("HISTORY_BUSY", "busy", 409)
+            raise HistoryError("HISTORY_BUSY", "busy")
         self.running.add(history_id)
         return HistoryLease(self, history_id)
 
@@ -140,6 +142,52 @@ class Store:
                 )
                 return
         raise AssertionError("execution should have been accepted")
+
+
+def test_completed_analysis_resume_has_distinct_transport_neutral_failure_kind():
+    history_id = str(uuid4())
+    allow_lookup = Event()
+    allow_lookup.set()
+
+    class CompletedAnalysisStore(Store):
+        def header(self, owner, requested_history_id):
+            del owner
+            assert requested_history_id == history_id
+            return SimpleNamespace(
+                id=history_id,
+                kind="analysis",
+                analysis_run_id=str(uuid4()),
+                first_question="销售额",
+                last_success_turn_id=str(uuid4()),
+                analysis_recovery_available=True,
+            )
+
+    store = CompletedAnalysisStore(history_id, Event(), allow_lookup)
+    history_runtime = HistoryRuntime()
+    runtime = ExecutionRuntime(history_runtime, None)
+    application = ExecutionApplication(
+        HistoryApplication(store, history_runtime, Event(), Event()),
+        runtime,
+    )
+    auth = AuthContext("analyst", "test", user_id=42)
+    try:
+        with pytest.raises(HistoryError) as caught:
+            application.submit(
+                auth,
+                "request",
+                history_id,
+                str(uuid4()),
+                mode="analysis",
+                question=None,
+                expected_record_revision=0,
+                reauthenticate=lambda: auth,
+            )
+        assert caught.value.code == "HISTORY_RESULT_NOT_SAVABLE"
+        assert (
+            caught.value.failure_kind is HistoryFailureKind.ANALYSIS_ALREADY_COMPLETED
+        )
+    finally:
+        runtime.close()
 
 
 class HistoryApplication:
@@ -316,7 +364,9 @@ def test_dispatch_failure_persists_terminal_state_and_releases_lease():
                 reauthenticate=lambda: auth,
             )
         except HistoryError as error:
-            assert error.status == 503
+            assert (
+                error.failure_kind is HistoryFailureKind.EXECUTION_RUNTIME_UNAVAILABLE
+            )
             assert error.execution_id == store.execution_id
         else:
             raise AssertionError("dispatch refusal must be visible to the caller")
@@ -339,7 +389,7 @@ def test_acceptance_failure_releases_all_reserved_runtime_state():
     store = Store(history_id, Event(), allow_lookup)
 
     def fail_acceptance(**_values):
-        raise HistoryError("HISTORY_STORAGE_UNAVAILABLE", "offline", 503)
+        raise HistoryError("HISTORY_STORAGE_UNAVAILABLE", "offline")
 
     store.begin_execution_attempt = fail_acceptance
     history_runtime = HistoryRuntime()

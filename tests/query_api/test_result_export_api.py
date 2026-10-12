@@ -480,7 +480,7 @@ def test_source_deleted_before_delivery_discards_file_and_releases_quota():
         def export_snapshot(self, owner, source_kind, source_id, turn_id):
             self.export_calls += 1
             if self.export_calls == 2:
-                raise HistoryError("HISTORY_UNAVAILABLE", "unavailable", 404)
+                raise HistoryError("HISTORY_UNAVAILABLE", "unavailable")
             return super().export_snapshot(owner, source_kind, source_id, turn_id)
 
     store = DeletedStore()

@@ -92,15 +92,11 @@ def _readonly_identity(request):
             raise IdentityProviderUnavailable("身份响应非法")
         return auth
     except AuthenticationRequired:
-        raise HistoryError("AUTHENTICATION_REQUIRED", "需要有效身份认证", 401) from None
+        raise HistoryError("AUTHENTICATION_REQUIRED", "需要有效身份认证") from None
     except IdentityProviderUnavailable:
-        raise HistoryError(
-            "AUTHENTICATION_UNAVAILABLE", "身份认证暂时不可用", 503
-        ) from None
+        raise HistoryError("AUTHENTICATION_UNAVAILABLE", "身份认证暂时不可用") from None
     except Exception:  # noqa: BLE001 - identity validation fails closed
-        raise HistoryError(
-            "AUTHENTICATION_UNAVAILABLE", "身份认证暂时不可用", 503
-        ) from None
+        raise HistoryError("AUTHENTICATION_UNAVAILABLE", "身份认证暂时不可用") from None
 
 
 def _reauthenticator(request, initial_auth):
@@ -122,20 +118,20 @@ def _reauthenticator(request, initial_auth):
             )
         except AuthenticationRequired:
             raise HistoryError(
-                "AUTHENTICATION_REQUIRED", "登录已失效，请重新登录", 401
+                "AUTHENTICATION_REQUIRED", "登录已失效，请重新登录"
             ) from None
         except IdentityProviderUnavailable:
             raise HistoryError(
-                "AUTHENTICATION_UNAVAILABLE", "身份认证暂时不可用", 503
+                "AUTHENTICATION_UNAVAILABLE", "身份认证暂时不可用"
             ) from None
         except Exception:  # noqa: BLE001 - worker identity checks fail closed
             raise HistoryError(
-                "AUTHENTICATION_UNAVAILABLE", "身份认证暂时不可用", 503
+                "AUTHENTICATION_UNAVAILABLE", "身份认证暂时不可用"
             ) from None
         if not isinstance(current, AuthContext):
-            raise HistoryError("AUTHENTICATION_UNAVAILABLE", "身份认证暂时不可用", 503)
+            raise HistoryError("AUTHENTICATION_UNAVAILABLE", "身份认证暂时不可用")
         if (current.user_id, current.subject_id, current.identity_provider) != expected:
-            raise HistoryError("AUTHORIZATION_DENIED", "当前身份不可交付该结果", 403)
+            raise HistoryError("AUTHORIZATION_DENIED", "当前身份不可交付该结果")
         return current
 
     return reauthenticate

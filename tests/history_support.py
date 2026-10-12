@@ -176,7 +176,7 @@ class BrowserHistoryStore:
             )
         else:
             if expected_record_revision is None:
-                raise HistoryError("INVALID_REQUEST", "分析恢复版本缺失", 400)
+                raise HistoryError("INVALID_REQUEST", "分析恢复版本缺失")
             attempt = self.begin_analysis_attempt(
                 owner,
                 history_id,
@@ -297,9 +297,7 @@ class BrowserHistoryStore:
             request_hash is not None
             and self.operation_hashes[(owner, operation_id)] != request_hash
         ):
-            raise HistoryError(
-                "HISTORY_OPERATION_CONFLICT", "操作编号与原请求不匹配", 409
-            )
+            raise HistoryError("HISTORY_OPERATION_CONFLICT", "操作编号与原请求不匹配")
         return self.execution(owner, execution_id)
 
     def mark_execution_running(self, owner, execution_id):
@@ -431,7 +429,7 @@ class BrowserHistoryStore:
     def copy_result(self, owner, id, turn_id, title):
         t, h = self.turn(owner, id, turn_id), self.header(owner, id)
         if t.status != "succeeded":
-            raise HistoryError("HISTORY_RESULT_NOT_SAVABLE", "仅成功结果可另存", 422)
+            raise HistoryError("HISTORY_RESULT_NOT_SAVABLE", "仅成功结果可另存")
         now = datetime.now(UTC)
         result = SavedResultHeader(
             str(uuid4()), h.kind, title, 0, now, now, id, turn_id

@@ -148,9 +148,7 @@ class PostgresHistoryStore:
                 or history["execution_generation"] != execution["execution_generation"]
                 or str(current_epoch) != str(execution["runtime_epoch"])
             ):
-                raise HistoryError(
-                    "HISTORY_SAVE_UNCONFIRMED", "执行已改变，请刷新历史", 503
-                )
+                raise HistoryError("HISTORY_SAVE_UNCONFIRMED", "执行已改变，请刷新历史")
             if (
                 reason is ExecutionStopReason.USER_CANCELLED
                 and execution["mode"] == "analysis"
@@ -169,7 +167,7 @@ class PostgresHistoryStore:
     ):
         run_id = history["analysis_run_id"]
         if run_id is None or not analysis_owner_subject:
-            raise HistoryError("HISTORY_SAVE_UNCONFIRMED", "分析任务身份不可确认", 503)
+            raise HistoryError("HISTORY_SAVE_UNCONFIRMED", "分析任务身份不可确认")
         question_hash = sha256(
             history["first_question"].strip().encode("utf-8")
         ).hexdigest()
@@ -199,7 +197,7 @@ class PostgresHistoryStore:
             row["owner_subject"] != analysis_owner_subject
             or row["question_sha256"] != question_hash
         ):
-            raise HistoryError("HISTORY_SAVE_UNCONFIRMED", "分析任务归属不可确认", 503)
+            raise HistoryError("HISTORY_SAVE_UNCONFIRMED", "分析任务归属不可确认")
         connection.execute(
             text("""UPDATE business_analysis_runs SET status='expired',
                 updated_at=CURRENT_TIMESTAMP WHERE analysis_run_id=:run"""),
@@ -219,7 +217,7 @@ class PostgresHistoryStore:
                 or str(epoch) != token.epoch
             ):
                 raise HistoryError(
-                    "HISTORY_SAVE_UNCONFIRMED", "停止结果未确认，请刷新历史", 503
+                    "HISTORY_SAVE_UNCONFIRMED", "停止结果未确认，请刷新历史"
                 )
             execution = self.executions.locked_in_transaction(
                 connection, owner, execution_id
@@ -231,7 +229,7 @@ class PostgresHistoryStore:
                 or execution["status"] != "stopping"
             ):
                 raise HistoryError(
-                    "HISTORY_SAVE_UNCONFIRMED", "停止状态已改变，请刷新历史", 503
+                    "HISTORY_SAVE_UNCONFIRMED", "停止状态已改变，请刷新历史"
                 )
             row = (
                 connection.execute(
@@ -254,7 +252,7 @@ class PostgresHistoryStore:
             )
             if row is None:
                 raise HistoryError(
-                    "HISTORY_SAVE_UNCONFIRMED", "停止轮次已改变，请刷新历史", 503
+                    "HISTORY_SAVE_UNCONFIRMED", "停止轮次已改变，请刷新历史"
                 )
             cleared = connection.execute(
                 text("""UPDATE history_records SET active_turn_id=NULL,
@@ -269,7 +267,7 @@ class PostgresHistoryStore:
             )
             if cleared.rowcount != 1:
                 raise HistoryError(
-                    "HISTORY_SAVE_UNCONFIRMED", "停止轮次未能释放，请刷新历史", 503
+                    "HISTORY_SAVE_UNCONFIRMED", "停止轮次未能释放，请刷新历史"
                 )
             self.executions.finish_stop_in_transaction(
                 connection, owner, execution_id, status, error
@@ -305,10 +303,10 @@ class PostgresHistoryStore:
 
             header = _owned(connection, owner, history_id, lock=True)
             if header["kind"] != mode:
-                raise HistoryError("INVALID_REQUEST", "执行模式与历史类型不匹配", 400)
+                raise HistoryError("INVALID_REQUEST", "执行模式与历史类型不匹配")
             if mode == "analysis":
                 if expected_record_revision is None:
-                    raise HistoryError("INVALID_REQUEST", "分析恢复版本缺失", 400)
+                    raise HistoryError("INVALID_REQUEST", "分析恢复版本缺失")
                 if header["record_revision"] != expected_record_revision:
                     raise stale()
                 digest = operation_hash(
@@ -327,7 +325,7 @@ class PostgresHistoryStore:
                 )
             else:
                 if revision is None:
-                    raise HistoryError("INVALID_REQUEST", "查询版本缺失", 400)
+                    raise HistoryError("INVALID_REQUEST", "查询版本缺失")
                 accepted = self._begin(
                     connection,
                     owner,
@@ -343,7 +341,7 @@ class PostgresHistoryStore:
                 )
             if accepted.token is None:
                 raise HistoryError(
-                    "HISTORY_OPERATION_CONFLICT", "操作编号已用于其他执行", 409
+                    "HISTORY_OPERATION_CONFLICT", "操作编号已用于其他执行"
                 )
             execution = self.executions.insert_in_transaction(
                 connection,
@@ -428,11 +426,11 @@ class PostgresHistoryStore:
             if existing is not None:
                 if execution_data is not None:
                     raise HistoryError(
-                        "HISTORY_OPERATION_CONFLICT", "操作编号已用于其他执行", 409
+                        "HISTORY_OPERATION_CONFLICT", "操作编号已用于其他执行"
                     )
                 if existing["creation_operation_hash"] != digest:
                     raise HistoryError(
-                        "HISTORY_OPERATION_CONFLICT", "操作标识与原请求不符", 409
+                        "HISTORY_OPERATION_CONFLICT", "操作标识与原请求不符"
                     )
                 if existing["deleted_at"] is not None:
                     raise unavailable()
@@ -450,7 +448,7 @@ class PostgresHistoryStore:
                     raise busy()
                 if turn["status"] == "unconfirmed":
                     raise HistoryError(
-                        "HISTORY_SAVE_UNCONFIRMED", "结果未确认，请刷新历史", 503
+                        "HISTORY_SAVE_UNCONFIRMED", "结果未确认，请刷新历史"
                     )
                 return _header(existing), AcceptedAttempt(None, _turn(turn), None)
             history_title = None
@@ -475,7 +473,6 @@ class PostgresHistoryStore:
                         raise HistoryError(
                             "HISTORY_RESULT_NOT_SAVABLE",
                             "问数来源必须是已保存的成功结果",
-                            422,
                         )
                     snapshot, question = row["snapshot"], row["question"]
             else:
@@ -534,7 +531,7 @@ class PostgresHistoryStore:
                 ).scalar_one()
                 if existing_hash != digest:
                     raise HistoryError(
-                        "HISTORY_OPERATION_CONFLICT", "操作标识与原请求不符", 409
+                        "HISTORY_OPERATION_CONFLICT", "操作标识与原请求不符"
                     )
                 raise busy()
             accepted = self._begin(
@@ -650,9 +647,7 @@ class PostgresHistoryStore:
             if row["deleted_at"] is not None:
                 raise unavailable()
             if row["creation_operation_hash"] != digest:
-                raise HistoryError(
-                    "HISTORY_OPERATION_CONFLICT", "操作标识与原请求不符", 409
-                )
+                raise HistoryError("HISTORY_OPERATION_CONFLICT", "操作标识与原请求不符")
             return _header(row)
 
     @_database_errors
@@ -772,15 +767,11 @@ class PostgresHistoryStore:
         )
         if previous is not None:
             if previous["operation_hash"] != digest:
-                raise HistoryError(
-                    "HISTORY_OPERATION_CONFLICT", "操作标识与原请求不符", 409
-                )
+                raise HistoryError("HISTORY_OPERATION_CONFLICT", "操作标识与原请求不符")
             if previous["status"] == "accepted":
                 raise busy()
             if previous["status"] == "unconfirmed":
-                raise HistoryError(
-                    "HISTORY_SAVE_UNCONFIRMED", "结果未确认，请刷新历史", 503
-                )
+                raise HistoryError("HISTORY_SAVE_UNCONFIRMED", "结果未确认，请刷新历史")
             return AcceptedAttempt(None, _turn(previous), None)
         if header["active_turn_id"] is not None:
             raise busy()
@@ -866,7 +857,7 @@ class PostgresHistoryStore:
                 "running",
             }:
                 raise HistoryError(
-                    "HISTORY_SAVE_UNCONFIRMED", "执行状态已改变，请刷新历史", 503
+                    "HISTORY_SAVE_UNCONFIRMED", "执行状态已改变，请刷新历史"
                 )
             epoch = connection.execute(
                 text("SELECT runtime_epoch FROM history_runtime WHERE singleton")
@@ -876,9 +867,7 @@ class PostgresHistoryStore:
                 or header["execution_generation"] != token.generation
                 or str(epoch) != token.epoch
             ):
-                raise HistoryError(
-                    "HISTORY_SAVE_UNCONFIRMED", "结果未确认，请刷新历史", 503
-                )
+                raise HistoryError("HISTORY_SAVE_UNCONFIRMED", "结果未确认，请刷新历史")
             status = "succeeded" if snapshot is not None else "failed"
             row = (
                 connection.execute(
@@ -908,9 +897,7 @@ class PostgresHistoryStore:
                 .first()
             )
             if row is None:
-                raise HistoryError(
-                    "HISTORY_SAVE_UNCONFIRMED", "结果未确认，请刷新历史", 503
-                )
+                raise HistoryError("HISTORY_SAVE_UNCONFIRMED", "结果未确认，请刷新历史")
             connection.execute(
                 text("""
                 UPDATE history_records SET active_turn_id=NULL,record_revision=record_revision+1,
@@ -1008,7 +995,7 @@ class PostgresHistoryStore:
                 params.update(boundary=boundary, boundary_id=str(UUID(value["id"])))
             except (ValueError, TypeError, KeyError, AttributeError, Base64Error):
                 raise HistoryError(
-                    "INVALID_REQUEST", "分页游标非法，请重新加载列表", 400
+                    "INVALID_REQUEST", "分页游标非法，请重新加载列表"
                 ) from None
             clauses.append("(updated_at,id)<(:boundary,:boundary_id)")
         fields = (
@@ -1110,7 +1097,7 @@ class PostgresHistoryStore:
             ).scalar_one_or_none()
             if snapshot is None:
                 raise HistoryError(
-                    "HISTORY_RESULT_NOT_SAVABLE", "仅已保存的成功结果可另存", 422
+                    "HISTORY_RESULT_NOT_SAVABLE", "仅已保存的成功结果可另存"
                 )
             from src.query_api.history_codec import public_snapshot
 

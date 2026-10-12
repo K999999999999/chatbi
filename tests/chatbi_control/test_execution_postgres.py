@@ -147,7 +147,7 @@ def test_execution_acceptance_and_success_commit_share_history_turn(execution_en
     assert conflict.value.code == "HISTORY_OPERATION_CONFLICT"
     with pytest.raises(HistoryError) as cross_owner:
         store.execution(owner + 100000, finished.id)
-    assert cross_owner.value.status == 404
+    assert cross_owner.value.code == "HISTORY_UNAVAILABLE"
 
     saved = store.copy_result(owner, history.id, turn.id, "独立成果")
     with engine.begin() as connection:
@@ -166,7 +166,7 @@ def test_execution_acceptance_and_success_commit_share_history_turn(execution_en
         )
     with pytest.raises(HistoryError) as deleted_execution:
         store.execution(owner, finished.id)
-    assert deleted_execution.value.status == 404
+    assert deleted_execution.value.code == "HISTORY_UNAVAILABLE"
     assert (
         store.saved_result(owner, saved.id)[1]["query_state"] == snapshot["query_state"]
     )

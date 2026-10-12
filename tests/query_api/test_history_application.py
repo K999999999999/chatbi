@@ -23,6 +23,14 @@ HEADER = HistoryHeader("h", "query", "q", "q", NOW, NOW, 0, 0, None, None, None)
 TURN = HistoryTurn("t", "h", 1, "q", "accepted", "r", NOW, None, None)
 
 
+def test_history_error_contract_has_no_http_status():
+    error = HistoryError("HISTORY_BUSY", "正在执行")
+
+    assert error.code == "HISTORY_BUSY"
+    assert error.failure_kind is None
+    assert not hasattr(error, "status")
+
+
 class Runtime:
     epoch = "epoch"
 
@@ -78,7 +86,7 @@ class QueryEntry:
 def test_begin_storage_failure_never_executes_business_query():
     entry = QueryEntry()
     store = ScriptedStore(
-        begin_error=HistoryError("HISTORY_STORAGE_UNAVAILABLE", "不可用", 503)
+        begin_error=HistoryError("HISTORY_STORAGE_UNAVAILABLE", "不可用")
     )
     app = HistoryApplication(store, Runtime(), entry)
     with pytest.raises(HistoryError):
@@ -102,7 +110,7 @@ def test_successful_query_snapshot_keeps_the_exact_turn_question_for_requery():
 def test_finish_commit_unknown_never_reexecutes_or_retries_commit():
     entry = QueryEntry()
     store = ScriptedStore(
-        finish_error=HistoryError("HISTORY_SAVE_UNCONFIRMED", "未确认", 503)
+        finish_error=HistoryError("HISTORY_SAVE_UNCONFIRMED", "未确认")
     )
     app = HistoryApplication(store, Runtime(), entry)
     with pytest.raises(HistoryError):
@@ -113,7 +121,7 @@ def test_finish_commit_unknown_never_reexecutes_or_retries_commit():
 
 def test_finish_busy_never_retries_as_a_failed_business_result():
     entry = QueryEntry()
-    store = ScriptedStore(finish_error=HistoryError("HISTORY_BUSY", "仍在执行", 409))
+    store = ScriptedStore(finish_error=HistoryError("HISTORY_BUSY", "仍在执行"))
     app = HistoryApplication(store, Runtime(), entry)
 
     with pytest.raises(HistoryError) as failure:
