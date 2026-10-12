@@ -14,7 +14,7 @@ R1 / R2 已交付电脑端问数、独立经营分析、可信结果说明和图
 
 本目标为产品 V1 已确认路线中的 R3。R4 的执行状态、取消、恢复与流式观察由 [R4 Spec](../../../docs/specs/execution-streaming-v1.md) 独立定义；R3 的快照读取、续聊和成果生命周期 Contract 仍适用。R5 导出、R6 / R7 生产运行验收也独立推进。
 
-事实源：[路线图](../../../docs/roadmap.md)、[产品范围](../../../docs/product-scope.md)、[架构](../../../docs/architecture.md)、[领域上下文](../../../CONTEXT.md)、[Web Spec](../../../docs/specs/web-dialogue-v1.md)、[Query API](../../../docs/specs/query-api.md)、[R2 Spec](../../../docs/specs/result-visualization-v1.md)、[多轮原 Contract](../../multi-turn-conversation-v1/spec.md)、[分析原 Contract](../../business-analysis-root-cause-v1/spec.md)、[Evaluation Contract](../../../docs/specs/evaluation.md)。历史阶段约束不反向否定本轮确认的网页历史恢复行为；本 Spec 整体确认后明确其与旧短期接口的适用边界。
+事实源：[路线图](../../../docs/roadmap.md)、[产品范围](../../../docs/product-scope.md)、[架构](../../../docs/architecture.md)、[历史领域上下文快照](../../context-file-removal/history/domain-context-snapshot.md)、[Web Spec](../../../docs/specs/web-dialogue-v1.md)、[Query API](../../../docs/specs/query-api.md)、[R2 Spec](../../../docs/specs/result-visualization-v1.md)、[多轮原 Contract](../../multi-turn-conversation-v1/spec.md)、[分析原 Contract](../../business-analysis-root-cause-v1/spec.md)、[Evaluation Contract](../../../docs/specs/evaluation.md)。历史阶段约束不反向否定本轮确认的网页历史恢复行为；本 Spec 整体确认后明确其与旧短期接口的适用边界。
 
 ## Implementation Decisions / Decision Record
 

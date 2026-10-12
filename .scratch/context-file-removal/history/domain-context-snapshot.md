@@ -1,3 +1,7 @@
+# Historical Snapshot: Root `CONTEXT.md`
+
+> Archived on 2026-10-12 when the root `CONTEXT.md` was removed. This is retained only to preserve historical source references. It is not current guidance. In particular, the statement below that service-restart history recovery is not guaranteed was superseded by the current History Results Contract.
+
 # ChatBI Domain Context
 
 本文档只记录本次已确认的领域术语、业务含义和边界，不替代 Feature Spec、Module Spec 或实现设计。
