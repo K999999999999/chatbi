@@ -122,7 +122,7 @@
 
 ## 验收标准
 
-以下是已确认的验收门槛。运行结果与候选身份以 [Acceptance](../acceptance/history-results-v1.md) 的入口及本机报告为准，不能从行为 Contract 推断已通过。
+以下是已确认的验收门槛。运行结果与候选身份以 [Acceptance](../../.scratch/history-results-v1/history/acceptance--history-results-v1.md) 的入口及本机报告为准，不能从行为 Contract 推断已通过。
 
 | 场景 | 可观察验收与证据 |
 | --- | --- |

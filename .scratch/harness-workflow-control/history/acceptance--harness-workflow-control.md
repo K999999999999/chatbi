@@ -1,7 +1,7 @@
 # Harness 工作流控制与交付闭环验收
 
 - Date: 2026-10-01
-- Spec: [`.scratch/harness-workflow-control/spec.md`](../../.scratch/harness-workflow-control/spec.md)
+- Spec: [`.scratch/harness-workflow-control/spec.md`](../spec.md)
 - Baseline: ChatBI `1fe3014dc7916b2c7bd8d348c31c381f32c30820`; Plugin `86731d4dcdfbcefea1efd33f5c4bfd33863ab10d`
 - Mode: 隔离 Git / worktree fixture、模拟 PR 状态、真实本机 Codex CLI 新 session 与规则核对；没有对当前目标创建真实 PR 或写入远端。
 
@@ -15,8 +15,8 @@
 
 可复现的本地 fixture：
 
-- [local-state-fixture.py](../../.scratch/harness-workflow-control/fixtures/local-state-fixture.py)：S03–S06、S19、S20。
-- [auto-merge-workflow-fixture.py](../../.scratch/harness-workflow-control/fixtures/auto-merge-workflow-fixture.py)：读取实际 workflow 的内嵌 Bash，以 mock `gh` 执行 S13 的十种状态。
+- [local-state-fixture.py](../fixtures/local-state-fixture.py)：S03–S06、S19、S20。
+- [auto-merge-workflow-fixture.py](../fixtures/auto-merge-workflow-fixture.py)：读取实际 workflow 的内嵌 Bash，以 mock `gh` 执行 S13 的十种状态。
 
 ## S01–S20 场景结果
 

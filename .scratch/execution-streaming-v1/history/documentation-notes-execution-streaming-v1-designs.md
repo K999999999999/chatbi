@@ -35,7 +35,7 @@ Canonical Contract: [R4 Spec](../../../docs/specs/execution-streaming-v1.md)；�
 
 ## 12. 证据与重审触发
 
-设计阶段读取了本机锁定 SDK 源码、API /browser /auth、history 受理 /finish /runtime、analysis graph /run_store /shared guard、bootstrap 生命周期、Control DB migration / verifier、frontend api /Chat 与现有测试入口。实施和验收结果按适用候选记录在 [R4 Acceptance](../../../docs/acceptance/execution-streaming-v1.md) 及 Git 公共目录的本机实时工作状态中；设计阶段调查不替代当前候选验证。
+设计阶段读取了本机锁定 SDK 源码、API /browser /auth、history 受理 /finish /runtime、analysis graph /run_store /shared guard、bootstrap 生命周期、Control DB migration / verifier、frontend api /Chat 与现有测试入口。实施和验收结果按适用候选记录在 [R4 Acceptance](acceptance--execution-streaming-v1.md) 及 Git 公共目录的本机实时工作状态中；设计阶段调查不替代当前候选验证。
 
 协议和API能力参考：[SSE 标准](https://html.spec.whatwg.org/multipage/server-sent-events.html)、[Fetch response streaming](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch#streaming_the_response_body)、[Psycopg cancel_safe](https://www.psycopg.org/psycopg3/docs/api/connections.html#psycopg.Connection.cancel_safe)、[PostgreSQL 行锁](https://www.postgresql.org/docs/16/explicit-locking.html)。实际Provider /libpq中断能力以验收为准。
 

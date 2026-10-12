@@ -1,6 +1,6 @@
 # R4 执行状态与流式反馈验收
 
-本文件是 R4 的正式验收入口，记录 Ticket 04 / 05 的历史证据与各阶段边界。R4 最终 clean 候选身份、三套正式 Evaluation、真实浏览器报告和门禁即时状态绑定本机候选，保存在 Git 公共目录 `work-items/execution-streaming-v1/status.md`；ignored 原始报告不随仓库发布。不得把此处历史候选重标为当前结果，也不得将本地验收解释为生产部署或远端发布。R4 行为 Contract 与设计分别见 [Spec](../specs/execution-streaming-v1.md) 和 [Design](../designs/execution-streaming-v1.md)。
+本文件是 R4 的正式验收入口，记录 Ticket 04 / 05 的历史证据与各阶段边界。R4 最终 clean 候选身份、三套正式 Evaluation、真实浏览器报告和门禁即时状态绑定本机候选，保存在 Git 公共目录 `work-items/execution-streaming-v1/status.md`；ignored 原始报告不随仓库发布。不得把此处历史候选重标为当前结果，也不得将本地验收解释为生产部署或远端发布。R4 行为 Contract 与设计分别见 [Spec](../../../docs/specs/execution-streaming-v1.md) 和 [Design](../../../docs/designs/execution-streaming-v1.md)。
 
 ## Ticket 04 状态与结果真实验收
 
@@ -71,6 +71,6 @@ Ticket 05 的实现与定向验证通过；真实模型增量证据来自 Ticket
 
 ## Ticket 06 最终候选验收入口
 
-Ticket 06 在全部实现、正式 Contract 与本文件维护提交后，于唯一 clean candidate 上执行适用门禁。确定性 Python 全量回归、隔离 development PostgreSQL、前端 `npm ci` / typecheck / build / Playwright、CI 锁文件 / Ruff / 模块边界 / 安全 / Markdown / Diff 检查按 [Runbook](../runbook.md) §8 和 CI 定义运行；真实 R4 浏览器、模型、RAG、业务 PostgreSQL 与独立参考使用 `scripts/verify_container_dev.sh isolated`。三套正式 single-turn / multi-turn / business-analysis Evaluation 与统一 report identity 检查、三次完整多轮诊断按 [Runbook §9.2](../runbook.md#92-正式三套基线与稳定性诊断) 执行。
+Ticket 06 在全部实现、正式 Contract 与本文件维护提交后，于唯一 clean candidate 上执行适用门禁。确定性 Python 全量回归、隔离 development PostgreSQL、前端 `npm ci` / typecheck / build / Playwright、CI 锁文件 / Ruff / 模块边界 / 安全 / Markdown / Diff 检查按 [Runbook](../../../docs/runbook.md) §8 和 CI 定义运行；真实 R4 浏览器、模型、RAG、业务 PostgreSQL 与独立参考使用 `scripts/verify_container_dev.sh isolated`。三套正式 single-turn / multi-turn / business-analysis Evaluation 与统一 report identity 检查、三次完整多轮诊断按 [Runbook §9.2](../../../docs/runbook.md#92-正式三套基线与稳定性诊断) 执行。
 
 这些报告必须指向同一个 clean commit，并满足案例全集、案例 Hash、RAG / 数据 / 模型身份及零 `FAIL` / 零 `INVALID_CASE`。精确命令退出状态、报告路径 / SHA256、实际模型与数据摘要、账号清理和未运行项由本机实时工作状态保存；本段提供可复现门槛，不预填本机结果。单机单进程验收不构成 R6 / R7 生产容量或部署验收。

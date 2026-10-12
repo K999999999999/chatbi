@@ -121,7 +121,7 @@ Owner为当前目标维护者；用户决定作为本Spec确认内容，不新�
 
 ## Testing Decisions / Acceptance
 
-验证需绑定最终clean代码candidate、实际base、适用范围及运行资源；文档回填可说明复用理由，不把历史成绩改称新候选成绩。以下为已确认验收要求；实际执行结果见[正式Acceptance](../../docs/acceptance/result-visualization-v1-20261004.md)。
+验证需绑定最终clean代码candidate、实际base、适用范围及运行资源；文档回填可说明复用理由，不把历史成绩改称新候选成绩。以下为已确认验收要求；实际执行结果见[正式Acceptance](history/acceptance--result-visualization-v1-20261004.md)。
 
 | 场景 | 可观察验收 |
 | --- | --- |

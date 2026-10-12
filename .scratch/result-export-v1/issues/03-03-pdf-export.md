@@ -18,7 +18,7 @@ Blocked by: 02-png-export
 
 ## Result
 
-Review PASS。PDF renderer 回归 2 passed；Query API 181 passed、2 skipped、14 subtests；完整 Compose 的 5 份 PDF 均为 6 页，可抽取“民”“长”且不含错误部首码位。Noto / WenQuanYi 包版本、许可、字体路径和 SHA-256 见 [最终验收](../../../docs/acceptance/result-export-v1.md)。
+Review PASS。PDF renderer 回归 2 passed；Query API 181 passed、2 skipped、14 subtests；完整 Compose 的 5 份 PDF 均为 6 页，可抽取“民”“长”且不含错误部首码位。Noto / WenQuanYi 包版本、许可、字体路径和 SHA-256 见 [最终验收](../history/acceptance--result-export-v1.md)。
 
 ## Comments
 

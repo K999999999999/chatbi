@@ -1,6 +1,6 @@
 # R7 本机稳定环境运行保障 Spec
 
-Status: Contract 已确认，实施与验收完成；PR #62 已合并。最终实现和 Stable 验收证据见 [Acceptance](../../../docs/acceptance/local-operations-v1.md)。本文定义行为 Contract，不代表公网生产部署。
+Status: Contract 已确认，实施与验收完成；PR #62 已合并。最终实现和 Stable 验收证据见 [Acceptance](acceptance--local-operations-v1.md)。本文定义行为 Contract，不代表公网生产部署。
 
 ## Problem Statement
 

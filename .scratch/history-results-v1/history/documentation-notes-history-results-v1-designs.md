@@ -6,7 +6,7 @@
 
 # R3 历史与成果实施设计
 
-Contract：[History Spec](../../../docs/specs/history-results-v1.md)。已确认设计的本地实现；验收见 [Acceptance](../../../docs/acceptance/history-results-v1.md)。
+Contract：[History Spec](../../../docs/specs/history-results-v1.md)。已确认设计的本地实现；验收见 [Acceptance](acceptance--history-results-v1.md)。
 
 ## 1. 方案与边界
 

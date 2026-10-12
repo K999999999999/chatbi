@@ -2,7 +2,7 @@
 
 ## 产品定位
 
-ChatBI 是面向业务数据分析的 Domain AI Engine（领域 AI 引擎）。当前处于 **MVP 向生产演进** 阶段：核心用户链路已经实现，当前工程重点是资源一致性、全新环境初始化、正确性证据和生产运行准备。R6 提供当前 Windows + WSL2 + Docker 电脑上的固定版本本地部署，范围见 [本地部署 Contract](../../../docs/specs/local-deployment-v1.md)，四项本地实施与适用运行验收已完成（runtime `2b4a8c8`）；R6 候选本身没有经过电脑重启验收，限制见 [R6 Acceptance](../../../docs/acceptance/local-deployment-v1.md)。后续 R7 已在 Active Stable 完成 Docker Desktop 和整台 Windows 电脑重启恢复核验，证据见 [R7 Acceptance](../../../docs/acceptance/local-operations-v1.md)。R6 交付见 [PR60](https://github.com/K999999999999/chatbi/pull/60)。仓库中的本地开发 Runbook 和历史 Acceptance 不构成公网生产部署证明。
+ChatBI 是面向业务数据分析的 Domain AI Engine（领域 AI 引擎）。当前处于 **MVP 向生产演进** 阶段：核心用户链路已经实现，当前工程重点是资源一致性、全新环境初始化、正确性证据和生产运行准备。R6 提供当前 Windows + WSL2 + Docker 电脑上的固定版本本地部署，范围见 [本地部署 Contract](../../../docs/specs/local-deployment-v1.md)，四项本地实施与适用运行验收已完成（runtime `2b4a8c8`）；R6 候选本身没有经过电脑重启验收，限制见 [R6 Acceptance](../../r6-local-deployment/history/acceptance--local-deployment-v1.md)。后续 R7 已在 Active Stable 完成 Docker Desktop 和整台 Windows 电脑重启恢复核验，证据见 [R7 Acceptance](../../local-operations-v1/history/acceptance--local-operations-v1.md)。R6 交付见 [PR60](https://github.com/K999999999999/chatbi/pull/60)。仓库中的本地开发 Runbook 和历史 Acceptance 不构成公网生产部署证明。
 
 ## 当前 MVP Contract
 
@@ -24,8 +24,8 @@ ChatBI 是面向业务数据分析的 Domain AI Engine（领域 AI 引擎）。�
 
 - 指定账号使用，无公众注册；浏览器 HttpOnly Cookie，同源网页 / API 与 CSRF 校验，线上要求 HTTPS；旧 Bearer / SQLAdmin 兼容。
 - 30 分钟无活动 / 8 小时绝对登录期限；无记住我与周期保活。查询权限账号共享同一套业务数据，无部门 / 区域行列隔离。
-- 网页已接入 R3 私人历史与独立成果；刷新按 URL 读取已保存快照，不执行查询；重新登录从新对话开始，可重开历史。问数恢复最后成功完整条件，分析按原问题 / run 和 24 小时 checkpoint 手动恢复。R4 通过可查询 execution 与 SSE 恢复真实进度；分析草稿明确标记为未校验，只有最终报告校验并保存成功后才展示正式结果。query / analysis 草稿与记录分开，断连不自动重发。当前候选验收状态见 [R3 Acceptance](../../../docs/acceptance/history-results-v1.md)、[R4 Acceptance](../../../docs/acceptance/execution-streaming-v1.md) 与本机实时工作状态。
-- 详细行为见 [Web Spec](../../../docs/specs/web-dialogue-v1.md)，实际候选证据见 [R1 Acceptance](../../../docs/acceptance/web-dialogue-v1-20261003.md)。
+- 网页已接入 R3 私人历史与独立成果；刷新按 URL 读取已保存快照，不执行查询；重新登录从新对话开始，可重开历史。问数恢复最后成功完整条件，分析按原问题 / run 和 24 小时 checkpoint 手动恢复。R4 通过可查询 execution 与 SSE 恢复真实进度；分析草稿明确标记为未校验，只有最终报告校验并保存成功后才展示正式结果。query / analysis 草稿与记录分开，断连不自动重发。当前候选验收状态见 [R3 Acceptance](../../history-results-v1/history/acceptance--history-results-v1.md)、[R4 Acceptance](../../execution-streaming-v1/history/acceptance--execution-streaming-v1.md) 与本机实时工作状态。
+- 详细行为见 [Web Spec](../../../docs/specs/web-dialogue-v1.md)，实际候选证据见 [R1 Acceptance](../../chatbi-product-v1/history/acceptance--web-dialogue-v1-20261003.md)。
 
 ### 经营分析
 
@@ -63,7 +63,7 @@ ChatBI 是面向业务数据分析的 Domain AI Engine（领域 AI 引擎）。�
 
 ## 生产演进中的当前基线工作
 
-- R4 已在本地分支实现执行受理 / 状态、阶段与报告文字观察、取消和恢复 Contract；当前最终候选的真实浏览器、真实模型和 Evaluation 身份见 [R4 Acceptance](../../../docs/acceptance/execution-streaming-v1.md) 与 Git 公共目录的本机实时状态。此本地状态不代表远端发布或生产部署。
+- R4 已在本地分支实现执行受理 / 状态、阶段与报告文字观察、取消和恢复 Contract；当前最终候选的真实浏览器、真实模型和 Evaluation 身份见 [R4 Acceptance](../../execution-streaming-v1/history/acceptance--execution-streaming-v1.md) 与 Git 公共目录的本机实时状态。此本地状态不代表远端发布或生产部署。
 
 - RAG 来源指纹、PostgreSQL catalog 对比和 production Ready fail-closed 门禁已实现。
 - clean bootstrap 会安装 Control DB migration、LangGraph checkpoint 表和运行权限；healthcheck 验证这些对象。

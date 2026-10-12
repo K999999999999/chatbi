@@ -1,14 +1,14 @@
 # R6 本地固定版本部署验收
 
-Status: Ticket 01–04 本地实施与适用验收完成；最终 clean runtime candidate `2b4a8c8` 的完整隔离入口通过，稳定环境已升级到该候选。PR60 已合并（`9a70601`），required CI 全部通过，交付与分支清理完成，见 [PR60](https://github.com/K999999999999/chatbi/pull/60)。R6候选本身未执行完整电脑重启；当前Active Stable R7已于2026-10-10通过Docker Desktop与Windows整机重启恢复核验，见 [R7 Acceptance](local-operations-v1.md)。
+Status: Ticket 01–04 本地实施与适用验收完成；最终 clean runtime candidate `2b4a8c8` 的完整隔离入口通过，稳定环境已升级到该候选。PR60 已合并（`9a70601`），required CI 全部通过，交付与分支清理完成，见 [PR60](https://github.com/K999999999999/chatbi/pull/60)。R6候选本身未执行完整电脑重启；当前Active Stable R7已于2026-10-10通过Docker Desktop与Windows整机重启恢复核验，见 [R7 Acceptance](../../local-operations-v1/history/acceptance--local-operations-v1.md)。
 
-范围以 [Contract](../specs/local-deployment-v1.md)、[实现设计](../designs/local-deployment-v1.md) 和 [R6 Spec](../../.scratch/r6-local-deployment/spec.md) 为准。
+范围以 [Contract](../../../docs/specs/local-deployment-v1.md)、[实现设计](../../../docs/designs/local-deployment-v1.md) 和 [R6 Spec](../spec.md) 为准。
 
 ## 已有证据
 
-- 固定版本镜像：Ticket 01 clean commit `4d4732b7896a46b231a4a3437c703e74b5ae513f`，API / PostgreSQL revision、内嵌 release JSON、实际 image ID、CPU 依赖及网页 / 导出资产检查通过；见 [Ticket 01](../../.scratch/r6-local-deployment/issues/01-fixed-release-image.md)。
-- 独立稳定环境：空卷安装证据绑定 `0a9f5aa`，Ticket 02 最终候选 `733b074` 完成 Windows Edge 真实问数、端口冲突保护、手动启停和历史持久性；见 [Ticket 02](../../.scratch/r6-local-deployment/issues/02-isolated-local-runtime.md)。
-- 真实版本往返：`733b074 → 9ae32ef → 995440b → 9ae32ef → 995440b`；升级执行 migration，回滚没有运行 migrator。账号、历史、快照指纹一致，稳定 PostgreSQL / Qdrant 容器和卷身份保持；当时保存成果为空，完整成果持久性由 Ticket 04 验证；见 [Ticket 03](../../.scratch/r6-local-deployment/issues/03-compatible-upgrade-rollback.md)。
+- 固定版本镜像：Ticket 01 clean commit `4d4732b7896a46b231a4a3437c703e74b5ae513f`，API / PostgreSQL revision、内嵌 release JSON、实际 image ID、CPU 依赖及网页 / 导出资产检查通过；见 [Ticket 01](../issues/01-fixed-release-image.md)。
+- 独立稳定环境：空卷安装证据绑定 `0a9f5aa`，Ticket 02 最终候选 `733b074` 完成 Windows Edge 真实问数、端口冲突保护、手动启停和历史持久性；见 [Ticket 02](../issues/02-isolated-local-runtime.md)。
+- 真实版本往返：`733b074 → 9ae32ef → 995440b → 9ae32ef → 995440b`；升级执行 migration，回滚没有运行 migrator。账号、历史、快照指纹一致，稳定 PostgreSQL / Qdrant 容器和卷身份保持；当时保存成果为空，完整成果持久性由 Ticket 04 验证；见 [Ticket 03](../issues/03-compatible-upgrade-rollback.md)。
 
 ## 完整目标环境验收入口
 
@@ -20,9 +20,9 @@ Windows Node 在临时目录安装锁定的浏览器测试依赖，Microsoft Edg
 
 ## 维护窗口与验证限制
 
-完整脚本只停止专用验收项目。R6候选 `2b4a8c8` 本身未经过完整系统 / Docker重启。2026-10-10已在Active Stable R7上重启Docker Desktop，显式执行 `./local up` 并核验服务、readiness、备份和重启前后数据 / 卷身份；该证据不等同于整台Windows电脑电源级重启。后续整机重启核验已在当前Active Stable R7上通过，R7运行记录见 [R7 Acceptance](local-operations-v1.md)。
+完整脚本只停止专用验收项目。R6候选 `2b4a8c8` 本身未经过完整系统 / Docker重启。2026-10-10已在Active Stable R7上重启Docker Desktop，显式执行 `./local up` 并核验服务、readiness、备份和重启前后数据 / 卷身份；该证据不等同于整台Windows电脑电源级重启。后续整机重启核验已在当前Active Stable R7上通过，R7运行记录见 [R7 Acceptance](../../local-operations-v1/history/acceptance--local-operations-v1.md)。
 
-R1–R5 原 Acceptance 和 Evaluation 报告保留原候选身份。R6 部署及验收代码没有改变模型、Prompt、Domain、SQL Guard、业务资产或查询 / 分析应用行为，因此已有正式 AI Evaluation 作为原候选行为基线复用；完整 Edge 业务验收提供新运行环境证据，不等于重跑三套正式 AI Evaluation。动态 readiness、备份恢复、容量 / 可用性及监控告警属于 R7 运行保障范围，当前验收见 [R7 Acceptance](local-operations-v1.md)。
+R1–R5 原 Acceptance 和 Evaluation 报告保留原候选身份。R6 部署及验收代码没有改变模型、Prompt、Domain、SQL Guard、业务资产或查询 / 分析应用行为，因此已有正式 AI Evaluation 作为原候选行为基线复用；完整 Edge 业务验收提供新运行环境证据，不等于重跑三套正式 AI Evaluation。动态 readiness、备份恢复、容量 / 可用性及监控告警属于 R7 运行保障范围，当前验收见 [R7 Acceptance](../../local-operations-v1/history/acceptance--local-operations-v1.md)。
 
 ## Ticket 04 失败历史与诊断（2026-10-08）
 
@@ -53,7 +53,7 @@ AI Evaluation 的复用边界还包括运行依赖变化：R6 将 PyPI `torch 2.
 
 完整验收通过后，`./local upgrade 2b4a8c811713adb663d22cdac4108e13e731165f` 成功，稳定地址 `http://127.0.0.1:8080/`。4 个用户、3 条历史、3 个 turn、0 个成果的前后完整行指纹一致；PostgreSQL 容器 / 运行镜像（733b074）与 Qdrant 容器 / 两命名卷身份不变。API `/health` 为 ok、容器 healthy；实际 seccomp JSON 与仓库 profile 一致，Chromium sandbox 启动实测通过；部署状态 running/succeeded、权限600。指纹及资源身份详见 `stable-upgrade.json`。
 
-定向软件回归 66 passed；Windows Edge 的历史 / 成果确定性回归 3 passed，报告路径测试此前 3 passed；TypeScript、Ruff、Bash、Compose、Markdown local links 与 Diff 检查适用证据通过。宿主 Linux Chrome 启动曾因缺安装与 libnspr4 失败，改在已有目标 Windows Edge 完成确定性回归，没有安装宿主浏览器依赖。最终证据变更为纯文档，复用未受影响软件证据。R6候选`2b4a8c8`本身未执行整机重启；2026-10-10当前R7 Active Stable的Docker Desktop与Windows整机重启恢复核验均已通过，见[R7 Acceptance](local-operations-v1.md)。三套正式AI Evaluation未作为R6候选验收的一部分运行；产品V1最终候选的正式评测按[作品交付入口](product-v1-delivery.md)和Runbook第9.2节单独核验。R6 远端交付已完成（PR60）；R7运行保障见[R7 Acceptance](local-operations-v1.md)，不以R6证据宣称整个产品或公网生产就绪。
+定向软件回归 66 passed；Windows Edge 的历史 / 成果确定性回归 3 passed，报告路径测试此前 3 passed；TypeScript、Ruff、Bash、Compose、Markdown local links 与 Diff 检查适用证据通过。宿主 Linux Chrome 启动曾因缺安装与 libnspr4 失败，改在已有目标 Windows Edge 完成确定性回归，没有安装宿主浏览器依赖。最终证据变更为纯文档，复用未受影响软件证据。R6候选`2b4a8c8`本身未执行整机重启；2026-10-10当前R7 Active Stable的Docker Desktop与Windows整机重启恢复核验均已通过，见[R7 Acceptance](../../local-operations-v1/history/acceptance--local-operations-v1.md)。三套正式AI Evaluation未作为R6候选验收的一部分运行；产品V1最终候选的正式评测按[作品交付入口](../../product-v1-delivery-closeout/history/acceptance--product-v1-delivery.md)和Runbook第9.2节单独核验。R6 远端交付已完成（PR60）；R7运行保障见[R7 Acceptance](../../local-operations-v1/history/acceptance--local-operations-v1.md)，不以R6证据宣称整个产品或公网生产就绪。
 
 ## 稳定服务恢复核验（2026-10-08）
 
@@ -61,7 +61,7 @@ AI Evaluation 的复用边界还包括运行依赖变化：R6 将 PyPI `torch 2.
 
 用户授权后执行既有 `./local up`。启动前置校验通过，API仍为 `2b4a8c8`（image ID `sha256:a01769af61f448b2597a5994dfb5dcfb1a9ed3a0a896135cd42d4649e7d9cd97`）；PostgreSQL按发布记录重建容器，运行镜像从此前733b074改为2b4a8c8（image ID `sha256:fe35dc2bbd3aa62057c22aea10361ccf9b3e168f76193db97de11f33dbbbc2ec`），数据库命名卷保留。Qdrant容器、镜像及其卷保持不变。
 
-恢复后 API / PostgreSQL healthy，Qdrant running；网页 HTTP 200、`/health`返回ok；部署状态原子更新为running/succeeded。只读完整行指纹与此前stable-upgrade.json的after一致：4账号、3历史、3turn、0成果；Seed v3、1,166业务行。开发等其他项目的容器身份、镜像、运行状态、启动时间及卷均未变化。证据见 ignored `reports/browser-real-artifacts/r6-runtime-recovery-20261008/` 和 [长期恢复记录](../../.scratch/r6-runtime-document-closeout/verification.md)。
+恢复后 API / PostgreSQL healthy，Qdrant running；网页 HTTP 200、`/health`返回ok；部署状态原子更新为running/succeeded。只读完整行指纹与此前stable-upgrade.json的after一致：4账号、3历史、3turn、0成果；Seed v3、1,166业务行。开发等其他项目的容器身份、镜像、运行状态、启动时间及卷均未变化。证据见 ignored `reports/browser-real-artifacts/r6-runtime-recovery-20261008/` 和 [长期恢复记录](../../r6-runtime-document-closeout/verification.md)。
 
 本次仅核验服务恢复、启动门禁、HTTP及持久状态，不重跑登录 / 问数 / 下载的完整浏览器验收或正式AI Evaluation；不修改IDM、不执行整机 / Docker重启，既有维护窗口与下载条件仍适用。
 

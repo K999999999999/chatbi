@@ -18,7 +18,7 @@ clean candidate、文件 hash / 大小 / content 与快照、模型 / 数据 / R
 
 ## Result
 
-最终 clean candidate `71d72d2585306dc50a0b9ecca9ac1679d7ab45ff`：隔离 Compose 真实登录 / 问数 / 追问 / 分析、API/Web 重启恢复、12 个 XLSX / PNG / PDF 下载和独立解析全部 PASS；export execution POST=0。临时账号禁用、active sessions=0、无 worker，隔离容器/卷/网络已清除。Runtime 的 API/Web image ID、模型配置、RAG manifest、PDF 五份 hash 与字体 hash 见 [最终验收](../../../docs/acceptance/result-export-v1.md)。AI Evaluation 未重跑，因导出不改变生成 / Retrieval / Guard；未授权 Push / PR / 部署。
+最终 clean candidate `71d72d2585306dc50a0b9ecca9ac1679d7ab45ff`：隔离 Compose 真实登录 / 问数 / 追问 / 分析、API/Web 重启恢复、12 个 XLSX / PNG / PDF 下载和独立解析全部 PASS；export execution POST=0。临时账号禁用、active sessions=0、无 worker，隔离容器/卷/网络已清除。Runtime 的 API/Web image ID、模型配置、RAG manifest、PDF 五份 hash 与字体 hash 见 [最终验收](../history/acceptance--result-export-v1.md)。AI Evaluation 未重跑，因导出不改变生成 / Retrieval / Guard；未授权 Push / PR / 部署。
 
 ## Comments
 

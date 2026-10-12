@@ -1,6 +1,6 @@
 # Ticket 03：操作手册清楚可用，历史验收回到工作记录
 
-Status: open
+Status: complete
 Canonical Source: [Spec](../spec.md)、[设计](../design.md)；用户已确认四项拆分与整体本地实施。
 
 Change Profile: 持续维护运行文档与历史证据 / 中等批量迁移 / 操作前提或证据身份遗漏风险 / 命令核对与历史保全 Review / 本地候选。
@@ -25,7 +25,7 @@ Blocked by: 02。
 
 owned files: docs/runbook.md、roadmap.md、acceptance/ 全部 16 份；README / 其他文档中相关引用与所属 .scratch 归档；迁移台账。
 
-验证证据: 全库 Markdown 链接检查；`git diff --check`；按实际脚本 / CLI 和已确认运行 Contract 只读核对命令、配置名与环境路径；历史报告身份核对；阅读走查。不执行重置、部署、恢复或真实 LLM 调用来验证排版。
+验证证据: `uv run --python 3.11 --locked python -m scripts.check_markdown_links` 通过；`git diff --check` 通过；Runbook 命令与当前脚本入口只读核对；16份迁移原文、候选身份与全库引用核对；阅读走查；Review见 [review-03.md](../review-03.md)。未执行重置、部署、恢复或真实LLM调用。
 
 Migration / Rollback: 先保全证据再迁移当前说明；锚点含义逐项匹配，不能统一替换成含义不符的入口。候选不变、原始报告不移动；恢复时同批恢复引用和历史文件。
 
@@ -34,7 +34,7 @@ Done When: 操作路径连贯、必要前提完整、历史验收覆盖与身份
 
 ## Result
 
-待实施与验证。
+已完成。Runbook按环境入口、初始化、日常服务、检索资产、测试 / Evaluation、排障、Web验证和Stable保障组织；宿主纯软件回归命令、Python 3.11 / uv锁定方式与临时Origin覆盖原因保留在测试步骤。移除R1–R7过程状态与候选验收流水，明确软件测试、PG集成、真实LLM评测和运行验收的证据边界。Roadmap只列交付阶段概况、最后记录的Stable核验和“当前无已确认排期目标”；16份Acceptance完整归入所属 `.scratch` 历史并修复其引用，原始ignored报告未移动。
 
 ## Comments
 

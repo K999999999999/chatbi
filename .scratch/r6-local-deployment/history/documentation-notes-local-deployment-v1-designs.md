@@ -6,7 +6,7 @@
 
 # R6 本地稳定交付实现设计
 
-Status: 基于2026-10-07已确认[R6 Spec](../spec.md)；Design Review PASS。Ticket 01–04本地实施与适用验收完成；最终运行候选与限制见 [Acceptance](../../../docs/acceptance/local-deployment-v1.md)。
+Status: 基于2026-10-07已确认[R6 Spec](../spec.md)；Design Review PASS。Ticket 01–04本地实施与适用验收完成；最终运行候选与限制见 [Acceptance](acceptance--local-deployment-v1.md)。
 Owner: 当前主Agent；后续维护由交付配置、bootstrap和所属模块维护者承接。
 
 ## 事实与方案选择

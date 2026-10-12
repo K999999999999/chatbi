@@ -141,7 +141,7 @@ R1 / R2 已交付电脑端问数、独立经营分析、可信结果说明和图
 
 ## Testing Decisions / Acceptance
 
-以下是已确认的验收门槛。运行结果与候选身份以 [Acceptance](../../../docs/acceptance/history-results-v1.md) 的入口及本机报告为准，不能从行为 Contract 推断已通过。
+以下是已确认的验收门槛。运行结果与候选身份以 [Acceptance](acceptance--history-results-v1.md) 的入口及本机报告为准，不能从行为 Contract 推断已通过。
 
 | 场景 | 可观察验收与证据 |
 | --- | --- |

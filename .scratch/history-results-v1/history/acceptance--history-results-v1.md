@@ -2,7 +2,7 @@
 
 此文件定义可复现门禁、候选身份与证据边界；最终候选及真实验收 / Evaluation 的状态和报告身份记录在 Git 公共目录的本机实时工作状态中。本文不预填 PASS，也不代表已发布或合并。
 
-基线为 `afad5ac18452566199bfcfdcceb1585115576a77`，工作项 `history-results-v1`，branch `feat/history-results-v1`。已确认 Contract 见 [Spec](../specs/history-results-v1.md)，实现见 [Design](../designs/history-results-v1.md) 与 [恢复语义](../../.scratch/history-results-v1/history/documentation-docs--designs--history-query-restoration.md)。后续报告必须核对自己的 commit 与资源身份，不继承基线或 R1 / R2 的通过身份。
+基线为 `afad5ac18452566199bfcfdcceb1585115576a77`，工作项 `history-results-v1`，branch `feat/history-results-v1`。已确认 Contract 见 [Spec](../../../docs/specs/history-results-v1.md)，实现见 [Design](../../../docs/designs/history-results-v1.md) 与 [恢复语义](documentation-docs--designs--history-query-restoration.md)。后续报告必须核对自己的 commit 与资源身份，不继承基线或 R1 / R2 的通过身份。
 
 ## 确定性验证
 
@@ -17,10 +17,10 @@
 
 报告输出到 ignored `reports/browser-real/`，包含候选 SHA、`git_dirty`、Chrome、独立参考、RAG / 模型身份、步骤和账号清理；临时账号禁用、Session 撤销，原用户、开发卷、业务数据与 RAG 保留。失败保留原报告，修复后形成新候选。`CHATBI_CONTAINER_ALLOW_DIRTY=1` 仅用于开发诊断，不能充当正式验收。
 
-三套正式 Evaluation 及三次完整多轮诊断按 [Runbook §9.2](../runbook.md#92-正式三套基线与稳定性诊断) 执行，统一身份入口要求正式报告同一最终 clean HEAD、RAG 版本和 `0 FAIL / 0 INVALID_CASE`。三套旧入口回归不替代 R3 history profile 的真实验收。
+三套正式 Evaluation 及三次完整多轮诊断按 [Runbook §9.2](../../../docs/runbook.md#92-正式三套基线与稳定性诊断) 执行，统一身份入口要求正式报告同一最终 clean HEAD、RAG 版本和 `0 FAIL / 0 INVALID_CASE`。三套旧入口回归不替代 R3 history profile 的真实验收。
 
 最终报告不通过修改本文件来回填新的 commit。Git 公共目录的 `harness/work-items/history-results-v1/status.md` 记录最终候选、报告目录、成绩与剩余事项；可用 `git rev-parse --path-format=absolute --git-common-dir` 定位。日期化原报告保持自己的身份，关联规划记录同步主工作项。此文件是新 clone 可用的验收入口，本机 ignored 报告不保证随 clone 存在。
 
 ## 事实源维护
 
-R3 Spec / Design、Query API 的显式命名空间、Web 的刷新边界、共享 query bindings、Product Scope、Architecture、Runbook、README 和 Roadmap 同步维护。原 R1 / R2 Acceptance 保持历史身份。业务指标、领域名词、Sales Mart DDL 与 Evaluation 案例集未扩大；既有事实源无需重写业务含义。R4 执行状态与流式反馈由独立的 [R4 Spec](../specs/execution-streaming-v1.md)、[Design](../designs/execution-streaming-v1.md) 和 [Acceptance](execution-streaming-v1.md) 定义；R5 / R6 / R7 仍待实施。本地候选不自动授权 Push / PR。
+R3 Spec / Design、Query API 的显式命名空间、Web 的刷新边界、共享 query bindings、Product Scope、Architecture、Runbook、README 和 Roadmap 同步维护。原 R1 / R2 Acceptance 保持历史身份。业务指标、领域名词、Sales Mart DDL 与 Evaluation 案例集未扩大；既有事实源无需重写业务含义。R4 执行状态与流式反馈由独立的 [R4 Spec](../../../docs/specs/execution-streaming-v1.md)、[Design](../../../docs/designs/execution-streaming-v1.md) 和 [Acceptance](../../execution-streaming-v1/history/acceptance--execution-streaming-v1.md) 定义；R5 / R6 / R7 仍待实施。本地候选不自动授权 Push / PR。
