@@ -28,4 +28,11 @@ Change Description: What：增加文档链接与结构组合门禁、共享 Mark
 
 无。确定性门禁只检查标题层级、章节引用和本地 Markdown 链接；业务含义、事实是否过期与跨文档语义一致性仍由 Review 按正式事实源核对。
 
-Next: 满足 Ticket 验收后本地提交；不 Push、不创建 PR。
+Next: Ticket 04 已本地提交并在 PR #77 中交付；CI 跟进见下节。
+
+## PR #77 CI 跟进
+
+- 初次托管 CI 的 `Deterministic tests` 在文档链接检查步骤失败：`.scratch/project-navigation/history/documentation-docs--project-guide.md` 仍链接到已移除的 `docs/acceptance/`。本机残留空目录导致此前本地文件系统检查没有复现。
+- 已修正该历史导航，指向当前 Runbook 测试说明；搜索确认没有其他指向该目录的 Markdown 链接。
+- 在由已提交 Git 文件组成、没有本机 ignored 文件的临时 clone 中运行组合文档检查，以复现 CI checkout 条件；后续 CI 对新 head 重跑。
+- 已启用仓库 active ruleset 的 8 个 required status checks；PR automation 将在检查通过后按 squash 方式自动合并。

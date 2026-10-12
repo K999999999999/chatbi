@@ -121,7 +121,7 @@ Natural Language
 | 实现设计 | 已确认行为如何在代码中实现 | [`docs/designs/`](../../../docs/designs) |
 | 软件验证 | 确定性代码行为是否符合预期 | [`tests/`](../../../tests)、CI、[Runbook 测试章节](../../../docs/runbook.md) |
 | AI Evaluation | 模型 / 生成行为对标准案例的结果 | [`evaluation/`](../../../evaluation)、[Evaluation Spec](../../../docs/specs/evaluation.md) |
-| Business Acceptance | 候选或运行环境是否满足业务验收 | [`docs/acceptance/`](../../../docs/acceptance)，报告受候选 / 时间 / 环境身份约束 |
+| Business Acceptance | 候选或运行环境是否满足业务验收 | [Runbook 测试章节](../../../docs/runbook.md#8-运行测试)；历史验收按功能保存在所属 `.scratch/` 工作记录中，报告受候选 / 时间 / 环境身份约束 |
 | 开发、测试和运维步骤 | 命令如何执行及其前提 / 副作用 | [`docs/runbook.md`](../../../docs/runbook.md) |
 | 当前方向与历史阶段 | 依赖、路线和优先级状态 | [`docs/roadmap.md`](../../../docs/roadmap.md) |
 

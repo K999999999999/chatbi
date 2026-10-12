@@ -60,3 +60,4 @@
 | `README.md` | `README.md` | `原过程已有工作记录；当前规则在原路径保留，基线可追溯` | 合并原guide定位能力，唯一人类入口；操作细节与行为规则链接权威文档 |
 | `docs/agents/agent-harness.md` | `已归档；现行规则分别见 AGENTS、issue-tracker、git-pr-workflow 与 documentation` | `.scratch/current-documentation/history/documentation--agent-harness.md` | 完整原文保留为 fenced Markdown 快照；重复 Harness 总览移除，路线图维护、Skill 依赖和会话恢复分别落入稳定入口或专属规则；所有当前与历史消费者链接已修复 |
 | `docs/agents/issue-tracker.md`、`docs/specs/container-dev-environment.md` | 原路径保留 | `.scratch/container-dev-environment/history/acceptance--container-dev-environment-20261003.md` | 修复迁移后仍指向已移除 `docs/acceptance/` 的说明；Ticket 边界改指向当前事实源及所属历史验收 |
+| `.scratch/project-navigation/history/documentation-docs--project-guide.md` | 历史导航链接已修复 | `docs/runbook.md#8-运行测试` 与所属 `.scratch/` 记录 | GitHub CI 发现本地残留空 `docs/acceptance/` 目录曾掩盖的失效链接；改指向当前验证说明，并在无 ignored 文件的干净 Git clone 复核 |

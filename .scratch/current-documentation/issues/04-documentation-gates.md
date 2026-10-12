@@ -49,4 +49,6 @@ Ticket 04 实现及 Review 完成，Review PASS（[review-04.md](../review-04.md
 
 ## Comments
 
-发布尚未授权；本目标按依赖连续完成。
+发布授权于2026-10-12在聊天中确认；PR #77 指向 `master`，按仓库规则等待 auto-merge。
+
+PR #77 首轮 CI 在干净 checkout 中发现项目导航历史记录仍链向已移除的 `docs/acceptance/`；本机空目录使旧链接工具误判通过。已修正导航并增加干净 Git clone 复核，跟进结果记录在 `review-04.md`。
