@@ -10,14 +10,14 @@ import sys
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
-_FENCE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
+from scripts.markdown_content import iter_markdown_lines, strip_inline_code
+
 _LINK = re.compile(r"!?\[[^\]]*\]\(\s*(<[^>]+>|[^)\s]+)(?:\s+[^)]*)?\)")
 _REFERENCE = re.compile(r"^\s*\[[^\]]+\]:\s*(<[^>]+>|\S+)")
 _HTML_ID = re.compile(r"\bid\s*=\s*['\"]([^'\"]+)['\"]", re.IGNORECASE)
 _HTML_NAME = re.compile(r"\bname\s*=\s*['\"]([^'\"]+)['\"]", re.IGNORECASE)
 _HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$")
 _SETEXT_HEADING = re.compile(r"^\s{0,3}(=+|-+)\s*$")
-_INLINE_CODE = re.compile(r"(`+).*?\1")
 
 
 def _markdown_files(root: Path) -> list[Path]:
@@ -44,19 +44,8 @@ def _anchors(markdown: str) -> set[str]:
     anchors: set[str] = set()
     counts: dict[str, int] = {}
     previous_line = ""
-    fenced: tuple[str, int] | None = None
-    for line in markdown.splitlines():
-        fence = _FENCE.match(line)
-        if fenced:
-            if (
-                fence
-                and fence.group(1)[0] == fenced[0]
-                and len(fence.group(1)) >= fenced[1]
-            ):
-                fenced = None
-            continue
-        if fence:
-            fenced = (fence.group(1)[0], len(fence.group(1)))
+    for _, line in iter_markdown_lines(markdown):
+        if line is None:
             previous_line = ""
             continue
         anchors.update(_HTML_ID.findall(line))
@@ -79,21 +68,10 @@ def _anchors(markdown: str) -> set[str]:
 
 
 def _destinations(markdown: str):
-    fenced: tuple[str, int] | None = None
-    for line_number, line in enumerate(markdown.splitlines(), start=1):
-        fence = _FENCE.match(line)
-        if fenced:
-            if (
-                fence
-                and fence.group(1)[0] == fenced[0]
-                and len(fence.group(1)) >= fenced[1]
-            ):
-                fenced = None
+    for line_number, line in iter_markdown_lines(markdown):
+        if line is None:
             continue
-        if fence:
-            fenced = (fence.group(1)[0], len(fence.group(1)))
-            continue
-        line = _INLINE_CODE.sub("", line)
+        line = strip_inline_code(line)
         reference = _REFERENCE.match(line)
         if reference:
             yield line_number, reference.group(1).strip("<>")

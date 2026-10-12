@@ -1,8 +1,8 @@
-# Observability V1 Module Spec
+# 链路观测与诊断
 
-状态：行为规格已补充 request_id/trace_id 时序和 HTTP 观测边界；T1～T4C 已完成并通过各自测试。T5 的阿里云 OTLP / Trace 验收是历史证据，不代表当前稳定候选仍已接通。R7 的后台执行、导出、安全配置与只读轮询边界见 §14；原有 T1～T5 结果不随该扩展重标。
+本文定义请求与链路编号、安全观察数据、降级和后台执行诊断。它不定义业务执行终态，也不替代 [运行保障](local-operations-v1.md) 的就绪状态。
 
-## 1. 目标
+## 目标
 
 为现有同步 Online Query（在线查询）建立端到端可观测链路，使开发者和运维人员能够根据一次请求判断：
 
@@ -14,23 +14,14 @@
 
 Observability 只记录和关联已有业务行为，不决定业务事实、RAG 候选、SQL、权限或查询结果。
 
-## 2. 使用者
+## 使用者
 
 - 开发者：定位 RAG、LLM、SQL Guard（SQL 安全检查）和数据库问题。
 - 运维人员：根据请求编号查找 Trace（链路）并判断慢点和故障节点。
 - 评测执行者：关联评测用例、运行耗时、模型和 RAG 资产版本。
 - API 调用方：获得可以用于问题反馈的请求编号和 Trace 标识。
 
-## 3. 实施前基线（历史事实）
-
-- Query API 和 Online Query 已使用 `request_id` 关联请求，电脑端 Web 在“查看请求信息”中展示该编号与 Header 的 Trace ID。
-- Evaluation（评测）只记录一次查询的总耗时，没有节点耗时。
-- Online Query 只在部分 Retrieval fallback 场景写入日志，没有完整成功和失败 Trace。
-- Online Retrieval 已返回 `asset_version`、状态、候选命中、分数、Join 路径和原始检索证据。
-- 当前 LLM Adapter（适配器）只向核心链路返回 SQL 文本，模型返回的 Token 信息未被记录。
-- 当前没有 `trace_id`、统一 Span（链路节点）、可观测后端或告警。
-
-## 4. 运行方式
+## 运行方式
 
 - 沿用同步、单次请求/响应的 Online Query 运行方式。
 - API 请求和调用 `BoundAuthorizedQueryService.query()` 的评测路径都必须可以形成完整 Trace；下游 `OnlineQueryService.execute()` 继续复用活动 Trace。
@@ -39,16 +30,16 @@ Observability 只记录和关联已有业务行为，不决定业务事实、RAG
 - 可观测记录属于旁路行为，不增加业务重试，不改变节点顺序和调用次数。
 - 可观测能力关闭、配置错误或后端不可用时，查询主链路继续按原 Contract 运行。
 
-## 5. 标识契约
+## 标识契约
 
-### 5.1 request_id
+### request_id
 
 - 保留现有语义，用于 API 响应、用户反馈和业务请求关联。
 - 可以由调用方提供，也可以由系统生成。
 - 相同 `request_id` 不代表相同 Trace，不得用它代替 `trace_id`。
 - 经营分析使用独立 `analysis_run_id` 标识可恢复运行；每次恢复仍生成新的 `request_id` / `trace_id`。Trace 仅记录 `chatbi.analysis_run_id` 关联属性，不能用 `trace_id` 充当 LangGraph `thread_id`。
 
-### 5.2 trace_id
+### trace_id
 
 - 标识一次实际执行链路，由可信的进程内活动上下文继承或由系统生成。
 - Root Trace（根链路）必须记录对应的 `request_id`。
@@ -58,7 +49,7 @@ Observability 只记录和关联已有业务行为，不决定业务事实、RAG
 - V1 不接受客户端直接指定 `X-Trace-ID`，也不把客户端 `traceparent` / `tracestate` 作为根链路来源；将来只有在可信 Gateway 建立边界并完成单独设计审查后，才能开放受控继承。
 - Root Trace 的 `request_id` 绑定发生在请求体解析前；`response.serialize` 仅表示 API Adapter 构造最终 JSONResponse，不包含 FastAPI/ASGI 网络发送。
 
-## 6. 观察范围
+## 观察范围
 
 Root Trace 覆盖一次查询从接收到返回的完整生命周期。实际执行到的节点必须记录独立 Span：
 
@@ -89,9 +80,9 @@ query.request
 - fallback 必须同时记录原失败状态、实际采用的路径和最终结果。
 - 业务拒绝、技术失败和成功必须使用不同状态表达，不得都记录为普通成功。
 
-## 7. 最小观察数据
+## 最小观察数据
 
-### 7.1 全链路
+### 全链路
 
 - `request_id`、`trace_id`；
 - 服务和应用版本；
@@ -100,7 +91,7 @@ query.request
 - 开始时间、结束时间和总耗时；
 - 最终状态、公开 `error_code` 和安全的内部失败分类。
 
-### 7.2 Retrieval
+### Retrieval
 
 - `request_shape`、`fallback_policy` 和 Retrieval 状态；
 - `asset_version`；
@@ -111,7 +102,7 @@ query.request
 
 不得记录完整 `page_content`、完整 Metadata（元数据）或 Dynamic Schema（动态结构）文本。
 
-### 7.3 LLM
+### LLM
 
 - 模型标识；
 - 调用耗时和成功、失败状态；
@@ -120,7 +111,7 @@ query.request
 - `llm.generate` 使用标准 GenAI 操作、模型和 Usage 属性；若通用属性不能被验收平台识别，只能在基础设施适配器中增加最小平台兼容字段；
 - V1 不计算或承诺费用。
 
-### 7.4 SQL 与数据库
+### SQL 与数据库
 
 - Candidate Scope Check（候选范围检查）是否通过；
 - SQL Guard 是否通过及安全失败分类；
@@ -129,7 +120,7 @@ query.request
 - 返回行数和 `truncated`；
 - 不记录完整结果行。
 
-## 8. 内容和安全边界
+## 内容和安全边界
 
 默认不得记录：
 
@@ -153,7 +144,7 @@ query.request
 - 关闭后无需修改代码或业务 Contract；
 - Trace 中明确标识当前是否启用了内容记录。
 
-## 9. 成功、失败和降级
+## 成功、失败和降级
 
 - 查询成功：Root Trace 和全部已执行 Span 标记成功，并记录最终行数和截断状态。
 - 业务无法回答：在发生决定的节点记录业务拒绝，最终状态关联 `CANNOT_ANSWER`。
@@ -164,7 +155,7 @@ query.request
 - 可观测后端不可用：不得改变原 QuerySuccess、QueryFailure、HTTP 状态和错误码，不得触发业务重试。
 - 可观测功能关闭：查询输入、输出、调用次数和原有日志行为保持兼容。
 
-## 10. 不负责
+## 不负责
 
 - 用户登录、用户管理、角色、租户、数据权限和安全审计。
 - 限流、Quota（配额）、熔断、模型路由和自动 Failover（故障切换）。
@@ -176,9 +167,9 @@ query.request
 - Secret 管理、Kubernetes、Gateway（网关）和发布平台。
 - 具体 SDK、平台产品、部署方式和代码目录。
 
-## 11. 验收标准
+## 验收标准
 
-### 11.1 Software Test（软件测试）
+### Software Test（软件测试）
 
 - 成功请求生成一个 Root Trace，并包含全部实际执行的必需 Span。
 - 每个现有公开失败分支都能在决定节点和 Root Trace 上得到正确状态。
@@ -192,45 +183,22 @@ query.request
 - 可观测后端抛出异常、超时或不可用时，原查询结果不变。
 - 可观测能力关闭时，原有确定性测试继续通过。
 
-### 11.2 AI Evaluation（AI 评测）
+### AI Evaluation（AI 评测）
 
 - 现有 20 条真实 Online RAG Evaluation 使用原查询链路运行，业务结果不因可观测接入而变化。
 - 每个评测请求能够关联模型、RAG 资产版本、总耗时和实际执行节点。
 - 本阶段只建立节点延迟和 Token Baseline（基线），不预设性能提升目标。
 
-### 11.3 Business Acceptance（业务验收）
+### Business Acceptance（业务验收）
 
 - 使用 C05 查询完成一次真实 Trace。
 - 能明确指出延迟主要位于 Retrieval、LLM、SQL Guard 还是数据库。
 - API 和页面返回的业务结果与接入前一致。
 - 至少一个受控失败请求能够定位到具体失败节点。
 
-## 12. 实现设计阶段再决定
+## 后台执行与Stable观测
 
-- 具体可观测 SDK、后端和部署方式；
-- Span 与代码函数的落位；
-- Trace 上下文传播方式和框架集成；
-- Token Metadata（元数据）的提取方式；
-- 配置项名称和 No-op（空实现）Adapter；
-- 测试替身、Exporter（导出器）和验收运行方式；
-- 后续采样、保留时间、Dashboard（看板）、告警和系统指标方案。
-
-## 13. 已确认决定
-
-| 编号 | 决定 |
-|---|---|
-| D1 | 保留 `request_id`，新增独立 `trace_id`，HTTP 通过 `X-Trace-ID` 返回 |
-| D2 | 默认不记录完整问题、Prompt、SQL 和结果；本地调试只允许受控开启问题和最终 SQL |
-| D3 | Token 为可选观察数据，Provider 未返回时不得失败；V1 不计算费用 |
-| D4 | 可观测能力采用 fail-open（记录失败不影响查询）的旁路原则 |
-| D5 | V1 覆盖成功、拒绝、技术失败、超时和 Retrieval fallback |
-| D6 | 用户、租户、权限、生产告警和具体技术产品不属于本规格 |
-| D7 | V1 HTTP 不信任客户端 Trace Context；可信 Gateway 接入后再单独开放上游继承 |
-| D8 | OTel/Langfuse 只记录安全错误分类和错误码；原始异常不进入 Trace |
-
-## 14. R7 运行保障的附加边界
-
-本节补充 R7 的后台执行和稳定环境配置 Contract；不改写上文同步 Query 的既有语义，也不把历史 T5 云验收视为当前 stable 结果。
+本节补充 运行保障 的后台执行和稳定环境配置 Contract；不改写上文同步 Query 的既有语义，也不把历史 T5 云验收视为当前 stable 结果。
 
 - HTTP Root 忽略客户端 `traceparent` / `tracestate`。本服务签发的不可变 `traceparent` carrier 只在进程内传给实际后台 worker；worker 创建新的 Root Trace 并用 OpenTelemetry Link 关联受理 Root，不复用已关闭的 HTTP Span，也不把客户端值作为 carrier。
 - 后台问数 / 分析、导出生成、文件交付与临时资源回收覆盖真实执行生命周期。经营分析的提取、计划校验、查询任务、归因和总结只在实际执行时建立固定命名 Span。

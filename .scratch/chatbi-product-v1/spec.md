@@ -118,4 +118,4 @@ Done When：目标、路线、未决问题与证据适用提交已记录，文�
 
 ## R6 本地实施事实更新（2026-10-08）
 
-R6四项本地实现与适用验收完成，clean runtime `2b4a8c8` 的Windows完整业务、三格式导出/内容、专用服务停止恢复、失败与隔离/清理通过；稳定环境已升级到同一候选。详细候选、IDM条件与恢复、CPU依赖Evaluation复用边界及电脑/Docker重启未执行见 [R6 Acceptance](../../docs/acceptance/local-deployment-v1.md)。用户于2026-10-08授权R6发布；PR60已合并（9a70601），required CI与分支清理完成。2026-10-08稳定服务恢复和数据只读核验见 [恢复记录](../r6-runtime-document-closeout/verification.md)。R7仍待澄清，优先顺序不变，未扩展云或公网范围。
+R6四项本地实现与适用验收完成，clean runtime `2b4a8c8` 的Windows完整业务、三格式导出/内容、专用服务停止恢复、失败与隔离/清理通过；稳定环境已升级到同一候选。详细候选、IDM条件与恢复、CPU依赖Evaluation复用边界及电脑/Docker重启未执行见 [R6 Acceptance](../r6-local-deployment/history/acceptance--local-deployment-v1.md)。用户于2026-10-08授权R6发布；PR60已合并（9a70601），required CI与分支清理完成。2026-10-08稳定服务恢复和数据只读核验见 [恢复记录](../r6-runtime-document-closeout/verification.md)。R7仍待澄清，优先顺序不变，未扩展云或公网范围。

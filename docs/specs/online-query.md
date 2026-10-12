@@ -1,6 +1,6 @@
-# Online Query Module Spec
+# 在线查询与 SQL 安全
 
-状态：当前 Online Query 已接入并通过 Online Retrieval V1（在线检索 V1）验收。Online Retrieval 的当前行为以 [V1 Feature Contract（V1 功能契约）](../../.scratch/online-retrieval-v1/spec.md) 为准；本文继续负责 Online Query 的输入、输出、执行和错误边界。
+本文定义一次有效查询的输入输出、错误、模型候选和 SQL Guard。检索行为见 [在线检索](online-retrieval.md)，用户入口与多轮见 [Query API](query-api.md)。
 
 ## 目标
 
@@ -166,12 +166,3 @@ QueryRequest
 
 - 当前 29 条单轮标准测试全部通过同一条 Online Query 链路运行并统计 Execution Accuracy（执行准确率）；集合数量以 `evaluation/suites/single_turn/cases.json` 为准。
 - Evaluation Module 不定义通用 Baseline 准确率门槛；具体版本的 Baseline 验收要求由相应产品 / 工程 Contract 定义。
-
-## 实现设计阶段再决定
-
-- 代码目录和文件落位。
-- 节点 Typed Contract（类型契约）。
-- LangChain 模型类、模型名称和 Provider 配置。
-- SQL 解析库和 SQL Guard 的具体算法。
-- 数据库连接和超时的具体实现方式。
-- 单元测试文件和 Task 拆分。

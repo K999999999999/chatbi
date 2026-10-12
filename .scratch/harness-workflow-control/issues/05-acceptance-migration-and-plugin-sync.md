@@ -48,7 +48,7 @@ Done When：本地适用验收、Review、Diff 和安装核对完成，两个仓
 
 ### Result / Comments
 
-已完成；S01–S20 逐项验收及证据边界见 [`docs/acceptance/harness-workflow-control.md`](../../../docs/acceptance/harness-workflow-control.md)。S03–S06、S19–S20 由隔离 Git / worktree fixture 实际执行；S13 的十种 PR 状态由读取真实 workflow 脚本的 mock fixture 执行；S07、S09、S10、S14、S17、S18 使用更新后 Plugin 缓存启动的新 Codex CLI session 验收；其余场景按报告标为授权边界、模拟或规则核对，没有冒充真实 PR 行为。S08 验证整体实施授权与发布授权分别记录；发布授权保持未授权。
+已完成；S01–S20 逐项验收及证据边界见 [`docs/acceptance/harness-workflow-control.md`](../history/acceptance--harness-workflow-control.md)。S03–S06、S19–S20 由隔离 Git / worktree fixture 实际执行；S13 的十种 PR 状态由读取真实 workflow 脚本的 mock fixture 执行；S07、S09、S10、S14、S17、S18 使用更新后 Plugin 缓存启动的新 Codex CLI session 验收；其余场景按报告标为授权边界、模拟或规则核对，没有冒充真实 PR 行为。S08 验证整体实施授权与发布授权分别记录；发布授权保持未授权。
 
 安装核对：通过支持的 `codex plugin add engineering-workflow@personal --json` 同步；当前 Plugin 保持 installed / enabled，源与缓存共 39 个文件，路径集合及 SHA-256 全部一致。十个阶段 Skill 与 setup Skill 的 `quick_validate.py` 检查通过；22 个 Plugin Skill metadata 均为 boolean，其中 10 个阶段 Skill 为 `true`、12 个其他 Skill 为 `false`，manifest JSON 解析通过。新 CLI session 读取了更新缓存；未验证 Codex Desktop 重载或当前已打开 Thread 热更新。
 

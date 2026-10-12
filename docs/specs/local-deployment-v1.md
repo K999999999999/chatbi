@@ -1,8 +1,6 @@
-# R6 本地稳定部署 Contract
+# 本地稳定部署
 
-Status: 用户确认的行为范围已实施；Ticket 01–04 本地实现与适用运行验收完成，最终 clean runtime candidate `2b4a8c8`。事实与限制见 [Acceptance](../acceptance/local-deployment-v1.md)，已获远端发布授权，交付状态见 [PR60](https://github.com/K999999999999/chatbi/pull/60)，电脑 / Docker daemon 重启待维护窗口。
-
-需求来源：[R6 完整 Spec](../../.scratch/r6-local-deployment/spec.md)。本文件固化当前已确认的本地稳定运行行为，不构成云端生产部署、容量或可用性承诺。
+本文定义 Windows + WSL2 + Docker 本机固定版本部署、隔离资源和兼容升级 / 回滚。它不构成公网生产部署或容量承诺；操作见 [Runbook](../runbook.md)。
 
 ## 目标与边界
 
@@ -42,18 +40,25 @@ Status: 用户确认的行为范围已实施；Ticket 01–04 本地实现与适
 - 项目身份固定为 `chatbi-stable`；稳定 PostgreSQL、Qdrant 使用各自命名卷。数据库与 Qdrant 不发布宿主端口，只有 API 发布到配置的 `127.0.0.1` 端口。
 - API 不挂载源码或迁移凭据。数据库迁移器凭据只交给一次性迁移工具；API 只读运行账号访问业务库与 Control DB。
 - API 对模型缓存和稳定 RAG 发布目录只读；显式准备工具按当前 WSL 用户身份写入目标目录。
-- PNG / PDF renderer 保留 Chromium sandbox；本地 API 配置仓库随附的 Chromium seccomp profile，沿用 R5 已确认的导出隔离要求。
+- PNG / PDF renderer 保留 Chromium sandbox；本地 API 配置仓库随附的 Chromium seccomp profile，沿用 成果导出 已确认的导出隔离要求。
 - Secret 使用独立权限受限配置；启动失败诊断不得输出完整 Compose 配置、Secret 或未经授权的数据内容。
 - 端口冲突不终止未知进程；启动、资产或依赖检查失败时保留已创建数据和资源，返回非零结果及可操作的恢复提示。
 - 手动停止保留所有持久数据。电脑或 Docker 重启后不承诺自动启动，用户可显式执行 `./local up`。
 - `/health` 仅代表 HTTP liveness，不代表真实业务请求成功或动态依赖 readiness。
 
-## 版本变更与验收状态
+## 版本兼容与恢复
 
-指定版本升级允许短暂停机，必须显式检查目标镜像与数据库 / RAG 资产兼容性；回滚只启动经过验证兼容的旧版本，不执行反向 migration、DROP 或卷删除。不兼容状态必须拒绝并保留数据。每个 API 镜像内嵌 `scripts/local_compatibility.json` 声明可接受状态；检查 Control DB migration marker、checkpoint migration、实际历史快照列与 JSON envelope 版本、Sales Mart Seed、Structure Metadata 指纹、RAG current / manifest 格式、Embedding revision 与来源 provenance。只读 catalog 或兼容状态未知时 fail closed。升级 / 回滚持有同一环境操作锁；`.local/deployment-state.json` 原子记录 active API、PostgreSQL 实际 image ID、运行状态及最后成功或失败阶段。失败不回退已成功的 active 记录，也不伪报 API 仍在运行；migration / 启动失败后保留数据，由用户显式选择兼容版本恢复。
+指定版本升级允许短暂停机，必须显式检查目标镜像与数据库 / RAG 资产兼容性；回滚只启动经过验证兼容的旧版本，不执行反向 migration、DROP 或卷删除。
+不兼容状态必须拒绝并保留数据。
+每个 API 镜像内嵌 `scripts/local_compatibility.json` 声明可接受状态；检查 Control DB migration marker、checkpoint migration、实际历史快照列与 JSON envelope 版本、Sales Mart Seed、Structure Metadata 指纹、RAG current / manifest 格式、Embedding revision 与来源 provenance。
 
-真实版本对的升级、兼容回滚、再次升级及账号 / 历史 / 成果读取验收见 [R6 Ticket 03记录](../../.scratch/r6-local-deployment/issues/03-compatible-upgrade-rollback.md)。Ticket 04 的 Windows Edge 完整业务与专用服务停止恢复验收已通过，见 [Acceptance](../acceptance/local-deployment-v1.md)；不替代电脑 / Docker daemon 重启或 R7 保障验收。
 
-Ticket 02 的独立环境安装、空卷初始化、持久性、端口冲突与真实问数验收已完成；clean 候选和证据身份见 [Ticket 02记录](../../.scratch/r6-local-deployment/issues/02-isolated-local-runtime.md)。Ticket 03 的真实版本对兼容升级 / 回滚 / 再升级与持久状态指纹验收已完成，证据见 [Ticket 03记录](../../.scratch/r6-local-deployment/issues/03-compatible-upgrade-rollback.md)。Ticket 04 的 Windows Edge 完整业务、三格式下载 / 内容及专用服务恢复验收已完成，最终运行身份和 IDM 下载条件见 [Acceptance](../acceptance/local-deployment-v1.md)。任何本地 smoke、`/health` 或单元测试都不单独代表完整验收通过。
+只读 catalog 或兼容状态未知时 fail closed。
+升级 / 回滚持有同一环境操作锁；`.local/deployment-state.json` 原子记录 active API、PostgreSQL 实际 image ID、运行状态及最后成功或失败阶段。
+失败不回退已成功的 active 记录，也不伪报 API 仍在运行；migration / 启动失败后保留数据，由用户显式选择兼容版本恢复。
 
-完整验收范围见 [R6 Spec 的 Testing Decisions](../../.scratch/r6-local-deployment/spec.md)；本地操作见 [Runbook](../runbook.md) §15。
+
+
+## 验收标准
+
+独立安装与空卷初始化、重复迁移、账号生命周期、资源隔离、固定镜像身份、持久数据保留、兼容升级 / 回滚和不兼容拒绝必须有对应证据。重启恢复、动态就绪与备份遵循 [运行保障](local-operations-v1.md)；操作见 [Runbook](../runbook.md)。HTTP存活、CI或单元测试不能单独证明运行验收通过。

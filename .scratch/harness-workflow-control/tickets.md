@@ -231,4 +231,4 @@ Done When：本地适用验收、Review、Diff 和安装核对完成，两个仓
 
 ### Result / Comments
 
-历史收尾核对（2026-10-01）：原“待实施”字段已过期。正式 [Ticket 05](issues/05-acceptance-migration-and-plugin-sync.md) 已完成，整体验收见 [验收记录](../../docs/acceptance/harness-workflow-control.md)。后续交付与清理完成事实以 Git 公共目录的同 ID 实时记录为准。
+历史收尾核对（2026-10-01）：原“待实施”字段已过期。正式 [Ticket 05](issues/05-acceptance-migration-and-plugin-sync.md) 已完成，整体验收见 [验收记录](history/acceptance--harness-workflow-control.md)。后续交付与清理完成事实以 Git 公共目录的同 ID 实时记录为准。

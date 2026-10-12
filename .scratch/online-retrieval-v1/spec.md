@@ -1,5 +1,7 @@
 # Online Retrieval V1 统一检索流水线规格
 
+> 文档归属补记：本文件保存原需求与规划过程；当前有效行为见 [正式规则](../../docs/specs/online-retrieval.md)，不与正式文档竞争事实源。
+
 状态：已确认；需求已完成 `grill-with-docs` 和人工确认
 
 ## Problem Statement

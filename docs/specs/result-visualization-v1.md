@@ -1,7 +1,6 @@
-# R2：结果解释与可视化
+# 结果解释与可视化
 
-当前 Web 长期状态以 [R3 History Spec](history-results-v1.md) 为准：显式 `/api/v1/histories` 与 `/api/v1/saved-results` 保存私人快照，刷新只读，续聊恢复完整条件；旧 `/api/v1/query` 继续原短期 Contract。本文的 R1 / R2 阶段状态描述保留历史边界，不能用来否定 R3。
-用户于2026-10-04确认完整行为及本地实施。R1身份、权限、两模式状态与失败恢复规则继续适用。本Contract对应工作项 `result-visualization-v1`；[规划与确认记录](../../.scratch/result-visualization-v1/spec.md)。
+本文定义成功结果与正式经营分析的可信说明、数值和图形展示。私人持久状态见 [历史与成果](history-results-v1.md)，数据协议见 [Query API](query-api.md)。
 
 ## 展示行为
 
@@ -17,7 +16,7 @@
 
 `src/semantic/metrics.json`仍拥有公式、定义、固定筛选与时间口径；`src/semantic/result_display.json`仅拥有展示属性及维度物理引用，加载时检查引用。新属性不修改RAG源指纹或旧manifest。说明失败不改变查询成功、授权、Guard或状态提交；局部未认证列保留原值，可信列仍可展示。
 
-公共可选字段 `result_metadata` 详见[Query API](query-api.md#结果说明扩展r2)。旧响应无该字段时继续展示原始表格；旧客户端可忽略该字段。位置绑定输出列，不能猜别名。未知版本或损坏的范围说明安全降级。
+公共可选字段 `result_metadata` 详见[Query API](query-api.md#结果说明协议)。旧响应无该字段时继续展示原始表格；旧客户端可忽略该字段。位置绑定输出列，不能猜别名。未知版本或损坏的范围说明安全降级。
 
 ## 数值
 
@@ -38,4 +37,4 @@
 
 ECharts 6.1.0精确锁定，通过模块化本地动态加载打包；不使用CDN、新表格库或React图表包装库。文本按不可信数据处理，Tooltip使用richText文本，页面不执行返回HTML。退出、过期、换号清理所有私有展示；迟到响应不恢复数据。
 
-不包含历史、导出、分页、全量数据、饼图、双轴、自动聚合、流式、手机、部署或容量承诺。验证包括确定性认证/格式/图形规则、API与Checkpoint兼容、Chrome故障注入、实际Compose真实问数/追问/经营分析并对照独立只读SQL及确定性归因参考。生成、Retrieval和Guard未变化时不重跑全套AI Evaluation，历史成绩不冒称当前候选成绩。
+历史、导出和执行由对应Spec定义。展示模块不增加分页、全量数据、饼图、双轴、自动聚合、手机适配、部署或容量承诺。验证包括确定性认证/格式/图形规则、API与Checkpoint兼容、Chrome故障注入、实际Compose真实问数/追问/经营分析并对照独立只读SQL及确定性归因参考。生成、Retrieval和Guard未变化时不重跑全套AI Evaluation，历史成绩不冒称当前候选成绩。

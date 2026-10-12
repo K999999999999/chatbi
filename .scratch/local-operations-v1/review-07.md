@@ -79,7 +79,7 @@ Result: commit `6d764ac` 的固定镜像构建与完整隔离验收通过，12�
 
 Finding: Linux Chromium 153 的 12 项真实导出均返回 Playwright `suggested_filename=download`；此前直接 Chrome CDP 探针也确认中文 Blob 下载实际保存名为 `download`，虽然服务端 UTF-8 文件名和 DOM `download` 值正确。实际文件内容及 PDF/PNG/XLSX 解析全部通过。Windows Chromium 旧候选 `0a97182` 报告中的`suggested_filename`为预期中文名，且当前与该候选间 `frontend/src/api.ts`、`src/query_api/result_export_api.py` 未变。
 
-该发现超出 R7 运行保障验收计时补丁的实现范围，未修改 R5 API 或产品行为。通用接受入口的 `runtime.json` 还把 Linux Chromium 版本误标为 `msedge`；实际版本由 `browser.json` 及本机 WSL 适配器命令证明。详见[Acceptance](../../docs/acceptance/local-operations-v1.md#6d764ac-当前-clean-候选完整验收与单用户基线2026-10-10)。
+该发现超出 R7 运行保障验收计时补丁的实现范围，未修改 R5 API 或产品行为。通用接受入口的 `runtime.json` 还把 Linux Chromium 版本误标为 `msedge`；实际版本由 `browser.json` 及本机 WSL 适配器命令证明。详见[Acceptance](history/acceptance--local-operations-v1.md#6d764ac-当前-clean-候选完整验收与单用户基线2026-10-10)。
 
 Next: 保留为 R5 跨浏览器下载文件名兼容问题；若需支持 Linux Chromium 中文落盘名，应在确认修复 Contract 后另行实现和验收。R7当前等待下一次真实6小时自动备份周期；阿里云控制台Trace查询仍待人工核验。
 

@@ -44,7 +44,7 @@ Lifetime：持续维护的验收入口及日期化证据；Size：中；Risk：�
 
 ## Result
 
-运行验收入口、正式事实源与最终clean candidate验收完成。代码候选38602d9；real和isolated均PASS，账号禁用 / Session清零 / 临时卷清理已核实。证据见[verification](../verification.md)及[正式验收记录](../../../docs/acceptance/container-dev-environment-20261003.md)。仅本地交付，未Push / PR。
+运行验收入口、正式事实源与最终clean candidate验收完成。代码候选38602d9；real和isolated均PASS，账号禁用 / Session清零 / 临时卷清理已核实。证据见[verification](../verification.md)及[正式验收记录](../history/acceptance--container-dev-environment-20261003.md)。仅本地交付，未Push / PR。
 
 ## Comments
 

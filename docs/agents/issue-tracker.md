@@ -182,4 +182,4 @@ Status: open | in-progress | done | blocked
 
 实时进度记录可保存 PR URL / number 及真实状态，以便新会话定位；这不改变长期 Ticket 不写远端跟踪字段的约定，也不让本机状态取代 GitHub 事实。
 
-`docs/architecture.md`、`docs/specs/`、`docs/designs/`、`docs/acceptance/` 和 `reports/` 分别承担架构、行为 Contract、实现设计、验收和证据职责，不因创建本地 Ticket 而被替代。
+`docs/architecture.md`、`docs/specs/`、`docs/designs/`、Tests、Evaluation 和 Runbook 分别承载架构、行为 Contract、实现机制与当前验证方式。本地 Ticket 不替代这些事实源；历史验收保存在所属 `.scratch/` 工作记录中。

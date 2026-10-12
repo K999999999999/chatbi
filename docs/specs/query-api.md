@@ -1,6 +1,7 @@
-# Query API Adapter Spec
+# HTTP API 与短期多轮查询
 
-当前 Web 长期状态以 [R3 History Spec](history-results-v1.md) 为准：显式 `/api/v1/histories` 与 `/api/v1/saved-results` 保存私人快照，刷新只读，续聊恢复完整条件；旧 `/api/v1/query` 继续原短期 Contract。网页执行使用 R4 后台执行受理、正式结果读取和 SSE 状态观察；完整行为见 [R4 Spec](execution-streaming-v1.md)，实现设计见 [R4 Design](../designs/execution-streaming-v1.md)。本文的 R1 / R2 阶段状态描述保留历史边界，不能用来否定 R3 / R4。
+本文定义 HTTP 请求响应、身份边界和旧同步接口的短期会话。网页持久历史、后台执行与导出分别见 [历史](history-results-v1.md)、[执行](execution-streaming-v1.md) 和 [导出](result-export-v1.md)。
+
 ## 目标
 
 使用 FastAPI（Web 框架）把现有 Online Query（在线查询）能力暴露为同步 HTTP JSON 接口，供电脑端 Web、内部应用或 API Gateway（API 网关）调用。
@@ -21,16 +22,16 @@ HTTP 请求
 ## 运行方式
 
 - 本文定义的 `/api/v1/query` 与分析查询接口仍是同步 JSON、每次请求/响应；每次下游执行仍然只处理一条有效查询。
-- R4 网页执行接口采用异步受理与 GET/SSE 观察；SSE 观察已受理执行状态，也可以携带标明尚未校验的报告文字候选，不改变下游查询规则。当前不使用 WebSocket（双向实时连接）。
+- 后台执行 网页执行接口采用异步受理与 GET/SSE 观察；SSE 观察已受理执行状态，也可以携带标明尚未校验的报告文字候选，不改变下游查询规则。当前不使用 WebSocket（双向实时连接）。
 - `mode=query` 通过 `AuthorizedQueryService.authorize()` 完成身份与数据授权；已有会话在授权通过后完成语义修订，再由 `execute_authorized()` 调用下游 `OnlineQueryService.execute()`。
 - `mode=analysis` 只调用被注入的 Business Analysis Application Workflow；Task 的授权、执行和报告生成不下沉到 API Adapter。
 - API 不改变 Online Query 的业务规则、超时和结果行数上限；短期会话边界使用本 Spec 定义的 Application 错误码。
 
 ## 接口
 
-### R4 网页执行路由（增量接口）
+### 网页执行路由（增量接口）
 
-R4 保留上面的同步接口，并为网页历史增加独立执行路由：
+后台执行 保留上面的同步接口，并为网页历史增加独立执行路由：
 
 ```text
 POST /api/v1/histories/{history_id}/executions
@@ -42,17 +43,37 @@ GET  /api/v1/executions/{execution_id}/events
 POST /api/v1/executions/{execution_id}/cancel
 ```
 
-执行创建路由返回 `202` 受理身份；取消路由接受空 JSON body，返回 `202 stopping` 或 `200` 已有终态，重复请求幂等且不会改写成功终态。读取路由以只读身份检查现有 Session 和当前权限。`events` 使用版本化 SSE `snapshot` / `progress` / `text_delta` / `draft_reset` / `terminal` 帧与心跳，响应设为 `no-store`，身份失效时以不含私有字段的 `auth_lost` 帧关闭。分析报告生成期间仅发布六个白名单文字字段，并在快照中携带当前 generation 的完整未校验草稿；正式报告仍须经过原结构、证据引用与业务校验，并成功保存后才交付。网页重连只重新 GET，不重放业务 POST。完整阶段名称、缓冲上限、停止与草稿行为以正式 R4 Spec 为准；本文说明同步 API 兼容边界与新增网页路由。
+执行创建路由返回 `202` 受理身份；取消路由接受空 JSON body，返回 `202 stopping` 或 `200` 已有终态，重复请求幂等且不会改写成功终态。
+读取路由以只读身份检查现有 Session 和当前权限。
+`events` 使用版本化 SSE `snapshot` / `progress` / `text_delta` / `draft_reset` / `terminal` 帧与心跳，响应设为 `no-store`，身份失效时以不含私有字段的 `auth_lost` 帧关闭。
+分析报告生成期间仅发布六个白名单文字字段，并在快照中携带当前 generation 的完整未校验草稿；正式报告仍须经过原结构、证据引用与业务校验，并成功保存后才交付。
+网页重连只重新 GET，不重放业务 POST。
+完整阶段名称、缓冲上限、停止与草稿行为以正式 后台执行 Spec 为准；本文说明同步 API 兼容边界与新增网页路由。
 
-### R5 成果导出路由（增量接口）
+
+### 成果导出路由（增量接口）
 
 ```text
 POST /api/v1/result-exports
 ```
 
-请求指定 owner 可读的 `history_turn`（历史 ID + 成功轮次 ID）或 `saved_result`（成果 ID）及格式。XLSX 不接受图表选择；PNG 必须带 `chart_id` 和 `chart_type`，分析任务图可带 `task_id`，因素图必须带当前产品的 `product_index`。这些值只选择服务端成功快照中已有的图，不接受 SQL、文件路径、客户端结果值或 ECharts option。PDF 只接受已完成的经营分析快照，不接受图表选择；它包含完整报告、全部已返回归因、引用任务及适用限制。服务端从持久化快照构建文件，不调用模型 / 查询，不改写历史或成果。当前实现 XLSX / PNG / PDF。renderer 不可用、选择无效或文件超出资源上限时分别返回受控 `503`、`422` 或 `413`。成功响应为实际文件，使用适用 MIME、`Cache-Control: no-store`、`X-Content-Type-Options: nosniff`；PDF 使用 `application/pdf`；文件名由服务端按安全短标题、格式和 UTC 导出时间生成；失败遵循现有 `request_id` 和错误 JSON。
+请求指定 owner 可读的 `history_turn`（历史 ID + 成功轮次 ID）或 `saved_result`（成果 ID）及格式。
+XLSX 不接受图表选择；PNG 必须带 `chart_id` 和 `chart_type`，分析任务图可带 `task_id`，因素图必须带当前产品的 `product_index`。
+这些值只选择服务端成功快照中已有的图，不接受 SQL、文件路径、客户端结果值或 ECharts option。
+PDF 只接受已完成的经营分析快照，不接受图表选择；它包含完整报告、全部已返回归因、引用任务及适用限制。
+服务端从持久化快照构建文件，不调用模型 / 查询，不改写历史或成果。
+当前实现 XLSX / PNG / PDF。
+renderer 不可用、选择无效或文件超出资源上限时分别返回受控 `503`、`422` 或 `413`。
+成功响应为实际文件，使用适用 MIME、`Cache-Control: no-store`、`X-Content-Type-Options: nosniff`；PDF 使用 `application/pdf`；文件名由服务端按安全短标题、格式和 UTC 导出时间生成；失败遵循现有 `request_id` 和错误 JSON。
 
-导出沿用当前登录 Session、查询权限与 Cookie / CSRF 检查；在生成前和发送前重新核验 owner / 来源。导出 runtime 当前限定单 API 进程并持有私有临时目录锁；来源最多 5 MiB、每账号同时生成 1 个文件、API 同时 2 个、生成预算 60 秒、文件最多 20 MiB。PNG / PDF 使用固定离线 bundle、Playwright / Chromium sandbox 与本地中文字体；PDF 使用专用 A4 HTML 模板，覆盖清单不匹配、横向溢出或生成不完整时失败关闭。活动和失败路径都会回收临时文件。R5 最终 clean local candidate `71d72d2` 已通过隔离 Compose 真实闭环和 XLSX / PNG / PDF 独立内容验证；[PR56](https://github.com/K999999999999/chatbi/pull/56) 已合并（`367a42a`），required CI 全部通过。生产部署和运行验收不属于本次交付。完整来源、精度、权限竞态与错误 Contract 见 [R5 Spec](result-export-v1.md) 和 [Design](../designs/result-export-v1.md)。
+
+导出沿用当前登录 Session、查询权限与 Cookie / CSRF 检查；在生成前和发送前重新核验 owner / 来源。
+导出 runtime 当前限定单 API 进程并持有私有临时目录锁；来源最多 5 MiB、每账号同时生成 1 个文件、API 同时 2 个、生成预算 60 秒、文件最多 20 MiB。
+PNG / PDF 使用固定离线 bundle、Playwright / Chromium sandbox 与本地中文字体；PDF 使用专用 A4 HTML 模板，覆盖清单不匹配、横向溢出或生成不完整时失败关闭。
+活动和失败路径都会回收临时文件。
+生产部署和运行验收不属于本次交付。
+完整来源、精度、权限竞态与错误 Contract 见 [成果导出 Spec](result-export-v1.md) 和 [Design](../designs/result-export-v1.md)。
+
 
 ### 查询
 
@@ -137,11 +158,11 @@ X-Request-ID: 可选
   "analysis_run_id": "f5607b24-84cf-4f09-b7c5-9ea5a332e225",
   "mode": "analysis",
   "report": {
-    "title": "销售额趋势分析",
-    "executive_summary": "销售额在观察期内下降。",
-    "key_findings": ["整体销售额下降"],
-    "trend_judgment": "呈下降趋势",
-    "root_causes": ["华东区域贡献下降"],
+    "title": "双时期毛利分析",
+    "executive_summary": "毛利在比较期上升。",
+    "key_findings": ["整体毛利上升"],
+    "trend_judgment": "比较期毛利上升",
+    "root_causes": ["主要产品的单价变化带来正向贡献"],
     "action_suggestions": ["进一步检查华东区域产品结构"],
     "evidence_task_ids": ["trend"],
     "incomplete_tasks": [],
@@ -177,7 +198,7 @@ X-Request-ID: 可选
 - 带 `conversation_id` 的请求必须先由当前认证身份校验会话归属、过期状态和并发状态；失败时不得进入 `AuthorizedQueryService`、Retrieval、LLM、SQL Guard 或数据库。
 - 会话只保存最后一次成功查询的指标、时间范围、维度和过滤条件，不保存原始对话、候选 SQL、最终 SQL 或结果行。
 - 会话使用 30 分钟无成功状态更新的 Idle TTL；服务重启后会话失效。
-- [R7运行保障](local-operations-v1.md)将同步入口纳入就绪和共享业务额度；就绪失败503 SERVICE_NOT_READY，额度不足429 EXECUTION_LIMIT_REACHED，不排队/重试。账号沿用1、单API4的默认额度。额度允许时，同一会话同一时刻只允许一个进行中的轮次；会话占用返回409 CONVERSATION_CONFLICT，不调用下游、不提交状态。正常成功/业务拒绝DTO兼容，新增保护错误仍沿QueryFailure外壳。
+- [运行保障运行保障](local-operations-v1.md)将同步入口纳入就绪和共享业务额度；就绪失败503 SERVICE_NOT_READY，额度不足429 EXECUTION_LIMIT_REACHED，不排队/重试。账号沿用1、单API4的默认额度。额度允许时，同一会话同一时刻只允许一个进行中的轮次；会话占用返回409 CONVERSATION_CONFLICT，不调用下游、不提交状态。正常成功/业务拒绝DTO兼容，新增保护错误仍沿QueryFailure外壳。
 - 同一语义槽位的新值替换旧值，不同语义槽位的新条件叠加。维度默认追加；用户明确说“分组维度改成 / 换成 / 替换为 / 替换成某维度”时，替换全部已有维度。维度操作同时包含互相冲突的替换与追加措辞，或否定了替换表达时，必须澄清且不执行查询。歧义和超出单条查询修订范围的问题不执行查询。
 - 每一轮都重新使用当前认证身份和当前授权策略；历史状态不能赋予新的权限。
 
@@ -213,6 +234,8 @@ GET /health
 | 指标口径不明确或无法唯一解析的多轮追问 | `422` | `CLARIFICATION_REQUIRED` |
 | 超出 V1 单条查询修订范围 | `422` | `UNSUPPORTED_ANALYSIS` |
 | 当前有执行额度但同一会话存在并发轮次 | `409` | `CONVERSATION_CONFLICT` |
+| 服务依赖未就绪 | `503` | `SERVICE_NOT_READY` |
+| 账号或API执行额度不足 | `429` | `EXECUTION_LIMIT_REACHED` |
 
 API 对请求体解析失败时，也必须返回上述 `QueryFailure` 形状，而不是 FastAPI 默认的 `detail` 响应。
 
@@ -222,16 +245,16 @@ API 对请求体解析失败时，也必须返回上述 `QueryFailure` 形状，
 - 一个可执行的 HTTP 查询最多调用一次授权入口；会话不存在、过期、越权或并发冲突时不得调用授权入口，不得维护第二条查询链路。
 - API Adapter 不直接调用 LLM、SQL Guard 或数据库，也不在适配层生成经营分析报告；这些职责属于被注入的 Application Workflow。
 - 会话状态由 Application 边界拥有；API Adapter 不让客户端提交完整状态，也不把会话状态当作授权凭证。
-- API Adapter 提取当前身份并调用既有认证 / 授权 / 审计服务；不自行定义权限、租户隔离、业务真相，不提供限流、隐式重试、熔断或成本控制。
+- API Adapter 提取当前身份并调用既有认证 / 授权 / 审计服务；不自行定义权限、租户隔离、业务真相，受理就绪与执行额度由运行保护负责，接口不自行定义隐式重试或权限。
 - 当前仅信任 `X-Request-ID` 作为追踪标识，不把它当作身份或授权信息。
 - 未来 API Gateway 位于 API Adapter 之外，负责验证身份、传入可信的追踪上下文和流量治理；核心 Online Query 不绑定具体网关产品。
 
 ## 不负责
 
-- WebSocket 与同步 `/api/v1/query` 的执行状态流；R4 SSE 由独立执行路由提供，经营分析仍由 Business Analysis Application Workflow 负责。
+- WebSocket 与同步 `/api/v1/query` 的执行状态流；后台执行 SSE 由独立执行路由提供，经营分析仍由 Business Analysis Application Workflow 负责。
 - Streamlit、Gradio、React 或 Vue 前端页面。
 - 账号 / 权限业务真相由既有账号与授权模块维护；本 Adapter 提供登录 HTTP 边界，不新增 tenant_id 或数据行级隔离。
-- 长期聊天历史、跨服务恢复、复杂分析 Agent、RAG、自动修复和模型重试。
+- 持久历史由专门接口负责；不建设复杂分析Agent、自动SQL修复或跨服务恢复。
 - 健康检查之外的部署、监控、告警和生产运维。
 
 ## 验收标准
@@ -253,25 +276,17 @@ API 对请求体解析失败时，也必须返回上述 `QueryFailure` 形状，
 
 - 至少一次真实 HTTP 请求完成“HTTP 问题 -> Online Query -> SQL Guard -> PostgreSQL -> JSON 结果”闭环。
 
-## 实现状态
+## 浏览器入口
 
-- API Adapter 已落位于 `src/query_api/`。
-- `app.py` 提供应用工厂、请求/响应模型、路由和错误映射。
-- `main.py` 仅创建无运行资源副作用的应用，`src/bootstrap/` 在 lifespan 内装配真实依赖并执行就绪门禁，`create_app()` 将查询服务绑定为 `AuthorizedQueryService`；失败清理与关闭规则见 [初始化与运行资源 Spec](bootstrap.md)。
-- FastAPI 运行依赖已写入 `pyproject.toml`，具体解析版本由 `uv.lock` 锁定。
-- API 确定性测试与原有 Online Query、Evaluation 回归测试已通过。
-- 已使用真实 `.env` 完成一次 HTTP 到 LLM、SQL Guard 和 PostgreSQL 的闭环验证，返回 `200` 和 1 行结果。
-- Multi-Turn Query V1 的公共 Contract 已确认并完成文档同步；Ticket 01～04 已完成会话生命周期、结构化语义修订、Streamlit 当前会话联动和分层验收；真实 AI Evaluation、Real E2E 及本次三轮场景的 Business Acceptance 证据见 `docs/acceptance/multi-turn-query-v1-20260919.md`。
+浏览器登录使用 `/auth/browser/login`、`/auth/browser/me`、`/auth/browser/logout`、`/auth/browser/change-password`，旧 `/auth/*` Bearer 路由继续兼容。
+查询 body / result Contract 不变；Cookie 身份、CSRF 门禁和网页入口见 [Web Spec](web-dialogue-v1.md) 及 [Web Design](../designs/web-dialogue-v1.md)。
+账号与授权事实仍由既有模块维护；浏览器路由不复制核心业务。
+认证 / 查询响应均 no-store，Cookie 查询即使 CSRF 拒绝也保留 request_id / X-Trace-ID 关联。
 
-当前 React + TypeScript + Vite 电脑端网页通过同源 HTTP 调用本 API；Streamlit 已移除。历史多轮验收仍按对应运行日期与提交解释。
 
-## R1 浏览器入口
+## 结果说明协议
 
-浏览器登录使用 `/auth/browser/login`、`/auth/browser/me`、`/auth/browser/logout`、`/auth/browser/change-password`，旧 `/auth/*` Bearer 路由继续兼容。查询 body / result Contract 不变；Cookie 身份、CSRF 门禁和网页入口见 [Web Spec](web-dialogue-v1.md) 及 [Web Design](../designs/web-dialogue-v1.md)。账号与授权事实仍由既有模块维护；浏览器路由不复制核心业务。认证 / 查询响应均 no-store，Cookie 查询即使 CSRF 拒绝也保留 request_id / X-Trace-ID 关联。
-
-## 结果说明扩展（R2）
-
-成功query响应和已完成分析 `task_results` 可含 `result_metadata`；缺该字段的旧结果仍有效，已有字段不变。API仅序列化Online Query的确定性说明，不自行认证或调用额外模型。完整行为见[R2 Spec](result-visualization-v1.md)。
+成功query响应和已完成分析 `task_results` 可含 `result_metadata`；缺该字段的旧结果仍有效，已有字段不变。API仅序列化Online Query的确定性说明，不自行认证或调用额外模型。完整行为见[结果展示 Spec](result-visualization-v1.md)。
 
 | 字段 | Contract |
 | --- | --- |
@@ -292,4 +307,4 @@ API 对请求体解析失败时，也必须返回上述 `QueryFailure` 形状，
 
 说明失败只降级显示，不改变查询成功、会话提交、数据授权或SQL Guard。每次请求绑定本轮说明，不能复用上一轮元数据冒充本轮；不存在任何说明时仍保留表格。分析旧Checkpoint未含可选字段时默认为None，新说明不进入报告模型输入。
 
-R7同步问数/追问及经营分析共用后台owner/API容量，真实调用完成后释放；外层等待/断开不能提前释放活工作。同步入口不创建history/execution持久记录、不重复取分析run lease；沿现有180秒问数、1200秒分析总保护和单次LLM/SQL超时。就绪观察/幂等重放不计入新执行，导出1/2独立计数。实现进度和运行证据见R7工作项；文档不代表当前stable已升级。
+运行保障同步问数/追问及经营分析共用后台owner/API容量，真实调用完成后释放；外层等待/断开不能提前释放活工作。同步入口不创建history/execution持久记录、不重复取分析run lease；沿现有180秒问数、1200秒分析总保护和单次LLM/SQL超时。就绪观察/幂等重放不计入新执行，导出1/2独立计数。运行证据始终绑定实际候选与资源。

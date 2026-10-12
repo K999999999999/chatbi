@@ -1,4 +1,6 @@
-# 初始化入口与运行资源生命周期
+# 初始化与运行资源生命周期
+
+本文定义应用装配、启动检查、失败清理与显式初始化的当前规则。操作方式见 [Runbook](../runbook.md)。
 
 ## 范围和职责
 
@@ -37,10 +39,6 @@ python -m src.bootstrap build-rag [--structure-dir PATH] [--metrics-path PATH] [
 缺少必需子命令、未知参数等解析错误返回 2，不加载运行配置。运行资源不使用迁移身份；管理员密码不进入参数、配置模板、Seed、文档或日志。
 
 服务启动不自动运行这些命令，不重播 Seed。Compose、数据库 / Qdrant 重置与结构导出仍使用各自环境入口。
-
-## 入口迁移
-
-旧 `python -m src.chatbi_control`、`python -m scripts.prepare_embedding_model` 和 `python -m src.rag_offline` 命令入口已移除，不提供转发。模块业务 API 保留；当前文档、CI、测试和脚本统一使用 bootstrap。日期化 Acceptance、旧报告和历史规划保持原候选身份。
 
 ## 验证
 

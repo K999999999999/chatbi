@@ -2,21 +2,15 @@
 
 ## 1. 用途与边界
 
-本文档说明 WSL / Linux 本地开发环境的新 clone 首次准备、日常开发、数据库和索引重建、测试与评测，以及 R6 独立本地稳定环境的配置和启停。命令从仓库根目录执行；流程不依赖固定电脑路径，也不使用旧项目的数据目录。
+本手册供本地开发者维护 ChatBI 开发环境、宿主调试环境和本机 Stable 环境。命令从仓库根目录执行；各环境使用独立配置、Compose 身份与持久数据。
 
-推荐使用 WSL / Linux 的容器开发入口：Compose 管理四个常驻服务及一次性初始化工具，不要求宿主安装 Python、uv 或 Node。宿主调试入口仍保留；Dev Container 配置保留，不作为本次支持或验收入口。
+先选择运行方式：
 
-ChatBI 当前处于 MVP 向生产演进阶段。本 Runbook 覆盖本地开发 / 内部验证及本机稳定运行流程；R6 的版本升级 / 兼容回滚及完整 Windows 浏览器 / 专用服务恢复验收已通过，见 [R6 Acceptance](acceptance/local-deployment-v1.md)。Active Stable R7 的 Docker Desktop 与整台Windows电脑重启恢复均已于2026-10-10核验通过，见 [R7 Acceptance](acceptance/local-operations-v1.md)。该本地恢复验证不代表公网生产部署或完整生产就绪。自动测试使用隔离 PostgreSQL 和 CI Fixture；黄金评测复用开发库 `chatbi_mvp`；云端生产数据库不属于本文档范围。
+- **容器开发**：从[新 clone 与容器开发入口](#3-新-clone-与开发入口)开始。应用和依赖由 `./dev` 管理，宿主不需要安装 Python 或 Node。
+- **宿主调试**：进入[宿主调试](#3-新-clone-与开发入口)，再按[首次准备](#4-首次准备)、[基础设施](#5-启动基础设施)和[应用启动](#6-启动-online-query)操作。需要宿主 Python 3.11、uv 与 Node。
+- **本机 Stable**：按[本机 Stable 环境](#14-本机-stable-环境)使用独立的 `./local`；不要混用开发配置或数据卷。
 
-按目标选择流程：
-
-- **新 clone 首次初始化：** 推荐按 §3 容器命令完成；宿主方式按 §3 选择入口 → §4.1–4.3 配置并初始化 PostgreSQL、显式创建首个管理员 → §5 启动 Qdrant → §7 准备模型并构建索引 → §6 启动 ChatBI → §8 确定性验证；真实 LLM 评测见 §9。空 PostgreSQL volume 会自动创建数据库、Schema、固定 RBAC 和 Seed；空 Qdrant 需单独构建索引。
-- **日常开发：** 推荐执行 `./dev up`；宿主方式按 §5 启动服务 → §6 启动 ChatBI。PostgreSQL 数据和已发布 Qdrant 索引都会保留；不重播 Seed，也不自动重建索引。
-- **本地稳定运行：** 使用 §15 的 `./local` 独立入口；不叠加开发 Compose，不读取开发 `.env`，也不复用开发数据库或 Qdrant 数据。
-- **重置开发数据库：** 执行 §4.4，只删除当前 Compose 项目的 PostgreSQL volume；账号也会清空，需重新创建管理员。
-- **重建 Qdrant 索引：** 按 §7 操作，只处理当前 Compose 项目的 Qdrant volume，不清除 PostgreSQL。
-
-PostgreSQL 和 Qdrant 使用 Compose named volume。日常停止服务不会删除数据；不要使用 `docker compose down -v`。
+首次初始化按所选环境完成数据库 migration、管理员、模型和检索索引准备，再启动应用。日常停止服务会保留数据；除明确的重置流程外，不删除 Compose volume。开发测试、真实 LLM Evaluation 与本机 Stable 验收提供不同范围的证据，本手册不将本机流程描述为公网生产部署。
 
 ## 2. 系统拓扑
 
@@ -37,7 +31,7 @@ Vite Web（开发容器 / 宿主调试；宿主回环端口 5173；打包后由 
 
 ## 3. 新 clone 与开发入口
 
-### 推荐：容器开发
+### 容器开发
 
 前提为 WSL / Linux、Git、Bash、Docker Engine / Compose。已有开发配置和数据可以直接复用；新 clone 复制 `.env.example` 为 `.env`，填写数据库密码、随机管理员签名 Key 与 LLM 配置，随后显式执行：
 
@@ -56,17 +50,17 @@ bash scripts/install_git_hooks.sh
 
 `scripts/install_git_hooks.sh` 为当前 Git clone 启用提交前分支护栏，只在本仓库 local Git 配置设置 `core.hooksPath=.githooks`。如果任何有效 Git 配置来源已将 `core.hooksPath` 指向其他位置，脚本会停止且保留原配置；不要为了安装而覆盖既有 Hook。安装后运行 `git config --show-origin --get-all core.hooksPath` 核实配置。若以后需要撤销，只有确认 `git config --local --get core.hooksPath` 仍严格输出 `.githooks` 时，才执行 `git config --local --unset core.hooksPath`；若值已变化，先保留并调查。
 
-后端源码变更自动重载，前端 Vite 热更新。后端重载 / 重启会清空旧 API 的进程内多轮会话；网页使用 R3 持久历史，刷新只读保存结果，续聊重新认证当前业务定义。停止旧 API 进程后再启动新进程，不能并行运行两个 history runtime。依赖锁文件和新增根配置变化后执行 `./dev build` 再 `./dev up`。容器依赖不使用本机 `.venv` / `node_modules`。
+后端源码变更自动重载，前端 Vite 热更新。后端重载 / 重启会清空旧 API 的进程内多轮会话；网页使用持久历史，刷新只读保存结果，续聊重新认证当前业务定义。停止旧 API 进程后再启动新进程，不能并行运行两个 history runtime。依赖锁文件和新增根配置变化后执行 `./dev build` 再 `./dev up`。容器依赖不使用本机 `.venv` / `node_modules`。
 
 `.env` 的宿主回环地址保持原值，容器配置覆盖为内部服务地址，不修改现有文件。API不挂载`.env`，没有迁移身份。模型主机目录在容器内保持解析后的相同绝对路径，兼容现有manifest的模型身份校验；RAG输出挂入固定路径。已有模型和索引复用，工具写入保持宿主UID / GID。默认CPU / FP32；首次构建可能较慢。
 
-服务启动不自动迁移、创建用户或重建索引。PostgreSQL 首次健康检查依赖 checkpoint，必须先显式 `migrate`；配置缺失、端口占用、依赖失败时返回非零。`up` 的基础依赖 / HTTP 检查不等于真实问数已通过，也不替代 Stable R7 的动态 readiness（见本 Runbook 的 R7 动态运行状态章节）。端口只发布至本机，不开放局域网。
+服务启动不自动迁移、创建用户或重建索引。PostgreSQL 首次健康检查依赖 checkpoint，必须先显式 `migrate`；配置缺失、端口占用、依赖失败时返回非零。`up` 的基础依赖 / HTTP 检查不等于真实问数已通过，也不替代 Stable 动态 readiness（见[Stable运行状态与自动备份](#15-stable-运行状态与自动备份)）。端口只发布至本机，不开放局域网。
 
 `CHATBI_DEV_ENV_FILE` 可选择本地配置文件；`CHATBI_DEV_API_PORT` / `CHATBI_DEV_WEB_PORT` 可调整应用宿主端口，网页 Origin 随 Web 端口更新。`CHATBI_DEV_COMPOSE_OVERRIDE` 用于隔离验收的附加 Compose 文件。默认不更改基础项目名称，避免误用另一套数据卷。
 
 构建镜像使用明确版本 / digest。受网络限制时，可通过 `CHATBI_DEV_PYTHON_BASE` / `CHATBI_DEV_NODE_BASE` 指向可信镜像地址，保持相同版本 / digest；不关闭 TLS 校验或修改系统证书。原生依赖随 `uv.lock` 安装，CPU执行不意味着镜像中不含锁定的CUDA包。
 
-运行语义见[开发环境 Contract](specs/container-dev-environment.md)。R6 §15 提供当前电脑上的固定版本本地稳定环境；正式公网生产镜像、HTTPS 与云部署不在 R6 范围内。R6 本地版本升级 / 兼容回滚已由 Ticket 03 实施和验收。后续 R7 已增加 Stable 动态 readiness、依赖状态观察、备份恢复和监控；其具体边界及证据见 [R7 Spec](specs/local-operations-v1.md) 与 [R7 Acceptance](acceptance/local-operations-v1.md)。这些本机验收不构成公网部署、多用户容量或延迟承诺。
+运行语义见[开发环境 Spec](specs/container-dev-environment.md)。固定版本部署与本机运行保障见[部署 Spec](specs/local-deployment-v1.md)和[运行保障 Spec](specs/local-operations-v1.md)；本机流程不承诺公网部署、多用户容量或延迟。
 
 容器运行验收使用以下入口，要求干净候选提交和可用的真实 LLM 配置，会产生少量模型调用费用。隔离模式需 Compose ≥2.24.4：
 
@@ -75,18 +69,18 @@ scripts/verify_container_dev.sh isolated
 scripts/verify_container_dev.sh real
 ```
 
-两种模式顺序执行：热更新检查会临时修改源码并恢复。`isolated` 验证空卷首次初始化并清理经项目标签核实的临时卷；`real` 复用现有开发资产。专用账号在结束后禁用并撤销会话，现有用户和数据保留。证据身份及限制见[容器验收记录](acceptance/container-dev-environment-20261003.md)。
+两种模式顺序执行：热更新检查会临时修改源码并恢复。`isolated` 使用独立 Compose project 和空卷，结束时清理经项目标签核实的临时资源；`real` 复用现有开发资源，可能重启其中的 API。专用账号在结束后禁用并撤销 Session。运行前确认允许少量真实模型调用。
 
 验收使用 `docker/node-dev.Dockerfile` 的 `browser` target；日常网页使用 `dev` target。两个 target 共享锁文件对应的 npm 依赖，浏览器的 Chromium / 系统依赖在复制前端源码前安装。仅修改 `frontend/src` 或 Vite 配置后重新构建时，有效的 Docker 缓存可复用依赖安装层；依赖清单、锁文件、Node 基础镜像或浏览器安装指令变化时，相关依赖层会重新构建。首次构建或缓存被清理后仍需安装依赖；缓存命中只证明构建复用，不代替业务验收。
 
-### 保留：宿主调试
+### 宿主调试
 
-以下 §4–§9 的 `uv run` / `npm` 命令是宿主调试和既有评测入口，需本机 Python / uv / Node。日常容器开发不需要执行这些宿主命令。
+以下“首次准备”到“运行真实 LLM Evaluation”章节的 `uv run` / `npm` 命令供宿主调试使用，需要本机 Python 3.11、uv 与 Node。日常容器开发不需要执行这些宿主命令。
 
 
 WSL / Linux 是当前唯一支持的本地开发入口。ChatBI 和 RAG 构建命令在 WSL / Linux 进程中运行，PostgreSQL 和 Qdrant 由 Docker Compose 启动。`.env.example` 的 `POSTGRES_HOST=127.0.0.1`、`POSTGRES_PORT=5433` 和 `RAG_QDRANT_URL=http://127.0.0.1:6333` 是该入口使用的连接默认值；Compose 发布端口由 `POSTGRES_PUBLISHED_PORT` 控制，与应用连接端口分开。
 
-首次配置 `.env` 的复制命令见 §4.2。安装 Python 3.11 和 `uv` 后运行 `uv sync --locked`，再按 §1 的首次初始化顺序操作。Compose 发布端口只绑定宿主机回环地址，不能从局域网访问。
+首次配置 `.env` 的复制命令见 [配置文件](#42-配置文件)。安装 Python 3.11 和 `uv` 后运行 `uv sync --locked`，再按[首次准备](#4-首次准备)的初始化顺序操作。Compose 发布端口只绑定宿主机回环地址，不能从局域网访问。
 
 ## 4. 首次准备
 
@@ -114,7 +108,7 @@ cp .env.example .env
 - ChatBI 应用库：`POSTGRES_CONTROL_DB`、`POSTGRES_CONTROL_APP_USER`、`POSTGRES_CONTROL_APP_PASSWORD`、`CHATBI_ADMIN_SECRET_KEY`。`chatbi_control_user` 只访问应用库，保存账号、Session、固定 RBAC 和审计事件。
 - 一次性迁移账号：`POSTGRES_MIGRATOR_USER`、`POSTGRES_MIGRATOR_PASSWORD`、`POSTGRES_CONTROL_MIGRATOR_USER`。迁移账号不进入 API 运行进程。
 - 运行模式：`CHATBI_ENV`。真实入口使用应用库内置账号，不再配置 `CHATBI_IDENTITY_PROVIDER`、`CHATBI_IDENTITY_SUBJECT_ID` 或 `CHATBI_AUTH_POLICY_FILE`。
-- R4 后台执行额度：`CHATBI_EXECUTION_MAX_PER_USER` 默认 `1`，`CHATBI_EXECUTION_MAX_TOTAL` 默认 `4`；问数和经营分析共用单进程额度，不构成容量验收结果。必须为正整数，且账号额度不能高于进程额度。
+- 后台执行额度：`CHATBI_EXECUTION_MAX_PER_USER` 默认 `1`，`CHATBI_EXECUTION_MAX_TOTAL` 默认 `4`；问数和经营分析共用单进程额度，不构成容量验收结果。必须为正整数，且账号额度不能高于进程额度。
 - LLM：`LLM_API_KEY`、`LLM_MODEL`，必要时填写 `LLM_BASE_URL`
 - Qdrant：`QDRANT_API_KEY` 默认是仅供回环绑定本地开发的公开值，不要用于共享或生产环境。
 - RAG：保持 `RAG_MODEL_DIR=.model-cache/bge-m3-5617a9f61b02` 和 `RAG_EMBEDDING_DEVICE=auto`。
@@ -167,7 +161,7 @@ uv run python -m scripts.reset_dev_postgres
 
 该重置会清除 `chatbi_mvp`、`chatbi_control` 中所有开发数据、账号、Session 和审计记录。它不会删除 Qdrant volume 或其他 Compose 项目的数据。正常启动和关闭使用 Compose 服务命令，不使用 `docker compose down -v`。
 
-重置命令已自动应用应用库迁移并安装经营分析所需的 LangGraph checkpoint 表；它可重复运行且不会创建管理员。随后按 §4.3 显式创建首个管理员。Qdrant volume 和旧的已发布 RAG 索引仍保留；若 Seed 或 `columns.json` metadata 已更新，必须按 §7.2 构建、验证并发布匹配新数据的新索引，不能把旧索引当作已更新资产。
+重置命令已自动应用应用库迁移并安装经营分析所需的 LangGraph checkpoint 表；它可重复运行且不会创建管理员。随后按 [数据库初始化与管理员创建](#43-初始化-postgresql-和首个管理员) 显式创建首个管理员。Qdrant volume 和旧的已发布 RAG 索引仍保留；若 Seed 或 `columns.json` metadata 已更新，必须按 [索引发布](#72-首次构建或发布新索引) 构建、验证并发布匹配新数据的新索引，不能把旧索引当作已更新资产。
 
 ### 4.5 登录、首次改密和管理后台
 
@@ -179,7 +173,7 @@ uv run python -m scripts.reset_dev_postgres
 
 ## 5. 启动基础设施
 
-按 §4.3 完成 PostgreSQL 的首次 migration 和 checkpoint 初始化后，再启动 PostgreSQL 和 Qdrant：
+按 [数据库初始化与管理员创建](#43-初始化-postgresql-和首个管理员) 完成 PostgreSQL 的首次 migration 和 checkpoint 初始化后，再启动 PostgreSQL 和 Qdrant：
 
 ```bash
 docker compose up -d --wait postgres qdrant
@@ -189,7 +183,7 @@ docker compose ps
 预期：
 
 - PostgreSQL 状态为 `healthy`。
-- Qdrant 容器处于 `Up`。首次启动的空 Qdrant 尚无 ChatBI 检索索引，按 §7 构建后才可用于在线检索。
+- Qdrant 容器处于 `Up`。首次启动的空 Qdrant 尚无 ChatBI 检索索引，按 [检索资产构建](#7-构建-rag-offline-资产) 构建后才可用于在线检索。
 - 两个服务只绑定本机回环地址。
 
 Qdrant 健康检查会从 `.env` 读取本地 API Key，并且不会回显密钥：
@@ -255,7 +249,7 @@ npm ci
 npm run dev
 ```
 
-打开 `http://127.0.0.1:5173`。Vite 将 `/api` / `/auth` / `/health` 代理到回环 API；网页只通过 HTTP 使用后端。打包同源运行见 [Web 开发与打包](#web-开发与打包)。
+打开 `http://127.0.0.1:5173`。Vite 将 `/api` / `/auth` / `/health` 代理到回环 API；网页只通过 HTTP 使用后端。打包同源运行见 [网页开发与打包](#11-网页开发打包与验收)。
 
 ### 6.3 Observability / Trace ID（可观测性 / 链路编号）
 
@@ -341,7 +335,7 @@ production 的 `src.query_api.main` 启动流程还会核验当前 RAG manifest 
 
 ### 7.4 重建索引或重置 Qdrant
 
-更新源资产后重新运行 §7.2 的构建命令。Builder 会创建新版本，并在校验通过后切换当前版本，旧发布仍可用。
+更新源资产后重新运行 [索引发布](#72-首次构建或发布新索引) 的构建命令。Builder 会创建新版本，并在校验通过后切换当前版本，旧发布仍可用。
 
 需要清空 Qdrant 开发数据并从头恢复时，执行：
 
@@ -380,17 +374,15 @@ uv run python scripts/run_database_tests.py
 uv run python scripts/run_database_tests.py --profile development
 ```
 
-两种集成测试都不启动真实 LLM。日常纯软件测试仍可在没有 PostgreSQL 的情况下运行：
-
-```bash
-CHATBI_WEB_ORIGIN=https://example.invalid uv run --python 3.11 --locked python -m pytest -q
-```
+两种集成测试都不启动真实 LLM。纯软件测试不需要 PostgreSQL，命令见[纯软件回归](#81-纯软件回归)。
 
 测试数量记录只作为对应 Commit 的证据快照，不作为当前 checkout 的基线；真实 LLM Evaluation 仍按显式授权流程执行，不能用纯软件测试替代。
 
 ### 8.3 GitHub Actions CI
 
-`.github/workflows/ci.yml` 在 `master` 的 Push、Pull Request 和手动触发时执行锁文件检查、纯软件回归、PostgreSQL 集成测试和 API / 打包 Web 登录、首次改密与退出的 Smoke Test（冒烟测试）。CI 使用 Python 3.11 和锁定的 `uv` 版本；PostgreSQL 集成测试使用 `database/ci/bootstrap.sql` 中的 CI-only 合成 Fixture（测试夹具），不使用本地业务数据。CI 不调用真实 LLM，也不替代 AI Evaluation（AI 评测）或 Business Acceptance（业务验收）。
+本地文档链接与结构检查使用 CI 相同的组合入口：`uv run --python 3.11 --locked python -m scripts.check_documentation`。它检查所有 Git 跟踪及未忽略 Markdown 的本地链接，并检查正式文档的标题层级和正文章节引用。
+
+`.github/workflows/ci.yml` 在 `master` 的 Push、Pull Request 和手动触发时执行锁文件检查、文档链接与结构检查、纯软件回归、PostgreSQL 集成测试和 API / 打包 Web 登录、首次改密与退出的 Smoke Test（冒烟测试）。CI 使用 Python 3.11 和锁定的 `uv` 版本；PostgreSQL 集成测试使用 `database/ci/bootstrap.sql` 中的 CI-only 合成 Fixture（测试夹具），不使用本地业务数据。CI 不调用真实 LLM，也不替代 AI Evaluation（AI 评测）或 Business Acceptance（业务验收）。
 
 ### 8.4 PR 前本地验收流程
 
@@ -400,11 +392,11 @@ PR 前的分支、candidate、用户授权、验收和交付顺序以 [`docs/age
 bash scripts/check_python_quality.sh
 ```
 
-该命令固定使用 Ruff 0.16.8，检查 `src/`、`evaluation/`、`tests/`。只对改动文件运行的定向检查属于局部结果，不能代替以上全量检查。其他本地验证按改动运行 §8.1 软件回归、§8.2 PostgreSQL 集成测试；涉及 Retrieval、RAG、Embedding、Qdrant、LLM 或 SQL 生成行为时，按仓库规则再执行 §9 的真实 Evaluation。
+该命令固定使用 Ruff 0.16.8，检查 `src/`、`evaluation/`、`tests/`。只对改动文件运行的定向检查属于局部结果，不能代替以上全量检查。其他验证按改动运行[纯软件回归](#81-纯软件回归)或[PostgreSQL集成测试](#82-隔离-postgresql-集成测试)；涉及 Retrieval、RAG、Embedding、Qdrant、LLM 或 SQL 生成行为时，按仓库规则再执行[真实LLM Evaluation](#9-运行真实-llm-evaluation)。
 
 ## 9. 运行真实 LLM Evaluation
 
-单轮真实评测会向配置的外部 LLM 发送当前 Golden Set 中的 29 条问题以及结构和指标上下文。多轮和 Business Analysis 是单独运行的套件，分别包含 7 个 Conversation / 15 个轮次和 10 个案例。执行前必须确认：
+真实评测会将各套当前案例与结构、指标上下文发送到配置的外部 LLM。执行前必须确认：
 
 - 当前网络和 LLM 配置可用。
 - 允许发送这些测试数据。
@@ -475,7 +467,7 @@ printf 'Formal baseline exit status: %s\n' "$evaluation_status"
 
 脚本保留正式失败报告并继续其他套件；`evaluation_status=0` 才表示本次正式基线通过。自动化调用须以该状态退出。不能重跑后挑选成功报告替换本次正式失败，修复后应形成新候选再重新验收。
 
-额外运行三次完整多轮诊断，将每次报告写入 `$evaluation_dir/diagnostic-1`、`diagnostic-2`、`diagnostic-3`。逐次记录 Runner 退出状态与 FAIL / INVALID_CASE 数量，包括未能出报告的运行；失败时继续保留其他诊断。诊断不改变正式基线结果。`5643432` 历史候选曾两次在 `MT-FAILURE-ISOLATION` 第三轮返回意外澄清，之后完整运行通过；相关[工作记录](../.scratch/engineering-quality-gates/issues/04-current-candidate-evaluation-baseline.md#result)是模型波动证据。
+额外运行三次完整多轮诊断，并逐次记录 Runner 退出状态与 FAIL / INVALID_CASE 数量，包括未能生成报告的运行。诊断不改变正式基线结果。
 
 GitHub 手动 Real E2E 按同一原则执行三套正式评测、确定性身份验收及三次多轮诊断；需要配置 LLM Secrets，普通 CI 通过不表示该工作流已运行。报告上传保留 14 天，需要长期追溯时由维护者保存原始文件和运行身份。评测结束后不要修改 tracked 文件来补写“当前通过”，本机实时结果保存在 Git 公共目录。
 
@@ -523,19 +515,17 @@ curl --fail http://127.0.0.1:8000/health
 
 先确认 `current.json` 仍指向旧版本，再处理失败构建；不要直接删除旧集合。
 
-## Web 开发与打包
+## 11. 网页开发、打包与验收
 
 安装 Node 24 和 npm，进入 `frontend` 执行 `npm ci`。在本地 `.env` 显式设置 `CHATBI_WEB_ORIGIN=http://127.0.0.1:5173`，启动 FastAPI 后运行 `npm run dev`；浏览器打开该地址。真实凭证仅填入本地配置和登录表单，不写入仓库。
 
-打包使用 `npm run build`。以 FastAPI 同源提供打包网页时，设置 `CHATBI_WEB_DIST_DIR=frontend/dist`，并将 `CHATBI_WEB_ORIGIN` 设置为实际网页地址（本地如 `http://127.0.0.1:8000`）。API-only 运行可同时留空这两个配置。线上 Origin 必须为 HTTPS；R6 当前范围是 §15 的本地固定版本部署，公网生产部署不在首版范围内。
+打包使用 `npm run build`。以 FastAPI 同源提供打包网页时，设置 `CHATBI_WEB_DIST_DIR=frontend/dist`，并将 `CHATBI_WEB_ORIGIN` 设置为实际网页地址（本地如 `http://127.0.0.1:8000`）。API-only 运行可同时留空这两个配置。线上 Origin 必须为 HTTPS；当前本机运行流程见[本机Stable环境](#14-本机-stable-环境) 的本地固定版本部署，公网生产部署不在首版范围内。
 
-浏览器使用独立 Cookie 登录接口，旧 Bearer 和管理后台继续兼容。当前仅电脑端；刷新保持登录并按 URL 只读 R3 已保存快照；重新登录默认新对话，通过私人列表重开历史。
+浏览器使用独立 Cookie 登录接口，旧 Bearer 和管理后台继续兼容。当前仅电脑端；刷新保持登录并按 URL 只读已保存历史快照；重新登录默认新对话，通过私人列表重开历史。
 
-网页问数：登录后输入完整问题（如“2025年2月人民币净销售额是多少”），成功后可围绕上一成功状态追问。表格明确区分 NULL、零与空字符串；经校验 SQL 可展开查看。受控失败不会覆盖上一成功状态；网络中断、客户端超时或响应无效时，结果未确认，需手动刷新历史核对已提交状态，或点击“新建问数对话”并补全问题。前端不会自动重发；刷新只读当前历史，未确认轮次不推进续聊状态。
+网页支持问数、追问和独立经营分析。刷新历史只读取保存状态，不自动重新执行。完整交互行为见[Web Spec](specs/web-dialogue-v1.md)、[历史与成果 Spec](specs/history-results-v1.md)和[后台执行 Spec](specs/execution-streaming-v1.md)。
 
-网页经营分析：手动切换“经营分析”，提供完整的指标与两个时期（如“分析2025年2月相比2025年1月的人民币毛利变化”）。仅支持既有人民币净销售额 / 毛利的产品因素归因，不继承问数条件。报告、归因数值和任务证据按后端返回显示。失联后可点击“重试原分析”，草稿编辑不会改变该任务的原问题 / UUID；明确的过期或语义拒绝不能静默重建任务。等待期间两种模式都禁止再次发送与切换，仍可编辑下一条草稿或退出。
-
-### R1 桌面浏览器验收
+### 浏览器测试与业务验收
 
 ```bash
 cd frontend
@@ -558,46 +548,33 @@ npm run test:real
 
 此命令生成一个独立 `web-e2e-*` analyst 验收账号，随机密码只在进程环境中传递；服务退出时禁用该账号并撤销会话，保留应用库安全审计 / 分析记录，不修改已有账号或业务数据。实际请求复用正式 runtime、授权、SQL Guard 与数据库执行；独立参考 SQL 使用业务只读账号。报告在 ignored `reports/browser-real/`，含实际提交 / Chrome / 对照结果，不含密码 / Cookie / Session Token；不要公开上传业务原始报告。安全 reporter 不输出断言内容或凭证。真实资源缺失或闭环失败不得将确定性替身通过作为替换验收。
 
-### R2 图表与数字展示
+### 真实业务链路验证
 
-查询成功后默认同时显示可用图表和表格，均可收起；时间图可切折线/柱状，操作不重查。同单位一起绘图，不同单位分图；多个分组、未知单位或语义、重复分组保留表格。金额显示千分位、两位小数和元，毛利率显示百分比；可展开原始返回值，NULL显示“无数据”。截断图表只代表已返回的最多100行。
+`cd frontend && npm test`运行确定性Chrome网页测试，不调用真实模型。`scripts/verify_container_dev.sh real`使用真实LLM、现有业务只读数据与RAG，覆盖问数 / 追问和两期经营分析；专用验收账号结束后禁用、撤销Session并清理临时凭证。此小范围验收不能替代正式AI Evaluation。
 
-经营分析显示两期金额、产品贡献和所选产品的已有因素，数值方向由后端裁决；省略产品只声明数量。图形失败不影响报告和表格。行为详见[R2 Spec](specs/result-visualization-v1.md)。ECharts随本地应用打包，不依赖CDN；npm锁文件变化需 `./dev build` 后 `./dev up`，源码仍通过挂载热更新。
+## 12. 历史与后台执行
 
-R2默认Chrome用例通过 `cd frontend && npm test` 运行，不调用真实模型。实际容器运行 `scripts/verify_container_dev.sh real`，显式使用真实LLM、现有业务只读数据与RAG，覆盖问数/追问、时间及分类多指标和两期分析；正式验收需clean candidate。专用验收账号结束自动禁用、撤销Session、移除临时凭证，原用户和持久卷保留。全量AI Evaluation仍是单独入口，不能把小范围浏览器验收冒称全套通过。
+历史、成果和后台执行身份存放于独立 Control DB，业务库保持只读。迁移通过 `./dev migrate` 或 `src.bootstrap migrate` 显式运行；请求路径不执行 DDL。旧进程内状态不能由数据库迁移补回。
 
+开发环境更新前停止旧 API，显式应用 migration，再启动新版本；回滚保留数据库表和开发卷，不执行反向 DROP。应用仅运行一个 API 进程。Stable 使用独立配置和命令，见[本机 Stable 环境](#14-本机-stable-环境)。
 
-## 13. 历史、执行状态与流式反馈运行
+后台执行、历史和成果的行为分别见[执行 Spec](specs/execution-streaming-v1.md)和[历史与成果 Spec](specs/history-results-v1.md)。
 
-历史、轮次、固定成果和后台执行身份存放于独立 Control DB，业务库仍只读。`database/control/005_history_results.sql` 与 `006_execution_streaming.sql` 由现有 `./dev migrate` / `src.bootstrap migrate` 显式安装；请求路径不执行 DDL。初始化 / 升级 / 重复迁移均保留原账号、Session、RBAC、checkpoint 与业务数据；旧内存记录无法补回。R4 执行与事件 Contract 见 [Spec](specs/execution-streaming-v1.md)，模块和运行生命周期设计见 [Design](designs/execution-streaming-v1.md)。
+## 13. 成果导出
 
-只运行一个 API 应用进程，禁止多 worker。启动持有独立 PG advisory lock 并更新 epoch：遗留 accepted / running 执行和轮次标为结果未确认，保留上一成功状态。正常关闭先停止新受理并等待后台 worker 结束，再释放 guard 与业务资源；进程意外退出后，重启不自动重发未确认请求。
-
-本段仅描述开发环境：升级前停止旧 API，显式迁移，再启动新版本；回滚保留数据库表和开发卷，不反向执行 DROP。R6 本地稳定环境使用的独立命令与资源见 §15；其兼容升级 / 回滚已由 Ticket 03 实施和验收。
-
-R4 最终真实浏览器 / 模型 / RAG / PostgreSQL 闭环使用 clean candidate 执行 `scripts/verify_container_dev.sh isolated`。该入口创建独立 Compose project 和空数据库卷，运行桌面 Chromium 真实登录、SSE、重连 / 刷新、多页、取消、分析报告与模型链路，并在退出时清理该 project 的卷与临时账号；它不会停止或清除日常开发 Compose project。真实运行报告位于 ignored `reports/browser-real/`，候选 SHA、报告指纹、清理结果和最终状态保存在本机 Git 公共目录的 R4 实时工作状态中。该浏览器闭环与三套正式 AI Evaluation 分开执行，不能相互替代。
-
-`real` 模式会复用指定的现有开发容器 / 数据，并在验收尾段重启当前开发 API；只在明确要对该开发 profile 做重启恢复检查时运行。该步骤保留 PostgreSQL / Qdrant named volume，结束仍会禁用专用账号、撤销 Session 并移除临时凭证。R4 clean 最终验收采用上述 `isolated` profile。
-
-`#history=<UUID>` / `#saved=<UUID>` 定位当前私人记录；新登录保持空白，旧账号私有数据不写浏览器持久存储。历史只读打开；失败分析有效期内手动恢复原 run，过期仅能显式新建分析。完成报告不依赖 checkpoint 存活。删除原历史保留成果，删除成果保留历史。
-
-验收入口与候选身份见 [R3 Acceptance](acceptance/history-results-v1.md) 与 [R4 Acceptance](acceptance/execution-streaming-v1.md)。
-
-## 14. R5 成果导出运行
-
-R5 只从 owner 当前可读的成功快照生成文件，不调用模型 / Online Query，也不写回历史或成果；不保留下载文件为服务器成果。XLSX 用于查询快照；PNG 用于查询图表和已完成分析快照中的产品、因素与查询任务图；PDF 用于已完成分析报告，包含正文、全部已返回归因、证据任务和限制说明。完整来源、精度、安全与文件内容要求见 [R5 Spec](specs/result-export-v1.md) 和 [Design](designs/result-export-v1.md)。
+文件只从当前用户可读的成功快照生成文件，不调用模型 / Online Query，也不写回历史或成果；不保留下载文件为服务器成果。XLSX 用于查询快照；PNG 用于查询图表和已完成分析快照中的产品、因素与查询任务图；PDF 用于已完成分析报告，包含正文、全部已返回归因、证据任务和限制说明。完整来源、精度、安全与文件内容要求见 [成果导出 Spec](specs/result-export-v1.md) 和 [Design](designs/result-export-v1.md)。
 
 导出运行时使用当前 API 用户私有的临时根与单进程锁；同一 API 只支持一个进程。快照最多 5 MiB、每账号并发 1 项、API 并发 2 项、每次生成最多 60 秒、文件最多 20 MiB。worker 不接收 Session / 数据库 / 模型凭证；任务目录设为 `0700`，输出文件设为 `0600`，下载成功、失败、断连或 API 关闭后都会清理。导出进程不得以 root 运行；root 下接口受控返回不可用。私有根 / 锁不可用时只有导出端点返回 503，Query API 仍启动。服务意外退出后，下一次启动只清理由此导出服务专用根中的旧任务目录，不扫描其他系统临时文件。
 
 PNG / PDF 使用镜像内固定的 Playwright / Chromium 与离线 bundle；PNG 使用 Noto Sans CJK SC，PDF 正文使用 WenQuanYi Zen Hei。字体包按 Debian Bookworm 版本锁定，运行 manifest 记录各字体包版本、fontconfig 匹配路径与 SHA-256；启动和每次图像 / PDF 生成前校验浏览器、字体、bundle 及源码指纹。浏览器启用 sandbox，页面拒绝 CDN / 外部资源和网络连接；worker 环境不继承 API 凭证。PDF 通过独立 HTML 模板生成 A4 可选取文本文件，并校验正文 / 任务 coverage 和页面横向溢出。API 开发容器通过只读挂载检查 `frontend/src`、导出入口、Vite / TypeScript 构建配置和依赖清单；修改这些源码后先执行 `./dev build` 重建 API 镜像，再执行 `./dev up`。源码与镜像不匹配、字体 / bundle 缺失或 sandbox 不可用时，PNG / PDF 端点受控返回不可用，XLSX 继续可用。`./dev` 默认配置仓库内随附的 Chromium seccomp profile；直接调用 Compose 时需设置 `CHATBI_DEV_SECCOMP_PROFILE` 指向 `docker/third-party/playwright-seccomp-profile.json`。
 
-新增 Python 依赖或锁文件变动后，开发容器需执行 `./dev build`，再执行 `./dev up`；宿主方式执行 `uv sync --locked`。不会新增数据库迁移、导出文件卷、后台队列或额外监听端口。Ticket 01 XLSX、Ticket 02 PNG 和 Ticket 03 PDF 的本地文件解析 / 浏览器 / 隔离 renderer 验证已通过；R5 clean candidate `71d72d2` 的隔离 Compose 完整业务验收已通过，身份与证据见 [R5 Acceptance](acceptance/result-export-v1.md)；R6 本地运行验收独立记录于 §15，公网生产部署不在首版范围。
+新增 Python 依赖或锁文件变动后，开发容器需执行 `./dev build`，再执行 `./dev up`；宿主方式执行 `uv sync --locked`。不会新增数据库迁移、导出文件卷、后台队列或额外监听端口。导出只读取已成功保存的快照，不调用模型或重新查询；具体行为见[成果导出 Spec](specs/result-export-v1.md)。
 
-## 15. R6 本地稳定环境
+## 14. 本机 Stable 环境
 
 本节只操作当前 WSL2 仓库对应的 `chatbi-stable` Compose 项目。容器从本地固定版本镜像启动，API 仅绑定 `127.0.0.1`；PostgreSQL 和 Qdrant 不发布宿主端口。开发环境使用 `./dev`，不要将本节命令与开发 Compose 混用。
 
-已确认的本地稳定部署行为见 [R6 Contract](specs/local-deployment-v1.md)；升级 / 兼容回滚已验收，完整目标环境验收见 [R6 Acceptance](acceptance/local-deployment-v1.md)。
+部署行为见[本地部署 Spec](specs/local-deployment-v1.md)。运行状态、备份与恢复行为见[本地运行保障 Spec](specs/local-operations-v1.md)。
 
 首次安装需要 WSL/Linux 的 Bash、Git、Docker Engine / Compose v2、OpenSSL 和 `flock`（util-linux）；无需宿主 Python 或 Node。写操作使用本地非阻塞锁，避免初始化、日常操作与后续版本切换并发。先确保仓库处于 clean commit，然后执行：
 
@@ -658,46 +635,46 @@ PNG / PDF 使用镜像内固定的 Playwright / Chromium 与离线 bundle；PNG 
 uv run --frozen python -m scripts.verify_local_deployment
 ```
 
-验收入口新建带 run ID 的空 PostgreSQL / Qdrant 卷和 RAG 目录，完成 Windows Edge 业务 / 导出 / 重启恢复与失败检查；通过账号和资源归属校验后清理本次临时资源。它会进行少量真实模型调用，证据与验证限制见 [R6 Acceptance](acceptance/local-deployment-v1.md)。R6候选本身未执行电脑重启；当前R7 Stable已通过Docker Desktop及整台Windows电脑重启恢复核验，见 [R7 Acceptance](acceptance/local-operations-v1.md)。
+隔离验收使用带run ID的临时PostgreSQL / Qdrant卷和RAG目录，完成Windows Edge业务、导出、恢复及失败检查，最后按资源归属校验清理临时资源。它会进行少量真实模型调用，需要clean candidate和目标环境操作授权。
 
 ### 本机下载接管导致 PDF 空响应
 
-若网页提示“导出文件大小无效”，浏览器收到 PDF 的 204 / 空内容而 API 访问日志为 200，先做客户端对照，不把它直接归因于服务器生成失败。本机下载管理器可能接管文件；检查 IDM 等软件的浏览器集成与文件类型设置。IDM 官方提供按站点排除自动接管和关闭浏览器集成的设置，见 [IDM Options](https://www.internetdownloadmanager.com/support/using_idm/options.html)。如需临时修改，先记录原设置、确认对其他下载的影响，验收后恢复。Agent 未获用户明确授权时不得调整本机下载管理器或用户浏览器配置。本机实测已确认IDM的PDF接管可导致该现象；完整R6验收在临时取消PDF接管的条件下通过，随后已恢复原设置。日常PDF下载需暂停接管或由用户明确设置本机站点例外。R6证据与验证限制见 [本地部署Acceptance](acceptance/local-deployment-v1.md)。
+若浏览器提示“导出文件大小无效”且收到PDF空响应，先区分浏览器下载接管与服务端生成失败。IDM等下载工具可能接管PDF；检查其浏览器集成与文件类型设置。如需修改本机配置，由用户确认变更范围并在事后恢复。
 
 隔离验收可通过 `CHATBI_ACCEPTANCE_BROWSER_EXECUTABLE` 显式指定本机已有 Windows 浏览器的绝对 EXE 路径，运行 `uv run --frozen python -m scripts.verify_local_deployment`。默认仍为 Edge；该选项只影响专属临时 Profile，不改变用户配置或安装浏览器。先确认该浏览器能完整接收合成 PDF，报告会记录实际版本和 `custom-executable` 启动类型；其他浏览器通过不代表日常 Edge 的 IDM 接管已解除，也不替代真实业务文件解析。
 
-## R7 动态运行状态（候选隔离验收通过；Stable已切至R7，六小时自动备份周期通过）
+## 15. Stable 运行状态与自动备份
 
-R7 Contract见[Spec](specs/local-operations-v1.md)，机制见[Design](designs/local-operations-v1.md)。Ticket 01–06本地实现与Review完成；Ticket 07 clean候选`6d764ac`的Linux Playwright完整业务验收、12份导出、资源基线、四类依赖60秒故障/恢复矩阵及额度释放回归已通过。R6备份隔离恢复条件RTO为84秒。2026-10-10用户授权后，本机Stable已执行R6→R7兼容升级；`/health`和`/ready`为200，依赖ready。连续运行期间，调度器于18:30:58+08:00自动登记六小时周期备份`a0fa7ba4dd9748b88de3b12983386541`，复核时服务healthy、backup known/not-overdue；24小时逾期提醒逻辑已有23项定向测试通过，但未在Active Stable人为触发。切换后Stable业务Trace已由用户确认在阿里云ARMS验收通过（未提供Trace ID或时间戳）；详细证据见[R7 Acceptance](acceptance/local-operations-v1.md)。
+行为见[本地运行保障 Spec](specs/local-operations-v1.md)，机制见[运行保障 Design](designs/local-operations-v1.md)。本节描述Stable当前状态读取、容量保护、加密备份与隔离恢复操作。
 
-`/health`继续只证明HTTP存活；`/ready`公开最小status/checked_at，ready返回200，其余503。每15秒一轮有界独立进程探测，单轮最多10秒；30秒未更新则unknown。稳定镜像复用R6发布门禁，验证Control/业务库、Qdrant、固定业务/RAG/版本资产；不执行定时LLM调用。未知和失败均不能用旧正常结果替代。
+`/health`只证明HTTP存活；`/ready`公开最小状态与检查时间，ready返回200，其余状态返回503。每15秒启动一轮有界依赖检查，单轮最多10秒；超过30秒未更新则状态为unknown。检查覆盖Control / 业务数据库、Qdrant、固定业务和RAG资产；不执行定时LLM调用。未知或失败不能用旧的正常结果替代。
 
 登录后页面每10秒刷新运行状态，网络请求最多8秒。普通账号只显示不可用提示；具备既有admin.audit权限且无需改密的管理员可见详细依赖、最近模型调用和安全备份状态。该入口使用readonly身份认证，不修改last_seen或Cookie，不延长30分钟Idle/8小时Absolute；身份过期返回登录。模型只显示最近15分钟最后一次真实调用成功/失败，过期则未知，不能保证下一次调用。
 
-`./local status`核对Docker真实状态，在明确stable API容器内读取600权限的Unix socket详细安全快照；不会创建或续期Session。旧镜像没有socket、API已停止或证据读取失败显示unknown。当前active Stable为R7，状态快照显示Control DB、业务DB、Qdrant、资产ready，备份状态known且未逾期，模型状态unknown（切换后尚无新的真实调用）；`/health` HTTP 200仍只代表liveness。升级前R6和升级后R7加密副本均已登记，隔离恢复耗时84秒；实际结果见[R7 Acceptance](acceptance/local-operations-v1.md)。
+`./local status`核对Docker真实状态，并在明确的Stable API容器内读取600权限的Unix socket安全快照；它不会创建或续期Session。旧镜像没有socket、API已停止或证据读取失败时显示unknown。
 
-R7受理保护使用同一ExecutionRuntime容量：默认每账号1、API进程4，同步问数/分析与后台任务合计；429 `EXECUTION_LIMIT_REACHED`表示额度已满，503 `SERVICE_NOT_READY`表示当前就绪未证实，请等待恢复后由用户重新发起。已受理任务/重放沿原R4；服务不自动排队或重试。同步执行不会为了额度写入伪history，超时中断仍等待真实工作退出再释放。管理员状态和本机socket显示业务/导出各自的当前总数与上限，不暴露其他用户ID。
+后台受理保护使用同一ExecutionRuntime容量：默认每账号1、API进程4，同步问数/分析与后台任务合计；429 `EXECUTION_LIMIT_REACHED`表示额度已满，503 `SERVICE_NOT_READY`表示当前就绪未证实，请等待恢复后由用户重新发起。已受理任务按后台执行规则重放；服务不自动排队或重试。同步执行不会为了额度写入伪history，超时中断仍等待真实工作退出再释放。管理员状态和本机socket显示业务/导出各自的当前总数与上限，不暴露其他用户ID。
 
-### R7 手工加密备份、隔离恢复与显式切换（Stable已切换；六小时周期通过）
+### 手工加密备份与调度
 
-从 clean commit 执行 `./local build-operations` 构建固定 age v1.3.2 / PG16 工具，随后**显式**执行 `./local init-backup`。初始化不会覆盖已有私钥；`.local/backup-keys/identity.txt` 为恢复必需，私钥和目录分别600/700。当前本机已初始化密钥并创建首份登记副本`2e1a0cc185ac467a8f91e2adc2ca783f`；实际恢复和RTO证据见[R7 Acceptance](acceptance/local-operations-v1.md)。应另存私钥，不能把它与密文当作同一个备份。私钥丢失时既有密文无法恢复，不能通过重新初始化解开旧副本。
+从clean commit执行 `./local build-operations` 构建固定age v1.3.2 / PG16工具，再显式运行 `./local init-backup`。初始化不会覆盖已有私钥；`.local/backup-keys/identity.txt`是恢复必需文件，私钥和目录权限分别为600 / 700。应另行安全保存私钥；私钥丢失后，已有密文无法恢复。
 
-`./local backup` 核对实际运行 API/PG 身份，再在锁内备份双库、配置与固定发布资产。Control dump及全表指纹共用exported snapshot，业务库独立快照并核对前后内容。最新build不是备份来源。工具完整解密、检查固定成员/摘要与dump TOC后才登记；`./local backup-list`只读列出known catalog。本地代码已接入自动调度与升级前门禁；Ticket 05 已实现隔离恢复和显式切换，Ticket 06本地实现与Review已完成。active Stable已切至R7，R6升级前副本与R7升级后副本均已登记；连续运行六小时周期于18:30:58+08:00自动登记副本`a0fa7ba4dd9748b88de3b12983386541`，24小时逾期提醒逻辑已有23项定向测试通过但未在active Stable人为触发；切换后Stable业务Trace已由用户确认在阿里云ARMS验收通过（未提供Trace ID或时间戳），见[R7 Acceptance](acceptance/local-operations-v1.md)。
+`./local backup`核对实际运行API / PG身份，再在锁内备份数据库、配置和固定发布资产。Control DB dump与全表指纹共用exported snapshot；业务库使用独立只读快照并核对前后内容。工具完成解密、固定成员 / 摘要与dump TOC校验后才登记。`./local backup-list`只读列出已登记副本。自动调度与升级前备份沿用同一归属、锁和来源校验。
 
 `.local/backups/`仅存密文；`.local/operations/`包含可信目录和受限明文staging，API只挂安全public状态及独立socket目录，不读取私钥/catalog/source。仅已登记ID与匹配密文摘要可作为后续恢复来源，不接受任意路径。不要手工改catalog、删除已有副本或在local操作进行时改稳定配置/RAG。
 
 缺key、锁冲突、PG/工具失败、超时、wrong key或损坏均失败退出，保留原服务/旧副本，清理本次明文。网页管理员安全提示可能显示未初始化/未确认或最近失败，普通账号无备份详情。磁盘空间应同时容纳dump、打包、校验解密及既有密文；空间不足不得把半成品登记为成功。强制杀死容器或主机断电后的受限残留需由后续恢复/验收入口核对归属，不能删除不明文件。
 
-隔离机制验收：`python3 -m scripts.verify_local_backup`（先构建开发验证工具tag）；创建随机专用PG/network、生成测试key、并发写入与dump/空库恢复指纹核对，并通过注入时钟让真实调度器立即走到6小时边界，不必等待现实时间。验证容器只触及本次隔离资源并在结束时清理。它证明隔离机制与调度边界；Active Stable的连续运行周期仍要单独观察。
+隔离验证命令为`python3 -m scripts.verify_local_backup`（先构建开发验证工具tag）；创建随机专用PG/network、生成测试key、并发写入与dump/空库恢复指纹核对，并通过注入时钟让真实调度器立即走到6小时边界，不必等待现实时间。验证容器只触及本次隔离资源并在结束时清理。它证明隔离机制与调度边界；Active Stable的连续运行周期仍要单独观察。
 
-### R7 隔离恢复和显式切换
+### 隔离恢复与显式切换
 
 `./local restore <backup-id>`只接受本机known catalog中的完整备份ID。它在专属Compose project、带恢复ID标签的空PG/Qdrant卷和独立配置/RAG/运行目录中恢复，核对数据库全表指纹、批准角色与权限、Session撤销和运行代际，再重建固定模型对应的RAG并执行readiness、临时账号登录及历史/成果只读核验。只有全部检查通过且总耗时不超过30分钟，候选才标为verified并停止；本命令不会改变active binding或实际stable服务。
 
 通过输出中的恢复ID后，操作者可显式执行 `./local restore-activate <restore-id>`。该命令先记录previous/candidate与切换阶段，停止候选和旧stable writer，再原子切换binding并启动候选；中断时保留journal和两边资源，必须明确选择 `./local restore-recover <restore-id> --previous` 或 `--candidate` 完成恢复。不要手动编辑 `.local/runtime-binding.json` 或在journal未完成时启动其他 `./local` 写操作。
 
-恢复成功或普通失败退出时会清除解密归档payload；candidate专属的受限配置、Secret、release、卷和登记记录会保留，以支持检查或显式切换。若工具报告明文暂存清理失败，先核对恢复ID及目录归属，再按安全流程处理；不要清理未知资源。Ticket 05 已在独立stable clone中完成恢复、候选激活和previous回退核验，2026-10-08实际stable/dev运行身份与健康状态前后未变。2026-10-09实际active R6备份`2e1a0cc185ac467a8f91e2adc2ca783f`已在隔离候选`0b4e8f4c3b7f62c71261f7f57703cfda`恢复并完成核验，84秒满足条件RTO；候选停止、恢复卷保留，未执行激活。该状态截至2026-10-09。次日经用户授权执行R6→R7兼容升级，R6升级前副本与R7升级后副本均已登记；当前active Stable为R7，连续运行六小时周期已于18:30:58+08:00自动登记新副本。24小时逾期提醒回归通过但未在active Stable人为触发；切换后Stable业务Trace已由用户确认在阿里云ARMS验收通过（未提供Trace ID或时间戳），详见[R7 Acceptance](acceptance/local-operations-v1.md)及[R7 Ticket 07](../.scratch/local-operations-v1/issues/07-acceptance.md)。
+恢复成功或普通失败退出时会清除解密归档payload；candidate专属受限配置、Secret、release、卷和登记记录会保留，以供检查或显式切换。若工具报告明文暂存清理失败，先核对恢复ID及目录归属；不要清理未知资源。
 
-R7候选的`up`随服务启动独立backup工具，运行时每6小时尝试，无/超过24小时副本启动即尝试；失败/锁竞争不热循环，下一次常规尝试间隔6小时。`down`先停止backup再停止API/依赖，保留数据、密钥和catalog。未构建工具时up警告但不撤销已运行API；必须先build-operations/init-backup，不能据此宣称RPO有保障。`./local logs backup`只提供安全分类。
+稳定环境的`up`随服务启动独立backup工具，运行时每6小时尝试，无/超过24小时副本启动即尝试；失败/锁竞争不热循环，下一次常规尝试间隔6小时。`down`先停止backup再停止API/依赖，保留数据、密钥和catalog。未构建工具时up警告但不撤销已运行API；必须先build-operations/init-backup，不能据此宣称已具备备份恢复保障。`./local logs backup`只提供安全分类。
 
 `upgrade <SHA>`在停止旧API/迁移前先备份实际旧active；缺key、工具/来源/PG失败均退出，原API保持。最新目标镜像不会成为旧版本的备份来源。校验成功后才按7天清理已知expired副本，保留边界恰好7天、未知文件和原环境；cleanup中断可能留下未登记密文，保留并核查归属。完整跨版本与断电恢复矩阵留最终隔离验收。

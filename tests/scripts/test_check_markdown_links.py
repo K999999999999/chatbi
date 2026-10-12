@@ -63,6 +63,21 @@ def test_setext_heading_is_an_anchor_but_fenced_heading_is_not(tmp_path: Path) -
     assert "target.md#example" in errors[0]
 
 
+def test_setext_heading_does_not_cross_a_fenced_code_block(tmp_path: Path) -> None:
+    (tmp_path / "target.md").write_text(
+        "Paragraph before code\n```text\nexample\n```\n===\n", encoding="utf-8"
+    )
+    source = tmp_path / "source.md"
+    source.write_text(
+        "[not a heading](target.md#paragraph-before-code)\n", encoding="utf-8"
+    )
+
+    errors = check_markdown_file(tmp_path, source)
+
+    assert len(errors) == 1
+    assert "target.md#paragraph-before-code" in errors[0]
+
+
 def test_link_cannot_escape_repository(tmp_path: Path) -> None:
     source = tmp_path / "source.md"
     source.write_text("[outside](../outside.md)\n", encoding="utf-8")

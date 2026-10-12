@@ -1,6 +1,6 @@
 # ChatBI AI Development Rules
 
-本文件是 ChatBI Coding Agent 的精简入口和必须遵守的稳定规则。Harness 的组成和读取方式见 [`docs/agents/agent-harness.md`](docs/agents/agent-harness.md)；详细流程和领域 Contract 以本文列出的 Source of Truth 为准。
+本文件是 ChatBI Coding Agent 的精简入口和必须遵守的稳定规则。文档职责、更新和门禁见 [`docs/agents/documentation.md`](docs/agents/documentation.md)；详细流程和领域 Contract 以本文列出的 Source of Truth 为准。
 
 ## Language & Collaboration
 
@@ -13,7 +13,7 @@
 
 - ChatBI 是 Domain AI Engine（领域 AI 引擎），Architecture 是 Modular Monolith（模块化单体）。遵循 Business First、Domain Owns Business Truth、Model proposes, program decides、Stable Core, Replaceable Edge 和 Do Not Overbuild。
 - 业务正确优先，其次是最小完整闭环、验证、可维护性和 Production Readiness。
-- `docs/architecture.md` 定义架构；`docs/product-scope.md` 定义当前产品边界；`docs/specs/` 定义行为 Contract；`docs/designs/` 记录实现设计；`docs/acceptance/`、Tests 和 Evaluation 提供验收证据。
+- `docs/architecture.md` 定义架构；`docs/product-scope.md` 定义当前产品边界；`docs/specs/` 定义行为 Contract；`docs/designs/` 记录实现设计；Tests 和 Evaluation 提供验证证据。
 - 上层已确认的事实源优先于下层实现。Legacy Code、旧 Metadata 或派生产物不得反向修改已确认的 Architecture、Domain 或 Contract；实现冲突时先检查实现。
 - 领域任务按 [`docs/agents/domain.md`](docs/agents/domain.md) 读取相关事实源。不要为补齐形式创建空文档。
 
@@ -34,16 +34,16 @@
 - 自动继续可由明确记录的授权范围覆盖的同一工作项，尤其是已经发布的 PR 跟进与收尾。归属或授权无法核实、多个工作互相冲突、发现用户修改阻碍写入 / 清理，才停下来说明事实并询问最关键的问题。没有相关未完成工作时，正常处理当前请求。
 - 工作区有修改时先列明并判断归属。能由当前活动工作记录确认属于正在继续的任务时，可以恢复该任务；归属不明或属于其他任务时，暂停新的写入操作并请用户决定。不得自动 stash、reset、checkout、commit、覆盖或移动改动。
 - 先判断用户是在需求发现、需求澄清、Spec 待确认、待拆 Ticket、待实施、实施、验证 / Review、PR 检查、合并后 Harness 复盘或其他状态。问题 / 机会尚无明确目标时进入需求发现，通过讨论和必要的只读查证整理候选目标；已有候选目标但行为、范围或验收仍不清时进入 `workflow-grill-with-docs`；不得把两者都称作需求澄清。
-- 判断下一步、启动新目标或调整计划时，读取 `docs/roadmap.md`，结合产品范围和相关 Spec、Design、Acceptance 核对状态与依赖。路线图受已确认事实源约束；Agent 可依据证据更新事实，优先级重排、新增承诺或范围变化先取得用户确认。读取与维护触发条件见 [`docs/agents/agent-harness.md`](docs/agents/agent-harness.md#路线图读取与维护)。
+- 判断下一步、启动新目标或调整计划时，读取 `docs/roadmap.md`，结合产品范围和相关 Spec、Design 核对状态与依赖。路线图受已确认事实源约束；Agent 可依据证据更新事实，优先级重排、新增承诺或范围变化先取得用户确认。读取和维护规则见 [`docs/agents/documentation.md`](docs/agents/documentation.md#更新与归档)。
 - 每个确定要实施的工程改动都有 `.scratch/` 长期记录和本机实时进度。小改动先写短 Spec；用户明确给出稳定任务时，该指令同时构成短 Spec 的实施授权，无需重复确认。复杂改动经过完整 Spec 确认、`workflow-design-review`、`workflow-to-tickets` 草案、当前上下文的 `workflow-ticket-readiness` 和用户确认拆分。完整目标已获授权时按依赖连续实施全部 Tickets，不逐个等待选择或“继续”；只授权部分目标时仅实施该范围。细节见 [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md)。
 - 关键业务行为、功能链路、Contract、技术 / 依赖选择、模块职责、数据 / 安全和验证方式必须查清并在 Spec 确认。实施需改变已确认目标、范围或关键技术决定时先说明影响并取得确认；局部编码选择可在约束内处理。只读查证仍不足时，先定义并确认小实验。
 - `ask-matt` 是用户主动要求流程导航时使用的可选 Skill，不是每个请求的必经入口。阶段 Skills 在目标、上下文和授权满足时可按流程使用，无需用户手动逐个调用。Ticket Readiness Review 在当前上下文只读执行，不启动独立 Agent；它不替代设计审查或实现后的 Code Review。PR Review 由仓库真实流程定义，不新增用户 Review 阶段。
-- 仓库规则引用的 workflow Skills 由 Codex 环境中的 `engineering-workflow` Plugin 提供；调用时使用已安装 Plugin 暴露的精确名称。Harness 的说明和依赖边界见 [`docs/agents/agent-harness.md`](docs/agents/agent-harness.md)。
+- 仓库规则引用的 workflow Skills 由 Codex 环境中的 `engineering-workflow` Plugin 提供；调用时使用已安装 Plugin 暴露的精确名称。
 
 ## Quality & Security
 
 - 行为变化同步更新相应 Software Test、AI Evaluation 或 Business Acceptance；新 Bad Case 加入 Regression。验证记录需关联候选提交、适用基线、覆盖范围和结果；代码与 Contract 未变且证据仍适用时可以复用，相关行为或基线变化后重跑受影响检查。
-- 正式 Spec、Contract、Runbook、验收入口等适用事实源的更新属于 Done When；记录更新位置或不适用理由，不能只以代码和测试通过报告完成。
+- 正式 Spec、Contract、Runbook、验收入口等适用事实源的更新属于 Done When；记录更新位置或不适用理由、历史内容去向，并检查受影响的文档链接。
 - 每次交付检查 `docs/roadmap.md` 是否受已确认目标、依赖、验收或完成事实影响；适用时同步更新，不适用时记录理由，不将历史证据改称当前候选结果。
 - Software Test 验证确定性软件行为；AI Evaluation 验证模型行为；Business Acceptance 验证业务目标。具体验证按改动风险选择。
 - 真实 API Key、Token、Password、Connection String 和其他 Secret 不得进入 Source Code、Git、Logs、Documentation 或 Test Data。`.env` 是本地真实配置；`.env.example` 是安全模板。
@@ -58,10 +58,10 @@
 
 ## Documentation Map
 
-- Harness 组成、后续 AI 的读取入口和文档维护触发条件：[`docs/agents/agent-harness.md`](docs/agents/agent-harness.md)
+- 文档归属、更新方式和自动检查边界：[`docs/agents/documentation.md`](docs/agents/documentation.md)
 - 架构和产品边界：[`docs/architecture.md`](docs/architecture.md)、[`docs/product-scope.md`](docs/product-scope.md)
 - 当前路线与优先级确认状态：[`docs/roadmap.md`](docs/roadmap.md)
-- 行为 Contract、实现设计、验收证据：`docs/specs/`、`docs/designs/`、`docs/acceptance/`
+- 行为 Contract 与实现设计：`docs/specs/`、`docs/designs/`
 - 本地开发、服务运行和评测：[`docs/runbook.md`](docs/runbook.md)、`evaluation/`、`reports/evaluation/`
 
 > Contract 内自主执行，Contract 外停止扩张。

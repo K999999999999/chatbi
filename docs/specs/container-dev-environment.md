@@ -1,6 +1,6 @@
-# 本地容器开发运行 Contract
+# 容器开发环境
 
-适用入口：WSL / Linux 的 Git、Bash、Docker Engine / Compose。容器安装 Python / uv / Node 与仓库锁定依赖；推荐开发入口为根目录 `./dev`，原宿主开发入口继续支持。此文档由开发运行配置的维护者同步维护，生产部署属于 R6。
+本文定义容器开发命令、数据保留和宿主隔离行为。开发与 Stable 是独立环境；操作方式见 [Runbook](../runbook.md)。
 
 ## 初始化与命令
 
@@ -22,7 +22,7 @@
 
 - API / Web不随电脑或Docker重启自动启动，显式启动后不随终端关闭退出；基础设施沿用`unless-stopped`。
 - 宿主端口仅`127.0.0.1`，默认Web5173 / API8000；内部网络沿用Cookie / CSRF / Origin校验。
-- 单应用worker自动重载Python源码；Vite热更新前端。重载 / 重启丢失进程内多轮会话，刷新按R1清空临时对话。
+- 单应用worker自动重载Python源码；Vite热更新前端。重载 / 重启丢失进程内多轮会话，刷新按历史规则只读恢复已保存对话，不自动重发；进程内短期会话不保证重启恢复。
 - 选择性源码挂载，不覆盖镜像依赖。依赖 / 新增根配置显式重建；环境变量变化执行`up`重建容器配置。
 - 本地Embedding默认CPU / FP32，远端LLM沿用配置，不承诺GPU或性能指标。
 - 数据库和Qdrant卷保持原身份；模型 / RAG复用主机路径，API只读、工具可写，宿主UID / GID正常，不修改已有数据所有权。
@@ -32,6 +32,6 @@
 
 基础Compose不隐式启动应用；Dev Container保留原配置，不是本次验收入口。端口冲突不杀未知进程；故障修复后重试，停止应用后可回本机入口，数据保留。
 
-运行验收覆盖独立空卷初始化、热更新、持久性、故障、实际Compose网页的真实两轮查询和账号清理；证据绑定候选 / 资源。日期化结果见`docs/acceptance/`，不改写历史Evaluation身份。
+运行验收覆盖独立空卷初始化、热更新、持久性、故障、实际Compose网页的真实两轮查询和账号清理；证据绑定候选 / 资源。日期化结果见[历史验收记录](../../.scratch/container-dev-environment/history/acceptance--container-dev-environment-20261003.md)，不改写历史 Evaluation 身份。
 
 操作见[Runbook](../runbook.md)，初始化见[Bootstrap](bootstrap.md)，网页行为见[Web Spec](web-dialogue-v1.md)。
