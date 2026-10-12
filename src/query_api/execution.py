@@ -22,7 +22,7 @@ from .execution_runtime import (
     ExecutionCapacityExceeded,
     ExecutionRuntimeClosed,
 )
-from .history_contracts import HistoryError, operation_hash
+from .history_contracts import HistoryError, HistoryFailureKind, operation_hash
 
 _LOGGER = logging.getLogger(__name__)
 _BUSINESS_REJECTION_CODES = frozenset(
@@ -133,17 +133,18 @@ class ExecutionApplication:
         self.history.runtime.check()
         header = self.store.header(auth.user_id, history_id)
         if header.kind != mode:
-            raise HistoryError("INVALID_REQUEST", "执行模式与历史类型不匹配", 400)
+            raise HistoryError("INVALID_REQUEST", "执行模式与历史类型不匹配")
         if mode == "analysis":
             if header.last_success_turn_id is not None:
                 raise HistoryError(
-                    "HISTORY_RESULT_NOT_SAVABLE", "已完成的分析无需恢复", 409
+                    "HISTORY_RESULT_NOT_SAVABLE",
+                    "已完成的分析无需恢复",
+                    failure_kind=HistoryFailureKind.ANALYSIS_ALREADY_COMPLETED,
                 )
             if not header.analysis_recovery_available:
                 raise HistoryError(
                     "HISTORY_CONTEXT_INCOMPATIBLE",
                     "原分析任务已过期或无法恢复，请新建分析",
-                    422,
                 )
         lease = self._reserve(
             auth,
@@ -271,10 +272,8 @@ class ExecutionApplication:
         try:
             record = self.store.execution(auth.user_id, execution_id)
         except HistoryError as exc:
-            if exc.status == 404:
-                raise HistoryError(
-                    "EXECUTION_UNAVAILABLE", "执行记录不可用", 404
-                ) from None
+            if exc.code == "HISTORY_UNAVAILABLE":
+                raise HistoryError("EXECUTION_UNAVAILABLE", "执行记录不可用") from None
             raise
         return self._view(auth, request_id, record)
 
@@ -284,7 +283,7 @@ class ExecutionApplication:
             subscription = self.runtime.subscribe(view.execution.id)
         except ExecutionSubscriberLimit:
             raise HistoryError(
-                "EXECUTION_SUBSCRIBER_LIMIT", "当前执行的观察连接已满", 429
+                "EXECUTION_SUBSCRIBER_LIMIT", "当前执行的观察连接已满"
             ) from None
         return view, subscription
 
@@ -293,10 +292,8 @@ class ExecutionApplication:
         try:
             return self.store.execution(auth.user_id, execution_id)
         except HistoryError as exc:
-            if exc.status == 404:
-                raise HistoryError(
-                    "EXECUTION_UNAVAILABLE", "执行记录不可用", 404
-                ) from None
+            if exc.code == "HISTORY_UNAVAILABLE":
+                raise HistoryError("EXECUTION_UNAVAILABLE", "执行记录不可用") from None
             raise
 
     def cancel(self, auth, request_id, execution_id):
@@ -315,12 +312,12 @@ class ExecutionApplication:
         self.history.authorize(auth, request_id)
         record = self.store.execution_by_operation(auth.user_id, operation_id)
         if record is None:
-            raise HistoryError("EXECUTION_UNAVAILABLE", "执行记录尚不可用", 404)
+            raise HistoryError("EXECUTION_UNAVAILABLE", "执行记录尚不可用")
         return self._view(auth, request_id, record)
 
     def _reserve(self, auth, history_id, *, analysis_run_id):
         if self._ready is not None and not self._ready():
-            raise HistoryError("SERVICE_NOT_READY", "服务暂时不可用，请稍后重试", 503)
+            raise HistoryError("SERVICE_NOT_READY", "服务暂时不可用，请稍后重试")
         try:
             return self.runtime.reserve(
                 auth.user_id,
@@ -331,18 +328,20 @@ class ExecutionApplication:
         except ExecutionCapacityExceeded as exc:
             if exc.scope == "user":
                 raise HistoryError(
-                    "EXECUTION_LIMIT_REACHED", "已有执行仍在运行", 429
+                    "EXECUTION_LIMIT_REACHED", "已有执行仍在运行"
                 ) from None
             raise HistoryError(
-                "EXECUTION_LIMIT_REACHED", "服务繁忙，请稍后再试", 429
+                "EXECUTION_LIMIT_REACHED", "服务繁忙，请稍后再试"
             ) from None
         except AnalysisExecutionBusy:
             raise HistoryError(
-                "HISTORY_BUSY", "原分析运行仍在执行，请稍后刷新", 409
+                "HISTORY_BUSY", "原分析运行仍在执行，请稍后刷新"
             ) from None
         except ExecutionRuntimeClosed:
             raise HistoryError(
-                "EXECUTION_UNAVAILABLE", "执行服务正在关闭", 503
+                "EXECUTION_UNAVAILABLE",
+                "执行服务正在关闭",
+                failure_kind=HistoryFailureKind.EXECUTION_RUNTIME_UNAVAILABLE,
             ) from None
 
     def _dispatch(
@@ -371,9 +370,7 @@ class ExecutionApplication:
                 or current.subject_id != auth.subject_id
                 or current.identity_provider != auth.identity_provider
             ):
-                raise HistoryError(
-                    "AUTHORIZATION_DENIED", "当前身份不可交付该结果", 403
-                )
+                raise HistoryError("AUTHORIZATION_DENIED", "当前身份不可交付该结果")
             self.history.authorize(current, request_id, audit=False)
 
         def persist_stop(reason):
@@ -512,7 +509,7 @@ class ExecutionApplication:
             raise HistoryError(
                 "EXECUTION_UNAVAILABLE",
                 "执行启动失败，请刷新后查看状态",
-                503,
+                failure_kind=HistoryFailureKind.EXECUTION_RUNTIME_UNAVAILABLE,
                 history_id=execution.history_id,
                 turn_id=execution.turn_id,
                 execution_id=execution.id,

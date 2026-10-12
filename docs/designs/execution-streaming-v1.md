@@ -131,7 +131,7 @@ Graph 的停止不进入普通失败的 mark_completed 路径；用户取消的 
 SSE响应设置Content-Type: text/event-stream、Cache-Control: no-store、X-Accel-Buffering: no；此header不代替目标环境真实代理验收。
 
 
-错误envelope沿用request_id /error_code /error_message，加公开history_id /turn_id /execution_id定位：EXECUTION_BUSY /HISTORY_STALE /HISTORY_OPERATION_CONFLICT→409；EXECUTION_LIMIT_REACHED /EXECUTION_SUBSCRIBER_LIMIT→429；EXECUTION_UNAVAILABLE→404；INVALID_REQUEST→400；鉴权沿用401 /403；未能验证或存储不确定沿用503。
+错误响应字段与状态映射遵循[执行 Spec](../specs/execution-streaming-v1.md#http-错误响应)。实现内部用失败分类区分 `EXECUTION_UNAVAILABLE` 的缺失记录与 Runtime 故障；分类不进入响应 JSON 或执行持久化格式。
 
 
 已受理执行的cancelled /timed_out /业务失败由GET/SSE状态返回200与终态错误，不假装新的POST请求失败或自动重发。

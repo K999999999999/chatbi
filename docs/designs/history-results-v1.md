@@ -170,8 +170,7 @@ history创建operation_id存入header并加(owner,operation_id)唯一约束；�
 成果同名允许，record_revision用于避免静默覆盖其他页面改名 /删除。
 
 
-错误envelope沿用request_id /error_code /error_message，加可选history_id /turn_id；不含snapshot或内部reason。
-补充映射：HISTORY_BUSY /HISTORY_STALE /HISTORY_OPERATION_CONFLICT→409；HISTORY_UNAVAILABLE→404；HISTORY_CONTEXT_INCOMPATIBLE /HISTORY_SNAPSHOT_UNAVAILABLE /HISTORY_RESULT_NOT_SAVABLE→422；HISTORY_SNAPSHOT_TOO_LARGE→413；HISTORY_STORAGE_UNAVAILABLE /HISTORY_SAVE_UNCONFIRMED→503。
+错误响应字段与状态映射遵循[历史与成果 Spec](../specs/history-results-v1.md#错误响应与状态)。实现中 Application / 存储 Port 的 `HistoryError` 不携带 HTTP status；持久化 `public_error` 仍只含公开错误码与消息，不扩展数据格式。
 
 
 业务失败沿用原error_code /HTTP，新接口envelope附服务端标识便于读取；不返回成功数据同时声称保存失败。

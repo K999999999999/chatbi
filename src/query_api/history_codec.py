@@ -33,28 +33,26 @@ def encode_snapshot(
             or not source_question.strip()
         ):
             raise HistoryError(
-                "HISTORY_SNAPSHOT_UNAVAILABLE", "完整恢复状态或来源问题不可用", 422
+                "HISTORY_SNAPSHOT_UNAVAILABLE", "完整恢复状态或来源问题不可用"
             )
         decode_query_state(query_state)
         envelope["query_state"] = query_state
         envelope["source_question"] = source_question.strip()
     elif kind == "analysis":
         if not original_question:
-            raise HistoryError("HISTORY_SNAPSHOT_UNAVAILABLE", "原分析问题不可用", 422)
+            raise HistoryError("HISTORY_SNAPSHOT_UNAVAILABLE", "原分析问题不可用")
         envelope["original_question"] = original_question
     else:
-        raise HistoryError("HISTORY_SNAPSHOT_UNAVAILABLE", "快照类型不可用", 422)
+        raise HistoryError("HISTORY_SNAPSHOT_UNAVAILABLE", "快照类型不可用")
     try:
         encoded = json.dumps(
             envelope, ensure_ascii=False, separators=(",", ":"), allow_nan=False
         ).encode("utf-8")
     except (TypeError, ValueError, UnicodeError):
-        raise HistoryError(
-            "HISTORY_SNAPSHOT_UNAVAILABLE", "快照无法安全编码", 422
-        ) from None
+        raise HistoryError("HISTORY_SNAPSHOT_UNAVAILABLE", "快照无法安全编码") from None
     if len(encoded) > MAX_SNAPSHOT_BYTES:
         raise HistoryError(
-            "HISTORY_SNAPSHOT_TOO_LARGE", "结果快照超过5 MiB，未保存本次成功状态", 413
+            "HISTORY_SNAPSHOT_TOO_LARGE", "结果快照超过5 MiB，未保存本次成功状态"
         )
     return json.loads(encoded)
 
@@ -67,9 +65,7 @@ def public_snapshot(envelope: dict) -> dict:
         or envelope.get("kind") not in {"query", "analysis"}
         or not isinstance(envelope.get("result"), dict)
     ):
-        raise HistoryError(
-            "HISTORY_SNAPSHOT_UNAVAILABLE", "结果快照版本或内容不可用", 422
-        )
+        raise HistoryError("HISTORY_SNAPSHOT_UNAVAILABLE", "结果快照版本或内容不可用")
     base_fields = {"version", "kind", "result"}
     if envelope["kind"] == "query":
         allowed_fields = {
@@ -79,20 +75,20 @@ def public_snapshot(envelope: dict) -> dict:
     else:
         allowed_fields = {frozenset(base_fields | {"original_question"})}
     if frozenset(envelope) not in allowed_fields:
-        raise HistoryError("HISTORY_SNAPSHOT_UNAVAILABLE", "快照来源字段非法", 422)
+        raise HistoryError("HISTORY_SNAPSHOT_UNAVAILABLE", "快照来源字段非法")
     if envelope["kind"] == "query":
         if not isinstance(envelope["query_state"], dict):
-            raise HistoryError("HISTORY_SNAPSHOT_UNAVAILABLE", "查询恢复状态非法", 422)
+            raise HistoryError("HISTORY_SNAPSHOT_UNAVAILABLE", "查询恢复状态非法")
         if "source_question" in envelope and (
             not isinstance(envelope["source_question"], str)
             or not envelope["source_question"].strip()
         ):
-            raise HistoryError("HISTORY_SNAPSHOT_UNAVAILABLE", "查询来源问题非法", 422)
+            raise HistoryError("HISTORY_SNAPSHOT_UNAVAILABLE", "查询来源问题非法")
     elif (
         not isinstance(envelope["original_question"], str)
         or not envelope["original_question"].strip()
     ):
-        raise HistoryError("HISTORY_SNAPSHOT_UNAVAILABLE", "分析来源问题非法", 422)
+        raise HistoryError("HISTORY_SNAPSHOT_UNAVAILABLE", "分析来源问题非法")
     _validate_public_result(envelope["kind"], envelope["result"])
     return envelope["result"]
 
@@ -157,7 +153,6 @@ def decode_query_state(state: dict):
         raise HistoryError(
             "HISTORY_CONTEXT_INCOMPATIBLE",
             "历史查询条件不可恢复，请新开对话并补全问题",
-            422,
         ) from None
 
 
@@ -173,7 +168,7 @@ def _validate_public_result(kind, result):
         or not required.issubset(result)
         or not set(result).issubset(allowed)
     ):
-        raise HistoryError("HISTORY_SNAPSHOT_UNAVAILABLE", "快照公开字段非法", 422)
+        raise HistoryError("HISTORY_SNAPSHOT_UNAVAILABLE", "快照公开字段非法")
     if kind == "query":
         rows, columns = result["rows"], result["columns"]
         if (
@@ -196,4 +191,4 @@ def _validate_public_result(kind, result):
                 for row in rows
             )
         ):
-            raise HistoryError("HISTORY_SNAPSHOT_UNAVAILABLE", "快照表格内容非法", 422)
+            raise HistoryError("HISTORY_SNAPSHOT_UNAVAILABLE", "快照表格内容非法")

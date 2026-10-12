@@ -50,9 +50,7 @@ class PostgresExecutionStore:
         if row is None:
             return None
         if row["request_hash"].strip() != request_hash:
-            raise HistoryError(
-                "HISTORY_OPERATION_CONFLICT", "操作编号与原请求不匹配", 409
-            )
+            raise HistoryError("HISTORY_OPERATION_CONFLICT", "操作编号与原请求不匹配")
         return _record(row)
 
     def lock_operation_in_transaction(self, connection, owner, operation_id):
@@ -142,9 +140,7 @@ class PostgresExecutionStore:
         if row["status"] == "stopping":
             raise ExecutionStopped(row["stop_reason"])
         if row["status"] != "running":
-            raise HistoryError(
-                "HISTORY_SAVE_UNCONFIRMED", "执行状态已变化，请刷新历史", 503
-            )
+            raise HistoryError("HISTORY_SAVE_UNCONFIRMED", "执行状态已变化，请刷新历史")
 
     def locked_in_transaction(self, connection, owner, execution_id):
         row = (
@@ -195,9 +191,7 @@ class PostgresExecutionStore:
             },
         )
         if result.rowcount != 1:
-            raise HistoryError(
-                "HISTORY_SAVE_UNCONFIRMED", "停止结果未确认，请刷新历史", 503
-            )
+            raise HistoryError("HISTORY_SAVE_UNCONFIRMED", "停止结果未确认，请刷新历史")
 
     def finish_in_transaction(
         self, connection, owner, execution_id, status, public_error
@@ -214,9 +208,7 @@ class PostgresExecutionStore:
             },
         )
         if result.rowcount != 1:
-            raise HistoryError(
-                "HISTORY_SAVE_UNCONFIRMED", "结果未确认，请刷新历史", 503
-            )
+            raise HistoryError("HISTORY_SAVE_UNCONFIRMED", "结果未确认，请刷新历史")
 
     def get(self, owner, execution_id):
         with self.engine.connect() as connection:
@@ -250,7 +242,5 @@ class PostgresExecutionStore:
             and request_hash is not None
             and row["request_hash"].strip() != request_hash
         ):
-            raise HistoryError(
-                "HISTORY_OPERATION_CONFLICT", "操作编号与原请求不匹配", 409
-            )
+            raise HistoryError("HISTORY_OPERATION_CONFLICT", "操作编号与原请求不匹配")
         return _record(row)
