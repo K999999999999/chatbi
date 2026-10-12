@@ -81,4 +81,4 @@ V1 只保证当前会话内连续追问，不保证页面关闭、会话过期�
 - 在获得单独运行授权后，通过真实三轮 E2E 验证真实 LLM、RAG、SQL Guard 和数据库链路。
 
 
-2026-10-03 入口迁移补记：R1 已确认采用电脑端 React / TypeScript / Vite，并在核心闭环验收后移除历史 Streamlit 客户端。多轮业务 / 状态边界沿用本 ADR；当前客户端行为见 [Web Spec](../specs/web-dialogue-v1.md)。
+2026-10-03 入口迁移补记：R1 已确认采用电脑端 React / TypeScript / Vite，并在核心闭环验收后移除历史 Streamlit 客户端。多轮业务 / 状态边界沿用本 ADR；当前客户端行为见 [Web Spec](../../../docs/specs/web-dialogue-v1.md)。

@@ -49,8 +49,8 @@ bash scripts/install_git_hooks.sh
 - [产品范围](docs/product-scope.md)：当前支持的业务能力与明确边界。
 - [架构](docs/architecture.md)：模块职责、依赖方向和核心链路。
 - [Runbook](docs/runbook.md)：开发环境、初始化、日常运行、测试、Evaluation 和运维步骤。
-- [`docs/specs/`](docs/specs/) 与 [`docs/designs/`](docs/designs/)：行为 Contract 和实现设计。
-- [`tests/`](tests/)、[`evaluation/`](evaluation/) 与 [`docs/acceptance/`](docs/acceptance/)：软件测试、AI Evaluation 和业务验收证据。历史结果按其 commit、案例集和运行资源判断，不自动代表当前候选。
+- [`docs/specs`](docs/specs) 与 [`docs/designs`](docs/designs)：行为 Contract 和实现设计。
+- [`tests`](tests)、[`evaluation`](evaluation) 与 [`docs/acceptance`](docs/acceptance)：软件测试、AI Evaluation 和业务验收证据。历史结果按其 commit、案例集和运行资源判断，不自动代表当前候选。
 
 宿主机确定性 Python 回归命令（使用 `uv` 与 Python 3.11）：
 

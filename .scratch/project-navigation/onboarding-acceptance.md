@@ -26,7 +26,7 @@ Reader: 未参与导航编写的独立审阅者；未查看本工作项作者模
 | --- | --- | --- |
 | 产品边界与成熟度 | PARTIAL：[`docs/product-scope.md`](../../docs/product-scope.md) 将导出列在“当前明确不包含”，后文又说明 R5 已实现。 | 将第 61 行改为“成功快照文件导出已实现并作为 R5 交付”；独立审阅者复核 PASS，歧义已消除。 |
 | 能力到代码、权威事实与验证 | PASS：能力地图能定位代码及 Spec / Design / 测试 / Acceptance。 | 无需修正。 |
-| 核心在线问数链路 | 首轮链路本身 PASS；另发现导航链接到 [`docs/specs/online-retrieval.md`](../../docs/specs/online-retrieval.md) 时没有突出当前契约实际位于 `.scratch/`。 | 在能力地图和链路事实源说明中直链 [Online Retrieval V1 当前契约](../../.scratch/online-retrieval-v1/spec.md)，并将旧文档标成历史基线；独立审阅者复核 PASS，链接有效。 |
+| 核心在线问数链路 | 首轮链路本身 PASS；另发现导航链接到 [`docs/specs/online-retrieval.md`](../../docs/specs/online-retrieval.md) 时没有突出当前契约实际位于 `.scratch/`。 | 在能力地图和链路事实源说明中直链 [Online Retrieval V1 当前契约](../online-retrieval-v1/spec.md)，并将旧文档标成历史基线；独立审阅者复核 PASS，链接有效。 |
 | 本地启动、健康检查和确定性测试 | PASS：Runbook 步骤、命令和健康检查边界均可找到。 | 无需修正。 |
 
 独立审阅者在初次阅读中报告的两处卡点均已修复并由该审阅者复核。Markdown 本地链接检查通过。该走查验证导航阅读路径，不替代软件测试、真实业务验收或 LLM Evaluation。

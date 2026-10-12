@@ -1,5 +1,7 @@
 # 经营分析：双时期产品因素归因 V1
 
+> 文档归属补记：本文件保存原需求与规划过程；当前有效行为见 [正式规则](../../docs/specs/business-analysis.md)，不与正式文档竞争事实源。
+
 Status: confirmed
 
 ## Problem Statement

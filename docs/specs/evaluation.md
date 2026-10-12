@@ -1,4 +1,6 @@
-# Evaluation Module Spec
+# AI 评测与报告规则
+
+本文定义评测案例、比较方法、报告身份与证据有效性。执行命令见 [Runbook](../runbook.md)，历史结果见对应工作记录。
 
 ## 目标
 
@@ -18,7 +20,9 @@ Evaluation Module 不设对所有产品版本通用的准确率门槛；当前 M
 
 正式基线固定使用本次首轮完整单轮、多轮和经营分析报告；任一正式套件失败即本次基线未通过，不能挑选后续成功报告覆盖失败。额外三次完整多轮运行作为独立稳定性诊断，保存各次成功、失败或未完成结果；它们不提高现有基线门槛，也不能用一次全通过证明模型稳定。
 
-`python -m evaluation.common.real_e2e_acceptance` 提供确定性验收：`--report-dir` 校验目录中恰好三套正式 JSON，或 `--report --suite` 校验指定完整套件。均必须显式提供 `--expected-commit` 和 `--expected-rag-version`，旧的仅传 `--cases --report` 命令必须迁移；不能在缺少预期身份时接受报告。
+`python -m evaluation.common.real_e2e_acceptance` 提供确定性验收：`--report-dir` 校验目录中恰好三套正式 JSON，或 `--report --suite` 校验指定完整套件。
+均必须显式提供 `--expected-commit` 和 `--expected-rag-version`，旧的仅传 `--cases --report` 命令必须迁移；不能在缺少预期身份时接受报告。
+
 
 验收要求报告的 `git_commit` 等于预期完整 SHA、`git_dirty` 严格为 `false`、套件匹配、`test_set_hash` 等于当前案例文件 SHA-256。报告必须包含完整且不重复的案例 ID 和 PASS 状态；多轮同时检查完整轮次 ID、状态和计数。所有套件均满足零失败 / 零无效及各自准确率门槛，并包含有效的上下文、标准结果、模型端点和数据指纹。
 
@@ -75,7 +79,10 @@ order_sensitive（可选，默认 false）
 - 单轮 `coverage` 用于统计指标、时间、维度、条件过滤、TopN、HAVING、多指标、别名、澄清、拒答和组合场景；`category` 继续表示 `simple / medium / complex` 难度。
 - 当前 Online Retrieval V1 的标准 Join 必须使用关系图认证的直接 `LEFT JOIN`；中间表、多跳 Join 和未认证 Join 不属于标准案例。
 
-多轮案例的顶层记录代表一个完整 Conversation，`turns` 按顺序包含 `question`、期望 outcome / 错误码，以及成功轮次的 `expected_sql`。一个 Conversation 使用全新的服务端会话；首轮成功响应给出的 `conversation_id` 用于该场景后续轮次，同一测试集中的其他场景不复用此 ID。评测通过正式 `POST /api/v1/query` Application 入口执行，并使用显式 Evaluation 测试身份及授权策略。
+多轮案例的顶层记录代表一个完整 Conversation，`turns` 按顺序包含 `question`、期望 outcome / 错误码，以及成功轮次的 `expected_sql`。
+一个 Conversation 使用全新的服务端会话；首轮成功响应给出的 `conversation_id` 用于该场景后续轮次，同一测试集中的其他场景不复用此 ID。
+评测通过正式 `POST /api/v1/query` Application 入口执行，并使用显式 Evaluation 测试身份及授权策略。
+
 
 失败轮次必须声明期望错误码；失败后继续执行有效追问，以结果比较确认会话保留在失败前最后一次成功状态。失败轮次若意外成功、返回错误码不符，或影响后续结果，该 Conversation 记为失败。
 
@@ -252,10 +259,3 @@ Query 与 Business Analysis 的数据库型报告必须记录当前开发 Seed �
 ### Business Acceptance（业务验收）
 
 - 人工确认报告能够回答：当前系统答对多少、哪些案例失败、修改后是否发生能力回退。
-
-## 实现设计阶段再决定
-
-- 代码文件落位和最小类型定义。
-- 报告文件格式、保存路径和命名方式。
-- 上一份有效报告的选择方式。
-- 测试命令和真实评测运行命令。

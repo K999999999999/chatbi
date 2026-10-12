@@ -1,5 +1,7 @@
 # Multi-Turn Conversation V1（受控多轮查询）Feature Spec
 
+> 文档归属补记：本文件保存原需求与规划过程；当前有效行为见 [正式规则](../../docs/specs/query-api.md)，不与正式文档竞争事实源。
+
 状态：已确认；`design-review` 为 `PASS WITH MINOR FIXES`；可进入 `to-tickets`
 
 ## Problem Statement
