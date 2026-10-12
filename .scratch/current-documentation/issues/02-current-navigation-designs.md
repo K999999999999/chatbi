@@ -1,6 +1,6 @@
 # Ticket 02：README、架构与实现说明形成连贯阅读路径
 
-Status: open
+Status: complete
 Canonical Source: [Spec](../spec.md)、[设计](../design.md)；用户已确认四项拆分与整体本地实施。
 
 Change Profile: 持续维护导航与机制文档 / 中等批量迁移 / 导航与重要机制遗漏风险 / 阅读走查与引用 / 本地候选。
@@ -25,7 +25,7 @@ Blocked by: 01。
 
 owned files: README.md；docs/project-guide.md、architecture.md、product-scope.md；docs/designs/ 现有 15 份；必要受影响引用与所属 .scratch 归档；迁移台账。Spec 仅在核对中发现需要落位已有规则时做一致性补充并复核前项证据。
 
-验证证据: 全库 Markdown 链接检查；`git diff --check`；导航与核心链路只读走查；当前重要机制覆盖 Review。代码入口以存在的路径和符号核对，不执行业务命令。
+验证证据: `uv run --python 3.11 --locked python -m scripts.check_markdown_links` 通过；`git diff --check` 通过；导航及核心链路只读走查；实现路径由仓库文件核对；Review见 [review-02.md](../review-02.md)。未运行软件、LLM或运行验收。
 
 Migration / Rollback: 先提供新的当前入口与机制说明，再修复链接并移除旧稿；恢复时同时恢复当前 / 历史引用。无代码、模型、数据或运行资源迁移。
 
@@ -34,7 +34,7 @@ Done When: 导航唯一且可达、产品 / 架构职责清晰、15 份设计逐
 
 ## Result
 
-待实施与验证。
+已完成。README 合并旧项目导航，形成产品、架构、运行、Spec、Design、Roadmap与代码地图入口；架构集中当前模块、主链、业务事实归属和稳定约束；产品范围按能力与支持边界组织。原15份Design逐项处置，保留11份当前机制，4份历史设计完整归档并迁移引用；网页与执行机制说明对齐当前 Spec / 代码，移除历史阶段标签和验收日志。README、架构、产品范围和Design均可从当前入口到达。
 
 ## Comments
 

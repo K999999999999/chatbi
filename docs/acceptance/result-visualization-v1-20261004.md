@@ -62,6 +62,6 @@ API旧响应不多出null字段，可选说明兼容；Task执行/API/实际Json
 
 ## Done When与Harness反馈
 
-正式[R2 Spec](../specs/result-visualization-v1.md)、[Design](../designs/result-visualization-v1.md)、Query API/Web Spec、Product Scope、README/Runbook、roadmap及四个Ticket已同步。无DB迁移或RAG重建；Architecture一级边界/职责/依赖方向和Evaluation Contract未变，无需改写这些事实源。PR发布另需授权。
+正式[R2 Spec](../specs/result-visualization-v1.md)、[Design](../../.scratch/result-visualization-v1/history/documentation-docs--designs--result-visualization-v1.md)、Query API/Web Spec、Product Scope、README/Runbook、roadmap及四个Ticket已同步。无DB迁移或RAG重建；Architecture一级边界/职责/依赖方向和Evaluation Contract未变，无需改写这些事实源。PR发布另需授权。
 
 观察到一个工具缓存缺口：仅网页源码改变，`docker/node-dev.Dockerfile`的browser阶段仍继承已COPY源码的dev阶段，实际多次重装Playwright OS/浏览器依赖，单次约数分钟。建议后续将稳定依赖安装置于不依赖业务源码COPY的阶段，并验证改源码后的缓存命中；可减少后续真实验收等待。当前不修改该Harness、不新增实施承诺，优先级待用户决定。

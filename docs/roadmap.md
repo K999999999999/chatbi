@@ -4,12 +4,12 @@
 
 ### 新读者先看
 
-- MVP 核心链路和主要网页能力已实现，当前产品支持边界见[产品范围](product-scope.md#当前-mvp-contract)。
+- MVP 核心链路和主要网页能力已实现，当前产品支持边界见[产品范围](product-scope.md#当前能力)。
 - R5 成果导出、R6 本机部署和 R7 本机运行保障均已完成并合并；Active Stable 的 Docker Desktop 与 Windows 整机重启恢复已核验，详细证据见 [R7 Acceptance](acceptance/local-operations-v1.md)。
 - 本机 Stable 的运行验收不等于公网生产部署、容量或可用性承诺；公网生产部署仍不在已完成范围内。
 - AI Evaluation 报告只对其记录的 commit、案例集和运行资源有效；历史报告不能直接说明当前 checkout 的模型表现。新基线须满足本节下方列出的同一 clean commit 和零失败条件。
 
-以下阶段记录保留各轮实施与验收历史，按需查阅即可；首次熟悉产品时先用上面的现状速览和[项目导航](project-guide.md)。
+以下阶段记录保留各轮实施与验收历史，按需查阅即可；首次熟悉产品时先用上面的现状速览和[README](../README.md)。
 
 ChatBI 的 MVP 核心能力已经形成：自然语言查询、Online Retrieval、Query API、内置身份与 RBAC、多轮查询、经营分析及对应测试 / Evaluation 工具均在当前代码中实现。
 

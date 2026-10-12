@@ -1,6 +1,6 @@
 # R2 实现设计
 
-行为以[Spec](../specs/result-visualization-v1.md)为准；[设计审查](../../.scratch/result-visualization-v1/design-review.md)与[实施规划](../../.scratch/result-visualization-v1/design.md)记录确认过程。
+行为以[Spec](../../../docs/specs/result-visualization-v1.md)为准；[设计审查](../design-review.md)与[实施规划](../design.md)记录确认过程。
 
 ## 后端
 

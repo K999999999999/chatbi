@@ -1,6 +1,6 @@
 # 完整查询条件与历史恢复
 
-Contract：[History Spec](../specs/history-results-v1.md)。本文件说明已确认的业务语义恢复和确定性认证设计。
+Contract：[History Spec](../../../docs/specs/history-results-v1.md)。本文件说明已确认的业务语义恢复和确定性认证设计。
 
 ## 1. 单一执行链与兼容入口
 

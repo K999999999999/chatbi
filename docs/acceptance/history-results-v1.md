@@ -2,7 +2,7 @@
 
 此文件定义可复现门禁、候选身份与证据边界；最终候选及真实验收 / Evaluation 的状态和报告身份记录在 Git 公共目录的本机实时工作状态中。本文不预填 PASS，也不代表已发布或合并。
 
-基线为 `afad5ac18452566199bfcfdcceb1585115576a77`，工作项 `history-results-v1`，branch `feat/history-results-v1`。已确认 Contract 见 [Spec](../specs/history-results-v1.md)，实现见 [Design](../designs/history-results-v1.md) 与 [恢复语义](../designs/history-query-restoration.md)。后续报告必须核对自己的 commit 与资源身份，不继承基线或 R1 / R2 的通过身份。
+基线为 `afad5ac18452566199bfcfdcceb1585115576a77`，工作项 `history-results-v1`，branch `feat/history-results-v1`。已确认 Contract 见 [Spec](../specs/history-results-v1.md)，实现见 [Design](../designs/history-results-v1.md) 与 [恢复语义](../../.scratch/history-results-v1/history/documentation-docs--designs--history-query-restoration.md)。后续报告必须核对自己的 commit 与资源身份，不继承基线或 R1 / R2 的通过身份。
 
 ## 确定性验证
 

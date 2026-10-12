@@ -1,12 +1,12 @@
 # Query API Adapter Implementation Design
 
-> 本文记录同步 Query API Adapter 与 R3 History Adapter 的既有设计。R4 在其上增加独立的后台执行 Application / Runtime 和 SSE Adapter；完整 Contract 与实现设计分别见 [R4 Spec](execution-streaming-v1.md) 和 [R4 Design](execution-streaming-v1.md)。本文的同步路由行为不代表网页执行路由也同步运行。
+> 本文记录同步 Query API Adapter 与 R3 History Adapter 的既有设计。R4 在其上增加独立的后台执行 Application / Runtime 和 SSE Adapter；完整 Contract 与实现设计分别见 [R4 Spec](../../../docs/designs/execution-streaming-v1.md) 和 [R4 Design](../../../docs/designs/execution-streaming-v1.md)。本文的同步路由行为不代表网页执行路由也同步运行。
 
 ## 结论
 
 API Adapter（接口适配层）实现为一个最小的 `src/query_api/` 模块，使用 FastAPI 暴露 HTTP 接口。它只负责协议转换，不进入 Online Query（在线查询）内部，也不重复 Prompt、LLM、SQL Guard 或数据库逻辑。
 
-正式接口契约见 [Query API Spec](../specs/query-api.md)。本设计只说明如何实现该契约。
+正式接口契约见 [Query API Spec](../../../docs/specs/query-api.md)。本设计只说明如何实现该契约。
 
 ## 模块位置
 
@@ -134,7 +134,7 @@ POST /api/v1/query
 
 `main.py` 将 bootstrap 的运行生命周期工厂交给 `create_app()`，提供 `app` 入口；不在模块导入时创建真实服务、连接或模型资源。
 
-真实装配位于 `src/bootstrap/`。它复用当前配置加载器和环境变量，不改变 LLM 或 PostgreSQL 配置；模块导入不创建运行资源。单一 FastAPI 提前定义根路由和 Middleware，lifespan 内创建并绑定服务，随后挂载 SQLAdmin，关闭时解除本轮绑定并清理资源。直接注入测试方式保留。具体生命周期与命令边界见 [初始化 Spec](../specs/bootstrap.md)。
+真实装配位于 `src/bootstrap/`。它复用当前配置加载器和环境变量，不改变 LLM 或 PostgreSQL 配置；模块导入不创建运行资源。单一 FastAPI 提前定义根路由和 Middleware，lifespan 内创建并绑定服务，随后挂载 SQLAdmin，关闭时解除本轮绑定并清理资源。直接注入测试方式保留。具体生命周期与命令边界见 [初始化 Spec](../../../docs/specs/bootstrap.md)。
 
 缺少 LLM 或数据库必要配置时，真实服务启动失败并尽早暴露配置问题。测试不导入生产 `main.app`，而是使用 `create_app(fake_service)`。
 
