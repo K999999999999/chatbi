@@ -1,6 +1,6 @@
 # dev 分类统一入口与管理员紧急恢复
 
-Status: 完整Spec、Design Review和七项Ticket拆分已确认；全部本地实现与适用验证获授权，现进入本地候选收尾，远端未授权。
+Status: 完整Spec、Design Review和七项Ticket拆分已确认；全部本地实现与适用验证获授权，已授权Push/PR及CI/自动合并收尾；当前对齐PR #83后的master基线。
 
 ## Problem Statement
 
@@ -152,7 +152,7 @@ Status: 完整Spec、Design Review和七项Ticket拆分已确认；全部本地�
 
 检查Product Scope、Architecture及Roadmap是否受已确认恢复能力影响：适用时仅补充本机账号恢复边界，不改路线优先级，不把旧交付和运行身份重标为新结果。历史记录保留原位置。
 
-用户已整体确认这版完整Spec，包括分类统一目标、操作范围，以及管理员恢复信任/环境边界；随后按仓库规则完成Design Review、Ticket草案、当前上下文Readiness与拆分确认，再连续实施完整获准范围。默认本地Commit；Push/PR未授权。
+用户已整体确认这版完整Spec，包括分类统一目标、操作范围，以及管理员恢复信任/环境边界；随后按仓库规则完成Design Review、Ticket草案、当前上下文Readiness与拆分确认，再连续实施完整获准范围。最初仅授权本地Commit；用户现已明确授权两个目标依次Push/PR、CI修复、Auto-merge跟进及安全清理。
 
 本轮此前未确认的三项草案保存在[历史草案](history/spec-three-entrypoints.md)，不作为当前授权或行为事实源。
 

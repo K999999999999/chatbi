@@ -48,3 +48,9 @@
 ## 发布前安全扫描补证
 
 首次全src/scripts Bandit -ll发现三项：固定临时缓存路径两项B108、HTTP诊断一项B310。修复为TemporaryDirectory私有缓存（执行结束清理），诊断显式拒绝非HTTP(S)，并对标准urllib的HTTP(S)调用作精确B310说明，不关闭扫描。新增缓存权限/清理/退出码与协议拒绝回归共4项通过；全src/scripts安全扫描退出0，Medium/High=0；实际dev check python固定Ruff0.16.8、306文件格式/lint通过。行为范围不扩展，既有账号/PG/网页/PDF及隔离运行证据可复用。提交与最终base见实时记录。
+
+## 最终基线对齐
+
+PR #83自动重启目标已合并为master@11ff5d250224bffc4f57bb9be2a6bb97a1fd0c66，本候选两项提交rebase至此，无冲突。核对重叠README/Runbook/Product Scope/容器Contract及路由测试，保留unless-stopped与start_dev_api等待，dev八类入口和恢复Contract完整。初始38e1302及085fb78仍为历史验证身份，最终候选/head以实时记录及当前PR为准；发布授权已在聊天取得。软件/启动入口与完整check补跑；PG/网页/PDF与隔离恢复/重置的相关业务实现未因基线对齐改变，历史证据按其适用范围复用。
+
+最终组合补证：master@11ff5d2工作树全量./dev test python为975 passed、51 skipped、142 subtests passed（125.45秒）；./dev check退出0，固定Ruff0.16.8格式/lint307文件、文档/边界、锁及网页/export构建通过。标准api镜像重建成功：chatbi-app-dev-entrypoints:local，sha256:74f29c55afc8ac2c13e323509fae460919280a08bcd2bf2ea88c189c89a2ee21（替换专属测试tag，不覆盖日常tag）。日志/tmp/chatbi-entry-rebased-{python,check,build}.log。

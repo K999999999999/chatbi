@@ -139,3 +139,7 @@
 新实现文件：dev_environment.sh集中目标/Git/宿主路径和共享临时目录；dev_maintenance.sh维护宿主编排；dev_compose.py纯JSON筛选/校验/路径映射；python_quality.py容器复用CI质量入口；docker/dev-project-name.yml只维持Dev Container宿主项目身份。均为内部能力，没有逐文件公开命令。
 
 Source of Truth：当前行为见正式Runbook、容器/Bootstrap及admin-recovery Contract；本表记录迁移去向，验证结论见本工作项acceptance与Review，不使用基线建议冒充结果。24/24基线文件均有处置，旧独有验证保留有明确理由；用户未授权远端发布。
+
+## 发布基线补充
+
+前一自动重启目标已由PR #83合入master@11ff5d2；其start_dev_api.py为API容器内部启动入口，由Compose调用，不新增日常dev命令。本文前半部的fd9候选身份仍是初始盘点时的历史事实，当前基线以发布记录为准。本目标新增dev_environment.sh（目标/路径）、dev_maintenance.sh（宿主维护编排）、dev_compose.py（纯配置/归属校验）与python_quality.py（CI质量委派）四个内部辅助文件，均由公开命令链调用，不按文件名公开独立日常操作。

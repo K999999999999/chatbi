@@ -33,3 +33,7 @@ Next: 最终受影响回归、完整check及Diff检查通过后本地Commit；�
 ## 发布前修复Review
 
 PASS：私有临时缓存生命周期由标准库管理，保持CI命令、返回码及只读源文件；doctor仅允许HTTP(S)，标准重定向处理拒绝其他协议。4项新增/受影响回归、完整固定质量及全src/scripts Bandit通过；精确扫描说明不豁免其他检查。无Contract、Schema、权限或依赖扩展。
+
+## master@11ff5d2对齐Review
+
+PASS：无冲突rebase，复核重叠正式文档与入口测试，两个目标语义均保留；未把restart变更计入本PR新增范围。账户事务、维护配置及网页实现未因对齐改变；补跑软件/启动入口/check并由最终PR CI绑定新head。发布授权已明确取得，早期“远端未授权”描述为当时历史状态。
