@@ -47,7 +47,7 @@ Evaluation Module 不设对所有产品版本通用的准确率门槛；当前 M
 Query Understanding 语义评测单独运行：
 
 ```text
-uv run --env-file .env python -m evaluation --query-understanding
+./dev evaluate --query-understanding
 ```
 
 该模式只调用 Query Understanding Adapter，不连接 PostgreSQL、不执行 SQL，适合快速判断结构化语义和失败原因；它不属于普通 CI，也不替代完整 Online Retrieval Real E2E。
@@ -248,10 +248,10 @@ Query 与 Business Analysis 的数据库型报告必须记录当前开发 Seed �
 
 ### AI Evaluation（AI 评测）
 
-- 使用 `uv run --env-file .env python -m evaluation --single-turn --online-retrieval`，单轮案例能够顺序运行完成；成功查询与标准 SQL 结果比对，澄清/拒答按期望错误码判定。
-- 使用 `uv run --env-file .env python -m evaluation --multi-turn --online-retrieval`，完整 Conversation 按顺序运行；首轮创建会话，后续轮次复用同一 `conversation_id`，场景之间隔离。
-- 使用 `uv run --env-file .env python -m evaluation --business-analysis --online-retrieval`，运行现有经营分析黄金测试集。
-- 使用 `uv run --env-file .env python -m evaluation --query-understanding`，独立验证 `query_type`、`metrics`、`dimensions` 和 `time`，其中没有时间条件的案例必须明确期望 `time = null`。
+- 使用 `./dev evaluate --single-turn --online-retrieval`，单轮案例能够顺序运行完成；成功查询与标准 SQL 结果比对，澄清/拒答按期望错误码判定。
+- 使用 `./dev evaluate --multi-turn --online-retrieval`，完整 Conversation 按顺序运行；首轮创建会话，后续轮次复用同一 `conversation_id`，场景之间隔离。
+- 使用 `./dev evaluate --business-analysis --online-retrieval`，运行现有经营分析黄金测试集。
+- 使用 `./dev evaluate --query-understanding`，独立验证 `query_type`、`metrics`、`dimensions` 和 `time`，其中没有时间条件的案例必须明确期望 `time = null`。
 - 生成包含单条结果的 JSON 数据报告，以及包含总体结论、准确率和失败摘要的 Markdown 总结报告。
 - 后续报告能够识别相对上一份有效报告的回退和改善案例。
 - 单轮报告展示执行准确率、outcome 命中率和场景覆盖；多轮报告展示 Conversation 结论和轮次级诊断；三类报告不生成跨类别总准确率。

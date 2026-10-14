@@ -12,7 +12,7 @@ R1–R3 已提供电脑端问数、独立经营分析、结果展示及私人历
 
 R4 在同一业务链路增加真实执行状态、SSE 反馈、取消与重连，先实现并验收执行状态与最终结果，再实现并验收分析文字真实增量展示。
 
-事实源：[Roadmap](../../../docs/roadmap.md)、[产品范围](../../../docs/product-scope.md)、[Architecture](../../../docs/architecture.md)、[历史领域上下文快照](../../context-file-removal/history/domain-context-snapshot.md)、[R3 Spec](../../../docs/specs/history-results-v1.md)、[R3 Design](../../../docs/designs/history-results-v1.md)、[Query API](../../../docs/specs/query-api.md)、[Web Spec](../../../docs/specs/web-dialogue-v1.md)、[R2 Spec](../../../docs/specs/result-visualization-v1.md)、[Evaluation](../../../docs/specs/evaluation.md)、[Runbook](../../../docs/runbook.md)。R4 确认后扩展网页执行 Contract；旧同步 API 的适用边界保持。
+事实源：[Roadmap](../../../docs/roadmap.md)、[产品范围](../../../docs/product-scope.md)、[Architecture](../../../docs/architecture.md)、[历史领域上下文快照](../../context-file-removal/history/domain-context-snapshot.md)、[R3 Spec](../../../docs/specs/history-results-v1.md)、[R3 Design](../../../docs/designs/history-results-v1.md)、[Query API](../../../docs/specs/query-api.md)、[Web Spec](../../../docs/specs/web-dialogue-v1.md)、[R2 Spec](../../../docs/specs/result-visualization-v1.md)、[Evaluation](../../../docs/specs/evaluation.md)、[Runbook](../../deployment-simplification/history/docs--runbook.md)。R4 确认后扩展网页执行 Contract；旧同步 API 的适用边界保持。
 
 ## Solution / Scope
 
@@ -188,4 +188,4 @@ R5 导出、R6 生产打包 / 部署、R7 容量 / 运维验收；移动端、�
 
 ## R7 受理保护补充
 
-已确认[运行保障Contract](../../../docs/specs/local-operations-v1.md)将同步Query API与本后台入口纳入同一owner/API容量（默认1/4），导出仍独立1/2。readiness未知/失败时仅拒绝新业务受理，返回503 SERVICE_NOT_READY；已持久受理的幂等重放先返回既有记录，观察和重放不重复占容量。运行中的取消/停止/epoch/保存规则保持，真实工作退出前不释放额度。新运行验收另见R7候选，原R4证据保持原身份。
+已确认[运行保障Contract](../../deployment-simplification/history/docs--specs--local-operations-v1.md)将同步Query API与本后台入口纳入同一owner/API容量（默认1/4），导出仍独立1/2。readiness未知/失败时仅拒绝新业务受理，返回503 SERVICE_NOT_READY；已持久受理的幂等重放先返回既有记录，观察和重放不重复占容量。运行中的取消/停止/epoch/保存规则保持，真实工作退出前不释放额度。新运行验收另见R7候选，原R4证据保持原身份。

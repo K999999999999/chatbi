@@ -3,6 +3,7 @@
 import json
 import os
 import subprocess
+import socket
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,13 @@ def docker_fake(tmp_path):
         "    f.write(json.dumps(sys.argv[1:]) + '\\n')\n"
         "if os.environ.get('DOCKER_FAIL_ON') in sys.argv[1:]:\n"
         "    sys.exit(19)\n"
+        "if 'info' in sys.argv[1:]: print('/bin/true')\n"
+        "if 'config' in sys.argv[1:]:\n"
+        "    base = os.path.dirname(os.environ['DOCKER_CALLS'])\n"
+        "    print(json.dumps({'services': {'tools': {'environment': {'RAG_MODEL_DIR': '/model', 'RAG_OUTPUT_DIR': '/rag'}, 'volumes': [{'source': base+'/model', 'target': '/model'}, {'source': base+'/rag', 'target': '/rag'}]}, 'api': {'ports': [{'published': os.environ.get('DOCKER_PUBLISHED_PORT', '18000')}]}, 'web': {'ports': [{'published': '18001'}]}}}))\n"
+        "if 'run' in sys.argv[1:] and '--entrypoint' in sys.argv[1:]:\n"
+        "    import subprocess\n"
+        "    sys.exit(subprocess.run([sys.executable, '-c', sys.argv[-1]], input=sys.stdin.read(), text=True).returncode)\n"
         "sys.exit(int(os.environ.get('DOCKER_RESULT', '0')))\n"
     )
     fake.chmod(0o755)
@@ -63,6 +71,40 @@ def test_unknown_command_is_rejected_before_docker(docker_fake):
     result = invoke(["erase-data"], docker_fake)
     assert result.returncode == 2
     assert not Path(docker_fake["DOCKER_CALLS"]).exists()
+
+
+def test_test_command_rejects_unknown_suite_before_docker(docker_fake):
+    result = invoke(["test", "erase-data"], docker_fake)
+    assert result.returncode == 2
+    assert "python|database|web|renderer|all" in result.stderr
+    assert not Path(docker_fake["DOCKER_CALLS"]).exists()
+
+
+def test_python_tests_run_in_a_container_and_propagate_failure(docker_fake):
+    result = invoke(["test", "python"], {**docker_fake, "DOCKER_FAIL_ON": "run"})
+    assert result.returncode == 19
+    calls = [
+        json.loads(line)
+        for line in Path(docker_fake["DOCKER_CALLS"]).read_text().splitlines()
+    ]
+    assert any("run" in call for call in calls)
+
+
+def test_start_rejects_an_occupied_host_port_without_stopping_its_owner(docker_fake):
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        port = listener.getsockname()[1]
+        result = invoke(["up"], {**docker_fake, "DOCKER_PUBLISHED_PORT": str(port)})
+        assert result.returncode == 1
+        assert "已被占用" in result.stderr
+        with socket.create_connection(("127.0.0.1", port), timeout=1):
+            pass
+    calls = [
+        json.loads(line)
+        for line in Path(docker_fake["DOCKER_CALLS"]).read_text().splitlines()
+    ]
+    assert not any("up" in call or "stop" in call or "kill" in call for call in calls)
 
 
 def test_missing_config_gives_safe_actionable_message(docker_fake):

@@ -15,7 +15,6 @@ class OperationsState:
         *,
         clock: Callable[[], float] = monotonic,
         wall_clock: Callable[[], datetime] = lambda: datetime.now(UTC),
-        backup_provider: Callable[[], dict] | None = None,
     ):
         self._clock = clock
         self._wall_clock = wall_clock
@@ -24,7 +23,6 @@ class OperationsState:
         self._checked_at = None
         self._checked_tick = None
         self._model = None
-        self._backup_provider = backup_provider
         self._capacity_provider = None
 
     def set_capacity_provider(self, provider):
@@ -45,15 +43,6 @@ class OperationsState:
             self._model = (self._clock(), self._wall_clock().isoformat(), success)
 
     def snapshot(self, *, detailed: bool = False) -> dict:
-        backup = (
-            (
-                self._backup_provider()
-                if self._backup_provider is not None
-                else {"status": "unknown", "last_success": None, "overdue": True}
-            )
-            if detailed
-            else None
-        )
         capacity = (
             self._capacity_provider()
             if detailed and self._capacity_provider is not None
@@ -88,7 +77,6 @@ class OperationsState:
                 result["details"] = {
                     "dependencies": checks,
                     "model": model,
-                    "backup": backup,
                     "capacity": capacity,
                 }
             return result

@@ -1,6 +1,6 @@
 # 后台执行、取消与流式状态
 
-本文定义网页后台执行、幂等受理、真实阶段、SSE、取消和恢复。持久化快照见 [历史与成果](history-results-v1.md)，就绪与额度见 [运行保障](local-operations-v1.md)。
+本文定义网页后台执行、幂等受理、真实阶段、SSE、取消和恢复。持久化快照见 [历史与成果](history-results-v1.md)，就绪与额度见 [运行保障](application-readiness.md)。
 
 ## 用途与范围
 
@@ -161,7 +161,7 @@ Interface 处理身份与协议；Application 裁决受理、执行、取消、�
 
 ## 受理保护补充
 
-已确认[运行保障Contract](local-operations-v1.md)将同步Query API与本后台入口纳入同一owner/API容量（默认1/4），导出仍独立1/2。
+已确认[运行保障Contract](application-readiness.md)将同步Query API与本后台入口纳入同一owner/API容量（默认1/4），导出仍独立1/2。
 readiness未知/失败时仅拒绝新业务受理，返回503 SERVICE_NOT_READY；已持久受理的幂等重放先返回既有记录，观察和重放不重复占容量。
 运行中的取消/停止/epoch/保存规则保持，真实工作退出前不释放额度。
 运行验收按对应候选和资源身份记录，历史结果不重标。

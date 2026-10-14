@@ -17,7 +17,7 @@
 
 报告输出到 ignored `reports/browser-real/`，包含候选 SHA、`git_dirty`、Chrome、独立参考、RAG / 模型身份、步骤和账号清理；临时账号禁用、Session 撤销，原用户、开发卷、业务数据与 RAG 保留。失败保留原报告，修复后形成新候选。`CHATBI_CONTAINER_ALLOW_DIRTY=1` 仅用于开发诊断，不能充当正式验收。
 
-三套正式 Evaluation 及三次完整多轮诊断按 [Runbook §9.2](../../../docs/runbook.md#92-正式三套基线与稳定性诊断) 执行，统一身份入口要求正式报告同一最终 clean HEAD、RAG 版本和 `0 FAIL / 0 INVALID_CASE`。三套旧入口回归不替代 R3 history profile 的真实验收。
+三套正式 Evaluation 及三次完整多轮诊断按 [Runbook §9.2](../../deployment-simplification/history/docs--runbook.md#92-正式三套基线与稳定性诊断) 执行，统一身份入口要求正式报告同一最终 clean HEAD、RAG 版本和 `0 FAIL / 0 INVALID_CASE`。三套旧入口回归不替代 R3 history profile 的真实验收。
 
 最终报告不通过修改本文件来回填新的 commit。Git 公共目录的 `harness/work-items/history-results-v1/status.md` 记录最终候选、报告目录、成绩与剩余事项；可用 `git rev-parse --path-format=absolute --git-common-dir` 定位。日期化原报告保持自己的身份，关联规划记录同步主工作项。此文件是新 clone 可用的验收入口，本机 ignored 报告不保证随 clone 存在。
 

@@ -12,7 +12,8 @@
 !frontend/src/
 !frontend/src/**
 !docker/
-!docker/local.Dockerfile
+!Dockerfile
+!docker/**
 !src/
 !src/**
 src/streamlit_app.py
@@ -21,8 +22,6 @@ src/streamlit_app.py
 !src/query_api/export_assets.py
 !scripts/
 !scripts/__init__.py
-!scripts/local_release.py
-!scripts/local_compatibility.json
 !scripts/metadata/
 !scripts/metadata/*.py
 !database/
@@ -36,3 +35,5 @@ src/streamlit_app.py
 !database/init/wait_for_base_initialization.sh
 !database/init/healthcheck.sh
 !database/init/10_chatbi_dev_environment.sh
+!database/dev/
+!database/dev/seed_sales_mart.sql

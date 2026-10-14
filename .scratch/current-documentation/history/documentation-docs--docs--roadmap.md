@@ -140,5 +140,5 @@ R6 / R7 本地运行保障已按确认范围完成。以下是已确认的支持
 
 - 产品行为和支持范围：[`product-scope.md`](../../../docs/product-scope.md) 与 `docs/specs/`。
 - 架构边界：[`architecture.md`](../../../docs/architecture.md)。
-- 可执行初始化和维护流程：[`runbook.md`](../../../docs/runbook.md)。
+- 可执行初始化和维护流程：[`runbook.md`](../../deployment-simplification/history/docs--runbook.md)。
 - 当前 Evaluation 结果：带有当前 commit 身份的报告；日期化 `docs/acceptance/` 与旧 reports 是历史证据。

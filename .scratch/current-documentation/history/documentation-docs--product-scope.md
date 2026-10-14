@@ -2,7 +2,7 @@
 
 ## 产品定位
 
-ChatBI 是面向业务数据分析的 Domain AI Engine（领域 AI 引擎）。当前处于 **MVP 向生产演进** 阶段：核心用户链路已经实现，当前工程重点是资源一致性、全新环境初始化、正确性证据和生产运行准备。R6 提供当前 Windows + WSL2 + Docker 电脑上的固定版本本地部署，范围见 [本地部署 Contract](../../../docs/specs/local-deployment-v1.md)，四项本地实施与适用运行验收已完成（runtime `2b4a8c8`）；R6 候选本身没有经过电脑重启验收，限制见 [R6 Acceptance](../../r6-local-deployment/history/acceptance--local-deployment-v1.md)。后续 R7 已在 Active Stable 完成 Docker Desktop 和整台 Windows 电脑重启恢复核验，证据见 [R7 Acceptance](../../local-operations-v1/history/acceptance--local-operations-v1.md)。R6 交付见 [PR60](https://github.com/K999999999999/chatbi/pull/60)。仓库中的本地开发 Runbook 和历史 Acceptance 不构成公网生产部署证明。
+ChatBI 是面向业务数据分析的 Domain AI Engine（领域 AI 引擎）。当前处于 **MVP 向生产演进** 阶段：核心用户链路已经实现，当前工程重点是资源一致性、全新环境初始化、正确性证据和生产运行准备。R6 提供当前 Windows + WSL2 + Docker 电脑上的固定版本本地部署，范围见 [本地部署 Contract](../../deployment-simplification/history/docs--specs--local-deployment-v1.md)，四项本地实施与适用运行验收已完成（runtime `2b4a8c8`）；R6 候选本身没有经过电脑重启验收，限制见 [R6 Acceptance](../../r6-local-deployment/history/acceptance--local-deployment-v1.md)。后续 R7 已在 Active Stable 完成 Docker Desktop 和整台 Windows 电脑重启恢复核验，证据见 [R7 Acceptance](../../local-operations-v1/history/acceptance--local-operations-v1.md)。R6 交付见 [PR60](https://github.com/K999999999999/chatbi/pull/60)。仓库中的本地开发 Runbook 和历史 Acceptance 不构成公网生产部署证明。
 
 ## 当前 MVP Contract
 

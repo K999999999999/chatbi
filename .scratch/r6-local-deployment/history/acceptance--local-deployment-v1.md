@@ -2,7 +2,7 @@
 
 Status: Ticket 01–04 本地实施与适用验收完成；最终 clean runtime candidate `2b4a8c8` 的完整隔离入口通过，稳定环境已升级到该候选。PR60 已合并（`9a70601`），required CI 全部通过，交付与分支清理完成，见 [PR60](https://github.com/K999999999999/chatbi/pull/60)。R6候选本身未执行完整电脑重启；当前Active Stable R7已于2026-10-10通过Docker Desktop与Windows整机重启恢复核验，见 [R7 Acceptance](../../local-operations-v1/history/acceptance--local-operations-v1.md)。
 
-范围以 [Contract](../../../docs/specs/local-deployment-v1.md)、[实现设计](../../../docs/designs/local-deployment-v1.md) 和 [R6 Spec](../spec.md) 为准。
+范围以 [Contract](../../deployment-simplification/history/docs--specs--local-deployment-v1.md)、[实现设计](../../deployment-simplification/history/docs--designs--local-deployment-v1.md) 和 [R6 Spec](../spec.md) 为准。
 
 ## 已有证据
 

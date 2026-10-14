@@ -1,0 +1,134 @@
+name: chatbi-app
+# 标准应用容器：本地build，无发布登记；日常开发使用 ./dev。
+x-runtime: &runtime
+  CHATBI_ENV: development
+  CHATBI_RUNTIME_ENV: local
+  CHATBI_TRACE_CONTENT_ENABLED: "false"
+  CHATBI_ADMIN_SECRET_KEY: ${CHATBI_ADMIN_SECRET_KEY:?configure .env}
+  CHATBI_WEB_ORIGIN: http://127.0.0.1:${CHATBI_APP_PORT:-8080}
+  CHATBI_WEB_DIST_DIR: /opt/chatbi-web
+  LLM_API_KEY: ${LLM_API_KEY:?configure .env}
+  LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
+  LLM_MODEL: ${LLM_MODEL:-deepseek-flash}
+  LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.1}
+  LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-4096}
+  LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-30}
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: ${POSTGRES_DB:-chatbi_mvp}
+  POSTGRES_APP_USER: chatbi_app
+  POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?configure .env}
+  POSTGRES_CONTROL_DB: chatbi_control
+  POSTGRES_CONTROL_APP_USER: chatbi_control_user
+  POSTGRES_CONTROL_APP_PASSWORD: ${POSTGRES_CONTROL_APP_PASSWORD:?configure .env}
+  RAG_ONLINE_RETRIEVAL_ENABLED: "true"
+  RAG_MODEL_DIR: /opt/chatbi-model
+  RAG_OUTPUT_DIR: /opt/chatbi-rag
+  RAG_QDRANT_URL: http://qdrant:6333
+  RAG_QDRANT_API_KEY: ${QDRANT_API_KEY:?configure .env}
+  QDRANT_API_KEY: ${QDRANT_API_KEY:?configure .env}
+  RAG_COLLECTION_PREFIX: chatbi
+  RAG_EMBEDDING_DEVICE: cpu
+  RAG_EMBEDDING_USE_FP16: "false"
+  RAG_EMBEDDING_DIMENSION: "1024"
+  RAG_EMBEDDING_BATCH_SIZE: "8"
+  CHATBI_OBSERVABILITY_ENABLED: ${CHATBI_OBSERVABILITY_ENABLED:-false}
+  CHATBI_OTLP_TIMEOUT_SECONDS: ${CHATBI_OTLP_TIMEOUT_SECONDS:-5}
+  OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-chatbi-engine}
+  OTEL_RESOURCE_ATTRIBUTES: deployment.environment.name=local
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+  OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+
+x-application: &application
+  image: chatbi-app:local
+  build:
+    context: .
+    dockerfile: Dockerfile
+    target: api
+  init: true
+  restart: "no"
+  environment: *runtime
+
+services:
+  postgres:
+    image: chatbi-demo-postgres:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: database
+    restart: "no"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-chatbi_mvp}
+      POSTGRES_USER: ${POSTGRES_MIGRATOR_USER:-chatbi_migrator}
+      POSTGRES_PASSWORD: ${POSTGRES_MIGRATOR_PASSWORD:?configure .env}
+      POSTGRES_APP_USER: chatbi_app
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?configure .env}
+      POSTGRES_CONTROL_DB: chatbi_control
+      POSTGRES_CONTROL_APP_USER: chatbi_control_user
+      POSTGRES_CONTROL_APP_PASSWORD: ${POSTGRES_CONTROL_APP_PASSWORD:?configure .env}
+      POSTGRES_CONTROL_MIGRATOR_USER: ${POSTGRES_MIGRATOR_USER:-chatbi_migrator}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "sh /workspace/database/init/healthcheck.sh"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+  qdrant:
+    image: qdrant/qdrant:v1.18.3
+    restart: "no"
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?configure .env}
+    volumes:
+      - qdrant_data:/qdrant/storage
+  api:
+    <<: *application
+    security_opt:
+      - seccomp=${CHATBI_DEV_SECCOMP_PROFILE:-./docker/third-party/playwright-seccomp-profile.json}
+    ports:
+      - "127.0.0.1:${CHATBI_APP_PORT:-8080}:8000"
+    volumes:
+      - model_data:/opt/chatbi-model:ro
+      - rag_data:/opt/chatbi-rag:ro
+    depends_on:
+      postgres: {condition: service_healthy}
+      qdrant: {condition: service_started}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+    stop_grace_period: 30s
+  tools:
+    <<: *application
+    profiles: [tools]
+    # 只写本项目新建资产卷；API仍以非root身份只读运行。
+    user: "0:0"
+    entrypoint: [python, -m, src.bootstrap]
+    command: [--help]
+    volumes:
+      - model_data:/opt/chatbi-model
+      - rag_data:/opt/chatbi-rag
+  migrator:
+    <<: *application
+    profiles: [tools]
+    entrypoint: [python, -m, src.bootstrap]
+    command: [migrate]
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-chatbi_mvp}
+      POSTGRES_APP_USER: chatbi_app
+      POSTGRES_CONTROL_DB: chatbi_control
+      POSTGRES_CONTROL_APP_USER: chatbi_control_user
+      POSTGRES_CONTROL_APP_PASSWORD: ${POSTGRES_CONTROL_APP_PASSWORD:?configure .env}
+      POSTGRES_MIGRATOR_USER: ${POSTGRES_MIGRATOR_USER:-chatbi_migrator}
+      POSTGRES_MIGRATOR_PASSWORD: ${POSTGRES_MIGRATOR_PASSWORD:?configure .env}
+      POSTGRES_CONTROL_MIGRATOR_USER: ${POSTGRES_MIGRATOR_USER:-chatbi_migrator}
+      POSTGRES_CONTROL_BOOTSTRAP_DB: postgres
+
+volumes:
+  postgres_data:
+  qdrant_data:
+  model_data:
+  rag_data:
