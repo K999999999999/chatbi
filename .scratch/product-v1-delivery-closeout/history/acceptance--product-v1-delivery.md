@@ -4,7 +4,7 @@
 
 ## 演示
 
-- 本机稳定环境启动、状态检查、停止和限制见[Runbook](../../../docs/runbook.md) 的“本机稳定环境”章节。
+- 本机稳定环境启动、状态检查、停止和限制见[Runbook](../../deployment-simplification/history/docs--runbook.md) 的“本机稳定环境”章节。
 - 默认网页地址为`http://127.0.0.1:8080/`。演示数据为合成 Sales Mart；Stable当前发布源为R7候选`6d764ac`，不是云端或公网部署。
 - 环境初始化、账号管理和固定版本运行方式见[R6本地部署验收](../../r6-local-deployment/history/acceptance--local-deployment-v1.md)；R7运行保障、备份和恢复方式见[R7本地运行保障验收](../../local-operations-v1/history/acceptance--local-operations-v1.md)。
 
@@ -31,7 +31,7 @@
 ## 可复现评测
 
 - 评测分类、案例集和身份约束见[Evaluation Spec](../../../docs/specs/evaluation.md)。
-- 环境准备、单项命令、三套正式基线和身份核验见[Runbook 第 9 节](../../../docs/runbook.md)。正式交付检查按第 9.2 节在同一干净候选运行单轮、多轮和经营分析评测，并验证`git_dirty=false`、提交、RAG版本及案例集身份；只有全部案例有效且通过时才接受该候选为正式基线。
+- 环境准备、单项命令、三套正式基线和身份核验见[Runbook 第 9 节](../../deployment-simplification/history/docs--runbook.md)。正式交付检查按第 9.2 节在同一干净候选运行单轮、多轮和经营分析评测，并验证`git_dirty=false`、提交、RAG版本及案例集身份；只有全部案例有效且通过时才接受该候选为正式基线。
 - 原始 JSON / Markdown 报告位于本机 ignored `reports/evaluation/`，不会随 Git clone 分发，也不得把 Secret 或本机运行凭据放入文档。新环境按Runbook准备授权的`.env`后重新运行即可获得绑定新候选的报告。
 
 ## 运行边界

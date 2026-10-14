@@ -198,7 +198,7 @@ X-Request-ID: 可选
 - 带 `conversation_id` 的请求必须先由当前认证身份校验会话归属、过期状态和并发状态；失败时不得进入 `AuthorizedQueryService`、Retrieval、LLM、SQL Guard 或数据库。
 - 会话只保存最后一次成功查询的指标、时间范围、维度和过滤条件，不保存原始对话、候选 SQL、最终 SQL 或结果行。
 - 会话使用 30 分钟无成功状态更新的 Idle TTL；服务重启后会话失效。
-- [运行保障运行保障](local-operations-v1.md)将同步入口纳入就绪和共享业务额度；就绪失败503 SERVICE_NOT_READY，额度不足429 EXECUTION_LIMIT_REACHED，不排队/重试。账号沿用1、单API4的默认额度。额度允许时，同一会话同一时刻只允许一个进行中的轮次；会话占用返回409 CONVERSATION_CONFLICT，不调用下游、不提交状态。正常成功/业务拒绝DTO兼容，新增保护错误仍沿QueryFailure外壳。
+- [应用就绪与执行保护](application-readiness.md)将同步入口纳入就绪和共享业务额度；就绪失败503 SERVICE_NOT_READY，额度不足429 EXECUTION_LIMIT_REACHED，不排队/重试。账号沿用1、单API4的默认额度。额度允许时，同一会话同一时刻只允许一个进行中的轮次；会话占用返回409 CONVERSATION_CONFLICT，不调用下游、不提交状态。正常成功/业务拒绝DTO兼容，新增保护错误仍沿QueryFailure外壳。
 - 同一语义槽位的新值替换旧值，不同语义槽位的新条件叠加。维度默认追加；用户明确说“分组维度改成 / 换成 / 替换为 / 替换成某维度”时，替换全部已有维度。维度操作同时包含互相冲突的替换与追加措辞，或否定了替换表达时，必须澄清且不执行查询。歧义和超出单条查询修订范围的问题不执行查询。
 - 每一轮都重新使用当前认证身份和当前授权策略；历史状态不能赋予新的权限。
 

@@ -4,14 +4,14 @@
 
 ## 当前阶段
 
-- 产品 V1 的 R1–R7 目标已完成并交付，范围包括电脑端问数与经营分析、图表、私人历史、后台执行、文件导出，以及本机固定版本部署和运行保障。
-- 本机 Stable 的 R7 部署及 Docker Desktop / Windows 整机重启恢复，最后记录的核验日期为 2026-10-10；详细候选和证据见[运行保障验收归档](../.scratch/local-operations-v1/history/acceptance--local-operations-v1.md)。这不构成公网生产部署、容量或可用性承诺。
+- 产品 V1 的 R1–R7 历史目标已完成交付；问数、分析、图表、私人历史、后台执行和导出保持。原本机Stable部署/运维属于历史交付，当前按已确认Deployment Simplification目标精简。
+- 历史本机 Stable 的 R7 部署及 Docker Desktop / Windows 整机重启恢复，最后记录的核验日期为 2026-10-10；详细候选和证据见[运行保障验收归档](../.scratch/local-operations-v1/history/acceptance--local-operations-v1.md)。这不构成公网生产部署、容量或可用性承诺。
 - 新的 AI Evaluation 结果只适用于报告记录的提交、案例集与运行资源；历史分数不能代表当前代码或模型表现。
 - 已确认桌面 Web 视觉升级目标，聚焦正式产品观感与信息直观度；边界和验收见[短 Spec](../.scratch/professional-ui/spec.md)。该工程改进不扩展产品能力或改变支持范围 / 路线优先级。
 
 ## 已确认的后续方向
 
-当前没有其他已确认并排期的产品功能扩展。增加数据源、部署副本、数据权限、分析场景或容量承诺前，应先确认用户目标、支持范围和验收要求，再形成相应 Spec；本段不授予实施授权。
+已确认部署精简目标，本地实现与验收已完成：统一dev容器入口，保留标准Dockerfile/Compose、初始化和应用保护，删除自研Stable运维及宿主开发教程。范围见[Spec](../.scratch/deployment-simplification/spec.md)，证据见[验收记录](../.scratch/deployment-simplification/acceptance.md)，本地候选尚未发布；不新增产品功能或调整其他优先级。增加数据源、部署副本、数据权限、分析场景或容量承诺前，应先确认用户目标、支持范围和验收要求，再形成相应 Spec；本段不授予实施授权。
 
 ## 路线图维护
 

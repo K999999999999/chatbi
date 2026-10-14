@@ -106,7 +106,7 @@ Status: Ticket 01–04 已完成；PR60 已合并（9a70601），交付与分支
 
 ## Canonical Source / 授权
 
-事实源：[Architecture](../../docs/architecture.md)、[产品范围](../../docs/product-scope.md)、[路线图](../../docs/roadmap.md)、[初始化 Contract](../../docs/specs/bootstrap.md)、[RAG Contract](../../docs/specs/rag-offline-build.md)、[开发环境 Contract](../../docs/specs/container-dev-environment.md)、[Runbook](../../docs/runbook.md)及 R1–R5 正式 Spec / Acceptance。
+事实源：[Architecture](../../docs/architecture.md)、[产品范围](../../docs/product-scope.md)、[路线图](../../docs/roadmap.md)、[初始化 Contract](../../docs/specs/bootstrap.md)、[RAG Contract](../../docs/specs/rag-offline-build.md)、[开发环境 Contract](../../docs/specs/container-dev-environment.md)、[Runbook](../deployment-simplification/history/docs--runbook.md)及 R1–R5 正式 Spec / Acceptance。
 
 2026-10-07 用户在需求澄清中逐项“同意”首版范围、目标设备、手动启停、升级回滚、首次安装、配置初始化及运行边界 / 验收标准。上述决定授权整理本 Spec 和同步规划事实，不构成完整 Spec、设计、Ticket 拆分、功能实施或远端发布授权。
 

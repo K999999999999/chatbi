@@ -47,3 +47,12 @@ def test_unknown_or_incomplete_probe_fields_cannot_enter_public_state():
     with pytest.raises(ValueError):
         state.record_checks({"control_database": "password=unsafe"})
     assert not state.ready
+
+
+def test_application_status_contains_no_host_backup_state():
+    state = OperationsState()
+    assert set(state.snapshot(detailed=True)["details"]) == {
+        "dependencies",
+        "model",
+        "capacity",
+    }

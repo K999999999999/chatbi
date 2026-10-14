@@ -4,10 +4,21 @@ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 command=${1:-help}
 if (($#)); then shift; fi
 usage() {
-    echo '用法: ./dev {build|infra|migrate|create-admin|prepare-model|build-rag|up|down|status|logs} [参数]'
+    echo '用法: ./dev {build|infra|migrate|create-admin|prepare-model|build-rag|up|down|status|logs|test|check|evaluate} [参数]'
 }
 case "$command" in
     help|-h|--help) usage; exit 0 ;;
+    test)
+        suite=${1:-python}
+        if (($#)); then shift; fi
+        case "$suite" in
+            python|database|web|renderer) exec bash "$root/scripts/container_tasks.sh" "$suite" "$@" ;;
+            all) for suite in python database web renderer; do bash "$root/scripts/container_tasks.sh" "$suite"; done; exit 0 ;;
+            *) echo '用法: ./dev test [python|database|web|renderer|all]' >&2; exit 2 ;;
+        esac ;;
+    check) exec bash "$root/scripts/container_tasks.sh" check "$@" ;;
+    evaluate) exec bash "$root/scripts/container_tasks.sh" evaluate "$@" ;;
+    evaluate-tools) ;;
     build|infra|migrate|create-admin|prepare-model|build-rag|up|down|status|logs) ;;
     *) usage >&2; exit 2 ;;
 esac
@@ -39,6 +50,25 @@ prepare_directories() {
     export CHATBI_DEV_MODEL_DIR="${directories%%$'\n'*}"
 }
 
+check_application_ports() {
+    source "$root/scripts/loopback_probe.sh"
+    local published service port running mapping
+    published=$("${compose[@]}" config --format json | docker run --rm -i --network none \
+        --entrypoint python chatbi-python-dev:local -c \
+        'import json,sys; c=json.load(sys.stdin); print("\n".join(s+" "+str(c["services"][s]["ports"][0]["published"]) for s in ("api","web")))')
+    while read -r service port; do
+        running=$("${compose[@]}" ps --status running -q "$service")
+        mapping=
+        if [[ -n "$running" ]]; then
+            mapping=$(docker port "$running" | awk -v address="127.0.0.1:$port" '$NF == address {print $NF}')
+        fi
+        if [[ -z "$mapping" ]] && ! loopback_port_is_free "$port"; then
+            echo "回环端口 $port 已被占用，请调整开发端口配置。未停止占用进程。" >&2
+            return 1
+        fi
+    done <<< "$published"
+}
+
 case "$command" in
     build) "${compose[@]}" build api web ;;
     infra) "${compose[@]}" up -d postgres qdrant ;;
@@ -58,17 +88,50 @@ case "$command" in
         fi
         prepare_directories
         "${compose[@]}" run --rm --no-deps "${tty_args[@]}" tools "$command" "$@" ;;
+    evaluate-tools)
+        prepare_directories
+        "${compose[@]}" run --rm --no-deps -T --entrypoint python \
+            -v "$root/evaluation:/workspace/evaluation:ro" \
+            -v "$root/reports/evaluation:/workspace/reports/evaluation" \
+            -v "$root/.git:/workspace/.git:ro" \
+            -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/workspace \
+            tools -m evaluation "$@" ;;
     up)
         if ! docker image inspect chatbi-python-dev:local chatbi-node-dev:local >/dev/null 2>&1; then
             "${compose[@]}" build api web
         fi
         prepare_directories
+        check_application_ports
         if ! "${compose[@]}" up -d --wait --wait-timeout 120 postgres qdrant api web; then
             echo '服务未全部就绪；首次环境先执行 ./dev migrate，随后显式准备管理员、模型与索引。' >&2
             exit 1
         fi
         "${compose[@]}" exec -T api python -c \
             'import os,urllib.request; u=os.environ["RAG_QDRANT_URL"]+"/healthz"; r=urllib.request.Request(u,headers={"api-key":os.environ["QDRANT_API_KEY"]}); urllib.request.urlopen(r,timeout=5)'
+        "${compose[@]}" exec -T api python - <<'PY'
+import json
+import time
+from urllib.error import URLError
+from urllib.request import urlopen
+
+deadline = time.monotonic() + 60
+while time.monotonic() < deadline:
+    try:
+        with urlopen("http://127.0.0.1:8000/ready", timeout=3) as response:
+            state = json.loads(response.read(4096))
+        if isinstance(state, dict) and state.get("status") == "ready":
+            break
+    except (OSError, URLError, ValueError):
+        pass
+    time.sleep(1)
+else:
+    raise SystemExit("应用尚未就绪；请检查 migrate、prepare-model、build-rag 与服务日志。")
+PY
+        api_port=$("${compose[@]}" port api 8000 | awk -F: '{print $NF}')
+        loopback_http_health_ok "$api_port" || {
+            echo '应用回环HTTP未通过，请检查本项目端口与服务日志。' >&2
+            exit 1
+        }
         web_port=$("${compose[@]}" exec -T web node -p 'process.env.CHATBI_DEV_WEB_PORT')
         echo "开发环境已启动：http://127.0.0.1:$web_port（仅本机）。" ;;
     down) "${compose[@]}" stop api web postgres qdrant ;;

@@ -66,7 +66,7 @@ bash scripts/install_git_hooks.sh
 
 构建镜像使用明确版本 / digest。受网络限制时，可通过 `CHATBI_DEV_PYTHON_BASE` / `CHATBI_DEV_NODE_BASE` 指向可信镜像地址，保持相同版本 / digest；不关闭 TLS 校验或修改系统证书。原生依赖随 `uv.lock` 安装，CPU执行不意味着镜像中不含锁定的CUDA包。
 
-运行语义见[开发环境 Contract](../../../docs/specs/container-dev-environment.md)。R6 §15 提供当前电脑上的固定版本本地稳定环境；正式公网生产镜像、HTTPS 与云部署不在 R6 范围内。R6 本地版本升级 / 兼容回滚已由 Ticket 03 实施和验收。后续 R7 已增加 Stable 动态 readiness、依赖状态观察、备份恢复和监控；其具体边界及证据见 [R7 Spec](../../../docs/specs/local-operations-v1.md) 与 [R7 Acceptance](../../local-operations-v1/history/acceptance--local-operations-v1.md)。这些本机验收不构成公网部署、多用户容量或延迟承诺。
+运行语义见[开发环境 Contract](../../../docs/specs/container-dev-environment.md)。R6 §15 提供当前电脑上的固定版本本地稳定环境；正式公网生产镜像、HTTPS 与云部署不在 R6 范围内。R6 本地版本升级 / 兼容回滚已由 Ticket 03 实施和验收。后续 R7 已增加 Stable 动态 readiness、依赖状态观察、备份恢复和监控；其具体边界及证据见 [R7 Spec](../../deployment-simplification/history/docs--specs--local-operations-v1.md) 与 [R7 Acceptance](../../local-operations-v1/history/acceptance--local-operations-v1.md)。这些本机验收不构成公网部署、多用户容量或延迟承诺。
 
 容器运行验收使用以下入口，要求干净候选提交和可用的真实 LLM 配置，会产生少量模型调用费用。隔离模式需 Compose ≥2.24.4：
 
@@ -597,7 +597,7 @@ PNG / PDF 使用镜像内固定的 Playwright / Chromium 与离线 bundle；PNG 
 
 本节只操作当前 WSL2 仓库对应的 `chatbi-stable` Compose 项目。容器从本地固定版本镜像启动，API 仅绑定 `127.0.0.1`；PostgreSQL 和 Qdrant 不发布宿主端口。开发环境使用 `./dev`，不要将本节命令与开发 Compose 混用。
 
-已确认的本地稳定部署行为见 [R6 Contract](../../../docs/specs/local-deployment-v1.md)；升级 / 兼容回滚已验收，完整目标环境验收见 [R6 Acceptance](../../r6-local-deployment/history/acceptance--local-deployment-v1.md)。
+已确认的本地稳定部署行为见 [R6 Contract](../../deployment-simplification/history/docs--specs--local-deployment-v1.md)；升级 / 兼容回滚已验收，完整目标环境验收见 [R6 Acceptance](../../r6-local-deployment/history/acceptance--local-deployment-v1.md)。
 
 首次安装需要 WSL/Linux 的 Bash、Git、Docker Engine / Compose v2、OpenSSL 和 `flock`（util-linux）；无需宿主 Python 或 Node。写操作使用本地非阻塞锁，避免初始化、日常操作与后续版本切换并发。先确保仓库处于 clean commit，然后执行：
 
@@ -668,7 +668,7 @@ uv run --frozen python -m scripts.verify_local_deployment
 
 ## R7 动态运行状态（候选隔离验收通过；Stable已切至R7，六小时自动备份周期通过）
 
-R7 Contract见[Spec](../../../docs/specs/local-operations-v1.md)，机制见[Design](../../../docs/designs/local-operations-v1.md)。Ticket 01–06本地实现与Review完成；Ticket 07 clean候选`6d764ac`的Linux Playwright完整业务验收、12份导出、资源基线、四类依赖60秒故障/恢复矩阵及额度释放回归已通过。R6备份隔离恢复条件RTO为84秒。2026-10-10用户授权后，本机Stable已执行R6→R7兼容升级；`/health`和`/ready`为200，依赖ready。连续运行期间，调度器于18:30:58+08:00自动登记六小时周期备份`a0fa7ba4dd9748b88de3b12983386541`，复核时服务healthy、backup known/not-overdue；24小时逾期提醒逻辑已有23项定向测试通过，但未在Active Stable人为触发。切换后Stable业务Trace已由用户确认在阿里云ARMS验收通过（未提供Trace ID或时间戳）；详细证据见[R7 Acceptance](../../local-operations-v1/history/acceptance--local-operations-v1.md)。
+R7 Contract见[Spec](../../deployment-simplification/history/docs--specs--local-operations-v1.md)，机制见[Design](../../deployment-simplification/history/docs--designs--local-operations-v1.md)。Ticket 01–06本地实现与Review完成；Ticket 07 clean候选`6d764ac`的Linux Playwright完整业务验收、12份导出、资源基线、四类依赖60秒故障/恢复矩阵及额度释放回归已通过。R6备份隔离恢复条件RTO为84秒。2026-10-10用户授权后，本机Stable已执行R6→R7兼容升级；`/health`和`/ready`为200，依赖ready。连续运行期间，调度器于18:30:58+08:00自动登记六小时周期备份`a0fa7ba4dd9748b88de3b12983386541`，复核时服务healthy、backup known/not-overdue；24小时逾期提醒逻辑已有23项定向测试通过，但未在Active Stable人为触发。切换后Stable业务Trace已由用户确认在阿里云ARMS验收通过（未提供Trace ID或时间戳）；详细证据见[R7 Acceptance](../../local-operations-v1/history/acceptance--local-operations-v1.md)。
 
 `/health`继续只证明HTTP存活；`/ready`公开最小status/checked_at，ready返回200，其余503。每15秒一轮有界独立进程探测，单轮最多10秒；30秒未更新则unknown。稳定镜像复用R6发布门禁，验证Control/业务库、Qdrant、固定业务/RAG/版本资产；不执行定时LLM调用。未知和失败均不能用旧正常结果替代。
 

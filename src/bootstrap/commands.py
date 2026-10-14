@@ -20,8 +20,14 @@ def main(argv: list[str] | None = None) -> int:
     rag.add_argument("--metrics-path", type=Path)
     rag.add_argument("--output-dir", type=Path)
     rag.add_argument("--build-id")
+    commands.add_parser("verify", help="只读检查标准容器初始化与运行资产")
     args = parser.parse_args(argv)
     load_dotenv(override=False)
+
+    if args.command == "verify":
+        from .verification import verify
+
+        return verify()
 
     if args.command == "migrate":
         from .control import migrate

@@ -1,6 +1,6 @@
 # 容器开发环境
 
-本文定义容器开发命令、数据保留和宿主隔离行为。开发与 Stable 是独立环境；操作方式见 [Runbook](../runbook.md)。
+本文定义容器开发命令、数据保留和宿主隔离行为。dev为唯一推荐开发入口，宿主不要求Python/uv/Node；操作方式见 [Runbook](../runbook.md)。
 
 ## 初始化与命令
 
@@ -12,9 +12,12 @@
 | `./dev create-admin --username NAME` | 交互隐藏输入密码；复用首次管理员创建 / 重复拒绝 Contract |
 | `./dev prepare-model` | 显式准备固定 revision 模型，复用缓存 |
 | `./dev build-rag` | 显式构建 / 验证 / 发布索引，不自动重播 Seed |
-| `./dev up` | 镜像缺失时构建，后台启动四个常驻服务，有界等待 HTTP / 基础设施状态 |
+| `./dev up` | 镜像缺失时构建，后台启动四个常驻服务，有界等待 HTTP / 基础设施与应用ready；未完成必要准备返回非零 |
 | `./dev down` | 停止 API / Web / PostgreSQL / Qdrant，保留数据卷、缓存与资产 |
 | `./dev status`、`./dev logs [--follow]` | 查看本项目运行状态 / 最近日志 |
+| `./dev test [python\|database\|web\|renderer\|all]` | 在容器中运行对应验证，数据库/浏览器资源隔离，失败返回非零 |
+| `./dev check` | 容器执行锁文件、文档/边界、Python质量和前端构建 |
+| `./dev evaluate [参数]` | 在开发网络中执行原评测入口并输出报告；真实调用显式执行 |
 
 失败保持非零退出码和安全阶段诊断，不输出完整配置。`up`不自动初始化。`/health`仍只证明API启动后HTTP存活，依赖检查不等于真实问数通过。
 
@@ -30,7 +33,7 @@
 
 ## 兼容与验证
 
-基础Compose不隐式启动应用；Dev Container保留原配置，不是本次验收入口。端口冲突不杀未知进程；故障修复后重试，停止应用后可回本机入口，数据保留。
+基础Compose不隐式启动应用；Dev Container保留原配置，不是本次验收入口。端口冲突不杀未知进程；故障修复后重试，停止后仍通过同一dev容器入口恢复，数据保留。
 
 运行验收覆盖独立空卷初始化、热更新、持久性、故障、实际Compose网页的真实两轮查询和账号清理；证据绑定候选 / 资源。日期化结果见[历史验收记录](../../.scratch/container-dev-environment/history/acceptance--container-dev-environment-20261003.md)，不改写历史 Evaluation 身份。
 

@@ -48,6 +48,31 @@ assert 'FlagEmbedding' not in sys.modules
     assert result.returncode == 0, result.stderr
 
 
+def test_runtime_verification_reports_missing_assets_without_private_configuration(
+    monkeypatch, capsys
+):
+    monkeypatch.setattr(commands, "load_dotenv", Mock())
+    monkeypatch.setenv(
+        "CHATBI_ADMIN_SECRET_KEY", "test-admin-secret-32-characters-long"
+    )
+    monkeypatch.setenv("LLM_API_KEY", "test-key")
+    monkeypatch.setenv("LLM_MODEL", "test-model")
+    monkeypatch.setenv("RAG_MODEL_DIR", "/missing/private-test-model")
+    assert commands.main(["verify"]) == 1
+    assert "private-test-model" not in capsys.readouterr().err
+
+
+def test_runtime_verification_rejects_weak_signing_configuration_without_echoing_it(
+    monkeypatch, capsys
+):
+    monkeypatch.setattr(commands, "load_dotenv", Mock())
+    monkeypatch.setenv("CHATBI_ADMIN_SECRET_KEY", "private-short-key")
+    assert commands.main(["verify"]) == 1
+    error = capsys.readouterr().err
+    assert "运行配置" in error
+    assert "private-short-key" not in error
+
+
 @pytest.mark.parametrize(
     "operation,handler", [("migrate", "migrate"), ("create-admin", "create_admin")]
 )

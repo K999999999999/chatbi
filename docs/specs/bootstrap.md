@@ -21,16 +21,18 @@
 ## 显式初始化命令
 
 ```text
+python -m src.bootstrap verify
 python -m src.bootstrap migrate
 python -m src.bootstrap create-admin [--username USERNAME]
 python -m src.bootstrap prepare-model
 python -m src.bootstrap build-rag [--structure-dir PATH] [--metrics-path PATH] [--output-dir PATH] [--build-id ID]
 ```
 
-命令按操作加载依赖；帮助不初始化资源。外部环境变量优先于 `.env`，沿用各模块现有配置和参数。
+以上是容器内命令；普通开发通过dev入口执行，不要求宿主Python。命令按操作加载依赖；帮助不初始化资源。外部环境变量优先于 `.env`，沿用各模块现有配置和参数。
 
 | 命令 | 行为与失败边界 |
 | --- | --- |
+| verify | 只读检查标准容器的数据库、管理员、模型/RAG、网页和导出资产；成功0、安全失败1，不管理发布版本 |
 | migrate | 幂等建立 Control DB、固定 RBAC、checkpoint 和 grants；不创建管理员；成功 0、迁移失败 1 |
 | create-admin | 隐藏输入密码并确认，显式创建首个管理员；已存在管理员时拒绝；成功 0、操作失败 1、两次密码不一致 2 |
 | prepare-model | 下载固定 revision 的 BGE-M3 到既有缓存目录；成功且配置文件存在返回 0，失败返回 1，不输出凭据 |

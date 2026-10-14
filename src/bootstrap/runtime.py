@@ -29,10 +29,8 @@ from src.query_api.operations import OperationsState
 from src.query_api.runtime import RuntimeDependencies
 
 from .analysis import build_analysis_application
-from .backup_status import read_backup_status
 from .lifecycle import register_async_cleanup, register_cleanup
 from .operations import ObservedModel, OperationsMonitor
-from .operations_socket import OperationsSocket, runtime_snapshot
 from .readiness import verify_startup_dependencies
 
 
@@ -49,7 +47,7 @@ async def create_runtime() -> AsyncIterator[RuntimeDependencies]:
         raise RuntimeError("production 的 CHATBI_ADMIN_SECRET_KEY 至少需要 32 个字符")
 
     async with AsyncExitStack() as resources:
-        operations = OperationsState(backup_provider=read_backup_status)
+        operations = OperationsState()
 
         def observe_model(model):
             return ObservedModel(model, operations.record_model)
@@ -105,10 +103,6 @@ async def create_runtime() -> AsyncIterator[RuntimeDependencies]:
         monitor = OperationsMonitor(operations)
         register_cleanup(resources, "operations_monitor", monitor.close)
         monitor.start()
-        status_socket = OperationsSocket(lambda: runtime_snapshot(operations))
-        register_cleanup(resources, "operations_socket", status_socket.close)
-        status_socket.start()
-
         history_store = PostgresHistoryStore(engine)
         history_runtime = HistoryRuntime(engine, config.app_connection_kwargs())
         register_cleanup(resources, "history", history_runtime.close)

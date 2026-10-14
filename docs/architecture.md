@@ -160,4 +160,4 @@ LLM提出候选，BGE-M3生成向量，Qdrant保存发布的检索集合；它�
 
 当前部署为本机单API进程。Web只访问同源API，浏览器身份使用Cookie与CSRF。后台观察、流式、取消和恢复由Application裁决；客户端断连不意味着执行已停止。
 
-开发与Stable的配置、数据库、Qdrant和RAG资产隔离。公网、多worker / 多副本、共享会话与多用户容量不在当前承诺；操作与恢复见 [Runbook](runbook.md)。
+源码容器开发以dev为统一入口，标准应用Compose使用独立资源；旧Stable资源不自动迁移或删除。应用装配、就绪和执行保护保留，自研发布运维系统已移除。公网、多worker / 多副本、共享会话与多用户容量不在当前承诺；操作见 [Runbook](runbook.md)。

@@ -117,6 +117,17 @@ def test_development_does_not_preload_rag(runtime_resources):
     assert not Path(os.environ["CHATBI_OPERATIONS_SOCKET_PATH"]).exists()
 
 
+def test_application_starts_without_a_writable_operations_socket(
+    monkeypatch, runtime_resources, tmp_path
+):
+    protected = tmp_path / "user-file"
+    protected.write_text("preserve this file")
+    monkeypatch.setenv("CHATBI_OPERATIONS_SOCKET_PATH", str(protected))
+    with TestClient(create_app(runtime_factory=runtime.create_runtime)) as client:
+        assert client.get("/health").status_code == 200
+    assert protected.read_text() == "preserve this file"
+
+
 def test_partial_assembly_closes_sync_and_async_http_clients(
     monkeypatch, runtime_resources
 ):

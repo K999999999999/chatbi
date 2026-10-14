@@ -28,7 +28,7 @@ Owner: 当前主 Agent，2026-10-03；当前上下文只读审查，未启动独
 
 ## Evidence Sources
 
-- [Architecture](../../docs/architecture.md)、[产品范围](../../docs/product-scope.md)、[Bootstrap](../../docs/specs/bootstrap.md)、[Web Spec](../../docs/specs/web-dialogue-v1.md)、[Runbook](../../docs/runbook.md)。
+- [Architecture](../../docs/architecture.md)、[产品范围](../../docs/product-scope.md)、[Bootstrap](../../docs/specs/bootstrap.md)、[Web Spec](../../docs/specs/web-dialogue-v1.md)、[Runbook](../deployment-simplification/history/docs--runbook.md)。
 - [基础 Compose](../../docker-compose.yml)、[Dev Container](../../.devcontainer/devcontainer.json)、[环境模板](../../.env.example)、[Vite](../../frontend/vite.config.ts)、[Python依赖](../../pyproject.toml)、[前端依赖](../../frontend/package.json)。
 - [API配置加载](../../src/query_api/config.py)、[Bootstrap命令](../../src/bootstrap/commands.py)、[管理员及migration](../../src/bootstrap/control.py)、[模型准备](../../src/bootstrap/model.py)。
 - [真实浏览器配置](../../frontend/playwright.real.config.ts)、[真实浏览器测试](../../frontend/tests/real.spec.ts)、[账号支持](../../tests/browser_real_support.py)、[参考值](../../tests/browser_real_reference.py)、[现有Dev Container回归](../../tests/scripts/test_devcontainer_config.py)。

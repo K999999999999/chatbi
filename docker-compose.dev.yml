@@ -133,7 +133,16 @@ services:
     profiles: [tools]
     entrypoint: ["python", "-m", "src.bootstrap"]
     command: ["--help"]
-    environment: *common-env
+    environment:
+      <<: *common-env
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-flash}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.1}
+      LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-4096}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-30}
+      CHATBI_RUNTIME_ENV: local
+      CHATBI_TRACE_CONTENT_ENABLED: "false"
     volumes:
       - *source
       - *scripts

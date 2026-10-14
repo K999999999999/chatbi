@@ -72,6 +72,7 @@ def test_admin_details_follow_current_permissions_and_revocation(browser):  # no
     response = client.get("/api/v1/operations/status", headers=headers)
     assert response.headers["cache-control"] == "no-store"
     assert response.json()["details"]["dependencies"]["qdrant"] == "ready"
+    assert set(response.json()["details"]) == {"dependencies", "model", "capacity"}
     with auth._session_factory() as session:
         user = session.scalar(select(User).where(User.username == "analyst"))
         user.is_active = False

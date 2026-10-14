@@ -4,7 +4,7 @@
 
 ## 入口与覆盖
 
-正式行为见[开发运行Spec](../../../docs/specs/container-dev-environment.md)，命令见[Runbook](../../../docs/runbook.md)。宿主仅需WSL / Linux、Git、Bash、Docker；隔离验收需Compose≥2.24.4，使用[官方override规则](https://docs.docker.com/reference/compose-file/merge/)避免占用现有Qdrant端口。
+正式行为见[开发运行Spec](../../../docs/specs/container-dev-environment.md)，命令见[Runbook](../../deployment-simplification/history/docs--runbook.md)。宿主仅需WSL / Linux、Git、Bash、Docker；隔离验收需Compose≥2.24.4，使用[官方override规则](https://docs.docker.com/reference/compose-file/merge/)避免占用现有Qdrant端口。
 
 ```bash
 scripts/verify_container_dev.sh isolated

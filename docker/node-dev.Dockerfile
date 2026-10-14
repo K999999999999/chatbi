@@ -14,6 +14,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers \
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     printf 'Acquire::Retries "3";\n' > /etc/apt/apt.conf.d/80-retries \
     && npx playwright install --with-deps chromium
+RUN npx playwright install --with-deps chrome
 
 FROM dependencies AS dev
 COPY frontend/index.html frontend/tsconfig.json frontend/vite.config.ts ./

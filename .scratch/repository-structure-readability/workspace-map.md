@@ -1,6 +1,6 @@
 # Workspace Map（Ticket 01 Baseline）
 
-> **历史快照**：本地图记录 2026-09-17 的 checkout / branch 和当时的项目结构，已经被后续产品迭代取代。它不应作为当前代码、功能或入口的导航依据；当前入口请读 [`README.md`](../../README.md)、[`docs/architecture.md`](../../docs/architecture.md) 和 [`docs/runbook.md`](../../docs/runbook.md)。本文保留用于追溯此前结构整理工作的基线和结论。
+> **历史快照**：本地图记录 2026-09-17 的 checkout / branch 和当时的项目结构，已经被后续产品迭代取代。它不应作为当前代码、功能或入口的导航依据；当前入口请读 [`README.md`](../../README.md)、[`docs/architecture.md`](../../docs/architecture.md) 和 [`docs/runbook.md`](../deployment-simplification/history/docs--runbook.md)。本文保留用于追溯此前结构整理工作的基线和结论。
 
 ## 1. 核对基线
 
