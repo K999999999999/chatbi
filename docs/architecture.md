@@ -20,8 +20,10 @@ ChatBI是Domain AI Engine，采用Modular Monolith。依赖方向为 `Interfaces
 | Result Export | 从有权访问的成功快照生成文件，隔离renderer并回收资源；不再执行业务查询。 |
 | Semantic / Structure | 指标与业务绑定、结构事实及认证映射；展示格式不定义业务口径。 |
 | RAG Offline | 验证离线事实、生成三类文档 / 向量与关系图、完整版本发布；不参与在线请求或修改业务库。 |
-| Bootstrap / Operations | 初始化、资源装配、失败清理、就绪与本机备份恢复；业务模块不依赖bootstrap。 |
+| Bootstrap / Operations | 初始化、资源装配、失败清理、就绪与可信本机账号恢复；业务模块不依赖bootstrap。 |
 | Observability / Evaluation | 安全旁路诊断；同一正式链路的离线案例验证。诊断不决定业务终态。 |
+
+本机管理员恢复由dev选择目标与容器，Bootstrap装配Control DB运行身份，Authorization在同一事务裁决启用admin、密码、Session及强制审计。业务模块不依赖Docker/Bootstrap，不装配Web或LLM；边界见[恢复Contract](specs/admin-recovery.md)。
 
 ## 核心查询链路
 

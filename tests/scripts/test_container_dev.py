@@ -11,6 +11,47 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 
 
+@pytest.mark.parametrize("args", [["help"], ["app", "--help"]])
+def test_classified_help_requires_neither_config_nor_docker(args):
+    result = invoke(args, {"PATH": "/usr/bin:/bin", "CHATBI_DEV_ENV_FILE": "/missing"})
+    assert result.returncode == 0
+    assert "环境管理" in result.stdout
+    assert "recover-admin" in result.stdout
+
+
+@pytest.mark.parametrize("command", ["build", "infra", "migrate", "down", "status"])
+def test_app_commands_select_only_standard_compose(command, docker_fake):
+    result = invoke(
+        ["app", command],
+        {**docker_fake, "CHATBI_APP_ENV_FILE": docker_fake["CHATBI_DEV_ENV_FILE"]},
+    )
+    assert result.returncode == 0, result.stderr
+    calls = [
+        json.loads(line)
+        for line in Path(docker_fake["DOCKER_CALLS"]).read_text().splitlines()
+    ]
+    assert calls
+    assert all(str(ROOT / "docker-compose.app.yml") in call for call in calls)
+    assert all(str(ROOT / "docker-compose.dev.yml") not in call for call in calls)
+    if command == "down":
+        assert calls[-1][-4:] == ["stop", "api", "postgres", "qdrant"]
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["app", "erase"],
+        ["app", "down", "extra"],
+        ["up", "extra"],
+        ["test", "all", "extra"],
+    ],
+)
+def test_extra_or_unknown_arguments_are_rejected_before_resources(args, docker_fake):
+    result = invoke(args, docker_fake)
+    assert result.returncode == 2
+    assert not Path(docker_fake["DOCKER_CALLS"]).exists()
+
+
 @pytest.fixture
 def docker_fake(tmp_path):
     fake = tmp_path / "docker"
@@ -199,3 +240,50 @@ def test_compose_config_excludes_secrets_and_migration_identity_from_api(tmp_pat
     assert all(v["read_only"] for v in api["volumes"])
     assert services["migrator"]["profiles"] == ["tools"]
     assert "POSTGRES_MIGRATOR_PASSWORD" in services["migrator"]["environment"]
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["check", "--help"],
+        ["verify", "dev", "--help"],
+        ["reset", "--help"],
+        ["recover-admin", "--help"],
+        ["harness", "--help"],
+    ],
+)
+def test_group_help_has_no_environment_dependency(args):
+    result = invoke(args, {"PATH": "/usr/bin:/bin", "CHATBI_DEV_ENV_FILE": "/missing"})
+    assert result.returncode == 0
+    assert "用法" in result.stdout
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["recover-admin"],
+        ["recover-admin", "dev", "--username", "admin"],
+        ["recover-admin", "stable", "--username", "admin"],
+        ["reset", "app"],
+        ["doctor", "stable"],
+        ["verify", "dev", "extra"],
+    ],
+)
+def test_sensitive_commands_reject_invalid_or_nonterminal_input_before_docker(
+    args, docker_fake
+):
+    result = invoke(args, docker_fake)
+    assert result.returncode == 2
+    assert not Path(docker_fake["DOCKER_CALLS"]).exists()
+
+
+def test_devcontainer_environment_keeps_host_project_identity(docker_fake):
+    result = invoke(
+        ["infra"], {**docker_fake, "LOCAL_WORKSPACE_FOLDER": "/host/selected-project"}
+    )
+    assert result.returncode == 0
+    calls = [
+        json.loads(line)
+        for line in Path(docker_fake["DOCKER_CALLS"]).read_text().splitlines()
+    ]
+    assert str(ROOT / "docker/dev-project-name.yml") in calls[-1]

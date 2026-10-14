@@ -28,7 +28,14 @@ assert 'FlagEmbedding' not in sys.modules
         [sys.executable, "-c", script], capture_output=True, text=True, timeout=30
     )
     assert result.returncode == 0, result.stderr
-    assert "migrate,create-admin,prepare-model,build-rag" in result.stdout
+    for command in (
+        "migrate",
+        "create-admin",
+        "recover-admin",
+        "prepare-model",
+        "build-rag",
+    ):
+        assert command in result.stdout
 
 
 def test_database_commands_do_not_import_runtime_or_embedding():

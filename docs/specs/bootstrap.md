@@ -24,6 +24,7 @@
 python -m src.bootstrap verify
 python -m src.bootstrap migrate
 python -m src.bootstrap create-admin [--username USERNAME]
+python -m src.bootstrap recover-admin --username USERNAME --environment dev|app --project PROJECT
 python -m src.bootstrap prepare-model
 python -m src.bootstrap build-rag [--structure-dir PATH] [--metrics-path PATH] [--output-dir PATH] [--build-id ID]
 ```
@@ -35,12 +36,13 @@ python -m src.bootstrap build-rag [--structure-dir PATH] [--metrics-path PATH] [
 | verify | 只读检查标准容器的数据库、管理员、模型/RAG、网页和导出资产；成功0、安全失败1，不管理发布版本 |
 | migrate | 幂等建立 Control DB、固定 RBAC、checkpoint 和 grants；不创建管理员；成功 0、迁移失败 1 |
 | create-admin | 隐藏输入密码并确认，显式创建首个管理员；已存在管理员时拒绝；成功 0、操作失败 1、两次密码不一致 2 |
+| recover-admin | 可信本机交互装配、显式目标及运行身份、原子恢复和强制审计；见[恢复Contract](admin-recovery.md) |
 | prepare-model | 下载固定 revision 的 BGE-M3 到既有缓存目录；成功且配置文件存在返回 0，失败返回 1，不输出凭据 |
 | build-rag | 使用现有 builder 校验、构建、验证并原子发布；成功发布 0，未发布结果 1；构建异常仍报告失败，释放临时 Qdrant client 并保护已发布资产 |
 
 缺少必需子命令、未知参数等解析错误返回 2，不加载运行配置。运行资源不使用迁移身份；管理员密码不进入参数、配置模板、Seed、文档或日志。
 
-服务启动不自动运行这些命令，不重播 Seed。Compose、数据库 / Qdrant 重置与结构导出仍使用各自环境入口。
+服务启动不自动运行这些命令，不重播 Seed。Compose、开发重置与结构导出由dev宿主编排，不新增宿主Python要求；账号规则归authorization，不依赖Bootstrap/Docker。
 
 ## 验证
 

@@ -11,6 +11,8 @@
 
 ## 已确认的后续方向
 
+已确认dev分类统一入口与本机管理员恢复目标，按[Spec](../.scratch/dev-command-entrypoints/spec.md)完成七项Ticket实现及适用验证；八类现行操作、标准应用管理、维护与恢复不扩展业务问数能力或调整其他路线优先级。候选/验证见[工作项验收记录](../.scratch/dev-command-entrypoints/acceptance.md)；发布/合并身份以工作项实时记录和实际PR为准。
+
 已确认部署精简目标，实现与验收已完成并通过 [PR #81](https://github.com/K999999999999/chatbi/pull/81) 合并：统一dev容器入口，保留标准Dockerfile/Compose、初始化和应用保护，删除自研Stable运维及宿主开发教程。范围见[Spec](../.scratch/deployment-simplification/spec.md)，证据见[验收记录](../.scratch/deployment-simplification/acceptance.md)；不新增产品功能或调整其他优先级。增加数据源、部署副本、数据权限、分析场景或容量承诺前，应先确认用户目标、支持范围和验收要求，再形成相应 Spec；本段不授予实施授权。
 
 ## 路线图维护

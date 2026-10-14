@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from src.chatbi_control.models import User, UserSession
+from src.chatbi_control.models import Role, User, UserSession
 from src.chatbi_control.username import normalize_username
 
 from .audit_service import AuditRecord, AuditUnavailable
@@ -254,6 +254,62 @@ class AuthService:
                 ),
             )
 
+    def recover_admin(
+        self,
+        username: str,
+        *,
+        new_password: str,
+        environment: str,
+        project: str,
+    ) -> None:
+        """可信本机恢复；账号范围、密码、Session与审计在同一事务裁决。"""
+        username = normalize_username(username)
+        new_hash = hash_password(new_password)
+        if environment not in {"dev", "app"} or not project or len(project) > 128:
+            raise ValueError("恢复来源不完整")
+        if not callable(getattr(self._audit_sink, "write", None)):
+            raise AuditUnavailable("管理员恢复必须配置事务内审计")
+        now = _as_utc(self._clock())
+        with self._session_factory() as session, session.begin():
+            user = session.scalar(
+                select(User)
+                .where(User.username == username)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            administrator = (
+                session.scalar(
+                    select(Role.id)
+                    .join(User.roles)
+                    .where(User.id == user.id, Role.name == "admin")
+                )
+                if user is not None
+                else None
+            )
+            if user is None or not user.is_active or administrator is None:
+                raise AuthenticationFailed("目标必须是现有启用管理员")
+            user.password_hash = new_hash
+            user.must_change_password = True
+            user.failed_login_count = 0
+            user.locked_until = None
+            user.updated_at = now
+            _revoke_user_sessions(session, user.id, now)
+            self._write_security_audit(
+                session,
+                AuditRecord(
+                    event_type="auth.admin_recovery",
+                    target_type="user",
+                    target_id=str(user.id),
+                    outcome="success",
+                    reason="LOCAL_ADMIN_RECOVERY",
+                    details={
+                        "environment": environment,
+                        "project": project,
+                        "source": "local_cli",
+                    },
+                ),
+            )
+
     def reset_password(
         self,
         user_id: int,
@@ -267,7 +323,12 @@ class AuthService:
         new_hash = hash_password(new_password)
         now = _as_utc(self._clock())
         with self._session_factory() as session, session.begin():
-            user = session.get(User, user_id)
+            user = session.scalar(
+                select(User)
+                .where(User.id == user_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
             if user is None:
                 raise AuthenticationFailed("用户不存在")
             user.password_hash = new_hash
@@ -300,7 +361,12 @@ class AuthService:
 
         now = _as_utc(self._clock())
         with self._session_factory() as session, session.begin():
-            user = session.get(User, user_id)
+            user = session.scalar(
+                select(User)
+                .where(User.id == user_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
             if user is None:
                 raise AuthenticationFailed("用户不存在")
             user.is_active = False
@@ -330,7 +396,12 @@ class AuthService:
 
         now = _as_utc(self._clock())
         with self._session_factory() as session, session.begin():
-            user = session.get(User, user_id)
+            user = session.scalar(
+                select(User)
+                .where(User.id == user_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
             if user is None:
                 raise AuthenticationFailed("用户不存在")
             user.is_active = True

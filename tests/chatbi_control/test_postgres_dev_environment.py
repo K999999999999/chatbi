@@ -52,7 +52,7 @@ class _CheckpointState(TypedDict):
 
 @unittest.skipUnless(
     os.environ.get("RUN_DEVELOPMENT_DATABASE_TESTS") == "1",
-    "run scripts/run_database_tests.py --profile development",
+    "run ./dev test database",
 )
 class PostgresDevelopmentEnvironmentTest(unittest.TestCase):
     @classmethod
