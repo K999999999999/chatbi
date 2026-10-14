@@ -7,16 +7,19 @@ shift || true
 python_image=${CHATBI_DEV_PYTHON_IMAGE:-chatbi-python-dev:local}
 browser_image=${CHATBI_DEV_BROWSER_IMAGE:-chatbi-browser-dev:local}
 node_image=${CHATBI_DEV_NODE_IMAGE:-chatbi-node-dev:local}
+host_root=${LOCAL_WORKSPACE_FOLDER:-$root}
+source "$root/scripts/dev_environment.sh"
+prepare_git_mounts
 uid=$(id -u)
 gid=$(id -g)
 
 python_run() {
     docker run --rm --init --user "$uid:$gid" --workdir "$root" \
-        -v "$root:$root:ro" -e PYTHONDONTWRITEBYTECODE=1 \
-        -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e "GIT_CONFIG_VALUE_0=$root" \
+        -v "$host_root:$root:ro" "${git_mounts[@]}" -e PYTHONDONTWRITEBYTECODE=1 \
+        "${git_environment[@]}" \
         "${python_options[@]}" --entrypoint python "$python_image" "$@"
 }
-python_options=()
+python_options=(--network none)
 
 # 配置结构测试需Compose CLI，但不取得Docker socket或daemon权限。
 compose_cli_mounts() {
@@ -30,24 +33,25 @@ compose_cli_mounts() {
 
 node_run() {
     docker run --rm --init --user "$uid:$gid" --workdir /workspace/frontend \
-        -v "$root/frontend/src:/workspace/frontend/src:ro" \
-        -v "$root/frontend/tests:/workspace/frontend/tests:ro" \
-        -v "$root/frontend/test-support:/workspace/frontend/test-support:ro" \
-        -v "$root/frontend/tsconfig.json:/workspace/frontend/tsconfig.json:ro" \
-        -v "$root/frontend/vite.config.ts:/workspace/frontend/vite.config.ts:ro" \
-        -v "$root/frontend/vite.export.config.ts:/workspace/frontend/vite.export.config.ts:ro" \
-        -v "$root/frontend/export.html:/workspace/frontend/export.html:ro" \
-        -v "$root/frontend/index.html:/workspace/frontend/index.html:ro" \
-        -v "$root/frontend/package.json:/workspace/frontend/package.json:ro" \
-        -v "$root/frontend/playwright.config.ts:/workspace/frontend/playwright.config.ts:ro" \
-        -v "$root/frontend/playwright.dev.config.ts:/workspace/frontend/playwright.dev.config.ts:ro" \
+        -v "$host_root/frontend/src:/workspace/frontend/src:ro" \
+        -v "$host_root/frontend/tests:/workspace/frontend/tests:ro" \
+        -v "$host_root/frontend/test-support:/workspace/frontend/test-support:ro" \
+        -v "$host_root/frontend/tsconfig.json:/workspace/frontend/tsconfig.json:ro" \
+        -v "$host_root/frontend/vite.config.ts:/workspace/frontend/vite.config.ts:ro" \
+        -v "$host_root/frontend/vite.export.config.ts:/workspace/frontend/vite.export.config.ts:ro" \
+        -v "$host_root/frontend/export.html:/workspace/frontend/export.html:ro" \
+        -v "$host_root/frontend/index.html:/workspace/frontend/index.html:ro" \
+        -v "$host_root/frontend/package.json:/workspace/frontend/package.json:ro" \
+        -v "$host_root/frontend/playwright.config.ts:/workspace/frontend/playwright.config.ts:ro" \
+        -v "$host_root/frontend/playwright.dev.config.ts:/workspace/frontend/playwright.dev.config.ts:ro" \
         "${node_options[@]}" "$node_image" "$@"
 }
 node_options=()
 
 database_tests() (
     local project="chatbi-test-db-$$-$RANDOM" work profile
-    work=$(mktemp -d)
+    work=$(create_temporary_directory)
+    work_host=$(host_source_path "$work")
     cleanup() {
         local result=$?
         trap - EXIT
@@ -76,11 +80,11 @@ POSTGRES_CONTROL_MIGRATOR_USER=chatbi_migrator
 EOF
         args=()
         if [[ "$profile" == development ]]; then
-            args+=(-v "$root/database/init/10_chatbi_dev_environment.sh:/docker-entrypoint-initdb.d/10_chatbi_dev_environment.sh:ro")
+            args+=(-v "$host_root/database/init/10_chatbi_dev_environment.sh:/docker-entrypoint-initdb.d/10_chatbi_dev_environment.sh:ro")
         fi
         docker run -d --name "$project" --network "$project" --network-alias postgres \
             --label "com.chatbi.test=$project" --env-file "$work/postgres.env" \
-            -v "$root/database:/workspace/database:ro" "${args[@]}" postgres:16-alpine >/dev/null
+            -v "$host_root/database:/workspace/database:ro" "${args[@]}" postgres:16-alpine >/dev/null
         ready=false
         for ((i=0;i<60;i++)); do
             if docker exec "$project" pg_isready -U chatbi_migrator -d chatbi_mvp >/dev/null 2>&1; then ready=true; break; fi
@@ -110,7 +114,7 @@ POSTGRES_CONTROL_MIGRATOR_USER=chatbi_migrator
 POSTGRES_CONTROL_BOOTSTRAP_DB=postgres
 RUN_DEVELOPMENT_DATABASE_TESTS=1
 EOF
-            suites+=(tests/chatbi_control/test_postgres_dev_environment.py tests/chatbi_control/test_execution_postgres.py tests/chatbi_control/test_history_postgres.py tests/evaluation/common/test_database_fingerprint.py)
+            suites+=(tests/chatbi_control/test_postgres_dev_environment.py tests/chatbi_control/test_admin_recovery_postgres.py tests/chatbi_control/test_execution_postgres.py tests/chatbi_control/test_history_postgres.py tests/evaluation/common/test_database_fingerprint.py)
         fi
         python_options=(--network "$project" --env-file "$work/test.env")
         if [[ "$profile" == development ]]; then python_run -m src.bootstrap migrate; fi
@@ -121,10 +125,13 @@ EOF
 )
 
 web_tests() (
+    # clean clone也需已有子挂载点；不覆盖或删除原有网页产物。
+    mkdir -p -- "$root/frontend/dist"
     docker build --target browser -f "$root/docker/node-dev.Dockerfile" -t "$browser_image" "$root"
     local project="chatbi-test-web-$$-$RANDOM" api work
     api="$project-api"
-    work=$(mktemp -d)
+    work=$(create_temporary_directory)
+    work_host=$(host_source_path "$work")
     mkdir -p "$work/dist" "$work/results"
     cleanup() {
         local result=$?
@@ -142,15 +149,15 @@ web_tests() (
     }
     docker network create --label "com.chatbi.test=$project" "$project" >/dev/null
     trap cleanup EXIT
-    node_options=(-v "$work/dist:/workspace/frontend/dist" -v "$work/results:/reports")
+    node_options=(-v "$work_host/dist:/workspace/frontend/dist" -v "$work_host/results:/reports")
     node_run npm run build -- --configLoader runner
     for suite in packaged dev; do
         origin=http://127.0.0.1:18001
         [[ "$suite" == dev ]] && origin=http://127.0.0.1:5173
         docker run -d --name "$api" --network "$project" --network-alias api \
             --label "com.chatbi.test=$project" --user "$uid:$gid" --workdir "$root" \
-            -v "$root:$root:ro" -e CHATBI_RESULT_EXPORT_BROWSER_TEST=1 \
-            -v "$work/dist:$root/frontend/dist:ro" \
+            -v "$host_root:$root:ro" "${git_mounts[@]}" -e CHATBI_RESULT_EXPORT_BROWSER_TEST=1 \
+            -v "$work_host/dist:$root/frontend/dist:ro" \
             -e "CHATBI_BROWSER_TEST_ORIGIN=$origin" --entrypoint python "$python_image" \
             -m uvicorn tests.browser_support:create_browser_app --factory --host 0.0.0.0 --port 18001 >/dev/null
         ready=false
@@ -160,7 +167,7 @@ web_tests() (
         done
         [[ "$ready" == true ]] || { docker logs "$api"; exit 1; }
         node_options=(--network "container:$api" -e "CHATBI_BROWSER_TEST_EXTERNAL_API=http://127.0.0.1:18001" -e CHATBI_DEV_API_TARGET=http://127.0.0.1:18001 \
-            -v "$work/results:/reports")
+            -v "$work_host/results:/reports")
         node_image=$browser_image
         if [[ "$suite" == packaged ]]; then
             node_run npx playwright test --config playwright.config.ts --output /reports/packaged "$@"
@@ -171,6 +178,30 @@ web_tests() (
     done
 )
 
+# 只读文件参数可位于仓库外；不隐式创建报告或目标worktree。
+mount_readonly_arguments() {
+    local previous= arg path directory host_path common
+    for arg in "$@"; do
+        if [[ -n "$previous" ]]; then
+            path=$arg
+            previous=
+        else
+            case "$arg" in
+                --repo|--report|--report-dir|--cases) previous=$arg; continue ;;
+                --repo=*|--report=*|--report-dir=*|--cases=*) path=${arg#*=} ;;
+                *) continue ;;
+            esac
+        fi
+        [[ -e "$path" ]] || continue
+        if [[ -d "$path" ]]; then directory=$(cd -- "$path" && pwd); else directory=$(cd -- "$(dirname -- "$path")" && pwd); fi
+        [[ "$directory" == "$root" || "$directory" == "$root/"* ]] && continue
+        host_path=$directory
+        python_options+=(-v "$host_path:$directory:ro")
+        if common=$(git -C "$directory" rev-parse --path-format=absolute --git-common-dir 2>/dev/null); then
+            [[ "$common" == "$directory/"* ]] || python_options+=(-v "$common:$common:ro")
+        fi
+    done
+}
 case "$task" in
     python) compose_cli_mounts; python_run -m pytest -q -p no:cacheprovider "$@" ;;
     database) database_tests ;;
@@ -179,18 +210,31 @@ case "$task" in
         python_options=(--security-opt "seccomp=$root/docker/third-party/playwright-seccomp-profile.json" -e CHATBI_EXPORT_PDF_RENDER_TEST=1)
         python_run -m pytest -q -p no:cacheprovider tests/query_api/test_result_export_pdf_renderer.py "$@" ;;
     check)
-        docker run --rm --user "$uid:$gid" -v "$root/pyproject.toml:/workspace/pyproject.toml:ro" \
-            -v "$root/uv.lock:/workspace/uv.lock:ro" -e UV_CACHE_DIR=/tmp/chatbi-uv-cache --entrypoint uv "$python_image" lock --check
+        scope=${1:-all}
+        if (($#)); then shift; fi
+        (($# == 0)) || { echo '用法: ./dev check [docs|python|boundaries]' >&2; exit 2; }
+        case "$scope" in
+            docs) python_run -m scripts.check_documentation; exit $? ;;
+            boundaries) python_run -m scripts.check_module_boundaries; exit $? ;;
+            python) python_options=(--network bridge); python_run -m scripts.python_quality; exit $? ;;
+            all) ;;
+            *) echo '用法: ./dev check [docs|python|boundaries]' >&2; exit 2 ;;
+        esac
+        docker run --rm --user "$uid:$gid" -v "$host_root/pyproject.toml:/workspace/pyproject.toml:ro" \
+            -v "$host_root/uv.lock:/workspace/uv.lock:ro" -e UV_CACHE_DIR=/tmp/chatbi-uv-cache --entrypoint uv "$python_image" lock --check
         python_run -m scripts.check_documentation
         python_run -m scripts.check_module_boundaries
-        python_run -m ruff format --no-cache --check src evaluation tests
-        python_run -m ruff check --no-cache --select E4,E7,E9,F src evaluation tests
-        work=$(mktemp -d)
+        python_options=(--network bridge)
+        python_run -m scripts.python_quality
+        work=$(create_temporary_directory)
+        work_host=$(host_source_path "$work")
         trap 'rm -rf -- "$work"' EXIT
         mkdir -p "$work/dist" "$work/dist-export"
-        node_options=(-v "$work/dist:/workspace/frontend/dist" -v "$work/dist-export:/workspace/frontend/dist-export")
+        node_options=(-v "$work_host/dist:/workspace/frontend/dist" -v "$work_host/dist-export:/workspace/frontend/dist-export")
         node_run npm run build -- --configLoader runner
         node_run npm run build:export -- --configLoader runner ;;
+    harness) mount_readonly_arguments "$@"; python_run -m scripts.check_harness_state "$@" ;;
+    evaluate-validate) mount_readonly_arguments "$@"; python_run -m evaluation.common.real_e2e_acceptance "$@" ;;
     evaluate)
         [[ -f "${CHATBI_DEV_ENV_FILE:-$root/.env}" ]] || { echo '缺少评测配置。' >&2; exit 2; }
         mkdir -p "$root/reports/evaluation"

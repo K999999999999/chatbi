@@ -19,6 +19,14 @@
 | `./dev check` | 容器执行锁文件、文档/边界、Python质量和前端构建 |
 | `./dev evaluate [参数]` | 在开发网络中执行原评测入口并输出报告；真实调用显式执行 |
 
+新增分类入口：check docs/python/boundaries定向检查（固定Ruff0.16.8）；evaluate validate保留完整commit/RAG/cases报告身份且无LLM/业务查询；verify dev默认isolated、real显式触及当前开发环境，verify app为空卷真实验收。帮助无.env或Docker要求；成熟验收脚本保留直调、费用/退出/报告/清理规则。
+
+诊断维护：doctor dev/app只读有界检查依赖/HTTP/资产，不启动或修复、不改密、不调用LLM，未知不ready；metadata export使用既有catalog SELECT并写三份结构JSON，不改Semantic、不隐式build-rag；reset postgres/qdrant仅开发项目，经确认、归属与停止验证后只删目标卷。PG重建Seed和完整迁移但不创建管理员；QD只重建服务。API/Web保持停止，卷删除不可回滚；取消、外部卷、标签错及停止失败不删除。
+
+协作：hooks install复用本机安装器，harness check只读本机Git记录；无业务配置要求。普通clone/linked worktree保留真实Git公共目录身份，Git不可见不能当clean。标准应用由app分组及独立配置变量组织；开发保留CHATBI_DEV_ENV_FILE/CHATBI_DEV_COMPOSE_OVERRIDE及宿主路径/UID规则。
+
+[管理员恢复](admin-recovery.md)必须显式选择dev/app及用户名，隐藏交互输入、运行身份、原子改密/撤销Session与强制审计，不依赖完整应用。内部helper与CI专用Smoke不公开为日常命令。旧宿主启动退出支持；数据库runner及前端真实浏览器的独有验证保留非推荐兼容路径，不能删除回归断言。
+
 失败保持非零退出码和安全阶段诊断，不输出完整配置。`up`不自动初始化。`/health`仍只证明API启动后HTTP存活，依赖检查不等于真实问数通过。
 
 ## 开发边界

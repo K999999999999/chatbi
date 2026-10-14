@@ -4,50 +4,133 @@ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 command=${1:-help}
 if (($#)); then shift; fi
 usage() {
-    echo '用法: ./dev {build|infra|migrate|create-admin|prepare-model|build-rag|up|down|status|logs|test|check|evaluate} [参数]'
+    cat <<'HELP'
+用法: ./dev COMMAND [参数]；./dev app COMMAND [参数]
+环境管理       build | up | down | status | logs | infra；app同名命令
+系统初始化     migrate | create-admin | prepare-model | build-rag；app同名命令及check
+代码验证       check [docs|python|boundaries]；test [python|database|web|renderer|all]
+AI评测         evaluate [参数]；evaluate validate [报告校验参数]
+容器验收       verify dev [isolated|real]；verify app（真实LLM费用；real触及当前开发环境）
+诊断与维护     doctor [dev|app]；metadata export [参数]；reset postgres|qdrant [--confirm]
+账号恢复       recover-admin dev|app --username NAME（可信本机操作，隐藏输入）
+开发协作       hooks install；harness check [参数]
+app表示标准打包应用，独立于开发项目；build构建、up启动、down停止并保留数据。
+帮助无需.env或Docker。初始化、恢复与数据删除均须显式执行。
+evaluate validate: --report FILE 或 --report-dir DIR；必填 --expected-commit FULL_SHA --expected-rag-version VERSION；可选 --cases FILE --suite NAME。
+metadata export: --env-file FILE、--output-dir DIR；harness check: --repo DIR、--json。
+create-admin: --username NAME；build-rag: --structure-dir DIR、--metrics-path FILE、--output-dir DIR、--build-id ID。
+evaluate沿用原套件/案例/资源参数：--online-retrieval、--business-analysis、--multi-turn、--query-understanding等，详见Runbook。
+HELP
 }
+target=dev
+if [[ "$command" == app ]]; then
+    target=app
+    command=${1:-help}
+    if (($#)); then shift; fi
+    case "$command" in
+        help|-h|--help) usage; exit 0 ;;
+        build|up|down|status|infra|migrate|prepare-model|check) (($# == 0)) || { usage >&2; exit 2; } ;;
+        logs|create-admin|build-rag) ;;
+        *) usage >&2; exit 2 ;;
+    esac
+fi
+case "$command" in
+    help|check|test|evaluate|verify|doctor|metadata|reset|recover-admin|hooks|harness)
+        if [[ ${1:-} == --help || ${1:-} == -h || ${2:-} == --help || ${2:-} == -h ]]; then usage; exit 0; fi ;;
+esac
 case "$command" in
     help|-h|--help) usage; exit 0 ;;
     test)
+        [[ "$target" == dev ]] || { usage >&2; exit 2; }
         suite=${1:-python}
         if (($#)); then shift; fi
         case "$suite" in
             python|database|web|renderer) exec bash "$root/scripts/container_tasks.sh" "$suite" "$@" ;;
-            all) for suite in python database web renderer; do bash "$root/scripts/container_tasks.sh" "$suite"; done; exit 0 ;;
+            all) (($# == 0)) || { usage >&2; exit 2; }; for suite in python database web renderer; do bash "$root/scripts/container_tasks.sh" "$suite"; done; exit 0 ;;
             *) echo '用法: ./dev test [python|database|web|renderer|all]' >&2; exit 2 ;;
         esac ;;
-    check) exec bash "$root/scripts/container_tasks.sh" check "$@" ;;
-    evaluate) exec bash "$root/scripts/container_tasks.sh" evaluate "$@" ;;
+    check) if [[ "$target" == dev ]]; then exec bash "$root/scripts/container_tasks.sh" check "$@"; fi ;;
+    evaluate)
+        if [[ ${1:-} == validate ]]; then
+            shift
+            exec bash "$root/scripts/container_tasks.sh" evaluate-validate "$@"
+        fi
+        exec bash "$root/scripts/container_tasks.sh" evaluate "$@" ;;
+    hooks)
+        [[ ${1:-} == install && $# == 1 ]] || { usage >&2; exit 2; }
+        cd "$root"
+        exec bash "$root/scripts/install_git_hooks.sh" ;;
+    harness)
+        [[ ${1:-} == check ]] || { usage >&2; exit 2; }
+        shift
+        exec bash "$root/scripts/container_tasks.sh" harness "$@" ;;
+    doctor)
+        (($# <= 1)) && [[ ${1:-dev} == dev || ${1:-dev} == app ]] || { usage >&2; exit 2; }
+        exec bash "$root/scripts/dev_maintenance.sh" doctor "${1:-dev}" ;;
+    metadata)
+        [[ ${1:-} == export ]] || { usage >&2; exit 2; }
+        shift
+        output=$root/src/structure/generated
+        while (($#)); do
+            case "$1" in
+                --env-file) (($# >= 2)) && [[ -n "$2" && "$2" != -* ]] || exit 2; export CHATBI_DEV_ENV_FILE=$2; shift 2 ;;
+                --output-dir) (($# >= 2)) && [[ -n "$2" && "$2" != -* ]] || exit 2; output=$2; shift 2 ;;
+                *) usage >&2; exit 2 ;;
+            esac
+        done
+        exec bash "$root/scripts/dev_maintenance.sh" metadata dev "$output" ;;
+    reset)
+        (($# == 1 || $# == 2)) && [[ $1 == postgres || $1 == qdrant ]] && [[ ${2:---confirm} == --confirm ]] || { usage >&2; exit 2; }
+        exec bash "$root/scripts/dev_maintenance.sh" reset dev "$@" ;;
+    recover-admin)
+        [[ $# == 3 && ($1 == dev || $1 == app) && $2 == --username && -n "$3" ]] || { usage >&2; exit 2; }
+        [[ -t 0 && -t 1 ]] || { echo '管理员恢复需要交互终端。' >&2; exit 2; }
+        exec bash "$root/scripts/dev_maintenance.sh" recover "$1" "$3" ;;
+    verify)
+        case ${1:-} in
+            dev)
+                (($# <= 2)) && [[ ${2:-isolated} == isolated || ${2:-isolated} == real ]] || { usage >&2; exit 2; }
+                exec bash "$root/scripts/verify_container_dev.sh" "${2:-isolated}" ;;
+            app) (($# == 1)) || { usage >&2; exit 2; }; exec bash "$root/scripts/verify_container_app.sh" ;;
+            *) usage >&2; exit 2 ;;
+        esac ;;
     evaluate-tools) ;;
-    build|infra|migrate|create-admin|prepare-model|build-rag|up|down|status|logs) ;;
+    build|infra|migrate|prepare-model|up|down|status) (($# == 0)) || { usage >&2; exit 2; } ;;
+    create-admin|build-rag|logs) ;;
     *) usage >&2; exit 2 ;;
 esac
-env_file=${CHATBI_DEV_ENV_FILE:-$root/.env}
-if [[ ! -f "$env_file" ]]; then
-    echo '缺少本地配置；复制 .env.example 并填写配置后重试。' >&2
-    exit 2
+# Bootstrap参数在任何目录/容器写操作前检查；业务规则仍由Python裁决。
+if [[ "$command" == create-admin || "$command" == build-rag ]]; then
+    arguments=("$@")
+    while (($#)); do
+        case "$1" in
+            --username) [[ "$command" == create-admin && $# -ge 2 && "$2" != --* ]] || { usage >&2; exit 2; }; shift 2 ;;
+            --username=*) [[ "$command" == create-admin ]] || { usage >&2; exit 2; }; shift ;;
+            --structure-dir|--metrics-path|--output-dir|--build-id) [[ "$command" == build-rag && $# -ge 2 && "$2" != --* ]] || { usage >&2; exit 2; }; shift 2 ;;
+            --structure-dir=*|--metrics-path=*|--output-dir=*|--build-id=*) [[ "$command" == build-rag ]] || { usage >&2; exit 2; }; shift ;;
+            *) usage >&2; exit 2 ;;
+        esac
+    done
+    set -- "${arguments[@]}"
 fi
-export CHATBI_DEV_UID=${CHATBI_DEV_UID:-$(id -u)}
-export CHATBI_DEV_GID=${CHATBI_DEV_GID:-$(id -g)}
-export CHATBI_DEV_SECCOMP_PROFILE=${CHATBI_DEV_SECCOMP_PROFILE:-$root/docker/third-party/playwright-seccomp-profile.json}
-compose=(docker compose --project-directory "$root" --env-file "$env_file"
-    -f "$root/docker-compose.yml" -f "$root/docker-compose.dev.yml")
-if [[ -n "${CHATBI_DEV_COMPOSE_OVERRIDE:-}" ]]; then
-    compose+=(-f "$CHATBI_DEV_COMPOSE_OVERRIDE")
-fi
+source "$root/scripts/dev_environment.sh"
+initialize_environment "$target"
 trap 'result=$?; echo "开发环境操作失败（退出码 $result）；使用 ./dev status / logs 定位，不会重置数据。" >&2; exit "$result"' ERR
 
 # 只从 Compose 的内存流中提取资产路径，完整配置及 Secret 不输出、不落盘。
 prepare_directories() {
+    [[ "$target" == dev ]] || return 0
     local directories
     directories=$("${compose[@]}" --profile tools config --format json | docker run --rm -i --network none \
         --entrypoint /opt/venv/bin/python chatbi-python-dev:local -c \
         'import json,sys; s=json.load(sys.stdin)["services"]["tools"]; print("\n".join(next(v["source"] for v in s["volumes"] if v["target"]==s["environment"][key]) for key in ("RAG_MODEL_DIR","RAG_OUTPUT_DIR")))')
     while IFS= read -r directory; do
-        [[ -n "$directory" ]] && mkdir -p -- "$directory"
+        [[ -n "$directory" ]] && mkdir -p -- "$(local_source_path "$directory")"
     done <<< "$directories"
     # 既有manifest保存主机绝对路径；模型在容器内保持相同路径身份。
-    export CHATBI_DEV_MODEL_DIR="${directories%%$'\n'*}"
+    export CHATBI_DEV_MODEL_DIR="$(host_source_path "${directories%%$'\n'*}")"
+    export RAG_MODEL_DIR="$CHATBI_DEV_MODEL_DIR"
+    export RAG_OUTPUT_DIR="$(host_source_path "${directories#*$'\n'}")"
 }
 
 check_application_ports() {
@@ -69,45 +152,7 @@ check_application_ports() {
     done <<< "$published"
 }
 
-case "$command" in
-    build) "${compose[@]}" build api web ;;
-    infra) "${compose[@]}" up -d postgres qdrant ;;
-    migrate)
-        "${compose[@]}" up -d postgres
-        "${compose[@]}" exec -T postgres sh /workspace/database/init/wait_for_base_initialization.sh
-        "${compose[@]}" run --rm --no-deps migrator migrate "$@"
-        "${compose[@]}" up -d --wait --wait-timeout 120 postgres ;;
-    create-admin|prepare-model|build-rag)
-        tty_args=(-T)
-        if [[ "$command" == create-admin ]]; then
-            if [[ ! -t 0 ]]; then
-                echo '创建管理员需要交互终端，密码不会作为参数传递。' >&2
-                exit 2
-            fi
-            tty_args=()
-        fi
-        prepare_directories
-        "${compose[@]}" run --rm --no-deps "${tty_args[@]}" tools "$command" "$@" ;;
-    evaluate-tools)
-        prepare_directories
-        "${compose[@]}" run --rm --no-deps -T --entrypoint python \
-            -v "$root/evaluation:/workspace/evaluation:ro" \
-            -v "$root/reports/evaluation:/workspace/reports/evaluation" \
-            -v "$root/.git:/workspace/.git:ro" \
-            -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/workspace \
-            tools -m evaluation "$@" ;;
-    up)
-        if ! docker image inspect chatbi-python-dev:local chatbi-node-dev:local >/dev/null 2>&1; then
-            "${compose[@]}" build api web
-        fi
-        prepare_directories
-        check_application_ports
-        if ! "${compose[@]}" up -d --wait --wait-timeout 120 postgres qdrant api web; then
-            echo '服务未全部就绪；首次环境先执行 ./dev migrate，随后显式准备管理员、模型与索引。' >&2
-            exit 1
-        fi
-        "${compose[@]}" exec -T api python -c \
-            'import os,urllib.request; u=os.environ["RAG_QDRANT_URL"]+"/healthz"; r=urllib.request.Request(u,headers={"api-key":os.environ["QDRANT_API_KEY"]}); urllib.request.urlopen(r,timeout=5)'
+wait_application_ready() {
         "${compose[@]}" exec -T api python - <<'PY'
 import json
 import time
@@ -127,6 +172,63 @@ while time.monotonic() < deadline:
 else:
     raise SystemExit("应用尚未就绪；请检查 migrate、prepare-model、build-rag 与服务日志。")
 PY
+
+}
+
+case "$command" in
+    build) if [[ "$target" == app ]]; then "${compose[@]}" build; else "${compose[@]}" build api web; fi ;;
+    infra) "${compose[@]}" up -d postgres qdrant ;;
+    migrate)
+        "${compose[@]}" up -d postgres
+        "${compose[@]}" exec -T postgres sh /workspace/database/init/wait_for_base_initialization.sh
+        "${compose[@]}" run --rm --no-deps migrator migrate "$@"
+        "${compose[@]}" up -d --wait --wait-timeout 120 postgres ;;
+    create-admin|prepare-model|build-rag|check)
+        tty_args=(-T)
+        if [[ "$command" == create-admin ]]; then
+            if [[ ! -t 0 ]]; then
+                echo '创建管理员需要交互终端，密码不会作为参数传递。' >&2
+                exit 2
+            fi
+            tty_args=()
+        fi
+        prepare_directories
+        bootstrap_command=$command
+        [[ "$command" != check ]] || bootstrap_command=verify
+        "${compose[@]}" run --rm --no-deps "${tty_args[@]}" tools "$bootstrap_command" "$@" ;;
+    evaluate-tools)
+        prepare_directories
+        prepare_git_mounts
+        evaluation_git_dir=$(git -C "$root" rev-parse --absolute-git-dir)
+        "${compose[@]}" run --rm --no-deps -T --entrypoint python \
+            -v "$host_root/evaluation:/workspace/evaluation:ro" \
+            -v "$host_root/reports/evaluation:/workspace/reports/evaluation" \
+            -v "$host_root:$root:ro" "${git_mounts[@]}" \
+            -e "GIT_DIR=$evaluation_git_dir" -e "GIT_WORK_TREE=$root" \
+            -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e "GIT_CONFIG_VALUE_0=$root" \
+            tools -m evaluation "$@" ;;
+    up)
+        if [[ "$target" == app ]]; then
+            source "$root/scripts/loopback_probe.sh"
+            "${compose[@]}" up --no-build -d --wait --wait-timeout 120 postgres qdrant api
+            wait_application_ready
+            api_port=$("${compose[@]}" port api 8000 | awk -F: '{print $NF}')
+            loopback_http_health_ok "$api_port" || { echo '标准应用回环HTTP未通过。' >&2; exit 1; }
+            echo "标准应用已启动：http://127.0.0.1:$api_port（仅本机）。"
+            exit 0
+        fi
+        if ! docker image inspect chatbi-python-dev:local chatbi-node-dev:local >/dev/null 2>&1; then
+            "${compose[@]}" build api web
+        fi
+        prepare_directories
+        check_application_ports
+        if ! "${compose[@]}" up -d --wait --wait-timeout 120 postgres qdrant api web; then
+            echo '服务未全部就绪；首次环境先执行 ./dev migrate，随后显式准备管理员、模型与索引。' >&2
+            exit 1
+        fi
+        "${compose[@]}" exec -T api python -c \
+            'import os,urllib.request; u=os.environ["RAG_QDRANT_URL"]+"/healthz"; r=urllib.request.Request(u,headers={"api-key":os.environ["QDRANT_API_KEY"]}); urllib.request.urlopen(r,timeout=5)'
+        wait_application_ready
         api_port=$("${compose[@]}" port api 8000 | awk -F: '{print $NF}')
         loopback_http_health_ok "$api_port" || {
             echo '应用回环HTTP未通过，请检查本项目端口与服务日志。' >&2
@@ -134,7 +236,7 @@ PY
         }
         web_port=$("${compose[@]}" exec -T web node -p 'process.env.CHATBI_DEV_WEB_PORT')
         echo "开发环境已启动：http://127.0.0.1:$web_port（仅本机）。" ;;
-    down) "${compose[@]}" stop api web postgres qdrant ;;
+    down) "${compose[@]}" stop "${services[@]}" ;;
     status) "${compose[@]}" ps --all ;;
-    logs) "${compose[@]}" logs --tail=100 "$@" api web postgres qdrant ;;
+    logs) "${compose[@]}" logs --tail=100 "$@" "${services[@]}" ;;
 esac

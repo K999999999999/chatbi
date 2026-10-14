@@ -4,6 +4,8 @@ ChatBI以源码交付。日常开发与体验统一使用[容器开发入口](co
 
 ## 构建与初始化
 
+统一使用`./dev app build/up/down/status/logs/infra/migrate/create-admin/prepare-model/build-rag/check`。app是打包运行方式，默认.env，CHATBI_APP_ENV_FILE/CHATBI_APP_COMPOSE_OVERRIDE可选配置，资源与dev独立。build显式构建；up不隐式构建或初始化；down停止保留卷；migrate先基础初始化、后迁移及完整健康。app check委派Bootstrap只读verify；verify app委派原空卷真实验收，LLM费用/报告/清理保持。
+
 - Dockerfile api target包含后端、网页、导出资源、Chromium及字体；database target包含既有演示数据初始化。标准Docker缓存可用，构建不要求Git发布登记或release文件。
 - 应用Compose只包含API、PostgreSQL、Qdrant及tools/migrator。项目卷独立管理，默认不引用已有开发或旧Stable资源。
 - 首次顺序为配置、构建、基础设施、基础初始化、migration、管理员、模型、RAG、只读verify、API。完整PostgreSQL健康检查依赖migration，migrator不能反过来依赖完整healthy。

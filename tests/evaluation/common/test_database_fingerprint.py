@@ -171,7 +171,7 @@ class SalesMartFingerprintTest(unittest.TestCase):
 
 @unittest.skipUnless(
     os.environ.get("RUN_DEVELOPMENT_DATABASE_TESTS") == "1",
-    "run scripts/run_database_tests.py --profile development",
+    "run ./dev test database",
 )
 class SalesMartFingerprintPostgresTest(unittest.TestCase):
     def test_hash_changes_when_an_actual_seeded_row_changes_and_restores(self) -> None:

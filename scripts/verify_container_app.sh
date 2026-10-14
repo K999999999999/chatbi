@@ -7,6 +7,9 @@ work=$(mktemp -d /tmp/chatbi-app-verify.XXXXXX)
 chmod 700 "$work"
 mkdir -p "$work/report"
 port=${CHATBI_VERIFY_APP_PORT:-18280}
+source_env=${CHATBI_APP_ENV_FILE:-$root/.env}
+[[ -f "$source_env" ]] || { echo '真实验收缺少配置。' >&2; exit 2; }
+source_env=$(cd -- "$(dirname -- "$source_env")" && pwd)/$(basename -- "$source_env")
 dirty=false
 [[ -z $(git -C "$root" status --porcelain) ]] || dirty=true
 compose=(docker compose -p "$project" --project-directory "$root" --env-file "$work/config.env" -f "$root/docker-compose.app.yml")
@@ -39,13 +42,13 @@ finish() {
 
 # 仅Docker内解析配置，白名单复制真实LLM参数；临时数据库凭据另行生成。
 docker run --rm -i --user "$(id -u):$(id -g)" \
-    -v "$root:$root:ro" -v "$work:$work" -w "$root" \
+    -v "$root:$root:ro" -v "$source_env:/source.env:ro" -v "$work:$work" -w "$root" \
     --entrypoint python chatbi-python-dev:local - "$root" "$work" "$port" <<'PY'
 import secrets, sys
 from pathlib import Path
 from dotenv import dotenv_values
 root, work, port = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
-source = dotenv_values(root / '.env')
+source = dotenv_values('/source.env')
 if not source.get('LLM_API_KEY'):
     raise SystemExit('真实容器验收缺少LLM配置。')
 values = {key: value for key, value in source.items() if key.startswith('LLM_') and value is not None}

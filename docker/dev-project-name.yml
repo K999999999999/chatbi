@@ -1,0 +1,2 @@
+# Dev Container采用宿主工作区身份；COMPOSE_PROJECT_NAME和用户override仍优先。
+name: ${CHATBI_DEV_PROJECT_NAME:?需要宿主项目名}

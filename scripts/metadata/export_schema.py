@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 import psycopg
@@ -57,13 +58,13 @@ from .export_schema_output import (
 def export_schema(
     env_file: Path = ROOT / ".env",
     output_dir: Path = DEFAULT_OUTPUT_DIR,
+    *,
+    environment: dict[str, str] | None = None,
 ) -> CanonicalSchema:
     """连接一次 PostgreSQL，提取并写出当前 mart_sales Metadata。"""
 
-    value_examples = load_column_value_examples(
-        output_dir / OUTPUT_FILES["columns"]
-    )
-    env = load_env(env_file)
+    value_examples = load_column_value_examples(output_dir / OUTPUT_FILES["columns"])
+    env = load_env(env_file) if environment is None else environment
     with psycopg.connect(**connection_config(env)) as conn:
         model = extract_schema(conn)
     write_outputs(project_outputs(model, value_examples), output_dir)
@@ -86,10 +87,17 @@ def main() -> int:
         default=DEFAULT_OUTPUT_DIR,
         help="directory for tables.json, columns.json, and relationships.json",
     )
+    parser.add_argument(
+        "--runtime-environment", action="store_true", help="使用容器已解析的数据库配置"
+    )
     args = parser.parse_args()
 
     try:
-        model = export_schema(args.env_file, args.output_dir)
+        model = export_schema(
+            args.env_file,
+            args.output_dir,
+            environment=dict(os.environ) if args.runtime_environment else None,
+        )
     except (OSError, psycopg.Error, MetadataExportError, ValueError) as exc:
         print(f"metadata_export_result = FAIL: {type(exc).__name__}")
         return 1

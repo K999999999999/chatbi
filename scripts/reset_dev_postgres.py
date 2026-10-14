@@ -99,11 +99,19 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     project_root = Path(__file__).resolve().parents[1]
-    try:
-        return _reset_postgres(project_root, confirmed=args.confirm)
-    except (OSError, PostgresResetError) as error:
-        print(f"PostgreSQL reset failed safely: {error}", file=sys.stderr)
-        return 1
+    print(
+        "推荐入口：./dev reset postgres；当前CLI委派到同一开发项目编排。",
+        file=sys.stderr,
+    )
+    return subprocess.call(
+        [
+            "bash",
+            str(project_root / "dev"),
+            "reset",
+            "postgres",
+            *(["--confirm"] if args.confirm else []),
+        ]
+    )
 
 
 if __name__ == "__main__":

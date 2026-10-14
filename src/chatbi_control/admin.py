@@ -93,7 +93,12 @@ def set_user_roles(
     if not role_names.issubset(FIXED_ROLE_NAMES):
         raise AdminPolicyError("只能分配代码固定的 admin 或 analyst 角色")
     with session_factory() as session, session.begin():
-        user = session.get(User, user_id)
+        user = session.scalar(
+            select(User)
+            .where(User.id == user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
         if user is None:
             raise AdminPolicyError("用户不存在")
         roles = list(
@@ -215,13 +220,13 @@ class UserAdmin(ModelView, model=User):
             session = inspect(model).session
             if session is None:
                 raise AdminPolicyError("无法确认用户变更事务")
-            if raw_password or data.get("is_active", model.is_active) is False:
-                session.scalar(
-                    select(User)
-                    .where(User.id == model.id)
-                    .with_for_update()
-                    .execution_options(populate_existing=True)
-                )
+            session.scalar(
+                select(User)
+                .where(User.id == model.id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            session.expire(model, ["roles"])
             roles = _resolve_roles(
                 session,
                 data.get("roles"),

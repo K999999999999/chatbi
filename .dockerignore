@@ -22,6 +22,7 @@ src/streamlit_app.py
 !src/query_api/export_assets.py
 !scripts/
 !scripts/__init__.py
+!scripts/check_dev_qdrant.py
 !scripts/metadata/
 !scripts/metadata/*.py
 !database/
