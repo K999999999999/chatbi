@@ -44,3 +44,11 @@ def test_http_health_does_not_make_malformed_readiness_ready(monkeypatch, capsys
     )
     assert doctor.http_status("http://api/ready", ready=True) == "not_ready"
     assert "sensitive-error-payload" not in capsys.readouterr().out
+
+
+def test_http_probe_refuses_non_http_schemes_without_opening(monkeypatch):
+    opener = Mock(side_effect=AssertionError("non-http resource opened"))
+    monkeypatch.setattr(doctor, "urlopen", opener)
+    for url in ("file:///private/config", "ftp://api/config", "/private/config"):
+        assert doctor.http_status(url) == "not_ready"
+    opener.assert_not_called()

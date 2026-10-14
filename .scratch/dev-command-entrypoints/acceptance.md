@@ -44,3 +44,7 @@
 正式事实源：README、Runbook、开发/标准容器Contract、Bootstrap、管理员恢复Contract；Product Scope/Architecture补恢复边界，Roadmap仅更新已确认本地完成事实。
 
 未运行：真实LLM问数/AI Evaluation及verify dev/app完整收费验收；只验证这些入口的参数、目标和退出码委派。本次浏览器测试使用确定性服务，并不能证明当前真实LLM配置或日常网站已ready。未Push/PR，独立restart候选fd9be30未纳入本目标。
+
+## 发布前安全扫描补证
+
+首次全src/scripts Bandit -ll发现三项：固定临时缓存路径两项B108、HTTP诊断一项B310。修复为TemporaryDirectory私有缓存（执行结束清理），诊断显式拒绝非HTTP(S)，并对标准urllib的HTTP(S)调用作精确B310说明，不关闭扫描。新增缓存权限/清理/退出码与协议拒绝回归共4项通过；全src/scripts安全扫描退出0，Medium/High=0；实际dev check python固定Ruff0.16.8、306文件格式/lint通过。行为范围不扩展，既有账号/PG/网页/PDF及隔离运行证据可复用。提交与最终base见实时记录。

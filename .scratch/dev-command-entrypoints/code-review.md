@@ -29,3 +29,7 @@ Risk：目标配置与宿主路径、维护资源归属、不可逆重置、认�
 - Migration / Documentation：24/24最终处置及外围消费者核对；独有验收断言不删除；正式Contract/Runbook/README/Product Scope/Architecture/Roadmap同步。回滚代码不承诺恢复已删卷/已恢复密码。
 
 Next: 最终受影响回归、完整check及Diff检查通过后本地Commit；远端仍需发布授权。本结论不代表真实LLM、生产就绪或远端合并完成。
+
+## 发布前修复Review
+
+PASS：私有临时缓存生命周期由标准库管理，保持CI命令、返回码及只读源文件；doctor仅允许HTTP(S)，标准重定向处理拒绝其他协议。4项新增/受影响回归、完整固定质量及全src/scripts Bandit通过；精确扫描说明不豁免其他检查。无Contract、Schema、权限或依赖扩展。

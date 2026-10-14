@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from .operations import ProcessReadinessProbe
@@ -10,7 +11,10 @@ from .operations import ProcessReadinessProbe
 
 def http_status(url, *, ready=False):
     try:
-        with urlopen(Request(url), timeout=3) as response:
+        if urlsplit(url).scheme not in {"http", "https"}:
+            return "not_ready"
+        # 仅HTTP(S)；标准urllib重定向处理器也拒绝file/custom协议。
+        with urlopen(Request(url), timeout=3) as response:  # nosec B310
             if response.status != 200:
                 return "not_ready"
             if ready and json.loads(response.read(4096)).get("status") != "ready":
