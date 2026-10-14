@@ -4,8 +4,8 @@
 - 用户已确认完整Spec、四项拆分、完整本地实施/验证/相关Commit；无Push/PR或旧真实资源操作授权。
 - 四项正式Tickets已完成；[Design Review](design-review.md) PASS、[Readiness](ticket-readiness.md) READY、[Code Review](code-review.md) PASS。
 - [验收](acceptance.md)：最终Python921/142 subtests通过，44条件跳过均补测；数据库、浏览器、renderer、构建、两种首次部署和真实业务/重启/导出验证通过。
-- 本地Commit收尾中；实时状态见Git公共目录harness/work-items/deployment-simplification/status.md。
-- 下一步：完成本地提交；发布需另行授权。
+- 本地运行候选Commit：`40b7749f540d89a852eb091d60023311c089f230`；源码指纹与实际验收范围一致。后续仅提交交付记录，实时状态见Git公共目录harness/work-items/deployment-simplification/status.md。
+- 下一步：本地交付完成；若发布，先取得另行授权。
 
 ## 历史规划与实施过程
 

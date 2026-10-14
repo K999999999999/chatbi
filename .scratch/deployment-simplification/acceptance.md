@@ -1,11 +1,11 @@
 # Deployment Simplification 验收
 
-Status: 本地实现与主要验证完成；最终Code Review / Commit收尾中，无发布授权。
+Status: 本地实现、验收与Code Review完成；运行候选40b7749；无发布授权。
 
 ## 候选与证据适用性
 
 - BASE: f4d0693f76b47f5f8a7a54de4309adea1025da1a；branch: refactor/deployment-simplification。
-- 下列验证针对本目标未提交实现；最终Commit记录在status.md。本机运行源码指纹在ignored `reports/deployment-simplification/source-sha256.json`，提交前核对实际源码与证据对应，不把历史候选重标为新结果。
+- 下列验证针对本目标实现并对应运行候选40b7749；后续提交仅维护验收记录。本机运行源码指纹在ignored `reports/deployment-simplification/source-sha256.json`，提交前核对实际源码与证据对应，不把历史候选重标为新结果。
 - 镜像本机构建，无镜像上传。标准app完整业务验收使用初版成功构建镜像6b76e5；最终9ce998仅增加配置门禁和机械格式，新增门禁有Red/Green及最终镜像只读positive verification，核心运行与合格初始化输入不变，原业务证据仍适用。
 
 ## 验证结果
