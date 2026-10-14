@@ -1,11 +1,14 @@
 # Deployment Simplification 规划与交付记录
 
+当前状态：PR #81 已合并，8项Required Checks通过；合并后Harness复盘 no-gap；正在同步验收记录 / Roadmap并完成分支收尾。
+
 - 工作项ID：deployment-simplification；branch：refactor/deployment-simplification；BASE：f4d0693。
-- 用户已确认完整Spec、四项拆分、完整本地实施/验证/相关Commit；无Push/PR或旧真实资源操作授权。
+- 用户已确认完整Spec、四项拆分、完整本地实施/验证/相关Commit；并授权本工作项Push及创建PR；未授权旧真实资源操作。
 - 四项正式Tickets已完成；[Design Review](design-review.md) PASS、[Readiness](ticket-readiness.md) READY、[Code Review](code-review.md) PASS。
 - [验收](acceptance.md)：最终Python921/142 subtests通过，44条件跳过均补测；数据库、浏览器、renderer、构建、两种首次部署和真实业务/重启/导出验证通过。
-- 本地运行候选Commit：`40b7749f540d89a852eb091d60023311c089f230`；源码指纹与实际验收范围一致。后续仅提交交付记录，实时状态见Git公共目录harness/work-items/deployment-simplification/status.md。
-- 下一步：本地交付完成；若发布，先取得另行授权。
+- 实现候选Commit：`40b7749f540d89a852eb091d60023311c089f230`；交付记录Commit：`9124e28777d1f7c7c840a404e4eece48c0684319`；源码指纹与实际验收范围一致。PR [#81](https://github.com/K999999999999/chatbi/pull/81) 已于2026-10-14通过Squash Auto-merge合并，merge commit `574bb0f01ccd507fa15661d516b88ff1e5a33836`；8项Required Checks全部通过。
+- Harness复盘：no-gap；证据见PR #81、[验收](acceptance.md)、[Code Review](code-review.md)与[Design Review](design-review.md)；无需新增Harness工作项。
+- 当前下一步：按仓库规则检查并完成本地 / 远端Feature分支收尾；实时状态见Git公共目录harness/work-items/deployment-simplification/status.md。
 
 ## 历史规划与实施过程
 
