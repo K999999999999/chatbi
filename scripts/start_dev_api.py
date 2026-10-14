@@ -30,7 +30,7 @@ def main() -> int:
             "uvicorn",
             "src.query_api.main:app",
             "--host",
-            "0.0.0.0",
+            "0.0.0.0",  # nosec B104 - 容器内监听，Compose仅发布宿主回环。
             "--port",
             "8000",
             "--reload",

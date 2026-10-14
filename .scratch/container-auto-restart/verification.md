@@ -33,3 +33,9 @@ BASE：`38e1302ce33d999dc908419067bc5d39195f86cf`；分支`fix/container-auto-re
 未执行整机/Docker daemon重启，未修改Docker Desktop登录自动启动设置；没有把延迟启动或退出重启验证冒称整机恢复验收。未运行真实LLM业务、完整AI Evaluation、真实浏览器登录/问数、标准app完整空卷验收或远端CI；本次不改变相应业务链路，标准app覆盖实际配置解析，开发环境有本次真实生命周期证据。
 
 Harness检查无ERROR；OPEN_WORK_ITEM与DIRTY_WORKTREE REVIEW均归属于本工作项的本地实施。未观察到符合门槛的Harness缺口；已发现的冷启动问题在本次启动边界修复，不扩展协作规则。
+
+## PR #83 安全扫描复验
+
+首次托管CI其余八项通过，Static security scan将容器内部0.0.0.0监听标为B104。Compose实际配置与回归已验证宿主仅发布127.0.0.1；容器内部监听是既有Web代理/网络调用必需行为。对该行增加精确B104说明，不改变监听或宿主暴露范围、不关闭整个扫描。按当前候选补跑启动/Compose回归与相同Bandit命令，并以新head重新执行托管CI。
+
+复验：启动/Compose等原34项回归PASS（22.27秒）；uv run --locked --with bandit bandit -r src scripts -ll退出0，Medium/High=0。新增行只有静态扫描说明，无运行代码变化，既有Docker/延后依赖与全量质量证据继续适用。

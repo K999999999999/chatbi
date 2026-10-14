@@ -15,3 +15,7 @@ Correctness / Comprehension / Consistency / Testability / Architecture / Securit
 Clean Code: PASS
 
 Harness Feedback：未观察到符合门槛的缺口。
+
+## PR安全扫描修复Review
+
+PASS：B104仅限容器监听常量，依据Compose宿主回环发布Contract与实际配置回归。没有关闭扫描或改变端口/权限；34项回归及全src/scripts Bandit复验通过。
