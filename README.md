@@ -18,7 +18,7 @@ ChatBI是面向销售数据的领域AI引擎，提供电脑端问数、多轮追
 ./dev up
 ```
 
-打开 `http://127.0.0.1:5173`。日常 `./dev up` 启动、`./dev down` 停止并保留数据，`./dev logs --follow` 查看日志。后端源码挂载并自动重载，前端Vite热更新；依赖变化后执行 `./dev build`。
+打开 `http://127.0.0.1:5173`。日常 `./dev up` 启动、`./dev down` 停止并保留数据，`./dev logs --follow` 查看日志。已启动的常驻服务随Docker重启自动恢复；主动停止后保持停止，直到再次执行 `./dev up`。Docker Desktop本身需先启动。后端源码挂载并自动重载，前端Vite热更新；依赖变化后执行 `./dev build`。
 
 新环境必须先初始化，`up`不会自动创建管理员或索引。完整配置、模型缓存、首次步骤与故障排查见[Runbook](docs/runbook.md)。Secret只放本地配置，不提交到Git。
 

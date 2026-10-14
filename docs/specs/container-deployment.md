@@ -8,6 +8,7 @@ ChatBI以源码交付。日常开发与体验统一使用[容器开发入口](co
 - 应用Compose只包含API、PostgreSQL、Qdrant及tools/migrator。项目卷独立管理，默认不引用已有开发或旧Stable资源。
 - 首次顺序为配置、构建、基础设施、基础初始化、migration、管理员、模型、RAG、只读verify、API。完整PostgreSQL健康检查依赖migration，migrator不能反过来依赖完整healthy。
 - API运行不自动初始化或重建资产，不持有迁移凭据；模型和索引初始化工具写新建资产卷，API以非root身份只读挂载。
+- API / PostgreSQL / Qdrant使用`unless-stopped`：Docker重启后恢复此前运行的服务，主动停止后保持停止直到再次`up`。tools / migrator保持`restart: "no"`；自动恢复不执行构建或初始化，依赖与资产仍需通过应用就绪门禁。
 - verify保留至少32字符签名Key、非占位LLM配置的必要门禁，并检查数据库/管理员、固定来源模型与RAG、catalog、网页与导出资源，不管理发布兼容矩阵或部署状态。
 
 ## 数据与安全

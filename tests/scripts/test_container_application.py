@@ -40,6 +40,11 @@ def test_standard_compose_does_not_need_a_release_or_stable_resource(tmp_path):
     compose = json.loads(result.stdout)
     services = compose["services"]
     assert set(services) == {"api", "postgres", "qdrant", "tools", "migrator"}
+    assert all(
+        services[name]["restart"] == "unless-stopped"
+        for name in ("api", "postgres", "qdrant")
+    )
+    assert all(services[name]["restart"] == "no" for name in ("tools", "migrator"))
     api = services["api"]
     assert api["build"]["target"] == "api"
     assert api["depends_on"]["postgres"]["condition"] == "service_healthy"

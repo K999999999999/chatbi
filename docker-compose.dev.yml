@@ -51,6 +51,8 @@ x-scripts: &scripts
 services:
   api:
     <<: *python
+    restart: unless-stopped
+    command: ["python", "-m", "scripts.start_dev_api"]
     security_opt:
       - seccomp=${CHATBI_DEV_SECCOMP_PROFILE:?开发环境需要配置 Chromium user namespace seccomp profile}
     environment:
@@ -189,7 +191,7 @@ services:
         NODE_BASE: ${CHATBI_DEV_NODE_BASE:-node:24.21.0-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6}
     user: "${CHATBI_DEV_UID:-1000}:${CHATBI_DEV_GID:-1000}"
     init: true
-    restart: "no"
+    restart: unless-stopped
     environment:
       CHATBI_DEV_API_TARGET: http://api:8000
       CHATBI_DEV_WEB_PORT: ${CHATBI_DEV_WEB_PORT:-5173}
