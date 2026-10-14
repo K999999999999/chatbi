@@ -11,7 +11,7 @@
 
 ## 已确认的后续方向
 
-已确认部署精简目标，本地实现与验收已完成：统一dev容器入口，保留标准Dockerfile/Compose、初始化和应用保护，删除自研Stable运维及宿主开发教程。范围见[Spec](../.scratch/deployment-simplification/spec.md)，证据见[验收记录](../.scratch/deployment-simplification/acceptance.md)，本地候选尚未发布；不新增产品功能或调整其他优先级。增加数据源、部署副本、数据权限、分析场景或容量承诺前，应先确认用户目标、支持范围和验收要求，再形成相应 Spec；本段不授予实施授权。
+已确认部署精简目标，实现与验收已完成并通过 [PR #81](https://github.com/K999999999999/chatbi/pull/81) 合并：统一dev容器入口，保留标准Dockerfile/Compose、初始化和应用保护，删除自研Stable运维及宿主开发教程。范围见[Spec](../.scratch/deployment-simplification/spec.md)，证据见[验收记录](../.scratch/deployment-simplification/acceptance.md)；不新增产品功能或调整其他优先级。增加数据源、部署副本、数据权限、分析场景或容量承诺前，应先确认用户目标、支持范围和验收要求，再形成相应 Spec；本段不授予实施授权。
 
 ## 路线图维护
 

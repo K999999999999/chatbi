@@ -1,11 +1,11 @@
 # Deployment Simplification 验收
 
-Status: 本地实现、验收与Code Review完成；运行候选40b7749；无发布授权。
+Status: 本地实现、验收与Code Review完成；PR #81已合并，运行候选40b7749。
 
 ## 候选与证据适用性
 
 - BASE: f4d0693f76b47f5f8a7a54de4309adea1025da1a；branch: refactor/deployment-simplification。
-- 下列验证针对本目标实现并对应运行候选40b7749；后续提交仅维护验收记录。本机运行源码指纹在ignored `reports/deployment-simplification/source-sha256.json`，提交前核对实际源码与证据对应，不把历史候选重标为新结果。
+- 下列本地验证针对本目标实现并对应运行候选40b7749；后续提交仅维护验收记录。本机运行源码指纹在ignored `reports/deployment-simplification/source-sha256.json`，提交前核对实际源码与证据对应，不把历史候选重标为新结果。
 - 镜像本机构建，无镜像上传。标准app完整业务验收使用初版成功构建镜像6b76e5；最终9ce998仅增加配置门禁和机械格式，新增门禁有Red/Green及最终镜像只读positive verification，核心运行与合格初始化输入不变，原业务证据仍适用。
 
 ## 验证结果
@@ -59,7 +59,8 @@ Status: 本地实现、验收与Code Review完成；运行候选40b7749；无发
 - README/Runbook、Architecture/Product Scope/Roadmap、Bootstrap/Container Dev、Query API/Execution/Observability同步；应用保护归入application-readiness，标准运行归入container-deployment。
 - 旧R6/R7 Spec/Design与旧Runbook完整归档到本目标history；全仓当前和历史链接修复，不改写原验收候选/结果。
 - 旧开发/Stable/restore容器ID、运行状态与卷名保持；未替换或删除旧配置、密钥、备份、数据或模型。仅日常PG/Qdrant原本运行，API/Web保持原先停止状态。
-- 未运行远端GitHub CI、依赖审计、四套完整AI Evaluation、OTLP云接入和整机/Docker重启；未Push/PR。无依赖/AI行为变更，正式AI评测只保留原基线适用性，不声称本候选取得新评分；真实浏览器与原生LLM验证已另列。
+- PR #81 已于2026-10-14通过Squash Auto-merge合并，merge commit `574bb0f01ccd507fa15661d516b88ff1e5a33836`。GitHub CI run `38499561779` 的8项Required Checks全部成功；远端依赖审计亦通过。Harness复盘 no-gap，见PR #81。
+- 未运行四套完整AI Evaluation、OTLP云接入和整机/Docker重启。无依赖/AI行为变更，正式AI评测只保留原基线适用性，不声称本候选取得新评分；真实浏览器与原生LLM验证已另列。
 - 企业生产、升级回滚、备份恢复、镜像仓库发布不在本目标支持范围。
 
 ## 本机镜像身份
