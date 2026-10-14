@@ -56,7 +56,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: database
-    restart: "no"
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-chatbi_mvp}
       POSTGRES_USER: ${POSTGRES_MIGRATOR_USER:-chatbi_migrator}
@@ -76,13 +76,14 @@ services:
       retries: 12
   qdrant:
     image: qdrant/qdrant:v1.18.3
-    restart: "no"
+    restart: unless-stopped
     environment:
       QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?configure .env}
     volumes:
       - qdrant_data:/qdrant/storage
   api:
     <<: *application
+    restart: unless-stopped
     security_opt:
       - seccomp=${CHATBI_DEV_SECCOMP_PROFILE:-./docker/third-party/playwright-seccomp-profile.json}
     ports:

@@ -30,7 +30,7 @@
 
 ## 运行与验证边界
 
-当前支持Windows + WSL2 + Docker的本机单API进程和电脑端同源访问。统一使用dev容器开发，标准应用Compose与开发资源分开；启动、迁移、模型 / 索引和管理员初始化都是显式操作。
+当前支持Windows + WSL2 + Docker的本机单API进程和电脑端同源访问。统一使用dev容器开发，标准应用Compose与开发资源分开；首次启动、构建、迁移、模型 / 索引和管理员初始化都是显式操作。常驻服务随Docker恢复此前运行状态，主动停止后保持停止；规则见[容器开发](specs/container-dev-environment.md)与[标准容器](specs/container-deployment.md)。
 
 确定性软件测试、真实AI评测、业务与运行验收提供不同证据；报告只对记录的提交、案例集与资源有效。可复现入口见 [Runbook](runbook.md)。
 

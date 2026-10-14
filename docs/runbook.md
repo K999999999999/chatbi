@@ -49,7 +49,11 @@ docker run --rm --entrypoint python "$python_base" -c 'import secrets; print(sec
 ./dev down
 ```
 
-服务在后台运行；停止保留数据库/Qdrant卷、模型与RAG资产。应用不随电脑/Docker重启自动启动，显式执行up；基础设施保留既有restart策略。禁止将删除volume当作常规停止方法。
+四个常驻服务统一使用`restart: unless-stopped`。首次通过`./dev up`启动后，运行中的服务在Docker重启时自动恢复；电脑重启后仍需Docker Engine / Desktop先启动。`./dev down`主动停止后保持停止，直到再次执行`./dev up`；停止保留数据库/Qdrant卷、模型与RAG资产。禁止将删除volume当作常规停止方法。
+
+自动恢复只启动已有容器，不执行构建、迁移、管理员创建、模型下载或索引重建；一次性tools/migrator保持不自动重启。配置变化后执行`./dev up`应用新配置，依赖变化后先build。自动恢复后可用`./dev status`和`/ready`确认就绪。
+
+Docker自动恢复时依赖可能晚于API启动；开发API先有界等待控制库，再启动热重载进程，超时退出后由Docker重试。网页容器启动不代表后端已经可用，仍以`/ready`为准；缺少migration或索引时按首次准备步骤显式处理。
 
 源码从宿主挂载，Python自动重载、Vite热更新。依赖/锁文件或根配置变化后build再up；环境配置变化后up重建容器。重载不保证进程内会话持久，历史按正式Contract只读恢复，不自动重发请求。不要同时运行两个写同一Control DB的history runtime。
 
@@ -88,6 +92,8 @@ docker compose --env-file .env -f docker-compose.app.yml up -d --wait
 docker compose --env-file .env -f docker-compose.app.yml logs --tail=100 api
 docker compose --env-file .env -f docker-compose.app.yml stop
 ```
+
+API、PostgreSQL、Qdrant统一使用`unless-stopped`，Docker重启后恢复此前运行的服务；显式`stop`后保持停止，直到再次`up`。tools/migrator不自动重启，构建和初始化仍显式执行。
 
 Dockerfile的api/database targets使用普通本地构建；不要求clean Git提交或发布清单，不提供镜像上传、版本切换、自动升级、回滚、备份和恢复。企业运维由部署方负责，项目不接入发布平台。旧Stable数据、配置、备份和密钥不会自动删除或迁移；旧流程仅保留在历史归档中。
 

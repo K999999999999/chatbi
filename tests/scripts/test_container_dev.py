@@ -174,6 +174,7 @@ def test_compose_config_excludes_secrets_and_migration_identity_from_api(tmp_pat
     )
     services = json.loads(result.stdout)["services"]
     api = services["api"]
+    assert api["command"] == ["python", "-m", "scripts.start_dev_api"]
     assert not any("MIGRATOR" in key for key in api["environment"])
     assert api["security_opt"] == [
         f"seccomp={ROOT}/docker/third-party/playwright-seccomp-profile.json"
@@ -184,7 +185,11 @@ def test_compose_config_excludes_secrets_and_migration_identity_from_api(tmp_pat
         v["target"] == api["environment"]["RAG_MODEL_DIR"] == v["source"]
         for v in api["volumes"]
     )
-    assert api["restart"] == services["web"]["restart"] == "no"
+    assert all(
+        services[name]["restart"] == "unless-stopped"
+        for name in ("api", "web", "postgres", "qdrant")
+    )
+    assert all(services[name]["restart"] == "no" for name in ("tools", "migrator"))
     assert all(
         port["host_ip"] == "127.0.0.1"
         for service in services.values()
