@@ -4,6 +4,7 @@ import copy
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -76,9 +77,7 @@ def minimal_config():
 def test_recovery_template_preserves_runtime_credentials_without_application_dependencies():
     config = minimal_config()
     before = copy.deepcopy(config)
-    result = maintenance_template(
-        config, operation="recover", target="dev", container_id="a" * 64
-    )
+    result = maintenance_template(config, operation="recover", container_id="a" * 64)
     assert config == before
     service = result["services"]["maintenance"]
     assert service["image"] == "matching-image:local"
@@ -96,12 +95,10 @@ def test_unsupported_tool_settings_fail_closed(setting):
     config = minimal_config()
     config["services"]["tools"][setting] = ["unexpected"]
     with pytest.raises(ValueError):
-        maintenance_template(
-            config, operation="recover", target="dev", container_id="a" * 64
-        )
+        maintenance_template(config, operation="recover", container_id="a" * 64)
 
 
-def test_standard_app_container_cannot_be_recovered_as_dev():
+def test_retired_app_container_cannot_be_recovered_as_dev():
     inspected = [
         {
             "Config": {
@@ -114,10 +111,8 @@ def test_standard_app_container_cannot_be_recovered_as_dev():
             "Mounts": [],
         }
     ]
-    with pytest.raises(ValueError, match="标准应用"):
-        validate_container(
-            inspected, project="test-project", service="postgres", target="dev"
-        )
+    with pytest.raises(ValueError, match="退役"):
+        validate_container(inspected, project="test-project", service="postgres")
 
 
 @pytest.mark.parametrize(
@@ -126,7 +121,6 @@ def test_standard_app_container_cannot_be_recovered_as_dev():
         (["verify", "dev"], "isolated"),
         (["verify", "dev", "isolated"], "isolated"),
         (["verify", "dev", "real"], "real"),
-        (["verify", "app"], "app"),
     ],
 )
 def test_container_acceptance_delegates_mode_and_exit_status(
@@ -136,15 +130,15 @@ def test_container_acceptance_delegates_mode_and_exit_status(
     scripts = tmp_path / "scripts"
     scripts.mkdir()
     output = tmp_path / "mode"
-    for target in ("app", "dev"):
-        (scripts / f"verify_container_{target}.sh").write_text(
-            '#!/usr/bin/env bash\nprintf "%s" "${1:-app}" > "$VERIFY_MODE"\nexit 17\n'
-        )
+    (scripts / "verify_container_dev.sh").write_text(
+        '#!/usr/bin/env bash\nprintf "%s" "${1:-isolated}" > "$VERIFY_MODE"\nexit 17\n'
+    )
     result = subprocess.run(
         ["bash", str(tmp_path / "dev"), *arguments],
         env={**os.environ, "VERIFY_MODE": str(output)},
         capture_output=True,
         text=True,
+        check=False,
     )
     assert result.returncode == 17
     assert output.read_text() == expected
@@ -181,6 +175,7 @@ def test_hooks_install_is_scoped_to_command_repository(tmp_path):
         ["bash", str(clone / "dev"), "hooks", "install"],
         cwd=tmp_path,
         capture_output=True,
+        check=False,
     )
     assert refused.returncode == 1
     assert (
@@ -205,22 +200,24 @@ def test_legacy_operational_compose_is_not_a_development_maintenance_target():
         }
     ]
     with pytest.raises(ValueError, match="旧运维"):
-        validate_container(
-            metadata, project="test-project", service="postgres", target="dev"
-        )
+        validate_container(metadata, project="test-project", service="postgres")
 
 
-def test_app_maintenance_cannot_overlay_packaged_account_code():
-    config = minimal_config()
-    config["services"]["tools"]["volumes"] = [
-        {
-            "type": "bind",
-            "source": "/source/src",
-            "target": "/workspace/src",
-            "read_only": True,
-        }
-    ]
-    with pytest.raises(ValueError, match="打包代码"):
-        maintenance_template(
-            config, operation="recover", target="app", container_id="a" * 64
-        )
+def test_removed_target_flag_rejects_app_before_reading_configuration():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "scripts.dev_compose",
+            "validate-container",
+            "--target",
+            "app",
+        ],
+        input="{}",
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert "--target" in result.stderr

@@ -40,7 +40,7 @@
 | [run_database_tests.py](../../scripts/run_database_tests.py) | 老独立CI/development PG测试runner；相关测试和skip提示仍引用 | Python/Docker；隔离DB/清理；通过宿主sys.executable执行migration/pytest | 日常统一使用现有`./dev test database`；先核对独有profile/Windows路径能力与引用，再决定归档或兼容，不公开第二套同名runner |
 | [smoke_web.py](../../scripts/smoke_web.py) | 打包网页/API登录Smoke；CI专用账号调用 | Python/httpx、显式测试凭据；登录/登出，必要时给测试账号生成随机密码并改密；不调用LLM | 保留CI专用；若纳入`./dev test smoke`，必须配套隔离资源/专用账号和清理，不直接接受日常管理员凭据 |
 | [start-dev.ps1](../../scripts/start-dev.ps1) | 旧Windows宿主启动器；当前Runbook未推荐 | PowerShell/Docker/宿主uv/npm；开两个终端，宿主启动API/Vite，npm ci；只检查HTTP存活 | 与现行容器统一入口冲突。建议退出现行支持；若要Windows快捷入口，只能另行确认薄WSL/dev委派，不恢复第二套宿主流程 |
-| [verify_container_app.sh](../../scripts/verify_container_app.sh) | 标准应用空卷、真实业务、导出/重启/清理验收；Runbook调用 | Docker、工具/应用/浏览器镜像、.env；真实LLM；独立PG/Qdrant/model/RAG卷与账号，按project清理；读取配置路径固定root/.env | 复用为`./dev verify app`；显示费用/耗时，核对配置选择与镜像准备前提；保留原脚本直接调用 |
+| [verify_container_app.sh历史说明](../test-reliability/history/container-deployment-app.md) | 当时的标准应用空卷、真实业务、导出/重启/清理验收；Runbook调用 | Docker、工具/应用/浏览器镜像、.env；真实LLM；独立PG/Qdrant/model/RAG卷与账号，按project清理；读取配置路径固定root/.env | 当时复用为`./dev verify app`；该路线已按后续用户决定退役 |
 | [verify_container_dev.sh](../../scripts/verify_container_dev.sh) | 源码容器实际运行验收isolated/real；Runbook调用 | Docker、Git、模型缓存、配置；构建/迁移、真实LLM、专用账号；热更新临时改源码并恢复；isolated清理临时卷，real重启日常服务 | 复用为`./dev verify dev [isolated\|real]`；默认isolated，real需显式选；保留资源与凭据清理及报告身份 |
 
 ## scripts 外的实际操作入口
@@ -132,7 +132,7 @@
 | run_database_tests.py | 非推荐旧宿主兼容runner | 当前test database覆盖ci/development及清理；旧单profile选择、Windows路径映射独有能力未证明完全替代，保留源码/测试；skip提示改为dev |
 | smoke_web.py | CI专用账号Smoke | 未公开为doctor，保留可能改密的CI链 |
 | start-dev.ps1 | 仅提示WSL/dev，退出2 | 旧uv/npm实现保存history/start-dev.ps1.md；当前不另建Windows启动流 |
-| verify_container_dev.sh、verify_container_app.sh | verify dev默认isolated/显式real；verify app | 原脚本/报告/退出/清理/LLM链保留；app源配置支持CHATBI_APP_ENV_FILE |
+| verify_container_dev.sh、verify_container_app.sh | verify dev默认isolated/显式real；verify app | 开发脚本保留；APP脚本路线后续已退役，旧证据不改写 |
 | frontend test:real及real.spec.ts | 非推荐旧宿主兼容验证 | 独立SQL真值、同历史追问及两期分析全部断言保留；未用入口统一删除独有覆盖，当前推荐容器验收 |
 | Bootstrap/Evaluation/数据库初始化/导出worker/CI | 所属流程内部或现有dev入口 | 不新增任意内部模块公开命令，不新增GitHub发布/合并命令 |
 

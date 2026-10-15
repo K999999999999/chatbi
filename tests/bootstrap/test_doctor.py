@@ -11,7 +11,6 @@ def test_doctor_ready_uses_existing_probes_and_reports_llm_not_probed(
 ):
     (tmp_path / "config.json").write_text("{}")
     monkeypatch.setenv("RAG_MODEL_DIR", str(tmp_path))
-    monkeypatch.setenv("CHATBI_MAINTENANCE_TARGET", "dev")
     monkeypatch.setattr(
         doctor,
         "ProcessReadinessProbe",
@@ -29,6 +28,16 @@ def test_doctor_ready_uses_existing_probes_and_reports_llm_not_probed(
     assert result["llm"] == "not_probed"
     assert all(value == "ready" for value in result["checks"].values())
     probe.assert_called_once()
+
+
+def test_retired_app_doctor_target_is_rejected_before_probes(monkeypatch, capsys):
+    probe = Mock(side_effect=AssertionError("不能访问数据库或服务"))
+    monkeypatch.setenv("CHATBI_MAINTENANCE_TARGET", "app")
+    monkeypatch.setattr(doctor, "ProcessReadinessProbe", probe)
+
+    assert doctor.main() == 2
+    assert "只支持 dev" in capsys.readouterr().err
+    probe.assert_not_called()
 
 
 def test_http_health_does_not_make_malformed_readiness_ready(monkeypatch, capsys):

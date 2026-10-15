@@ -5,8 +5,8 @@ import os
 import sys
 import warnings
 
-from sqlalchemy.orm import sessionmaker
 from sqlalchemy import text
+from sqlalchemy.orm import sessionmaker
 
 from src.authorization.audit_service import PersistentAuditSink
 from src.authorization.auth_service import AuthService
@@ -19,6 +19,9 @@ from src.chatbi_control.username import normalize_username
 
 
 def recover_admin(username: str, *, environment: str, project: str) -> int:
+    if environment != "dev":
+        print("管理员恢复目标无效；当前只支持 dev。", file=sys.stderr)
+        return 2
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         print("管理员恢复需要交互终端；不接受密码参数或流水线输入。", file=sys.stderr)
         return 2

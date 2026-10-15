@@ -41,7 +41,7 @@ def project_name(config):
 
 
 def maintenance_template(
-    config, *, operation, container_id, target, local_root=None, host_root=None
+    config, *, operation, container_id, local_root=None, host_root=None
 ):
     """剪裁后再交给Compose插值，避免无关LLM强制配置。"""
     project = project_name(config)
@@ -78,7 +78,6 @@ def maintenance_template(
     environment.update(
         POSTGRES_HOST="127.0.0.1", POSTGRES_PORT="5432", PYTHONDONTWRITEBYTECODE="1"
     )
-    environment["CHATBI_MAINTENANCE_TARGET"] = target
     environment["CHATBI_DEV_WEB_PORT"] = (
         config["services"]
         .get("web", {})
@@ -101,8 +100,6 @@ def maintenance_template(
         if "docker.sock" in destination or destination in {"/", "/var/run"}:
             raise ValueError("工具绑定越界")
         source_code = destination in {"/workspace/src", "/workspace/scripts"}
-        if target == "app" and source_code:
-            raise ValueError("标准应用维护必须使用打包代码，拒绝源码覆盖")
         if source_code or operation == "doctor":
             mapped = {**volume, "read_only": True}
             if (
@@ -122,7 +119,7 @@ def maintenance_template(
     }
 
 
-def validate_container(inspected, *, project, service, volume=None, target=None):
+def validate_container(inspected, *, project, service, volume=None):
     if not isinstance(inspected, list) or len(inspected) != 1:
         raise ValueError("容器身份不唯一")
     item = inspected[0]
@@ -138,15 +135,10 @@ def validate_container(inspected, *, project, service, volume=None, target=None)
             ","
         )
     }
-    if target == "dev":
-        if "docker-compose.app.yml" in files:
-            raise ValueError("标准应用不能作为开发维护目标")
-        if not files & {"docker-compose.yml", "docker-compose.dev.yml"}:
-            raise ValueError("目标不是受支持的开发Compose；拒绝旧运维资源")
-    if target == "app" and (
-        "docker-compose.app.yml" not in files or "docker-compose.dev.yml" in files
-    ):
-        raise ValueError("目标不是标准应用")
+    if "docker-compose.app.yml" in files:
+        raise ValueError("已退役的APP容器不能作为开发维护目标")
+    if not files & {"docker-compose.yml", "docker-compose.dev.yml"}:
+        raise ValueError("目标不是受支持的开发Compose；拒绝旧运维资源")
     if volume and not any(
         m.get("Name") == volume and m.get("Destination") == "/var/lib/postgresql/data"
         for m in item["Mounts"]
@@ -175,7 +167,6 @@ def main():
         "--operation", dest="maintenance", choices=("recover", "doctor", "metadata")
     )
     parser.add_argument("--container")
-    parser.add_argument("--target", choices=("dev", "app"))
     parser.add_argument("--local-root")
     parser.add_argument("--host-root")
     args = parser.parse_args()
@@ -201,7 +192,7 @@ def main():
                     raise ValueError("服务数据卷配置不符")
             if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*", volume):
                 raise ValueError("数据卷名称无效")
-            print(project_name(data), volume)
+            print(project, volume)
         elif args.operation == "template":
             print(
                 json.dumps(
@@ -209,7 +200,6 @@ def main():
                         data,
                         operation=args.maintenance,
                         container_id=args.container,
-                        target=args.target,
                         local_root=args.local_root,
                         host_root=args.host_root,
                     )
@@ -229,7 +219,6 @@ def main():
                 project=args.project,
                 service=args.service,
                 volume=args.volume,
-                target=args.target,
             )
         else:
             if len(data) != 1 or data[0]["Name"] != args.volume:

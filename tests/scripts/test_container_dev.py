@@ -2,8 +2,8 @@
 
 import json
 import os
-import subprocess
 import socket
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -11,30 +11,57 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 
 
-@pytest.mark.parametrize("args", [["help"], ["app", "--help"]])
-def test_classified_help_requires_neither_config_nor_docker(args):
-    result = invoke(args, {"PATH": "/usr/bin:/bin", "CHATBI_DEV_ENV_FILE": "/missing"})
+def test_help_requires_neither_config_nor_docker():
+    result = invoke(
+        ["help"], {"PATH": "/usr/bin:/bin", "CHATBI_DEV_ENV_FILE": "/missing"}
+    )
     assert result.returncode == 0
     assert "环境管理" in result.stdout
     assert "recover-admin" in result.stdout
+    assert "./dev app" not in result.stdout
+    assert "verify app" not in result.stdout
 
 
-@pytest.mark.parametrize("command", ["build", "infra", "migrate", "down", "status"])
-def test_app_commands_select_only_standard_compose(command, docker_fake):
-    result = invoke(
-        ["app", command],
-        {**docker_fake, "CHATBI_APP_ENV_FILE": docker_fake["CHATBI_DEV_ENV_FILE"]},
-    )
+def test_build_keeps_the_development_python_and_node_images(docker_fake):
+    result = invoke(["build"], docker_fake)
     assert result.returncode == 0, result.stderr
     calls = [
         json.loads(line)
         for line in Path(docker_fake["DOCKER_CALLS"]).read_text().splitlines()
     ]
-    assert calls
-    assert all(str(ROOT / "docker-compose.app.yml") in call for call in calls)
-    assert all(str(ROOT / "docker-compose.dev.yml") not in call for call in calls)
-    if command == "down":
-        assert calls[-1][-4:] == ["stop", "api", "postgres", "qdrant"]
+    assert calls == [
+        [
+            "compose",
+            "--project-directory",
+            str(ROOT),
+            "--env-file",
+            docker_fake["CHATBI_DEV_ENV_FILE"],
+            "-f",
+            str(ROOT / "docker-compose.yml"),
+            "-f",
+            str(ROOT / "docker-compose.dev.yml"),
+            "build",
+            "api",
+            "web",
+        ]
+    ]
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["app"],
+        ["app", "--help"],
+        ["app", "down"],
+        ["verify", "app"],
+        ["doctor", "app"],
+        ["recover-admin", "app", "--username", "test-admin"],
+    ],
+)
+def test_retired_app_targets_are_rejected_before_resources(args, docker_fake):
+    result = invoke(args, docker_fake)
+    assert result.returncode == 2
+    assert not Path(docker_fake["DOCKER_CALLS"]).exists()
 
 
 @pytest.mark.parametrize(
@@ -110,6 +137,20 @@ def test_docker_failure_is_nonzero_and_does_not_report_success(docker_fake):
 
 def test_unknown_command_is_rejected_before_docker(docker_fake):
     result = invoke(["erase-data"], docker_fake)
+    assert result.returncode == 2
+    assert not Path(docker_fake["DOCKER_CALLS"]).exists()
+
+
+def test_direct_development_maintenance_rejects_retired_app_before_docker(
+    docker_fake,
+):
+    result = subprocess.run(
+        ["bash", str(ROOT / "scripts/dev_maintenance.sh"), "recover", "app", "admin"],
+        env=docker_fake,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     assert result.returncode == 2
     assert not Path(docker_fake["DOCKER_CALLS"]).exists()
 

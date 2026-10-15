@@ -5,13 +5,16 @@
 ## 当前阶段
 
 - 产品 V1 的 R1–R7 历史目标已完成交付；问数、分析、图表、私人历史、后台执行和导出保持。原本机Stable部署/运维属于历史交付，当前按已确认Deployment Simplification目标精简。
+- 本机源码开发、测试与体验统一使用dev容器；不再提供独立业务APP镜像构建路线。此决定及执行边界见[测试可靠性 Spec](../.scratch/test-reliability/spec.md)。
 - 历史本机 Stable 的 R7 部署及 Docker Desktop / Windows 整机重启恢复，最后记录的核验日期为 2026-10-10；详细候选和证据见[运行保障验收归档](../.scratch/local-operations-v1/history/acceptance--local-operations-v1.md)。这不构成公网生产部署、容量或可用性承诺。
 - 新的 AI Evaluation 结果只适用于报告记录的提交、案例集与运行资源；历史分数不能代表当前代码或模型表现。
 - 已确认桌面 Web 视觉升级目标，聚焦正式产品观感与信息直观度；边界和验收见[短 Spec](../.scratch/professional-ui/spec.md)。该工程改进不扩展产品能力或改变支持范围 / 路线优先级。
 
 ## 已确认的后续方向
 
-已确认dev分类统一入口与本机管理员恢复目标，按[Spec](../.scratch/dev-command-entrypoints/spec.md)完成七项Ticket实现及适用验证；八类现行操作、标准应用管理、维护与恢复不扩展业务问数能力或调整其他路线优先级。候选/验证见[工作项验收记录](../.scratch/dev-command-entrypoints/acceptance.md)；发布/合并身份以工作项实时记录和实际PR为准。
+已完成dev分类入口与本机管理员恢复目标，按[Spec](../.scratch/dev-command-entrypoints/spec.md)交付七项Ticket；当时纳入的标准APP管理路线已由后续[测试可靠性目标](../.scratch/test-reliability/spec.md)确认退役，历史候选和验证仍见[原验收记录](../.scratch/dev-command-entrypoints/acceptance.md)。
+
+已确认测试可靠性与运行路线精简目标，按[Spec](../.scratch/test-reliability/spec.md)拆分七项Ticket，当前实施本地测试可靠性、报告追溯和CI覆盖；不改变其他路线优先级。
 
 已确认部署精简目标，实现与验收已完成并通过 [PR #81](https://github.com/K999999999999/chatbi/pull/81) 合并：统一dev容器入口，保留标准Dockerfile/Compose、初始化和应用保护，删除自研Stable运维及宿主开发教程。范围见[Spec](../.scratch/deployment-simplification/spec.md)，证据见[验收记录](../.scratch/deployment-simplification/acceptance.md)；不新增产品功能或调整其他优先级。增加数据源、部署副本、数据权限、分析场景或容量承诺前，应先确认用户目标、支持范围和验收要求，再形成相应 Spec；本段不授予实施授权。
 

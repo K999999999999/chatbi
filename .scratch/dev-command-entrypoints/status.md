@@ -1,5 +1,7 @@
 # dev分类入口与本机管理员恢复
 
+历史范围说明：本工作项按当时已确认的 Spec 实现了 APP 管理与验收入口；该支持范围现由[测试可靠性目标](../test-reliability/spec.md)中的用户决定取代，相关历史证据保持原样。
+
 Status: 本地实现、验证与Review完成；已授权发布及合并收尾
 Work item: dev-command-entrypoints
 Baseline: master@38e1302ce33d999dc908419067bc5d39195f86cf

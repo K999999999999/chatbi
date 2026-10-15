@@ -20,6 +20,14 @@ def test_nonterminal_input_is_rejected_without_database(monkeypatch):
         assert recover_admin("admin", environment="dev", project="test-project") == 2
 
 
+def test_retired_app_recovery_target_is_rejected_before_terminal_or_database():
+    with patch(
+        "src.bootstrap.admin_recovery.create_control_engine",
+        side_effect=AssertionError("不能连接数据库"),
+    ):
+        assert recover_admin("admin", environment="app", project="test-project") == 2
+
+
 def test_mismatched_passwords_are_hidden_and_do_not_create_database_resources(
     monkeypatch,
 ):
@@ -42,7 +50,7 @@ def test_getpass_cannot_fall_back_to_echo(monkeypatch):
 
     monkeypatch.setattr(getpass, "getpass", unsafe_input)
     with patch("sys.stdin", Terminal()), patch("sys.stdout", Terminal()):
-        assert recover_admin("admin", environment="app", project="test-project") == 2
+        assert recover_admin("admin", environment="dev", project="test-project") == 2
 
 
 def test_interrupted_input_is_nonzero(monkeypatch):

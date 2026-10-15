@@ -2,6 +2,7 @@
 
 import json
 import os
+import sys
 from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
@@ -38,34 +39,21 @@ def diagnose():
         result["qdrant_health"] = "not_ready"
     result["api_health"] = http_status("http://api:8000/health")
     result["api_ready"] = http_status("http://api:8000/ready", ready=True)
-    target = os.environ.get("CHATBI_MAINTENANCE_TARGET", "dev")
     result["web"] = http_status(
-        "http://api:8000/"
-        if target == "app"
-        else "http://web:" + os.environ.get("CHATBI_DEV_WEB_PORT", "5173")
+        "http://web:" + os.environ.get("CHATBI_DEV_WEB_PORT", "5173")
     )
     result["model"] = (
         "ready"
         if (Path(os.environ.get("RAG_MODEL_DIR", "/missing")) / "config.json").is_file()
         else "not_ready"
     )
-    if target == "app":
-        result["web_assets"] = (
-            "ready" if Path("/opt/chatbi-web/index.html").is_file() else "not_ready"
-        )
-        from src.query_api.export_assets import verify_runtime_manifest
-
-        try:
-            verify_runtime_manifest(
-                Path(os.environ.get("CHATBI_EXPORT_ROOT", "/opt/chatbi-export"))
-            )
-            result["export_assets"] = "ready"
-        except Exception:  # noqa: BLE001 - 资产异常只报告状态
-            result["export_assets"] = "not_ready"
     return result
 
 
 def main():
+    if os.environ.get("CHATBI_MAINTENANCE_TARGET", "dev") != "dev":
+        print("诊断目标无效；当前只支持 dev。", file=sys.stderr)
+        return 2
     result = diagnose()
     print(json.dumps({"checks": result, "llm": "not_probed"}, ensure_ascii=False))
     return 0 if all(value == "ready" for value in result.values()) else 1

@@ -21,10 +21,9 @@
 ## 显式初始化命令
 
 ```text
-python -m src.bootstrap verify
 python -m src.bootstrap migrate
 python -m src.bootstrap create-admin [--username USERNAME]
-python -m src.bootstrap recover-admin --username USERNAME --environment dev|app --project PROJECT
+python -m src.bootstrap recover-admin --username USERNAME --environment dev --project PROJECT
 python -m src.bootstrap prepare-model
 python -m src.bootstrap build-rag [--structure-dir PATH] [--metrics-path PATH] [--output-dir PATH] [--build-id ID]
 ```
@@ -33,7 +32,6 @@ python -m src.bootstrap build-rag [--structure-dir PATH] [--metrics-path PATH] [
 
 | 命令 | 行为与失败边界 |
 | --- | --- |
-| verify | 只读检查标准容器的数据库、管理员、模型/RAG、网页和导出资产；成功0、安全失败1，不管理发布版本 |
 | migrate | 幂等建立 Control DB、固定 RBAC、checkpoint 和 grants；不创建管理员；成功 0、迁移失败 1 |
 | create-admin | 隐藏输入密码并确认，显式创建首个管理员；已存在管理员时拒绝；成功 0、操作失败 1、两次密码不一致 2 |
 | recover-admin | 可信本机交互装配、显式目标及运行身份、原子恢复和强制审计；见[恢复Contract](admin-recovery.md) |

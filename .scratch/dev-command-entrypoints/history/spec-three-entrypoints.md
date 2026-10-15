@@ -16,7 +16,7 @@ Status: Spec 待确认；下列目标、信任边界与环境覆盖已在对话�
 
 - [dev](../../../dev)已经组织环境、初始化、测试、质量检查和评测；[Runbook](../../../docs/runbook.md)区分软件验证与真实容器验收。
 - `./dev test all`包含真实隔离PostgreSQL、mock API浏览器和真实Chromium/PDF/字体验证。容器验收额外覆盖完整装配、初始化、真实RAG/LLM、网页业务、持久性和恢复，二者不是互不重叠的验证层。
-- [开发验收脚本](../../../scripts/verify_container_dev.sh)支持isolated/real，默认isolated；[标准应用验收脚本](../../../scripts/verify_container_app.sh)使用独立临时项目。两者实际业务验收均调用真实LLM。
+- [开发验收脚本](../../../scripts/verify_container_dev.sh)支持isolated/real，默认isolated；当时的[标准应用验收器说明](../../test-reliability/history/container-deployment-app.md)使用独立临时项目。两者实际业务验收均调用真实LLM。
 - [首次管理员初始化](../../../src/chatbi_control/bootstrap.py)在已有管理员时拒绝；当前Web密码重置与用户改密能力已经存在，保持其职责。
 - 用户已确认：本机Docker操作权限与目标Control DB配置的持有者是可信恢复操作者，无需Web登录；恢复同时支持当前开发环境与标准应用，必须显式选择目标。
 - 两套环境使用独立账号/历史数据库；环境名表示运行方式，不表示两种产品。旧Stable/Restore不属于当前支持入口。
