@@ -83,6 +83,8 @@ docker run --rm -it --user "$(id -u):$(id -g)" -v "$PWD:$PWD:ro" -w "$PWD" --ent
 
 check包含锁文件、文档/链接/模块边界、Python质量和网页/导出构建。Python全量回归不等于数据库或renderer验证；database分别启动独立CI/development fixture，覆盖真实权限、迁移、checkpoint、history和execution。并发History用例只观察自己 worker 的 PostgreSQL backend PID；失败时先释放本用例锁，再限时取消 / 回收自己创建的连接，故障路径也由有时限的子进程验证。web使用隔离mock API和浏览器；首次改密用例由`tests.browser_support`按用例创建独立测试账号，并清理其Session / 账号，管理路由不进入生产App。renderer启用真实Chromium/PDF与字体。失败返回非零，汇报skip和未执行范围。
 
+每次`dev test` / `dev check`都会创建`reports/tests/<run_id>.json`摘要，不覆盖既有运行；JUnit / Playwright原始机器结果按同一Run ID保存。摘要显示源码起止身份、命令范围、各步骤状态、退出 / 清理结果、测试计数，以及适用的`uv.lock` / `package-lock.json` SHA-256和实际Python / Node / Browser / PostgreSQL容器镜像ID；环境身份无法核实也不会显示完整通过。check的构建 / lint步骤计数为null（不适用）。测试计数缺失、存在skip、来源身份变化 / 无法核实或后续步骤未运行时，摘要不会显示完整通过；因此命令退出码为0不等于所有测试均已通过。报告目录本地ignored，不上传CI或写入Git。
+
 宿主Bash负责Docker资源创建与清理，测试程序在容器执行。结构测试可只读挂载Compose CLI解析配置，测试容器无Docker socket，业务API无Docker权限。临时数据库/网络按本次标签清理，不能修改日常数据。CI仍可以内部使用uv/npm，不要求开发者在宿主安装它们。
 
 软件测试直接验证容器中挂载的当前源码，不需要构建独立业务APP镜像。旧`app`、`verify app`等命令以状态码2拒绝；已有APP容器、镜像、卷、配置和资产不会自动删除或迁移，开发维护入口也不会把旧APP资源当作dev目标。
@@ -94,6 +96,8 @@ check包含锁文件、文档/链接/模块边界、Python质量和网页/导出
 ```
 
 `./dev verify dev real`显式验收日常开发环境，会重启服务、执行热更新及专用账号操作；默认isolated使用独立项目。原scripts/verify_container_*.sh仍可直接调用，退出码、报告、clean要求与清理规则保持。
+
+`verify dev`的业务验收与`dev test`软件测试身份分开。运行中可变的`browser.json`留在私有暂存目录；完成账号 / 临时资源清理后，排他发布唯一摘要到`reports/browser-real/<run_id>.json`，相关证据位于`reports/browser-real-artifacts/<run_id>/`。摘要关联浏览器机器计数、源码起止身份、清理状态和`runtime.json`；该文件的模型身份由应用内实际`RAG_MODEL_DIR/config.json`生成。宿主`npm run test:real`也使用独立run目录与不可覆盖最终JSON；它不是日常软件回归入口。真实业务验收需要远端模型调用，不由`./dev test all`自动触发。
 
 热更新检查可能临时修改源码，执行器必须恢复；运行记录绑定候选、镜像、模型、Seed、RAG和资源身份。历史验收不能重标为当前候选。
 

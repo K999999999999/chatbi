@@ -1,6 +1,6 @@
 # 05 四套 AI 评测统一追溯、防覆盖与正式验收
 
-Status: in-progress
+Status: done
 Canonical Source: [Spec](../spec.md)、[Design](../design.md)、[草案](../tickets-draft.md#05-四套-ai-评测统一追溯防覆盖与正式验收)
 Owner: 当前主 Agent
 Change Profile: 中等跨套件工具 / 报告改动；证据兼容风险中等；不改业务执行或评分。
@@ -34,7 +34,7 @@ Verification：`uv run --locked pytest -q tests/evaluation tests/scripts/test_ve
 
 Roadmap：不修改 `docs/roadmap.md`；Ticket 05 是已确认测试可靠性目标内的执行项，未改变已确认范围、依赖、验收或路线优先级。
 
-Commit：本地提交待执行；没有 Push / PR。
+Commit：`f88045666b3e3d614c8969d0068b242579b6c1b1`（本地）；没有 Push / PR。
 
 ## Comments
 

@@ -32,7 +32,7 @@ case "$command" in
         if (($#)); then shift; fi
         case "$suite" in
             python|database|web|renderer) exec bash "$root/scripts/container_tasks.sh" "$suite" "$@" ;;
-            all) (($# == 0)) || { usage >&2; exit 2; }; for suite in python database web renderer; do bash "$root/scripts/container_tasks.sh" "$suite"; done; exit 0 ;;
+            all) (($# == 0)) || { usage >&2; exit 2; }; exec bash "$root/scripts/container_tasks.sh" all ;;
             *) echo '用法: ./dev test [python|database|web|renderer|all]' >&2; exit 2 ;;
         esac ;;
     check) exec bash "$root/scripts/container_tasks.sh" check "$@" ;;

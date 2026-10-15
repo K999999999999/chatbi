@@ -84,18 +84,62 @@ def docker_fake(tmp_path):
     fake = tmp_path / "docker"
     fake.write_text(
         "#!/usr/bin/env python3\n"
-        "import json, os, sys\n"
+        "import json, os, subprocess, sys\n"
         "with open(os.environ['DOCKER_CALLS'], 'a') as f:\n"
         "    f.write(json.dumps(sys.argv[1:]) + '\\n')\n"
         "if os.environ.get('DOCKER_FAIL_ON') in sys.argv[1:]:\n"
-        "    sys.exit(19)\n"
+        "    sys.exit(int(os.environ.get('DOCKER_FAIL_CODE', '19')))\n"
         "if 'info' in sys.argv[1:]: print('/bin/true')\n"
         "if 'config' in sys.argv[1:]:\n"
         "    base = os.path.dirname(os.environ['DOCKER_CALLS'])\n"
         "    print(json.dumps({'services': {'tools': {'environment': {'RAG_MODEL_DIR': '/model', 'RAG_OUTPUT_DIR': '/rag'}, 'volumes': [{'source': base+'/model', 'target': '/model'}, {'source': base+'/rag', 'target': '/rag'}]}, 'api': {'ports': [{'published': os.environ.get('DOCKER_PUBLISHED_PORT', '18000')}]}, 'web': {'ports': [{'published': '18001'}]}}}))\n"
-        "if 'run' in sys.argv[1:] and '--entrypoint' in sys.argv[1:]:\n"
-        "    import subprocess\n"
-        "    sys.exit(subprocess.run([sys.executable, '-c', sys.argv[-1]], input=sys.stdin.read(), text=True).returncode)\n"
+        "args = sys.argv[1:]\n"
+        "if 'run' in args and '--entrypoint' in args:\n"
+        "    entry = args.index('--entrypoint')\n"
+        "    command = args[entry + 3:]\n"
+        "    if command[:2] == ['-m', 'scripts.verification_report']:\n"
+        "        if os.environ.get('EXEC_REPORT_HELPER') == '1':\n"
+        "            mounts = {}\n"
+        "            for index, item in enumerate(args[:-1]):\n"
+        "                if item == '-v':\n"
+        "                    source, target = args[index + 1].split(':', 1)\n"
+        "                    mounts[target] = source\n"
+        "            rewritten = []\n"
+        "            for item in command:\n"
+        "                mapped = item\n"
+        "                for target, source in mounts.items():\n"
+        "                    if target not in ('/reports/tests', '/verification'):\n"
+        "                        continue\n"
+        "                    if item == target or item.startswith(target + '/'):\n"
+        "                        mapped = os.path.join(source, item[len(target):].lstrip('/'))\n"
+        "                        break\n"
+        "                    if item.startswith('--') and '=' + target + '/' in item:\n"
+        "                        prefix, value = item.split('=', 1)\n"
+        "                        if value.startswith(target + '/'):\n"
+        "                            mapped = prefix + '=' + os.path.join(source, value[len(target):].lstrip('/'))\n"
+        "                            break\n"
+        "                rewritten.append(mapped)\n"
+        "            sys.exit(subprocess.run([sys.executable, *rewritten], cwd=os.environ['REPO_ROOT']).returncode)\n"
+        "        if command[2] == 'begin':\n"
+        "            run_id = '20261015T120000Z-abcdef1-test-python-deadbeef'\n"
+        "            target = command[command.index('--reports-directory') + 1]\n"
+        "            source = next(item.split(':', 1)[0] for index, item in enumerate(args) if item == '-v' and args[index + 1].split(':')[1] == target)\n"
+        "            os.makedirs(os.path.join(source, run_id), exist_ok=True)\n"
+        "            print(run_id)\n"
+        "        sys.exit(0)\n"
+        "    if 'pytest' in args:\n"
+        "        junit = next((item.split('=', 1)[1] for item in args if item.startswith('--junitxml=')), None)\n"
+        "        if junit:\n"
+        "            report_source = next(args[index + 1].split(':', 1)[0] for index, item in enumerate(args[:-1]) if item == '-v' and args[index + 1].endswith(':/reports/tests'))\n"
+        "            if junit.startswith('/reports/tests/'):\n"
+        "                junit = os.path.join(report_source, junit[len('/reports/tests/'):])\n"
+        "            os.makedirs(os.path.dirname(junit), exist_ok=True)\n"
+        "            open(junit, 'w').write('<testsuite><testcase name=\"fake-test\"/></testsuite>')\n"
+        "    if '--reporter=json' in args:\n"
+        "        print(json.dumps({'stats': {'expected': 2, 'unexpected': 0, 'flaky': 0, 'skipped': 0}}))\n"
+        "    if '-c' in command:\n"
+        "        import subprocess\n"
+        "        sys.exit(subprocess.run([sys.executable, *command], input=sys.stdin.read(), text=True).returncode)\n"
         "sys.exit(int(os.environ.get('DOCKER_RESULT', '0')))\n"
     )
     fake.chmod(0o755)
@@ -105,6 +149,7 @@ def docker_fake(tmp_path):
         "PATH": f"{tmp_path}:{os.environ['PATH']}",
         "DOCKER_CALLS": str(tmp_path / "calls.jsonl"),
         "CHATBI_DEV_ENV_FILE": str(env_file),
+        "REPO_ROOT": str(ROOT),
     }
 
 
@@ -163,13 +208,142 @@ def test_test_command_rejects_unknown_suite_before_docker(docker_fake):
 
 
 def test_python_tests_run_in_a_container_and_propagate_failure(docker_fake):
-    result = invoke(["test", "python"], {**docker_fake, "DOCKER_FAIL_ON": "run"})
+    workspace = Path(docker_fake["DOCKER_CALLS"]).parent / "workspace"
+    result = invoke(
+        ["test", "python"],
+        {
+            **docker_fake,
+            "DOCKER_FAIL_ON": "run",
+            "LOCAL_WORKSPACE_FOLDER": str(workspace),
+        },
+    )
     assert result.returncode == 19
     calls = [
         json.loads(line)
         for line in Path(docker_fake["DOCKER_CALLS"]).read_text().splitlines()
     ]
     assert any("run" in call for call in calls)
+
+
+def test_python_tests_request_junit_and_publish_command_summary(docker_fake):
+    workspace = Path(docker_fake["DOCKER_CALLS"]).parent / "workspace"
+    result = invoke(
+        ["test", "python"],
+        {**docker_fake, "LOCAL_WORKSPACE_FOLDER": str(workspace)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "reports/tests/" in result.stdout
+    calls = [
+        json.loads(line)
+        for line in Path(docker_fake["DOCKER_CALLS"]).read_text().splitlines()
+    ]
+    report_calls = [call for call in calls if "scripts.verification_report" in call]
+    assert any("begin" in call for call in report_calls)
+    assert any("step-start" in call for call in report_calls)
+    assert any("step-finish" in call for call in report_calls)
+    assert any("finish" in call for call in report_calls)
+    pytest_call = next(call for call in calls if "pytest" in call)
+    assert any(
+        argument.startswith("--junitxml=/reports/tests/") for argument in pytest_call
+    )
+
+
+def test_check_records_each_machine_check_without_inventing_test_counts(docker_fake):
+    workspace = Path(docker_fake["DOCKER_CALLS"]).parent / "workspace"
+    result = invoke(
+        ["check"], {**docker_fake, "LOCAL_WORKSPACE_FOLDER": str(workspace)}
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "reports/tests/" in result.stdout
+    calls = [
+        json.loads(line)
+        for line in Path(docker_fake["DOCKER_CALLS"]).read_text().splitlines()
+    ]
+    step_starts = [
+        call[call.index("--name") + 1]
+        for call in calls
+        if "scripts.verification_report" in call and "step-start" in call
+    ]
+    assert step_starts == [
+        "lock",
+        "docs",
+        "boundaries",
+        "python",
+        "web-build",
+        "export-build",
+    ]
+    step_finishes = [
+        call
+        for call in calls
+        if "scripts.verification_report" in call and "step-finish" in call
+    ]
+    assert all("--counts-not-applicable" in call for call in step_finishes)
+
+
+def test_all_failure_report_marks_remaining_suites_not_run(docker_fake, tmp_path):
+    workspace = tmp_path / "isolated-workspace"
+    result = invoke(
+        ["test", "all"],
+        {
+            **docker_fake,
+            "LOCAL_WORKSPACE_FOLDER": str(workspace),
+            "EXEC_REPORT_HELPER": "1",
+            "DOCKER_FAIL_ON": "pytest",
+        },
+    )
+
+    assert result.returncode == 19
+    run_id = result.stdout.split("reports/tests/", 1)[1].split(".json", 1)[0]
+    report = json.loads((workspace / "reports/tests" / f"{run_id}.json").read_text())
+    assert report["status"] == "failed"
+    assert report["steps"][0]["name"] == "python"
+    assert report["steps"][0]["status"] == "failed"
+    assert [step["status"] for step in report["steps"][1:]] == ["not_run"] * 7
+
+
+def test_all_interruption_report_marks_running_suite_interrupted(docker_fake, tmp_path):
+    workspace = tmp_path / "isolated-workspace"
+    result = invoke(
+        ["test", "all"],
+        {
+            **docker_fake,
+            "LOCAL_WORKSPACE_FOLDER": str(workspace),
+            "EXEC_REPORT_HELPER": "1",
+            "DOCKER_FAIL_ON": "pytest",
+            "DOCKER_FAIL_CODE": "130",
+        },
+    )
+
+    assert result.returncode == 130
+    run_id = result.stdout.split("reports/tests/", 1)[1].split(".json", 1)[0]
+    report = json.loads((workspace / "reports/tests" / f"{run_id}.json").read_text())
+    assert report["status"] == "interrupted"
+    assert report["exit_code"] == 130
+    assert report["steps"][0]["status"] == "interrupted"
+    assert [step["status"] for step in report["steps"][1:]] == ["not_run"] * 7
+
+
+def test_check_failure_report_does_not_run_later_checks(docker_fake, tmp_path):
+    workspace = tmp_path / "isolated-workspace"
+    result = invoke(
+        ["check"],
+        {
+            **docker_fake,
+            "LOCAL_WORKSPACE_FOLDER": str(workspace),
+            "EXEC_REPORT_HELPER": "1",
+            "DOCKER_FAIL_ON": "uv",
+        },
+    )
+
+    assert result.returncode == 19
+    run_id = result.stdout.split("reports/tests/", 1)[1].split(".json", 1)[0]
+    report = json.loads((workspace / "reports/tests" / f"{run_id}.json").read_text())
+    assert report["status"] == "failed"
+    assert report["steps"][0]["name"] == "lock"
+    assert report["steps"][0]["status"] == "failed"
+    assert [step["status"] for step in report["steps"][1:]] == ["not_run"] * 5
 
 
 def test_start_rejects_an_occupied_host_port_without_stopping_its_owner(docker_fake):

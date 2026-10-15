@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { login, send } from './helpers';
+import { login, send, isFinalExecutionResponse } from './helpers';
 
 test('manual modes retain separate drafts and query context', async ({ page }) => {
   const bodies: Record<string, unknown>[] = [];
@@ -17,7 +17,9 @@ test('manual modes retain separate drafts and query context', async ({ page }) =
   await expect(page.getByText('查看查询任务证据').locator('..').getByRole('table')).toBeVisible();
   await page.getByRole('button', { name: '问数', exact: true }).click();
   await expect(page.getByLabel('问题')).toHaveValue('问数草稿');
+  const completedQuery = page.waitForResponse(isFinalExecutionResponse);
   await send(page, '改成3月');
+  await completedQuery;
   await expect(page.getByRole('table')).toHaveCount(2);
   expect(paths[0]).toBe(paths[2]);
   expect(bodies[1].mode).toBe('analysis');
@@ -60,6 +62,8 @@ test('controlled analysis rejection preserves query context and cannot silently 
   await expect(page.getByRole('button', { name: '恢复原分析' })).toHaveCount(0);
   await page.unroute('**/api/v1/histories/*/executions');
   await page.getByRole('button', { name: '问数', exact: true }).click();
+  const completedQuery = page.waitForResponse(isFinalExecutionResponse);
   await send(page, '改成3月');
+  await completedQuery;
   await expect(page.getByRole('table')).toHaveCount(2);
 });
