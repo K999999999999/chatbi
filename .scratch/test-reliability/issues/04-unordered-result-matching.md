@@ -1,6 +1,6 @@
 # 04 修正无序结果的容差匹配
 
-Status: open
+Status: ready-to-commit
 Canonical Source: [Spec](../spec.md)、[Design](../design.md)、[草案](../tickets-draft.md#04-修正无序结果的容差匹配)
 Owner: 当前主 Agent
 Change Profile: 小范围确定性评测算法修复；评分影响中等；不调用模型 / 数据库。
@@ -24,7 +24,13 @@ Migration / Rollback: 不回算旧报告；切片可独立恢复，评分结果�
 
 ## Result
 
-Pending.
+TDD: Red 阶段新增的容差重叠反例在旧贪心实现上失败：第一行先占用共享候选，导致实际存在完整配对的结果被误判。改为确定性增广路径匹配后，原顺序及行置换都通过。
+
+Code Review: PASS；审查基线为 Ticket 03 提交 `dbb948c81f5bcbc02d39c8dd22b3452a868b9d58`，范围限于评测比较器、对应测试和评测 Contract。匹配图基于原 `_rows_match` 语义构建，增广路径寻找完整一一配对；有序分支、容差和值类型语义不变。未发现需修改问题。
+
+Verification: `uv run --locked pytest -q tests/evaluation/single_turn tests/evaluation/multi_turn`（30 passed）；`uv run --locked pytest -q tests/evaluation`（92 passed、1 skipped、22 subtests passed）；`uv run --locked ruff check evaluation/suites/single_turn/evaluator.py tests/evaluation/single_turn/test_evaluator.py`、`python3 -m scripts.check_documentation`、`git diff --check` 均通过。新增 100 行稠密候选测试无计时断言，不调用模型或数据库。
+
+Commit: 本地提交待执行；没有 Push / PR。
 
 ## Comments
 
