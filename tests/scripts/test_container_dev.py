@@ -123,7 +123,7 @@ def docker_fake(tmp_path):
         "        if command[2] == 'begin':\n"
         "            run_id = '20261015T120000Z-abcdef1-test-python-deadbeef'\n"
         "            target = command[command.index('--reports-directory') + 1]\n"
-        "            source = next(item.split(':', 1)[0] for index, item in enumerate(args) if item == '-v' and args[index + 1].split(':')[1] == target)\n"
+        "            source = next(args[index + 1].split(':', 1)[0] for index, item in enumerate(args) if item == '-v' and args[index + 1].split(':')[1] == target)\n"
         "            os.makedirs(os.path.join(source, run_id), exist_ok=True)\n"
         "            print(run_id)\n"
         "        sys.exit(0)\n"
@@ -234,6 +234,8 @@ def test_python_tests_request_junit_and_publish_command_summary(docker_fake):
 
     assert result.returncode == 0, result.stderr
     assert "reports/tests/" in result.stdout
+    run_id = result.stdout.split("reports/tests/", 1)[1].split(".json", 1)[0]
+    assert (workspace / "reports/tests" / run_id).is_dir()
     calls = [
         json.loads(line)
         for line in Path(docker_fake["DOCKER_CALLS"]).read_text().splitlines()

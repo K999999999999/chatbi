@@ -119,6 +119,21 @@ jobs:
   postgres-integration:
     name: PostgreSQL integration
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: "5433"
+      POSTGRES_DB: chatbi_mvp
+      POSTGRES_USER: chatbi_migrator
+      POSTGRES_APP_USER: chatbi_app
+      POSTGRES_APP_PASSWORD: ci-app-password
+      POSTGRES_CONTROL_DB: chatbi_control
+      POSTGRES_CONTROL_APP_USER: chatbi_control_user
+      POSTGRES_CONTROL_APP_PASSWORD: ci-control-password
+      POSTGRES_MIGRATOR_USER: chatbi_migrator
+      POSTGRES_MIGRATOR_PASSWORD: ci-migrator-password
+      POSTGRES_CONTROL_MIGRATOR_USER: chatbi_migrator
+      POSTGRES_CONTROL_BOOTSTRAP_DB: postgres
     services:
       postgres:
         image: postgres:16-alpine
@@ -149,31 +164,121 @@ jobs:
       - name: Verify lockfile
         run: uv lock --check
 
+      - name: Prepare CI evidence directory
+        run: mkdir -p reports/ci
+
+      - name: Record PostgreSQL test environment identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python_path="$(uv python find 3.11)"
+          postgres_image_id="$(docker image inspect postgres:16-alpine --format '{{.Id}}')"
+          {
+            printf 'python_version=%s\n' "$("$python_path" --version 2>&1)"
+            printf 'uv_version=%s\n' "$(uv --version)"
+            printf 'postgres_image_id=%s\n' "$postgres_image_id"
+            printf 'uv_lock_sha256=%s\n' "$(sha256sum uv.lock | cut -d ' ' -f 1)"
+            printf 'package_lock_sha256=%s\n' "$(sha256sum frontend/package-lock.json | cut -d ' ' -f 1)"
+          } > reports/ci/environment.txt
+
       - name: Bootstrap CI database
         env:
           PGPASSWORD: ci-migrator-password
-        run: >-
-          docker run --rm --network host
-          -e PGPASSWORD
-          -v "${GITHUB_WORKSPACE}/database:/database:ro"
-          postgres:16-alpine
-          psql --set ON_ERROR_STOP=1
-          --host 127.0.0.1 --port 5433
-          --username chatbi_migrator --dbname chatbi_mvp
-          --file /database/ci/bootstrap.sql
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network host \
+            -e PGPASSWORD \
+            -v "${GITHUB_WORKSPACE}/database:/database:ro" \
+            postgres:16-alpine \
+            psql --set ON_ERROR_STOP=1 \
+              --host 127.0.0.1 --port 5433 \
+              --username chatbi_migrator --dbname chatbi_mvp \
+              --file /database/ci/bootstrap.sql
 
-      - name: Run PostgreSQL integration tests
+      - name: Run PostgreSQL CI profile
         env:
-          POSTGRES_HOST: 127.0.0.1
-          POSTGRES_PORT: "5433"
-          POSTGRES_DB: chatbi_mvp
-          POSTGRES_APP_USER: chatbi_app
-          POSTGRES_APP_PASSWORD: ci-app-password
           RUN_DATABASE_TESTS: "1"
-        run: >-
-          uv run --python 3.11 --locked --with pytest python -m pytest -q
-          tests/online_query/test_database_integration.py
-          tests/online_query/test_service_integration.py::ServiceDatabaseIntegrationTest
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run --python 3.11 --locked --with pytest python -m pytest -q \
+            tests/online_query/test_database_integration.py \
+            tests/online_query/test_service_integration.py::ServiceDatabaseIntegrationTest \
+            --junitxml=reports/ci/postgres-ci.xml
+
+      - name: Initialize development PostgreSQL fixture
+        env:
+          PGPASSWORD: ci-migrator-password
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network host \
+            -e PGHOST=127.0.0.1 -e PGPORT=5433 -e PGPASSWORD \
+            -e POSTGRES_USER -e POSTGRES_DB \
+            -e POSTGRES_APP_USER -e POSTGRES_APP_PASSWORD \
+            -e POSTGRES_CONTROL_DB -e POSTGRES_CONTROL_APP_USER \
+            -e POSTGRES_CONTROL_APP_PASSWORD -e POSTGRES_CONTROL_MIGRATOR_USER \
+            -v "${GITHUB_WORKSPACE}/database:/workspace/database:ro" \
+            postgres:16-alpine sh -eu -c '
+              psql --set ON_ERROR_STOP=1 --username "$POSTGRES_USER" \
+                --dbname postgres \
+                --command "DROP DATABASE IF EXISTS chatbi_mvp WITH (FORCE)"
+              psql --set ON_ERROR_STOP=1 --username "$POSTGRES_USER" \
+                --dbname postgres --command "DROP ROLE IF EXISTS chatbi_app"
+              psql --set ON_ERROR_STOP=1 --username "$POSTGRES_USER" \
+                --dbname postgres --command "DROP ROLE IF EXISTS chatbi_control_user"
+              createdb --username "$POSTGRES_USER" --owner "$POSTGRES_USER" "$POSTGRES_DB"
+              sh /workspace/database/init/10_chatbi_dev_environment.sh
+            '
+
+      - name: Run PostgreSQL development profile
+        env:
+          RUN_DATABASE_TESTS: "1"
+          RUN_DEVELOPMENT_DATABASE_TESTS: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run --python 3.11 --locked --with pytest python -m src.bootstrap migrate
+          uv run --python 3.11 --locked --with pytest python -m pytest -q \
+            tests/online_query/test_database_integration.py \
+            tests/online_query/test_service_integration.py::ServiceDatabaseIntegrationTest \
+            tests/chatbi_control/test_postgres_dev_environment.py \
+            tests/chatbi_control/test_admin_recovery_postgres.py \
+            tests/chatbi_control/test_execution_postgres.py \
+            tests/chatbi_control/test_history_postgres.py \
+            tests/evaluation/common/test_database_fingerprint.py \
+            --junitxml=reports/ci/postgres-development.xml
+
+      - name: Build PDF renderer test image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --file docker/python-dev.Dockerfile --tag chatbi-python-dev:ci .
+          printf 'python_dev_image_id=%s\n' \
+            "$(docker image inspect chatbi-python-dev:ci --format '{{.Id}}')" \
+            >> reports/ci/environment.txt
+
+      - name: Run real PDF renderer tests
+        env:
+          CHATBI_DEV_PYTHON_IMAGE: chatbi-python-dev:ci
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./dev test renderer
+
+      - name: Upload PostgreSQL and renderer evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: postgres-renderer-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            reports/ci/*.xml
+            reports/ci/*.txt
+            reports/tests/*.json
+            reports/tests/*/*.xml
+          if-no-files-found: ignore
+          retention-days: 14
 
   application-smoke:
     name: Application startup smoke

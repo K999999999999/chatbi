@@ -1,10 +1,12 @@
 # 07 CI 接入关键数据库与 PDF 检查及证据
 
-Status: open
+Status: in-progress
 Canonical Source: [Spec](../spec.md)、[Design](../design.md)、[草案](../tickets-draft.md#07-ci-接入关键数据库与-pdf-检查及证据)
 Owner: 当前主 Agent
 Change Profile: 小至中等 workflow 改动；自动门禁风险中等；复用现有 job 和本地软件套件。
 Blocked by: 02, 06
+
+Implementation baseline: `9f85b034bf996ee3c42786553cc96987c8484b34` on `refactor/test-reliability`; initial worktree clean.
 
 ## What to build
 
@@ -25,7 +27,15 @@ Migration / Rollback: 在既有 job 内增加步骤，不更改远端门禁身�
 
 ## Result
 
-Pending.
+在既有 `PostgreSQL integration` job 中接入 development PostgreSQL fixture / migration / 测试集，以及由 `docker/python-dev.Dockerfile` 构建并运行的真实 PDF renderer；保留 job 身份和其他 CI 检查，不构建或上传业务 APP 镜像。CI JUnit、实际环境身份和 renderer 本地 summary 分开放置，上传步骤在失败时仍尝试保存可获得的证据，不触碰 AI Evaluation 报告目录。
+
+实施中修复并回归了复用 PostgreSQL 服务时的角色残留边界：CI fixture 创建的集群角色会在 development 初始化前随临时数据库一起重置，否则 development init 会重复创建 `chatbi_app` 而失败。最终本机同服务顺序验证 CI profile 5/5、development profile 56/56；`tests/scripts/test_ci_verification_workflow.py` 5 项通过。
+
+Verification：`./dev test all` 退出码 0，1206 total：1152 passed、54 skipped、0 failed、0 errors；报告 `reports/tests/20261015T154537Z-9f85b03-test-all-62eba8a46063.json` 将状态标记为 `incomplete`（如实反映 54 项 skipped），清理通过且源码起止 stable；Python 1019/1073、CI DB 5/5、development DB 56/56、packaged browser 69/69、development browser 1/1、renderer 2/2 均通过。`./dev check` 六步全过，报告 `reports/tests/20261015T155112Z-9f85b03-check-all-311da29766a0.json`。workflow YAML 解析、Ruff format / lint、文档与链接检查、`git diff --check` 通过。未运行托管 GitHub Actions、LLM 或业务验收。
+
+Review：PASS；基线 `9f85b034bf996ee3c42786553cc96987c8484b34`；范围为既有 PostgreSQL CI job、development DB / renderer 接入、回归测试、Runbook 和全量验证中暴露的测试装配可靠性修正。What：保持 job 身份并补齐 development 数据库与真实 PDF 检查和失败证据上传；Why：普通 CI 覆盖本地关键软件套件且可追溯；Risk：复用 PostgreSQL 服务需显式清除先前 profile 留下的测试角色，已由顺序验证覆盖；Failure behavior：pytest、migration、renderer 或 image build 失败均保持非零，后置 artifact 仍尝试上传。最终审查无遗留发现；Correctness / Comprehension / Consistency / Testability / Architecture / Security 均通过。
+
+Roadmap：不修改 `docs/roadmap.md`；Ticket 07 属已确认测试可靠性目标内的实施，未改变范围、依赖、验收或优先级。Commit：本地实施提交将在提交后补记；没有 Push / PR。
 
 ## Comments
 
