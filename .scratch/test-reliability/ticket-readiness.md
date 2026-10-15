@@ -14,7 +14,7 @@ Owner: 当前主 Agent；用户负责范围与公共 Contract 裁决。无需独
 
 - Scope / Canonical Source：Spec 定义行为，Design 定义实现选择，草案定义切片；每项 owned files、非目标与升级边界可定位。
 - Behavior / Safety：正常、失败、重复、超时、报告冲突 / 缺字段均有可观察验收；权限、数据、SQL Guard 不改变；APP 资源拒绝、测试账号命名空间、无生产后门、Secret 白名单有明确约束。
-- Validation：数据库保留真实隔离连接与进程有界失败验证；浏览器在同一支持服务连续重复；比较器纯软件测试；AI 报告使用确定性依赖；CI 用本地相同实际命令与结构校验，托管运行未授权时标为未执行。
+- Validation：数据库保留真实隔离连接与进程有界失败验证；浏览器在同一支持服务连续重复；比较器纯软件测试；AI 报告使用确定性依赖；CI 用本地相同实际命令与结构校验。Readiness 阶段尚无发布授权，因此当时托管运行未执行。
 - Maintainability：不新增依赖 / Framework / 一级业务模块，不新增通用测试平台；已有工具版本和环境锁继续使用。各项连同适用正式文档，不另建长期水平集成 Ticket。
 - Migration / Rollback：旧 APP 正向入口明确失败，dev 替代路径保留；已有数据、审计、报告不迁移；每个代码切片可 Git 恢复，新产物原件保留。无真实流量发布，Feature Flag / 分批上线不适用。
 
@@ -36,4 +36,4 @@ Owner: 当前主 Agent；用户负责范围与公共 Contract 裁决。无需独
 
 当前上下文执行只读审查，已核对仓库 Agent / 工作项规则、Architecture / Product Scope / Roadmap、相关 Contract、直接源码 / 脚本 / CI / Tests，以及完整草案与设计约束。文档链接检查已通过；本阶段没有执行新软件、数据库、浏览器或真实 LLM 验收。
 
-Next: 七项拆分与全部本地实施、验证、Commit 已由用户确认，正式 Ticket 已创建；按依赖连续实施。没有 Push / PR 授权。
+Next: Readiness 后用户确认七项拆分、实施与验证授权；七项交付后通过 [PR #86](https://github.com/K999999999999/chatbi/pull/86) 合并。此处记录 Readiness 阶段的历史状态。

@@ -29,7 +29,7 @@ Code Review: PASS；没有发现需修改的正确性或范围问题。TDD Red �
 
 Verification: `uv run --locked pytest -q tests/scripts/test_container_dev.py tests/scripts/test_dev_maintenance.py tests/bootstrap/test_commands.py tests/bootstrap/test_admin_recovery_command.py tests/bootstrap/test_doctor.py tests/authorization/test_admin_recovery.py`（78 passed）；开发 Compose `config --quiet`（exit 0）；`bash -n dev scripts/dev_environment.sh scripts/dev_maintenance.sh`、Ruff format / check、`python3 -m scripts.check_documentation` 和 `git diff --check` 均通过。构建入口测试确认 `./dev build` 仍只构建 `api` / `web` 开发镜像。
 
-Commit: `8a657dfb8df19bf0f2ff62af83ca20aa2798adb3`（本地）；没有修改本机镜像、容器、卷或备份；没有 Push / PR。
+Commit: `8a657dfb8df19bf0f2ff62af83ca20aa2798adb3`（Ticket 完成时为本地提交，后续随目标汇总至 [PR #86](https://github.com/K999999999999/chatbi/pull/86)）；没有修改本机镜像、容器、卷或备份。
 
 ## Comments
 

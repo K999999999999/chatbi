@@ -30,7 +30,7 @@ Code Review: PASS；审查基线为 Ticket 03 提交 `dbb948c81f5bcbc02d39c8dd22
 
 Verification: `uv run --locked pytest -q tests/evaluation/single_turn tests/evaluation/multi_turn`（30 passed）；`uv run --locked pytest -q tests/evaluation`（92 passed、1 skipped、22 subtests passed）；`uv run --locked ruff check evaluation/suites/single_turn/evaluator.py tests/evaluation/single_turn/test_evaluator.py`、`python3 -m scripts.check_documentation`、`git diff --check` 均通过。新增 100 行稠密候选测试无计时断言，不调用模型或数据库。
 
-Commit: `9654f2d83a46b869c0f98a64f3f80e574cc1eb33`（本地）；没有 Push / PR。
+Commit: `9654f2d83a46b869c0f98a64f3f80e574cc1eb33`（Ticket 完成时为本地提交，后续随目标汇总至 [PR #86](https://github.com/K999999999999/chatbi/pull/86)）。
 
 ## Comments
 
