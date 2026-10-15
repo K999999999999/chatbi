@@ -1,4 +1,4 @@
-"""Safe run identity and exclusive report-pair helpers (standard library only)."""
+"""Safe run identity and exclusive report-pair helpers."""
 
 from __future__ import annotations
 
@@ -16,7 +16,9 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
-from xml.etree import ElementTree
+
+from defusedxml import ElementTree
+from defusedxml.common import DefusedXmlException
 
 _SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z")
 
@@ -446,7 +448,7 @@ def parse_junit_counts(path: Path) -> dict[str, int] | None:
 
     try:
         root = ElementTree.parse(path).getroot()
-    except (OSError, ElementTree.ParseError):
+    except (OSError, ElementTree.ParseError, DefusedXmlException):
         return None
     cases = list(root.iter("testcase"))
     if not cases:

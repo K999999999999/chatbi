@@ -48,6 +48,7 @@ def test_existing_postgres_job_runs_ci_database_profile_with_junit(job: str) -> 
     assert "name: PostgreSQL integration" in job
     assert "image: postgres:16-alpine" in job
     assert "timeout-minutes: 60" in job
+    assert "fetch-depth: 0" in step(job, "Check out repository")
 
     ci = step(job, "Run PostgreSQL CI profile")
     assert 'RUN_DATABASE_TESTS: "1"' in ci

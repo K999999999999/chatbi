@@ -1,7 +1,7 @@
 """运行身份采集与排他报告保存测试。"""
 
-import json
 import hashlib
+import json
 import subprocess
 import sys
 import unittest
@@ -11,14 +11,14 @@ from tempfile import TemporaryDirectory
 
 from scripts.verification_report import (
     ReportWriteError,
-    finish_verification,
     finish_run,
+    finish_verification,
     parse_junit_counts,
     parse_playwright_counts,
     start_run,
     start_verification,
-    write_verification_summary,
     write_report_pair,
+    write_verification_summary,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -44,6 +44,19 @@ class VerificationReportTest(unittest.TestCase):
             counts,
             {"total": 4, "passed": 1, "failed": 1, "errors": 1, "skipped": 1},
         )
+
+    def test_junit_counts_reject_xml_with_a_document_type(self) -> None:
+        with TemporaryDirectory() as directory:
+            report = Path(directory) / "pytest.xml"
+            report.write_text(
+                '<!DOCTYPE testsuite [<!ENTITY name "expanded">]>'
+                '<testsuite><testcase name="&name;" /></testsuite>',
+                encoding="utf-8",
+            )
+
+            counts = parse_junit_counts(report)
+
+        self.assertIsNone(counts)
 
     def test_playwright_counts_use_reporter_json_not_console_output(self) -> None:
         with TemporaryDirectory() as directory:
