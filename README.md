@@ -33,9 +33,9 @@ ChatBI是面向销售数据的领域AI引擎，提供电脑端问数、多轮追
 
 这些命令在容器里执行，不需要宿主uv/npm。数据库和浏览器测试使用隔离资源；真实LLM评测需显式执行，会产生调用费用。
 
-`./dev help`按八类展示环境管理、初始化、代码验证、AI评测、容器验收、诊断维护、账号恢复和开发协作。标准打包应用使用`./dev app`；完整验收使用`./dev verify dev/app`，会调用真实LLM。管理员忘记密码使用显式环境的`./dev recover-admin`，信任与恢复规则见[Runbook](docs/runbook.md#8-管理员忘记密码)。
+`./dev help`按八类展示环境管理、初始化、代码验证、AI评测、容器验收、诊断维护、账号恢复和开发协作。软件测试验证本地挂载源码；`./dev verify dev`是按需执行的真实业务验收，会调用真实LLM。管理员忘记密码通过`./dev recover-admin dev`显式操作，信任与恢复规则见[Runbook](docs/runbook.md#7-管理员忘记密码)。
 
-根[Dockerfile](Dockerfile)提供标准打包应用构建，[应用Compose](docker-compose.app.yml)提供可选本地运行，见[Runbook](docs/runbook.md#3-标准应用容器)。本机Docker会生成镜像，无需上传或维护发布制品。项目不提供Stable发布、升级回滚、备份恢复或企业生产编排。
+`./dev build`构建源码开发和测试所需的依赖镜像；项目不提供独立业务APP镜像构建路线。已有APP容器、镜像、卷和配置不会被自动删除；当前支持边界见[本地源码运行Spec](docs/specs/container-deployment.md)。项目不提供Stable发布、升级回滚、备份恢复或企业生产编排。
 
 ## 项目地图
 

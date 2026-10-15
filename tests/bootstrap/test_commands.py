@@ -25,7 +25,11 @@ assert 'langchain_openai' not in sys.modules
 assert 'FlagEmbedding' not in sys.modules
 """
     result = subprocess.run(
-        [sys.executable, "-c", script], capture_output=True, text=True, timeout=30
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
     )
     assert result.returncode == 0, result.stderr
     for command in (
@@ -36,6 +40,7 @@ assert 'FlagEmbedding' not in sys.modules
         "build-rag",
     ):
         assert command in result.stdout
+    assert "verify" not in result.stdout
 
 
 def test_database_commands_do_not_import_runtime_or_embedding():
@@ -50,34 +55,13 @@ assert 'src.bootstrap.model' not in sys.modules
 assert 'FlagEmbedding' not in sys.modules
 """
     result = subprocess.run(
-        [sys.executable, "-c", script], capture_output=True, text=True, timeout=30
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
     )
     assert result.returncode == 0, result.stderr
-
-
-def test_runtime_verification_reports_missing_assets_without_private_configuration(
-    monkeypatch, capsys
-):
-    monkeypatch.setattr(commands, "load_dotenv", Mock())
-    monkeypatch.setenv(
-        "CHATBI_ADMIN_SECRET_KEY", "test-admin-secret-32-characters-long"
-    )
-    monkeypatch.setenv("LLM_API_KEY", "test-key")
-    monkeypatch.setenv("LLM_MODEL", "test-model")
-    monkeypatch.setenv("RAG_MODEL_DIR", "/missing/private-test-model")
-    assert commands.main(["verify"]) == 1
-    assert "private-test-model" not in capsys.readouterr().err
-
-
-def test_runtime_verification_rejects_weak_signing_configuration_without_echoing_it(
-    monkeypatch, capsys
-):
-    monkeypatch.setattr(commands, "load_dotenv", Mock())
-    monkeypatch.setenv("CHATBI_ADMIN_SECRET_KEY", "private-short-key")
-    assert commands.main(["verify"]) == 1
-    error = capsys.readouterr().err
-    assert "运行配置" in error
-    assert "private-short-key" not in error
 
 
 @pytest.mark.parametrize(
@@ -127,6 +111,16 @@ def test_model_and_rag_dispatch_preserve_arguments_and_exit_code(monkeypatch):
         ["unknown"],
         ["build-rag", "--unknown"],
         ["prepare-model", "--username", "admin"],
+        ["verify"],
+        [
+            "recover-admin",
+            "--username",
+            "admin",
+            "--environment",
+            "app",
+            "--project",
+            "test-project",
+        ],
     ],
 )
 def test_invalid_commands_fail_before_configuration_loading(monkeypatch, argv):
@@ -148,6 +142,7 @@ def test_old_command_entrypoints_are_removed(old_module):
         capture_output=True,
         text=True,
         timeout=30,
+        check=False,
     )
     assert result.returncode != 0
     assert "No module named" in result.stderr

@@ -218,6 +218,42 @@ class ResultComparisonTest(unittest.TestCase):
         self.assertTrue(results_match(reordered, expected))
         self.assertFalse(results_match(wrong_duplicates, expected))
 
+    def test_unordered_tolerance_matching_can_reassign_overlapping_rows(self) -> None:
+        from evaluation.suites.single_turn.evaluator import results_match
+
+        actual = self._data(
+            ("value",),
+            ((Decimal(1),), (Decimal("1.0000015"),)),
+        )
+        expected = self._data(
+            ("value",),
+            ((Decimal("1.0000005"),), (Decimal("0.999999"),)),
+        )
+        permuted_actual = self._data(
+            ("value",),
+            ((Decimal("1.0000015"),), (Decimal(1),)),
+        )
+
+        self.assertTrue(results_match(actual, expected))
+        self.assertTrue(results_match(permuted_actual, expected))
+
+    def test_unordered_tolerance_matching_handles_dense_100_row_candidates(
+        self,
+    ) -> None:
+        from evaluation.suites.single_turn.evaluator import results_match
+
+        expected_rows = tuple(
+            (Decimal(1) + Decimal(index) / Decimal(1000000000),) for index in range(100)
+        )
+        actual_rows = tuple(reversed(expected_rows))
+
+        self.assertTrue(
+            results_match(
+                self._data(("value",), actual_rows),
+                self._data(("value",), expected_rows),
+            )
+        )
+
     def test_checks_row_order_when_order_sensitive(self) -> None:
         from evaluation.suites.single_turn.evaluator import results_match
 

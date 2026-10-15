@@ -1,9 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { login, send } from './helpers';
+import { login, send, isFinalExecutionResponse } from './helpers';
 
 test('服务拒绝追问时显示确定原因，恢复后沿用成功上下文', async ({ page }) => {
   await login(page);
+  const firstQuery = page.waitForResponse(isFinalExecutionResponse);
   await send(page, '2025年2月净销售额');
+  await firstQuery;
   await expect(page.getByRole('table')).toHaveCount(1);
   const submissions: Record<string, unknown>[] = [];
   let rejected = true;
@@ -20,7 +22,9 @@ test('服务拒绝追问时显示确定原因，恢复后沿用成功上下文',
   await expect(page.getByRole('table')).toHaveCount(1);
   expect(submissions).toHaveLength(1);
   rejected = false;
+  const recoveredQuery = page.waitForResponse(isFinalExecutionResponse);
   await send(page, '改成2025年3月');
+  await recoveredQuery;
   await expect(page.getByRole('table')).toHaveCount(2);
   expect(submissions[1].expected_context_revision).toBe(1);
   expect(submissions[1].operation_id).not.toBe(submissions[0].operation_id);

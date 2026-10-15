@@ -24,9 +24,9 @@ Evaluation Module 不设对所有产品版本通用的准确率门槛；当前 M
 均必须显式提供 `--expected-commit` 和 `--expected-rag-version`，旧的仅传 `--cases --report` 命令必须迁移；不能在缺少预期身份时接受报告。
 
 
-验收要求报告的 `git_commit` 等于预期完整 SHA、`git_dirty` 严格为 `false`、套件匹配、`test_set_hash` 等于当前案例文件 SHA-256。报告必须包含完整且不重复的案例 ID 和 PASS 状态；多轮同时检查完整轮次 ID、状态和计数。所有套件均满足零失败 / 零无效及各自准确率门槛，并包含有效的上下文、标准结果、模型端点和数据指纹。
+验收要求报告的 `git_commit` 等于预期完整 SHA、`git_dirty` 严格为 `false`、套件匹配、`test_set_hash` 等于当前案例文件 SHA-256。`metadata.provenance` 必须是版本 1，包含带时区的起止时间、起止 Git / 输入指纹，并且 `consistency` 为 `stable`；起止源码都必须绑定同一完整 SHA、clean 状态和 tracked-change Hash，起止案例 / 上下文指纹都必须与报告元数据一致。`changed`、`unverified` 或缺少证明的报告不得作为正式验收通过。报告还必须包含完整且不重复的案例 ID 和 PASS 状态；多轮同时检查完整轮次 ID、状态和计数。所有套件均满足零失败 / 零无效及各自准确率门槛，并包含有效的上下文、标准结果、模型端点和数据指纹。
 
-三套报告还必须具有一致的 RAG 版本、Sales Mart Seed / 数据 Hash / 算法 / 摘要、模型名 / 端点 Hash / temperature / max_tokens。不同套件的上下文与标准结果 Hash 可以不同，不错误地要求它们相等。验收器校验报告身份与一致性，不重新执行数据库查询，也不证明生产容量或动态依赖可用性。
+三套报告还必须具有一致的 RAG 版本、Sales Mart Seed / 数据 Hash / 算法 / 摘要、模型名 / 端点 Hash / temperature / max_tokens / timeout 及 `model_configuration_hash`。经营分析报告另行记录 Judge 的实际配置和 `judge_configuration_hash`，Judge temperature 必须单独记录为 `0`，不能被业务模型 temperature 覆盖。不同套件的上下文与标准结果 Hash 可以不同，不错误地要求它们相等。验收器校验报告身份与一致性，不重新执行数据库查询，也不证明生产容量或动态依赖可用性。历史报告继续可读，既有 Baseline 比较仍按原指纹规则运行；缺少新 provenance 的旧报告不能补造为新的正式验收证据。
 
 手动 Real E2E 使用完整合成开发 Seed 初始化隔离 PostgreSQL，并安装 Control DB / checkpoint，随后构建真实 RAG 资产、运行三套正式评测和统一验收；一套失败不阻止其余正式套件出报告。诊断与正式报告分目录，失败仍上传可获得的报告。普通确定性 CI 继续使用小型 CI fixture；真实评测仍需外部数据发送授权。
 
@@ -40,7 +40,7 @@ Evaluation Module 不设对所有产品版本通用的准确率门槛；当前 M
 
 实现按 `evaluation/common/` 的共享能力和 `evaluation/suites/<suite>/` 的套件实现分类；每个套件的案例文件与对应代码放在同一目录。确定性软件测试按相同套件边界放在 `tests/evaluation/<suite>/`，公共能力测试放在 `tests/evaluation/common/`。
 
-当前仓库中的集合规模为：单轮 29 个案例、多轮 7 个 Conversation / 15 个轮次、经营分析 10 个案例。`evaluation/suites/query_understanding/cases.json` 有 6 个辅助语义案例；它不替代上述三类业务套件。数量应从相应案例文件读取，不用历史报告数量推断。
+当前仓库中的集合规模为：单轮 29 个案例、多轮 7 个 Conversation / 15 个轮次、经营分析 10 个案例。`evaluation/suites/query_understanding/cases.json` 有 7 个辅助语义案例；它不替代上述三类业务套件。数量应从相应案例文件读取，不用历史报告数量推断。
 
 经营分析案例使用通用语义任务描述，不在案例中绑定 SQL 或固定数值。成功案例由两个独立的 LLM Judge 分别评估任务拆解覆盖度和总结质量；任一维度失败都不跳过另一维度。澄清与拒绝案例按预期结果类型和错误码确定性评估。结果报告分别给出结果类型、任务拆解、总结质量和端到端准确率。Query Understanding（查询理解）语义集是辅助回归，不是第四类业务评测集。
 
@@ -148,7 +148,7 @@ question
 - 列数必须一致。
 - 列顺序保留，对应位置的数据必须一致。
 - 行数必须一致，重复行数量也必须一致。
-- `order_sensitive` 未提供或为 `false` 时，忽略行顺序，按完整行的多重集合比较。
+- `order_sensitive` 未提供或为 `false` 时，忽略行顺序，按完整行的一一配对比较；数值容差造成多个候选行都可匹配时，必须判断是否存在覆盖全部行的配对，不依赖贪心首次命中。
 - `order_sensitive` 为 `true` 时，逐行比较，行顺序必须一致。
 - `NULL` 只与 `NULL` 相等。
 - 非数值按实际值比较。
@@ -198,10 +198,14 @@ failure_stage 和 internal_reason 分布
 
 多轮评测另外报告 `Conversation Accuracy = 完整 PASS 的有效 Conversation 数 / 有效 Conversation 数`。多轮 `Execution Accuracy` 和 `Outcome Accuracy` 按有效轮次分开计算。经营分析准确率继续按经营分析专用口径报告。`INVALID_CASE` 不进入分母，但必须在报告中明确列出。
 
+每次运行开始前采集 Git 与实际案例 / 上下文指纹，必要资源清理后再采集一次；报告同时记录版本化 provenance。Run ID 包含 UTC 时间、短提交、套件和随机唯一部分。JSON / Markdown 必须属于同一 Run ID，并以排他方式创建；目标已存在时失败且不覆盖旧文件，部分保存失败也不得报告成功。
+
 每次运行同时生成两份同名报告；报告只作为本地评测产物，不作为 GitHub Issue / PR 或远程交付内容：
 
 - JSON 数据报告：保留机器可读的运行元数据、汇总、单条结果和可选基线比较。
 - Markdown 总结报告：明确展示总体结论、成功/失败/无效数量、总体与分类准确率、失败阶段、内部原因、失败案例及原因、基线比较状态和必要运行信息。
+
+每份报告保留有效模型名、temperature、max_tokens、有效 timeout、端点 Hash 和这些安全配置的规范化 Hash；不得记录 API Key 或完整 Endpoint。查询理解语义报告还必须记录实际案例文件 Hash。Query Understanding 无数据库依赖，不得虚构数据库指纹。
 
 数据库型评测复用日常开发数据库 `chatbi_mvp`。expected SQL 与模型 SQL 使用同一 `chatbi_app` 只读账号、数据库配置和查询执行器；不创建独立评测数据库。Query Understanding 语义评测不访问数据库，因此不记录 Sales Mart 数据指纹。
 

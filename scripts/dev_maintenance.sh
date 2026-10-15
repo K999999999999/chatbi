@@ -3,8 +3,12 @@
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 operation=$1; target=$2; shift 2
+if [[ "$target" != dev ]]; then
+    echo '维护目标无效；当前只支持 dev。' >&2
+    exit 2
+fi
 source "$root/scripts/dev_environment.sh"
-initialize_environment "$target" || exit 1
+initialize_environment dev || exit 1
 work=$(mktemp -d /tmp/chatbi-maintenance.XXXXXX)
 chmod 700 "$work"
 cleanup() {
@@ -31,7 +35,7 @@ json_tool() {
 # 未插值结构可能仍含用户override中的字面Secret，只保存在0700临时目录。
 "${compose[@]}" --profile tools config --no-interpolate --format json > "$work/config.json" 2>/dev/null
 chmod 600 "$work/config.json"
-# 使用目标tools镜像解析配置，标准应用不额外要求开发镜像。
+# 使用开发tools镜像解析配置；不会启动测试以外的目标服务。
 raw_image=$("${compose[@]}" --profile tools config --no-interpolate --format yaml 2>/dev/null | awk '
     /^  tools:$/ { selected=1; next }
     selected && /^  [^ ]+:$/ { selected=0 }
@@ -52,11 +56,11 @@ select_postgres() {
     verify_volume || return 1
     pg=$(docker ps -q --filter "label=com.docker.compose.project=$project" --filter label=com.docker.compose.service=postgres --filter status=running)
     [[ -n "$pg" && "$pg" != *$'\n'* ]] || { echo '目标Control DB没有唯一运行容器。' >&2; return 1; }
-    docker inspect "$pg" | json_tool validate-container --project "$project" --service postgres --volume "$volume" --target "$target" || return 1
+    docker inspect "$pg" | json_tool validate-container --project "$project" --service postgres --volume "$volume" || return 1
 }
 prepare_service() {
     select_postgres || return 1
-    json_tool template --operation "$operation" --container "$pg" --target "$target" --local-root "$root" --host-root "$host_root" < "$work/config.json" > "$work/service.json" || return 1
+    json_tool template --operation "$operation" --container "$pg" --local-root "$root" --host-root "$host_root" < "$work/config.json" > "$work/service.json" || return 1
     chmod 600 "$work/service.json"
     maintenance=(docker compose --project-directory "$root" --env-file "$env_file" -f "$work/service.json")
     "${maintenance[@]}" config --format json > "$work/expanded.json" 2>/dev/null || return 1
@@ -90,12 +94,6 @@ case "$operation" in
         echo "诊断目标：$target；Compose项目：$project（只读，无LLM请求）"
         "${compose[@]}" --profile tools config --services --no-interpolate >/dev/null 2>&1
         if ! prepare_service; then echo '依赖：not_ready；无法装配诊断，不会启动服务。' >&2; exit 1; fi
-        if [[ "$target" == app ]]; then
-            for asset_key in model_data rag_data; do
-                read -r asset_project asset_volume < <(volume_identity "$asset_key")
-                docker volume inspect "$asset_volume" 2>/dev/null | json_tool validate-volume --project "$project" --volume "$asset_volume" --key "$asset_key" || { echo '必要资产卷缺失或归属不符；不会新建。' >&2; exit 1; }
-            done
-        fi
         doctor_name="$project-doctor-$$-$RANDOM"
         timeout --kill-after=5s 40s "${maintenance[@]}" run --rm --name "$doctor_name" --no-deps --pull never -T maintenance -m src.bootstrap.doctor 2> "$work/diagnostic-error" ;;
     metadata)
@@ -124,7 +122,7 @@ case "$operation" in
         verify_volume
         for current in api web "$service"; do
             for existing in $(docker ps -aq --filter "label=com.docker.compose.project=$project" --filter "label=com.docker.compose.service=$current"); do
-                docker inspect "$existing" | json_tool validate-container --project "$project" --service "$current" --target dev
+                docker inspect "$existing" | json_tool validate-container --project "$project" --service "$current"
             done
         done
         original_created=$(docker volume inspect --format '{{.CreatedAt}}' "$volume")

@@ -3,7 +3,9 @@
 import os
 from decimal import Decimal
 from pathlib import Path
+from uuid import uuid4
 
+from fastapi import APIRouter, FastAPI, HTTPException, Response
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -24,14 +26,14 @@ from src.business_analysis.attribution import (
 from src.business_analysis.execution import TaskResult, TaskStatus
 from src.business_analysis.reporting import BusinessAnalysisReport
 from src.chatbi_control.bootstrap import seed_rbac
-from src.chatbi_control.models import Base, User
+from src.chatbi_control.models import Base, Role, User
 from src.online_query.contracts import QueryErrorCode, QueryFailure, QuerySuccess
 from src.online_query.query_understanding import QueryType, ValidatedSemanticQuery
 from src.query_api.app import create_app
-from tests.operations_support import ready_operations
 from src.query_api.browser import BrowserSettings
 from src.query_api.history_codec import encode_snapshot
 from tests.history_support import BrowserHistoryRuntime, BrowserHistoryStore
+from tests.operations_support import ready_operations
 from tests.query_api.history_fixtures import query_state
 from tests.query_api.support import _DefaultRevisionAdapter
 
@@ -99,23 +101,23 @@ class BrowserAnalysisFixture:
                     "人民币毛利",
                     "2025年2月",
                     "2025年1月",
-                    Decimal("120"),
-                    Decimal("100"),
-                    Decimal("-20"),
+                    Decimal(120),
+                    Decimal(100),
+                    Decimal(-20),
                     (
                         ProductContribution(
                             "产品A",
-                            Decimal("-20"),
+                            Decimal(-20),
                             "continuing",
-                            (FactorContribution("销量效应", Decimal("-20")),),
+                            (FactorContribution("销量效应", Decimal(-20)),),
                         ),
                     ),
                     (
                         ProductContribution(
                             "产品A",
-                            Decimal("-20"),
+                            Decimal(-20),
                             "continuing",
-                            (FactorContribution("销量效应", Decimal("-20")),),
+                            (FactorContribution("销量效应", Decimal(-20)),),
                         ),
                     ),
                 ),
@@ -141,6 +143,57 @@ class BrowserRevisionAdapter(_DefaultRevisionAdapter):
         }
 
 
+def install_first_password_test_routes(
+    app: FastAPI, sessions: sessionmaker, analyst_role_id: int
+) -> None:
+    """仅供隔离浏览器支持应用创建并回收首次改密测试账号。"""
+    issued_accounts: dict[str, tuple[int, str]] = {}
+    router = APIRouter(prefix="/__test-support/first-password-accounts")
+
+    @router.post("", status_code=201)
+    def create_account(response: Response) -> dict[str, str]:
+        handle = uuid4().hex
+        username = "browser-first-" + handle[:20]
+        with sessions() as session:
+            role = session.get(Role, analyst_role_id)
+            if role is None:
+                raise HTTPException(status_code=503, detail="测试角色不可用")
+            user = User(
+                username=username,
+                password_hash=hash_password("test-password-123"),
+                is_active=True,
+                must_change_password=True,
+                roles=[role],
+            )
+            session.add(user)
+            session.flush()
+            user_id = user.id
+            session.commit()
+        issued_accounts[handle] = (user_id, username)
+        response.headers["X-Test-Account-Handle"] = handle
+        return {"handle": handle, "username": username}
+
+    @router.delete("/{handle}", status_code=204)
+    def delete_account(handle: str) -> Response:
+        account = issued_accounts.get(handle)
+        if account is None:
+            raise HTTPException(status_code=404, detail="测试账号不存在")
+        user_id, username = account
+        with sessions() as session:
+            user = session.get(User, user_id)
+            if user is not None:
+                if user.username != username or not username.startswith(
+                    "browser-first-"
+                ):
+                    raise HTTPException(status_code=409, detail="测试账号归属不符")
+                session.delete(user)
+            session.commit()
+        issued_accounts.pop(handle)
+        return Response(status_code=204)
+
+    app.include_router(router)
+
+
 def create_browser_app():
     engine = create_engine(
         "sqlite+pysqlite:///:memory:",
@@ -151,17 +204,14 @@ def create_browser_app():
     sessions = sessionmaker(engine, expire_on_commit=False)
     with sessions() as session:
         roles = seed_rbac(session)
-        for username, first in (
-            ("analyst", False),
-            ("other-user", False),
-            ("new-user", True),
-        ):
+        analyst_role_id = roles["analyst"].id
+        for username in ("analyst", "other-user"):
             session.add(
                 User(
                     username=username,
                     password_hash=hash_password("test-password-123"),
                     is_active=True,
-                    must_change_password=first,
+                    must_change_password=False,
                     roles=[roles["analyst"]],
                 )
             )
@@ -244,7 +294,7 @@ def create_browser_app():
         history_store.seed_successful_query(
             1, question, snapshot, title="浏览器导出验收历史"
         )
-    return create_app(
+    app = create_app(
         BrowserQueryFixture(),
         operations=ready_operations(),
         analysis_service=BrowserAnalysisFixture(),
@@ -261,3 +311,5 @@ def create_browser_app():
             directory,
         ),
     )
+    install_first_password_test_routes(app, sessions, analyst_role_id)
+    return app

@@ -1,25 +1,38 @@
 import { test, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync, readFileSync, readdirSync } from 'node:fs';
+import { writeFileSync, readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { login, send, isFinalExecutionResponse } from './helpers';
 import { querySnapshot } from '../src/results';
 import { analysisResult } from '../src/Analysis';
+import { reportPath } from '../test-support/report-path';
 
 test('real Chrome login → model/RAG query → followup → two-period analysis', async ({ page, browser }) => {
   const root = resolve('..');
-  const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
-  const dirty = execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim();
-  if (dirty) throw new Error('真实验收只接受 clean candidate');
+  const start = JSON.parse(readFileSync(reportPath('start.json'), 'utf8'));
+  const sourceStart = start.source_start as { verified: boolean; git_commit: string | null; git_dirty: boolean | null };
+  if (!sourceStart.verified || sourceStart.git_dirty !== false || !sourceStart.git_commit) {
+    throw new Error('真实验收只接受身份可核实的 clean candidate');
+  }
+  const commit = sourceStart.git_commit;
   const reference = JSON.parse(execFileSync('uv', ['run', '--locked', 'python', '-m', 'tests.browser_real_reference'], { cwd: root, encoding: 'utf8' }));
   const assetDirectory = resolve(root, 'frontend/dist/assets');
   const build = ['index.html', ...readdirSync(assetDirectory).map(name => `assets/${name}`)].sort().map(name => ({
     name, sha256: createHash('sha256').update(readFileSync(resolve(root, 'frontend/dist', name))).digest('hex'),
   }));
-  const evidence: Record<string, unknown> = { username: process.env.CHATBI_REAL_E2E_USERNAME, commit, git_dirty: false, at: new Date().toISOString(), chrome: browser.version(), platform: process.platform, build, reference };
-  const directory = resolve(root, 'reports/browser-real'); mkdirSync(directory, { recursive: true });
-  const reportPath = resolve(directory, `${new Date().toISOString().replace(/[:.]/g, '-')}-${commit.slice(0, 7)}.json`);
+  const evidence: Record<string, unknown> = {
+    schema_version: 1,
+    run_id: process.env.CHATBI_REAL_E2E_RUN_ID,
+    username: process.env.CHATBI_REAL_E2E_USERNAME,
+    commit,
+    git_dirty: false,
+    at: new Date().toISOString(),
+    chrome: browser.version(),
+    platform: process.platform,
+    build,
+    reference,
+  };
   try {
     evidence.step = "login";
     await login(page, process.env.CHATBI_REAL_E2E_USERNAME!, process.env.CHATBI_REAL_E2E_PASSWORD!);
@@ -63,5 +76,5 @@ test('real Chrome login → model/RAG query → followup → two-period analysis
   } catch (error) {
     evidence.status = 'failed'; evidence.error_type = (error as Error).name;
     throw new Error('真实业务闭环未通过，请检查 ignored reports/browser-real 证据；不输出凭证或响应。');
-  } finally { writeFileSync(reportPath, JSON.stringify(evidence, null, 2)); }
+  } finally { writeFileSync(reportPath('browser.json'), JSON.stringify(evidence, null, 2)); }
 });

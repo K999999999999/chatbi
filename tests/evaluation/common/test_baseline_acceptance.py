@@ -10,6 +10,7 @@ from tempfile import TemporaryDirectory
 import unittest
 
 from evaluation.common.real_e2e_acceptance import main
+from evaluation.common.reporting import model_configuration_fingerprint
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -41,6 +42,7 @@ def passing_report(suite):
         "summary_accuracy": 1.0,
     }
     results = [{"case_id": case["id"], "status": "PASS"} for case in cases]
+    test_set_hash = hashlib.sha256(path.read_bytes()).hexdigest()
     if suite == "multi_turn_conversation":
         total = sum(len(case["turns"]) for case in cases)
         summary.update(
@@ -54,27 +56,78 @@ def passing_report(suite):
             result["turns"] = [
                 {"turn_id": turn["id"], "status": "PASS"} for turn in case["turns"]
             ]
-    return {
+    report = {
         "metadata": {
             "git_commit": COMMIT,
             "git_dirty": False,
             "evaluation_suite": suite,
-            "test_set_hash": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "test_set_hash": test_set_hash,
             "rag_asset_version": RAG_VERSION,
             "model": "test-model",
             "temperature": 0.1,
             "max_tokens": 4096,
+            "timeout_seconds": 30.0,
             "model_endpoint_hash": "b" * 64,
             "context_hash": "c" * 64,
+            "model_configuration": {
+                "model": "test-model",
+                "temperature": 0.1,
+                "max_tokens": 4096,
+                "timeout_seconds": 30.0,
+                "model_endpoint_hash": "b" * 64,
+            },
             "reference_result_hash": "d" * 64,
             "sales_mart_seed_version": "test-seed",
             "sales_mart_data_hash": "e" * 64,
             "sales_mart_data_hash_algorithm": "sha256-sales-mart-row-snapshot-v1",
             "sales_mart_data_summary": {"table_counts": {"test": 1}, "total_rows": 1},
+            "provenance": {
+                "version": 1,
+                "started_at": "2026-10-15T12:00:00Z",
+                "finished_at": "2026-10-15T12:01:00Z",
+                "source_start": {
+                    "verified": True,
+                    "git_commit": COMMIT,
+                    "git_dirty": False,
+                    "tracked_changes_hash": "f" * 64,
+                },
+                "source_end": {
+                    "verified": True,
+                    "git_commit": COMMIT,
+                    "git_dirty": False,
+                    "tracked_changes_hash": "f" * 64,
+                },
+                "inputs_start": {
+                    "verified": True,
+                    "fingerprints": {"test_set": test_set_hash},
+                    "context_hash": "c" * 64,
+                },
+                "inputs_end": {
+                    "verified": True,
+                    "fingerprints": {"test_set": test_set_hash},
+                    "context_hash": "c" * 64,
+                },
+                "consistency": "stable",
+            },
         },
         "summary": summary,
         "cases": results,
     }
+    if suite == "business_analysis":
+        report["metadata"]["judge_configuration"] = {
+            "model": "test-model",
+            "temperature": 0.0,
+            "max_tokens": 4096,
+            "timeout_seconds": 30.0,
+            "model_endpoint_hash": "b" * 64,
+        }
+        report["metadata"]["judge_configuration_hash"] = (
+            model_configuration_fingerprint(report["metadata"]["judge_configuration"])
+        )
+    report["metadata"]["model_configuration_hash"] = model_configuration_fingerprint(
+        report["metadata"]["model_configuration"]
+    )
+    return report
 
 
 class BaselineAcceptanceTest(unittest.TestCase):
@@ -118,6 +171,40 @@ class BaselineAcceptanceTest(unittest.TestCase):
                 reports = copy.deepcopy(self.reports)
                 reports["single_turn_query"]["metadata"][field] = value
                 self.assertEqual(self.run_acceptance(reports)[0], 1)
+
+    def test_rejects_missing_changed_or_unverified_provenance(self):
+        missing = copy.deepcopy(self.reports)
+        del missing["single_turn_query"]["metadata"]["provenance"]
+        self.assertEqual(self.run_acceptance(missing)[0], 1)
+
+        for field, value in (
+            ("consistency", "changed"),
+            ("consistency", "unverified"),
+            ("source_verified", False),
+            ("input_changed", True),
+        ):
+            with self.subTest(field=field):
+                reports = copy.deepcopy(self.reports)
+                provenance = reports["multi_turn_conversation"]["metadata"][
+                    "provenance"
+                ]
+                if field == "source_verified":
+                    provenance["source_start"]["verified"] = value
+                elif field == "input_changed":
+                    provenance["inputs_end"]["fingerprints"]["test_set"] = "f" * 64
+                else:
+                    provenance[field] = value
+                self.assertEqual(self.run_acceptance(reports)[0], 1)
+
+    def test_rejects_missing_or_wrong_business_analysis_judge_configuration(self):
+        reports = copy.deepcopy(self.reports)
+        del reports["business_analysis"]["metadata"]["judge_configuration"]
+        self.assertEqual(self.run_acceptance(reports)[0], 1)
+        reports = copy.deepcopy(self.reports)
+        reports["business_analysis"]["metadata"]["judge_configuration"][
+            "temperature"
+        ] = 0.1
+        self.assertEqual(self.run_acceptance(reports)[0], 1)
 
     def test_rejects_missing_or_duplicate_suite(self):
         reports = copy.deepcopy(self.reports)
@@ -207,6 +294,10 @@ class BaselineAcceptanceTest(unittest.TestCase):
 
     def test_suite_specific_context_and_reference_hashes_may_differ(self):
         self.reports["business_analysis"]["metadata"]["context_hash"] = "f" * 64
+        for field in ("inputs_start", "inputs_end"):
+            self.reports["business_analysis"]["metadata"]["provenance"][field][
+                "context_hash"
+            ] = "f" * 64
         self.reports["business_analysis"]["metadata"]["reference_result_hash"] = (
             "0" * 64
         )

@@ -1,11 +1,13 @@
 """本机恢复规则与事务；PostgreSQL锁另由隔离集成测试证明。"""
 
+from unittest.mock import patch
+
 import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from src.authorization.auth_service import AuthenticationFailed, AuthService
 from src.authorization.audit_service import AuditUnavailable, PersistentAuditSink
+from src.authorization.auth_service import AuthenticationFailed, AuthService
 from src.authorization.passwords import hash_password, verify_password
 from src.chatbi_control.models import AuditEvent, Base, Role, User, UserSession
 
@@ -131,5 +133,21 @@ def test_mandatory_audit_failure_rolls_back_password_and_session(accounts):
 def test_weak_password_recovery_changes_nothing(accounts):
     with pytest.raises(ValueError):
         AuthService(accounts, audit_sink=PersistentAuditSink(accounts)).recover_admin(
-            "admin", new_password="short", environment="app", project="test-project"
+            "admin", new_password="short", environment="dev", project="test-project"
+        )
+
+
+def test_retired_app_recovery_environment_is_rejected_before_account_access(accounts):
+    with (
+        patch(
+            "src.authorization.auth_service.hash_password",
+            side_effect=AssertionError("必须在处理密码前拒绝目标"),
+        ),
+        pytest.raises(ValueError, match="恢复来源不完整"),
+    ):
+        AuthService(accounts, audit_sink=PersistentAuditSink(accounts)).recover_admin(
+            "admin",
+            new_password="long-enough-test-password",
+            environment="app",
+            project="test-project",
         )

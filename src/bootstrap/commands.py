@@ -16,7 +16,7 @@ def main(argv: list[str] | None = None) -> int:
     admin.add_argument("--username", help="首个管理员用户名；不传时交互输入")
     recovery = commands.add_parser("recover-admin", help="可信本机交互恢复启用管理员")
     recovery.add_argument("--username", required=True)
-    recovery.add_argument("--environment", choices=("dev", "app"), required=True)
+    recovery.add_argument("--environment", choices=("dev",), required=True)
     recovery.add_argument("--project", required=True)
     commands.add_parser("prepare-model", help="准备固定版本 Embedding 模型")
     rag = commands.add_parser("build-rag", help="构建、验证并发布 RAG 资产")
@@ -24,7 +24,6 @@ def main(argv: list[str] | None = None) -> int:
     rag.add_argument("--metrics-path", type=Path)
     rag.add_argument("--output-dir", type=Path)
     rag.add_argument("--build-id")
-    commands.add_parser("verify", help="只读检查标准容器初始化与运行资产")
     args = parser.parse_args(argv)
     load_dotenv(override=False)
 
@@ -34,11 +33,6 @@ def main(argv: list[str] | None = None) -> int:
         return recover_admin(
             args.username, environment=args.environment, project=args.project
         )
-
-    if args.command == "verify":
-        from .verification import verify
-
-        return verify()
 
     if args.command == "migrate":
         from .control import migrate

@@ -263,10 +263,10 @@ class AuthService:
         project: str,
     ) -> None:
         """可信本机恢复；账号范围、密码、Session与审计在同一事务裁决。"""
+        if environment != "dev" or not project or len(project) > 128:
+            raise ValueError("恢复来源不完整")
         username = normalize_username(username)
         new_hash = hash_password(new_password)
-        if environment not in {"dev", "app"} or not project or len(project) > 128:
-            raise ValueError("恢复来源不完整")
         if not callable(getattr(self._audit_sink, "write", None)):
             raise AuditUnavailable("管理员恢复必须配置事务内审计")
         now = _as_utc(self._clock())

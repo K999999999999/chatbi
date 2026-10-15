@@ -1,19 +1,16 @@
 #!/usr/bin/env bash
 # 共享宿主目标解析；调用方先验证命令和参数，再读取配置。
 initialize_environment() {
-    target=$1
-    host_root=${LOCAL_WORKSPACE_FOLDER:-$root}
-    if [[ "$target" == app ]]; then
-        env_file=${CHATBI_APP_ENV_FILE:-$root/.env}
-        override=${CHATBI_APP_COMPOSE_OVERRIDE:-}
-        compose_files=(-f "$root/docker-compose.app.yml")
-        services=(api postgres qdrant)
-    else
-        env_file=${CHATBI_DEV_ENV_FILE:-$root/.env}
-        override=${CHATBI_DEV_COMPOSE_OVERRIDE:-}
-        compose_files=(-f "$root/docker-compose.yml" -f "$root/docker-compose.dev.yml")
-        services=(api web postgres qdrant)
+    if (($# != 1)) || [[ "$1" != dev ]]; then
+        echo '维护目标无效；当前只支持 dev。' >&2
+        return 2
     fi
+    target=dev
+    host_root=${LOCAL_WORKSPACE_FOLDER:-$root}
+    env_file=${CHATBI_DEV_ENV_FILE:-$root/.env}
+    override=${CHATBI_DEV_COMPOSE_OVERRIDE:-}
+    compose_files=(-f "$root/docker-compose.yml" -f "$root/docker-compose.dev.yml")
+    services=(api web postgres qdrant)
     [[ -f "$env_file" ]] || { echo '缺少本地配置；复制 .env.example 并填写配置后重试。' >&2; return 2; }
     export CHATBI_DEV_UID=${CHATBI_DEV_UID:-$(id -u)}
     export CHATBI_DEV_GID=${CHATBI_DEV_GID:-$(id -g)}

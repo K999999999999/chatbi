@@ -1,7 +1,7 @@
 """显式真实浏览器验收：专用账号 + 正式 runtime，退出后禁用验收账号。"""
 
-import os
 import json
+import os
 from pathlib import Path
 from contextlib import asynccontextmanager
 
@@ -56,17 +56,22 @@ def create_browser_real_app():
                             UserSession.revoked_at.is_(None),
                         )
                     )
-                directory = Path(__file__).resolve().parents[1] / "reports/browser-real"
+                directory = Path(os.environ["CHATBI_REAL_E2E_REPORT_DIR"])
                 directory.mkdir(parents=True, exist_ok=True)
-                (directory / f"cleanup-{username}.json").write_text(
-                    json.dumps(
-                        {
-                            "username": username,
-                            "disabled": disabled,
-                            "active_sessions": active_sessions,
-                        }
-                    ),
-                    encoding="utf-8",
+                descriptor = os.open(
+                    directory / "cleanup.json",
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                    0o600,
                 )
+                with os.fdopen(descriptor, "w", encoding="utf-8") as cleanup_report:
+                    cleanup_report.write(
+                        json.dumps(
+                            {
+                                "username": username,
+                                "disabled": disabled,
+                                "active_sessions": active_sessions,
+                            }
+                        )
+                    )
 
     return create_app(runtime_factory=runtime)

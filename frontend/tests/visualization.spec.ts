@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { login, send, mockFinalExecution } from './helpers';
+import { login, send, mockFinalExecution, isFinalExecutionResponse } from './helpers';
 const columns = ['month', 'sales', 'ratio'];
 const metadata = { version: 1, status: 'complete', columns: [
   { index: 0, name: 'month', role: 'dimension', certified: true, semantic_name: '月份', definition: null, unit: null, format: 'raw' },
@@ -12,8 +12,10 @@ const payload = { request_id: 'r2', conversation_id: 'context', mode: 'query', s
 test('图表和表格默认同显、不同单位拆图、切换折叠不请求', async ({ page }) => {
   await login(page); let calls = 0;
   page.on('request', req => { if (req.method() === 'POST' && req.url().endsWith('/executions')) calls++; });
+  const completedExecution = page.waitForResponse(isFinalExecutionResponse);
   await mockFinalExecution(page, payload);
   await send(page, '年度趋势');
+  await completedExecution;
   await expect(page.getByRole('table')).toBeVisible();
   await expect(page.locator('.chart-canvas svg')).toHaveCount(2);
   await expect(page.getByRole('cell').filter({ hasText: '1,234,567.90 元' })).toBeVisible();

@@ -102,19 +102,35 @@ def results_match(
             for actual_row, expected_row in zip(actual.rows, expected.rows, strict=True)
         )
 
-    unmatched = list(expected.rows)
-    for actual_row in actual.rows:
-        for index, expected_row in enumerate(unmatched):
+    candidates = [
+        [
+            expected_index
+            for expected_index, expected_row in enumerate(expected.rows)
             if _rows_match(
                 actual_row,
                 expected_row,
                 normalize_json_numeric_strings=normalize_json_numeric_strings,
-            ):
-                unmatched.pop(index)
-                break
-        else:
-            return False
-    return not unmatched
+            )
+        ]
+        for actual_row in actual.rows
+    ]
+    actual_for_expected = [-1] * len(expected.rows)
+
+    def assign(actual_index: int, visited: list[bool]) -> bool:
+        for expected_index in candidates[actual_index]:
+            if visited[expected_index]:
+                continue
+            visited[expected_index] = True
+            previous_actual = actual_for_expected[expected_index]
+            if previous_actual == -1 or assign(previous_actual, visited):
+                actual_for_expected[expected_index] = actual_index
+                return True
+        return False
+
+    return all(
+        assign(actual_index, [False] * len(expected.rows))
+        for actual_index in range(len(actual.rows))
+    )
 
 
 def _parse_case(record: object, index: int) -> EvaluationCase:

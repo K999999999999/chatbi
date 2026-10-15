@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { login, send } from './helpers';
+import { login, send, isFinalExecutionResponse } from './helpers';
 
 test('manual modes retain separate drafts and query context', async ({ page }) => {
   const bodies: Record<string, unknown>[] = [];
@@ -17,7 +17,9 @@ test('manual modes retain separate drafts and query context', async ({ page }) =
   await expect(page.getByText('查看查询任务证据').locator('..').getByRole('table')).toBeVisible();
   await page.getByRole('button', { name: '问数', exact: true }).click();
   await expect(page.getByLabel('问题')).toHaveValue('问数草稿');
+  const completedQuery = page.waitForResponse(isFinalExecutionResponse);
   await send(page, '改成3月');
+  await completedQuery;
   await expect(page.getByRole('table')).toHaveCount(2);
   expect(paths[0]).toBe(paths[2]);
   expect(bodies[1].mode).toBe('analysis');
@@ -39,12 +41,16 @@ test('提交响应丢失后明确重试复用原编号且保留编辑草稿', as
   await send(page, '分析2025年2月相比2025年1月的毛利变化');
   await expect(page.getByText('受理结果暂未确认。可刷新该历史恢复观察，或明确重试同一请求。').first()).toBeVisible();
   await page.getByLabel('问题').fill('另一条完整问题');
+  const recoveredExecution = page.waitForResponse(isFinalExecutionResponse);
   await page.getByRole('button', { name: '明确重试同一请求', exact: true }).click();
+  await recoveredExecution;
   await expect(page.getByRole('heading', { name: '两期经营分析报告' })).toBeVisible();
   expect(paths[1]).toBe(paths[0]);
   expect(bodies[1].operation_id).toBe(bodies[0].operation_id);
   await expect(page.getByLabel('问题')).toHaveValue('另一条完整问题');
+  const nextExecution = page.waitForResponse(isFinalExecutionResponse);
   await page.getByRole('button', { name: '发送', exact: true }).click();
+  await nextExecution;
   await expect(page.getByRole('heading', { name: '两期经营分析报告' })).toHaveCount(1);
   expect(paths[2]).not.toBe(paths[0]);
 });
@@ -60,6 +66,8 @@ test('controlled analysis rejection preserves query context and cannot silently 
   await expect(page.getByRole('button', { name: '恢复原分析' })).toHaveCount(0);
   await page.unroute('**/api/v1/histories/*/executions');
   await page.getByRole('button', { name: '问数', exact: true }).click();
+  const completedQuery = page.waitForResponse(isFinalExecutionResponse);
   await send(page, '改成3月');
+  await completedQuery;
   await expect(page.getByRole('table')).toHaveCount(2);
 });

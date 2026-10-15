@@ -37,6 +37,6 @@ uv run --python 3.11 --locked python -m scripts.check_documentation
 
 组合检查校验全仓 Git 已跟踪及未忽略 Markdown 的本地链接；标题层级和正文章节引用只检查 README、AGENTS、已存在的 CONTEXT / CONTEXT-MAP 与 `docs/**/*.md`。工作记录仍接受链接检查，但不套用当前正式文档的结构规则。
 
-需要单独检查链接时，原入口 `python -m scripts.check_markdown_links` 继续可用。完整门禁及其边界见 [Runbook 测试章节](../runbook.md#4-验证与ci)。
+需要单独检查链接时，原入口 `python -m scripts.check_markdown_links` 继续可用。完整门禁及其边界见 [Runbook 测试章节](../runbook.md#3-验证与ci)。
 
 PR 的 Done When 与 Agent Review 应记录适用的文档更新位置，或说明不适用理由；还需核对历史去向、入口链接和路线图事实。自动门禁只验证确定性结构，不判断业务含义、事实是否过期或不同文档之间的语义一致性，这些仍由 Review 对照 Architecture、Product Scope、Spec 和验证证据完成。

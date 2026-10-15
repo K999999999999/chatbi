@@ -18,7 +18,7 @@
 | 私人历史与成果 | 自动历史、快照重开、完整条件续聊、显式重查、独立保存 / 删除 | [历史](specs/history-results-v1.md) |
 | 执行状态 | 后台受理、真实阶段、SSE、未经校验草稿、取消、断连重连与恢复 | [执行](specs/execution-streaming-v1.md) |
 | 文件导出 | 成功查询XLSX、适用单图PNG、正式分析PDF；从有权访问的快照生成 | [导出](specs/result-export-v1.md) |
-| 本机运行 | 容器开发与标准本地构建、显式初始化、资源隔离、动态就绪与诊断 | [部署](specs/container-deployment.md)、[保障](specs/application-readiness.md) |
+| 本机运行 | 容器内源码开发与测试、显式初始化、资源隔离、动态就绪与诊断 | [源码运行边界](specs/container-deployment.md)、[保障](specs/application-readiness.md) |
 
 ## 数据与用户边界
 
@@ -31,7 +31,7 @@
 
 ## 运行与验证边界
 
-当前支持Windows + WSL2 + Docker的本机单API进程和电脑端同源访问。统一使用dev容器开发，标准应用Compose与开发资源分开；首次启动、构建、迁移、模型 / 索引和管理员初始化都是显式操作。常驻服务随Docker恢复此前运行状态，主动停止后保持停止；规则见[容器开发](specs/container-dev-environment.md)与[标准容器](specs/container-deployment.md)。
+当前支持Windows + WSL2 + Docker的本机单API进程和电脑端同源访问。统一使用dev容器完成源码开发、软件测试和体验；不提供独立业务APP镜像构建路线。首次启动、开发镜像构建、迁移、模型 / 索引和管理员初始化都是显式操作。常驻服务随Docker恢复此前运行状态，主动停止后保持停止；规则见[容器开发](specs/container-dev-environment.md)与[源码运行边界](specs/container-deployment.md)。
 
 确定性软件测试、真实AI评测、业务与运行验收提供不同证据；报告只对记录的提交、案例集与资源有效。可复现入口见 [Runbook](runbook.md)。
 

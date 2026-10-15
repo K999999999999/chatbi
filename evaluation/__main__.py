@@ -5,10 +5,11 @@ import os
 import subprocess
 import sys
 from collections.abc import Callable, Mapping
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import TextIO
 
+from scripts.verification_report import RunStart, finish_run, start_run
 from src.authorization import (
     AuthContext,
     AuthorizedQueryService,
@@ -49,12 +50,13 @@ from src.online_query.service import OnlineQueryService
 from .common.database_fingerprint import collect_sales_mart_fingerprint
 from .common.reporting import (
     ReportingError,
+    collect_model_configuration,
     collect_run_metadata,
     create_report,
     load_report,
-    write_markdown_report,
-    write_report,
+    write_evaluation_report_pair,
 )
+from .common.reporting_markdown import render_markdown_report
 from .suites.business_analysis.business_analysis_evaluation import (
     load_business_analysis_cases,
 )
@@ -76,7 +78,7 @@ from .suites.multi_turn.multi_turn_evaluation import (
 )
 from .suites.multi_turn.multi_turn_reporting import (
     create_multi_turn_report,
-    write_multi_turn_markdown_report,
+    render_multi_turn_markdown,
 )
 from .suites.query_understanding.semantic_evaluation import (
     SemanticEvaluationLoadError,
@@ -132,12 +134,32 @@ def run_cli(
 
     output = sys.stdout if stdout is None else stdout
     error_output = sys.stderr if stderr is None else stderr
-    source = os.environ if environ is None else environ
+    source = dict(os.environ if environ is None else environ)
     parser = _parser()
     args = parser.parse_args(argv)
+    state_reader = _read_git_state if git_state_reader is None else git_state_reader
+    suite, cases_path, selected_context_paths, run_inputs = _select_run_inputs(
+        args,
+        context_paths,
+    )
+    run_start = start_run(
+        PROJECT_ROOT,
+        run_inputs,
+        suite=suite,
+        git_state_reader=state_reader,
+    )
     trace_recorder: TraceRecorder | None = None
     rag_runtime: RagRuntime | None = None
     rag_asset_version: str | None = None
+    trace_shutdown = False
+
+    def shutdown_trace_recorder() -> None:
+        nonlocal trace_recorder, trace_shutdown
+        if trace_shutdown:
+            return
+        _shutdown_trace_recorder(trace_recorder)
+        trace_recorder = None
+        trace_shutdown = True
 
     try:
         try:
@@ -156,6 +178,9 @@ def run_cli(
                 trace_recorder=trace_recorder,
                 query_understanding_factory=query_understanding_factory,
                 git_state_reader=state_reader,
+                run_start=run_start,
+                run_inputs=run_inputs,
+                trace_cleanup=shutdown_trace_recorder,
                 stdout=output,
             )
 
@@ -169,10 +194,11 @@ def run_cli(
                 executor_factory=executor_factory,
                 retrieval_factory=retrieval_factory,
                 query_understanding_factory=query_understanding_factory,
-                git_state_reader=(
-                    _read_git_state if git_state_reader is None else git_state_reader
-                ),
-                context_paths=context_paths,
+                git_state_reader=state_reader,
+                context_paths=selected_context_paths,
+                run_start=run_start,
+                run_inputs=run_inputs,
+                trace_cleanup=shutdown_trace_recorder,
                 stdout=output,
                 runtime_factory=runtime_factory,
                 analysis_application_factory=analysis_application_factory,
@@ -188,15 +214,16 @@ def run_cli(
                 executor_factory=executor_factory,
                 retrieval_factory=retrieval_factory,
                 query_understanding_factory=query_understanding_factory,
-                git_state_reader=(
-                    _read_git_state if git_state_reader is None else git_state_reader
-                ),
-                context_paths=context_paths,
+                git_state_reader=state_reader,
+                context_paths=selected_context_paths,
+                run_start=run_start,
+                run_inputs=run_inputs,
+                trace_cleanup=shutdown_trace_recorder,
                 stdout=output,
                 runtime_factory=runtime_factory,
             )
 
-        cases = load_evaluation_cases(args.cases)
+        cases = load_evaluation_cases(cases_path)
         baseline = load_report(args.baseline) if args.baseline else None
         context = context_loader()
         retrieval_provider = None
@@ -251,8 +278,6 @@ def run_cli(
             trace_recorder=trace_recorder,
         )
         query_entry = _build_evaluation_query_entry(service)
-        state_reader = _read_git_state if git_state_reader is None else git_state_reader
-        git_commit, git_dirty = state_reader(PROJECT_ROOT)
         sales_mart_fingerprint = collect_sales_mart_fingerprint(source)
 
         run = run_evaluation(
@@ -264,23 +289,37 @@ def run_cli(
         )
         if rag_runtime is not None and rag_asset_version is not None:
             _verify_rag_asset_version(rag_runtime, rag_asset_version)
+        _shutdown_rag_runtime(rag_runtime)
+        rag_runtime = None
+        shutdown_trace_recorder()
+        provenance = finish_run(
+            run_start,
+            PROJECT_ROOT,
+            run_inputs,
+            git_state_reader=state_reader,
+        )
+        source_start = run_start.source_start
         metadata = collect_run_metadata(
             run,
-            git_commit=git_commit,
-            git_dirty=git_dirty,
+            git_commit=_source_commit(source_start),
+            git_dirty=_source_dirty(source_start),
             environ=source,
-            test_set_path=args.cases,
-            context_paths=(
-                _default_context_paths() if context_paths is None else context_paths
-            ),
+            test_set_path=cases_path,
+            context_paths=selected_context_paths,
+            input_test_set_hash=_input_fingerprint(run_start, "test_set"),
+            input_context_hash=_context_fingerprint(run_start),
             sales_mart_fingerprint=sales_mart_fingerprint,
             rag_asset_version=rag_asset_version,
+            run_id=run_start.run_id,
+            provenance=provenance,
+            now=datetime.fromisoformat(run_start.started_at),
         )
         report = create_report(run, metadata, baseline)
-        report_path = args.output_dir / f"{metadata.run_id}.json"
-        summary_path = args.output_dir / f"{metadata.run_id}.md"
-        write_report(report, report_path)
-        write_markdown_report(report, summary_path)
+        report_path, summary_path = write_evaluation_report_pair(
+            report,
+            args.output_dir,
+            render_markdown_report(report),
+        )
         _print_summary(report, report_path, summary_path, output)
         return 0 if run.summary.failed == 0 and run.summary.invalid_cases == 0 else 1
     except (
@@ -299,7 +338,7 @@ def run_cli(
         return 1
     finally:
         _shutdown_rag_runtime(rag_runtime)
-        _shutdown_trace_recorder(trace_recorder)
+        shutdown_trace_recorder()
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -356,6 +395,73 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _select_run_inputs(
+    args: argparse.Namespace,
+    context_paths: Mapping[str, Path] | None,
+) -> tuple[str, Path, dict[str, Path], dict[str, Path]]:
+    if args.query_understanding:
+        suite = "query-understanding"
+        cases_path = args.query_understanding_cases
+        selected_context_paths: dict[str, Path] = {}
+    elif args.multi_turn:
+        suite = "multi-turn"
+        cases_path = (
+            DEFAULT_MULTI_TURN_CASES_PATH
+            if args.cases == DEFAULT_CASES_PATH
+            else args.cases
+        )
+        selected_context_paths = dict(
+            _default_context_paths() if context_paths is None else context_paths
+        )
+    elif args.business_analysis:
+        suite = "business-analysis"
+        cases_path = (
+            DEFAULT_BUSINESS_ANALYSIS_CASES_PATH
+            if args.cases == DEFAULT_CASES_PATH
+            else args.cases
+        )
+        selected_context_paths = dict(
+            _business_analysis_context_paths()
+            if context_paths is None
+            else context_paths
+        )
+    else:
+        suite = "single-turn"
+        cases_path = args.cases
+        selected_context_paths = dict(
+            _default_context_paths() if context_paths is None else context_paths
+        )
+
+    inputs = {"test_set": cases_path}
+    inputs.update(
+        {f"context.{name}": path for name, path in selected_context_paths.items()}
+    )
+    return suite, cases_path, selected_context_paths, inputs
+
+
+def _source_commit(source: Mapping[str, object]) -> str | None:
+    commit = source.get("git_commit")
+    return commit if isinstance(commit, str) and commit else None
+
+
+def _source_dirty(source: Mapping[str, object]) -> bool | None:
+    dirty = source.get("git_dirty")
+    return dirty if type(dirty) is bool else None
+
+
+def _input_fingerprint(start: RunStart, name: str) -> str | None:
+    fingerprints = start.inputs_start.get("fingerprints")
+    if not isinstance(fingerprints, Mapping):
+        return None
+    value = fingerprints.get(name)
+    return value if isinstance(value, str) else None
+
+
+def _context_fingerprint(start: RunStart) -> str | None:
+    value = start.inputs_start.get("context_hash")
+    return value if isinstance(value, str) else None
+
+
 def _run_multi_turn_cli(*args, **kwargs) -> int:
     runtime_holder: list[RagRuntime | None] = [None]
     kwargs["runtime_holder"] = runtime_holder
@@ -383,6 +489,9 @@ def _run_multi_turn_cli_impl(
     stdout: TextIO,
     runtime_factory: Callable[[], RagRuntime] | None,
     runtime_holder: list[RagRuntime | None],
+    run_start: RunStart,
+    run_inputs: Mapping[str, Path],
+    trace_cleanup: Callable[[], None],
 ) -> int:
     cases_path = (
         DEFAULT_MULTI_TURN_CASES_PATH
@@ -461,25 +570,38 @@ def _run_multi_turn_cli_impl(
     )
     if runtime_holder[0] is not None and rag_asset_version is not None:
         _verify_rag_asset_version(runtime_holder[0], rag_asset_version)
-    git_commit, git_dirty = git_state_reader(PROJECT_ROOT)
     sales_mart_fingerprint = collect_sales_mart_fingerprint(environ)
+    _shutdown_rag_runtime(runtime_holder[0])
+    runtime_holder[0] = None
+    trace_cleanup()
+    provenance = finish_run(
+        run_start,
+        PROJECT_ROOT,
+        run_inputs,
+        git_state_reader=git_state_reader,
+    )
+    source_start = run_start.source_start
     metadata = collect_run_metadata(
         run,
-        git_commit=git_commit,
-        git_dirty=git_dirty,
+        git_commit=_source_commit(source_start),
+        git_dirty=_source_dirty(source_start),
         environ=environ,
         test_set_path=cases_path,
-        context_paths=(
-            _default_context_paths() if context_paths is None else context_paths
-        ),
+        context_paths={} if context_paths is None else context_paths,
+        input_test_set_hash=_input_fingerprint(run_start, "test_set"),
+        input_context_hash=_context_fingerprint(run_start),
         sales_mart_fingerprint=sales_mart_fingerprint,
         rag_asset_version=rag_asset_version,
+        run_id=run_start.run_id,
+        provenance=provenance,
+        now=datetime.fromisoformat(run_start.started_at),
     )
     report = create_multi_turn_report(run, metadata, baseline)
-    report_path = args.output_dir / f"{metadata.run_id}-multi-turn.json"
-    summary_path = args.output_dir / f"{metadata.run_id}-multi-turn.md"
-    write_report(report, report_path)
-    write_multi_turn_markdown_report(report, summary_path)
+    report_path, summary_path = write_evaluation_report_pair(
+        report,
+        args.output_dir,
+        render_multi_turn_markdown(report),
+    )
     _print_multi_turn_summary(report, report_path, summary_path, stdout)
     return (
         0
@@ -520,6 +642,9 @@ def _run_business_analysis_cli_impl(
     ]
     | None,
     runtime_holder: list[RagRuntime | None],
+    run_start: RunStart,
+    run_inputs: Mapping[str, Path],
+    trace_cleanup: Callable[[], None],
 ) -> int:
     cases_path = (
         DEFAULT_BUSINESS_ANALYSIS_CASES_PATH
@@ -593,18 +718,18 @@ def _run_business_analysis_cli_impl(
         else analysis_application_factory(authorized_service, environ)
     )
     sales_mart_fingerprint = collect_sales_mart_fingerprint(environ)
+    judge = None
+    judge_configuration = None
+    if analysis_application_factory is None:
+        judge_environ = {**environ, "LLM_TEMPERATURE": "0"}
+        judge_configuration = collect_model_configuration(judge_environ)
+        judge = LangChainBusinessAnalysisJudge(_build_chat_model(judge_environ))
     try:
         run = run_business_analysis_evaluation(
             cases,
             application,
             auth_context,
-            judge=(
-                None
-                if analysis_application_factory is not None
-                else LangChainBusinessAnalysisJudge(
-                    _build_chat_model({**environ, "LLM_TEMPERATURE": "0"})
-                )
-            ),
+            judge=judge,
         )
     finally:
         close = getattr(application, "close", None)
@@ -612,33 +737,39 @@ def _run_business_analysis_cli_impl(
             close()
     if rag_runtime is not None and rag_asset_version is not None:
         _verify_rag_asset_version(rag_runtime, rag_asset_version)
-    git_commit, git_dirty = git_state_reader(PROJECT_ROOT)
+    _shutdown_rag_runtime(rag_runtime)
+    rag_runtime = None
+    runtime_holder[0] = None
+    trace_cleanup()
+    provenance = finish_run(
+        run_start,
+        PROJECT_ROOT,
+        run_inputs,
+        git_state_reader=git_state_reader,
+    )
+    source_start = run_start.source_start
     metadata = collect_run_metadata(
         run,
-        git_commit=git_commit,
-        git_dirty=git_dirty,
+        git_commit=_source_commit(source_start),
+        git_dirty=_source_dirty(source_start),
         environ=environ,
         test_set_path=cases_path,
-        context_paths=(
-            _business_analysis_context_paths()
-            if context_paths is None
-            else context_paths
-        ),
+        context_paths={} if context_paths is None else context_paths,
+        input_test_set_hash=_input_fingerprint(run_start, "test_set"),
+        input_context_hash=_context_fingerprint(run_start),
         sales_mart_fingerprint=sales_mart_fingerprint,
         rag_asset_version=rag_asset_version,
+        run_id=run_start.run_id,
+        provenance=provenance,
+        judge_configuration=judge_configuration,
+        now=datetime.fromisoformat(run_start.started_at),
     )
     report = create_business_analysis_report(run, metadata, baseline)
-    report_path = args.output_dir / f"{metadata.run_id}-business-analysis.json"
-    summary_path = args.output_dir / f"{metadata.run_id}-business-analysis.md"
-    write_report(report, report_path)
-    try:
-        summary_path.parent.mkdir(parents=True, exist_ok=True)
-        summary_path.write_text(
-            render_business_analysis_markdown(report),
-            encoding="utf-8",
-        )
-    except OSError:
-        raise ReportingError("经营分析评估总结报告无法写入") from None
+    report_path, summary_path = write_evaluation_report_pair(
+        report,
+        args.output_dir,
+        render_business_analysis_markdown(report),
+    )
     _print_business_analysis_summary(report, report_path, summary_path, stdout)
     return 0 if run.summary.failed == 0 and run.summary.invalid_cases == 0 else 1
 
@@ -653,6 +784,9 @@ def _run_query_understanding_cli(
     ]
     | None,
     git_state_reader: Callable[[Path], tuple[str, bool]],
+    run_start: RunStart,
+    run_inputs: Mapping[str, Path],
+    trace_cleanup: Callable[[], None],
     stdout: TextIO,
 ) -> int:
     cases = load_query_understanding_cases(args.query_understanding_cases)
@@ -665,14 +799,26 @@ def _run_query_understanding_cli(
         else query_understanding_factory(environ)
     )
     results = evaluate_query_understanding(cases, adapter)
-    git_commit, git_dirty = git_state_reader(PROJECT_ROOT)
+    trace_cleanup()
+    provenance = finish_run(
+        run_start,
+        PROJECT_ROOT,
+        run_inputs,
+        git_state_reader=git_state_reader,
+    )
+    source_start = run_start.source_start
+    model_configuration = collect_model_configuration(environ)
     report = create_query_understanding_report(
         results,
-        git_commit=git_commit,
-        git_dirty=git_dirty,
+        git_commit=_source_commit(source_start),
+        git_dirty=_source_dirty(source_start),
         model=environ.get("LLM_MODEL", ""),
         cases_path=args.query_understanding_cases,
-        created_at=datetime.now(UTC),
+        run_id=run_start.run_id,
+        test_set_hash=_input_fingerprint(run_start, "test_set"),
+        model_configuration=model_configuration,
+        provenance=provenance,
+        created_at=datetime.fromisoformat(run_start.started_at),
     )
     metadata = report["metadata"]
     if not isinstance(metadata, Mapping):
