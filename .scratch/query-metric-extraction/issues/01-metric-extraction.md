@@ -26,7 +26,7 @@ None (can start immediately)
 
 ## Result
 
-实现完成。已完成 Spec、Design Review（PASS）、Ticket Readiness（READY）、源码 / 测试 / 正式文档修改、实现 Review（PASS）；`uv run pytest -q` 与 `./dev test all` 通过，`./dev check` 通过。真实 Query Understanding 评测因当前 worktree 无 `.env` / `LLM_API_KEY` 未运行。
+实现完成。已完成 Spec、Design Review（PASS）、Ticket Readiness（READY）、源码 / 测试 / 正式文档修改、实现 Review（PASS）；`uv run pytest -q` 与 `./dev test all` 通过，`./dev check` 通过。真实 Query Understanding 7/7、Online Retrieval 29/29、Multi-Turn 7/7 场景（15/15 轮次）均通过；RAG 资产构建 `20261015T091731Z-c95bed778154` 已发布。
 
 ## Comments
 
