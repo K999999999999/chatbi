@@ -30,7 +30,7 @@ TDD: Red 阶段支持应用账号创建请求返回 404；新增测试固定这�
 
 Verification: `uv run --locked pytest -q tests/query_api/test_browser_auth.py`（22 passed）；`./dev test web auth.spec.ts --grep 'first password change' --repeat-each=2`（首次改密 2 passed，Vite dev 代理 1 passed）；完整 `./dev test web`（浏览器 67 passed，Vite dev 代理 1 passed）。Ruff format / check、文档链接检查、TypeScript typecheck 均通过。浏览器 runner 构建的是 `chatbi-browser-dev:local` 测试环境，不构建业务 APP 镜像；临时测试容器和网络由 runner 清理。
 
-Commit: `dbb948c81f5bcbc02d39c8dd22b3452a868b9d58`（本地）；没有 Push / PR。
+Commit: `dbb948c81f5bcbc02d39c8dd22b3452a868b9d58`（Ticket 完成时为本地提交，后续随目标汇总至 [PR #86](https://github.com/K999999999999/chatbi/pull/86)）。
 
 ## Comments
 

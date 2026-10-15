@@ -1,6 +1,6 @@
 # 测试可靠性：实施 Ticket 草案
 
-Status: confirmed；用户已确认七项拆分，并授权全部本地实施、验证和 Commit。正式 Ticket 见 [issues](issues/)；Push / PR 尚未授权。
+Status: confirmed；用户已确认七项拆分，并授权全部本地实施、验证和 Commit。正式 Ticket 见 [issues](issues/)；本草案阶段尚未取得 Push / PR 授权，后续汇总交付见 [PR #86](https://github.com/K999999999999/chatbi/pull/86)。
 
 ## 共同约束
 
@@ -8,7 +8,7 @@ Status: confirmed；用户已确认七项拆分，并授权全部本地实施、
 - Canonical Source：[Spec](spec.md) 定义行为，[Design](design.md) 细化实现，[Design Review](design-review.md) 为已通过门禁；本文件只安排切片。
 - Change Profile：本机源码作品的持续维护；七个有界切片、同一目标 branch / worktree、本地候选；各项代码 / 测试 / 正式文档一起交付，不另建水平文档 Ticket。
 - 不改产品业务、首次改密、账号权限、SQL Guard 或模型答案；不自动操作日常环境或收费调用；旧验证候选保留。
-- 每项按 TDD / 最小适用验证、当前上下文 Code Review、Diff 检查和本地提交执行。没有 Push / PR 授权；远端 CI 未跑就标明未跑。
+- 每项按 TDD / 最小适用验证、当前上下文 Code Review、Diff 检查和本地提交执行；草案阶段未有 Push / PR 授权，故当时托管 CI 尚未运行。后续 PR / CI 结果记录于 Ticket 07。
 - 所有 owned files 的新增标记为“新”；发现未列出的业务边界或关键设计变更时先返回 Spec / Design，不借实现扩张。
 - 前四项和第五项可独立开始；主 Agent 按编号串行推进。共享文件由同一 Owner 顺序维护，不据此制造额外技术依赖。
 

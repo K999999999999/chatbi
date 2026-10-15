@@ -1,6 +1,6 @@
 # 测试可靠性与运行路线精简
 
-Status: confirmed；用户在本轮明确“确认”完整 Spec。尚未授权代码实施或发布。
+Status: confirmed；七项 Ticket 已实施并随 PR #86 合并（2026-10-15T16:28:38Z）。最终托管 CI 结果及文档收尾见 [工作状态](status.md) 和 [路线图收尾 Spec](../test-reliability-roadmap-closeout/spec.md)。
 
 ## Problem Statement
 
@@ -113,13 +113,13 @@ Status: confirmed；用户在本轮明确“确认”完整 Spec。尚未授权�
 
 ## Out of Scope
 
-- 本轮仅整理需求；未实施代码、未创建正式 Tickets、未 Commit / Push / PR，未操作服务或数据库。
+- 需求澄清阶段仅整理需求；后续用户确认完整 Spec、七项 Ticket 及实施授权后，按此范围完成实现与交付。该历史阶段未操作服务或数据库。
 - 不接手 `fix/full-validation-findings` 旧候选，不混入它与当前指标原话 Contract 冲突的语义断言；按原记录保留 branch / worktree。
 - 不新增产品业务能力、发布平台、镜像仓库、部署流水线、测试管理平台、容量承诺或新的付费评测门槛。
 - 不取消首次改密或放宽权限 / SQL 安全 / 评分标准，不因发现边界缺陷就判定历史结果无效。
 
 ## Further Notes
 
-本轮由用户明确要求“当做需求”，随后逐项讨论并扩展报告追溯范围；用户已明确确认完整 Spec。设计细化见 [Design](design.md)，审查记录见 [Design Review](design-review.md)；下一步整理 Ticket 草案与当前上下文 Readiness Review。尚无代码实施与远端发布授权。
+本轮由用户明确要求“当做需求”，随后逐项讨论并扩展报告追溯范围；用户已确认完整 Spec、七项拆分及实施。设计细化见 [Design](design.md)，审查记录见 [Design Review](design-review.md)，Ticket 验收与结果见 [issues](issues/)。七项工作已随 PR #86 合并；真实 LLM 评测与业务验收未运行。合并后路线图状态更正由[路线图收尾 Spec](../test-reliability-roadmap-closeout/spec.md)跟踪。
 
 正式事实源见[架构](../../docs/architecture.md)、[产品范围](../../docs/product-scope.md)、[路线图](../../docs/roadmap.md)、[评测 Contract](../../docs/specs/evaluation.md)、[容器开发 Contract](../../docs/specs/container-dev-environment.md)与[本地工作规则](../../docs/agents/issue-tracker.md)。历史源文件由调查基线提交定位；本 Spec 不把旧实现提升为新的业务真相。

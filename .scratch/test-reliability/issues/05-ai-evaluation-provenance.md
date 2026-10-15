@@ -34,7 +34,7 @@ Verification：`uv run --locked pytest -q tests/evaluation tests/scripts/test_ve
 
 Roadmap：不修改 `docs/roadmap.md`；Ticket 05 是已确认测试可靠性目标内的执行项，未改变已确认范围、依赖、验收或路线优先级。
 
-Commit：`f88045666b3e3d614c8969d0068b242579b6c1b1`（本地）；没有 Push / PR。
+Commit：`f88045666b3e3d614c8969d0068b242579b6c1b1`（Ticket 完成时为本地提交，后续随目标汇总至 [PR #86](https://github.com/K999999999999/chatbi/pull/86)）。
 
 ## Comments
 

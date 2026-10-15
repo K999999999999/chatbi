@@ -14,7 +14,7 @@
 
 已完成dev分类入口与本机管理员恢复目标，按[Spec](../.scratch/dev-command-entrypoints/spec.md)交付七项Ticket；当时纳入的标准APP管理路线已由后续[测试可靠性目标](../.scratch/test-reliability/spec.md)确认退役，历史候选和验证仍见[原验收记录](../.scratch/dev-command-entrypoints/acceptance.md)。
 
-已确认测试可靠性与运行路线精简目标，按[Spec](../.scratch/test-reliability/spec.md)拆分七项Ticket，当前实施本地测试可靠性、报告追溯和CI覆盖；不改变其他路线优先级。
+已完成测试可靠性与运行路线精简目标，按[Spec](../.scratch/test-reliability/spec.md)完成七项Ticket，覆盖本地测试可靠性、报告追溯及 CI 中的 development 数据库与 PDF renderer 检查；[PR #86](https://github.com/K999999999999/chatbi/pull/86) 已合并，最终 8 项 required checks 全部通过。真实 LLM 评测与业务验收未运行；不改变其他路线优先级。
 
 已确认部署精简目标，实现与验收已完成并通过 [PR #81](https://github.com/K999999999999/chatbi/pull/81) 合并：统一dev容器入口，保留标准Dockerfile/Compose、初始化和应用保护，删除自研Stable运维及宿主开发教程。范围见[Spec](../.scratch/deployment-simplification/spec.md)，证据见[验收记录](../.scratch/deployment-simplification/acceptance.md)；不新增产品功能或调整其他优先级。增加数据源、部署副本、数据权限、分析场景或容量承诺前，应先确认用户目标、支持范围和验收要求，再形成相应 Spec；本段不授予实施授权。
 

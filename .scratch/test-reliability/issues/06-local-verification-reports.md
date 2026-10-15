@@ -36,7 +36,7 @@ Verification：`./dev test all`（退出码 0；1201 total：1147 passed、54 sk
 
 Roadmap：不修改 `docs/roadmap.md`；Ticket 06 属已确认测试可靠性目标内的实施，未改变范围、依赖、验收或优先级。
 
-Commit：`dc5b2b3c8fca09a3f38f2bb462c69cadce8a743d`（本地）；没有 Push / PR。
+Commit：`dc5b2b3c8fca09a3f38f2bb462c69cadce8a743d`（Ticket 完成时为本地提交，后续随目标汇总至 [PR #86](https://github.com/K999999999999/chatbi/pull/86)）。
 
 ## Comments
 

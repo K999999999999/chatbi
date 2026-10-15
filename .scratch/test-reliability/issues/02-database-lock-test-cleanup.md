@@ -30,7 +30,7 @@ TDD: Red 阶段新增的隔离子进程测试暴露旧实现忽略强制观察�
 
 Verification: `timeout --signal=TERM --kill-after=15s 120s ./dev test database` 最终运行通过（CI profile 5 passed；development profile 56 passed）；此前相同数据库 profiles 的重复隔离运行也通过。定向数据库集成包含真实锁观察和三类失败清理。Ruff format / check、`python3 -m scripts.check_documentation`、`git diff --check` 通过。仅使用 runner 标记的临时 PostgreSQL / 网络，没有触及日常数据库。
 
-Commit: `41bf09e352b0838382a22f44024b55b33213666f`（本地）；没有 Push / PR。
+Commit: `41bf09e352b0838382a22f44024b55b33213666f`（Ticket 完成时为本地提交，后续随目标汇总至 [PR #86](https://github.com/K999999999999/chatbi/pull/86)）。
 
 ## Comments
 
