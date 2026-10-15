@@ -172,7 +172,7 @@ class QueryUnderstandingLLMTest(unittest.TestCase):
         self.assertIn('"人民币毛利"', prompt)
         self.assertIn('"毛利"', prompt)
         self.assertIn("“利润”未唯一指向列表中的指标", prompt)
-        self.assertIn("metrics 必须输出该指标的规范名称", prompt)
+        self.assertIn("metrics 必须保留用户原话", prompt)
 
     def test_prompt_requires_one_object_without_physical_resources(self) -> None:
         prompt = build_query_understanding_prompt("查询销售额")
@@ -191,7 +191,7 @@ class QueryUnderstandingLLMTest(unittest.TestCase):
         self.assertIn('"毛利率"', prompt)
         self.assertIn('"毛利润率"', prompt)
         self.assertIn("“利润”未唯一指向列表中的指标", prompt)
-        self.assertIn("“毛利”对应“人民币毛利”", prompt)
+        self.assertIn("即使用户说法唯一对应一个指标", prompt)
         self.assertNotIn("SUM(f.net_sales_amount_cny", prompt)
         self.assertNotIn("fct_sales_order_line", prompt)
         self.assertIn("由程序返回 CANNOT_ANSWER", prompt)

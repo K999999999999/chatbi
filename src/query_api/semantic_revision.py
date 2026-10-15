@@ -317,8 +317,6 @@ def revise_history_semantic_query(
                 else item
                 for item in values["order_by"]
             )
-    if any(item.metric not in merged.metrics for item in values["aggregate_filters"]):
-        raise clarification("请明确旧指标聚合筛选是否取消或改成新条件")
     output = set(merged.dimensions)
     if values["selection"] is not None:
         output.update(values["selection"].fields)

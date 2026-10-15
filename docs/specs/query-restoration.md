@@ -25,9 +25,9 @@ History请求执行仍调用现有AuthorizedQueryService，内部标记在其复
 | 字段 | 严格语义 |
 | --- | --- |
 | 基础语义 | query_type、subjects、metrics、dimensions、filters，沿用当前校验；time为已校验带时区绝对[start,end)和granularity，不重新解析旧相对时间 |
-| order_by | 有序元组，每项target_kind为metric / dimension / entity_field / time、target为规范业务身份，direction为asc / desc、nulls为first / last；不接受物理列名 /表达式 /SQL片段。target必须来自该查询经认证的输出业务项 |
+| order_by | 有序元组，每项target_kind为metric / dimension / entity_field / time、target为规范业务身份，direction为asc / desc、nulls为first / last；不接受物理列名 /表达式 /SQL片段。历史首轮候选可以暂存用户原话，认证时必须将 metric target 转为当前已选规范身份；target必须来自该查询经认证的输出业务项 |
 | row_limit | null或正整数；程序拒绝bool /浮点 /负数。用户业务排名数量与返回最多100行独立，例如前200项保留200条件并提示返回截断，不能把100当作原业务Top-N |
-| aggregate_filters | 当前已允许单指标聚合条件的规范指标身份、既有equals / in / gt / gte / lt / lte及严格十进制字符串 /值数组；表示聚合后条件，禁止混成普通行WHERE。既有多指标不支持HAVING的约束仍拒绝，不借历史与成果放宽 |
+| aggregate_filters | 当前已允许单指标聚合条件的指标说法，认证时按当前已选指标的登记名称 / 别名转换为规范身份；既有equals / in / gt / gte / lt / lte及严格十进制字符串 /值数组保持不变。表示聚合后条件，禁止混成普通行WHERE。既有多指标不支持HAVING的约束仍拒绝，不借历史与成果放宽 |
 | selection | entity_lookup需明确主体、经认证输出实体字段与distinct布尔值；metric_analysis按规范指标 /维度 /时间分组，不允许模型增加未请求指标或改变去重 /公式 |
 | provenance | state_version=1、实际发布资产的相关规范指标定义、字段类型 /映射、Join不变量、程序认证的semantic bindings；build_id只用于定位，不以全局build_id变化直接判不兼容 |
 
@@ -39,7 +39,7 @@ History请求执行仍调用现有AuthorizedQueryService，内部标记在其复
 
 ## Business Semantic Resolution → 认证映射
 
-由Online Query下的semantic_state认证规则拥有业务条件与QueryContext的绑定。只使用程序批准的业务名称 /实体字段 /时间粒度和当前发布的TABLE / COLUMN / METRIC /Join事实，不根据模型选择列就批准绑定。未发布metrics.json、显示别名、结果展示单位 /颜色 /格式不成为新的业务真相。
+由Online Query下的semantic_state认证规则拥有业务条件与QueryContext的绑定。查询解析阶段保留用户指标说法；认证只使用程序批准的业务名称 /实体字段 /时间粒度和当前发布的TABLE / COLUMN / METRIC /Join事实，不根据模型选择列就批准绑定。未发布metrics.json、显示别名、结果展示单位 /颜色 /格式不成为新的业务真相。
 
 现有规范维度 /实体字段的权威绑定位于 `src/semantic/query_bindings.json`：业务身份、类型、物理引用、允许的时间表达式，来源引用已有Domain /指标 /结构定义。
 不得新增未经确认业务口径；维度column映射由此权威绑定维护，结果展示 loader引用绑定而不是维护第二份映射。
@@ -69,7 +69,7 @@ history revision candidate在基础六字段delta之外带order_operation / limi
 - “取消前几名限制”clear row_limit；“不再排序”clear用户排序并按非排名默认展示顺序重新认证。保留row_limit却清空唯一排名次序无法认证时澄清，不任意选指标。
 - “改成毛利”替换指标：只有原排序target是被替换的唯一指标且替换结果唯一，程序将排序target同步替换，direction /limit保留；多个候选目标须澄清。
 - 更换维度 /实体选择使order target不存在，返回澄清要求明确新排序或取消排名，不保留悬空物理表达式。
-- 聚合条件未提则keep，同指标槽位新条件替换；取消须明确clear；指标替换造成原聚合条件含义不清则澄清，不能自动把“销售额>100”换成“毛利>100”。
+- 聚合条件未提则keep，同指标槽位新条件替换；取消须明确clear；同一登记指标的别名不改变既有条件身份，指标替换造成原聚合条件含义不清则澄清，不能自动把“销售额>100”换成“毛利>100”。
 
 失败 /澄清不推进最后成功完整状态。成功持久化的state含程序合并后的完整条件，不仅是最新短问题 /delta。
 

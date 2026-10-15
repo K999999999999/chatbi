@@ -64,5 +64,12 @@
       "dimensions": ["客户类型"],
       "time": null
     }
+  },
+  {
+    "id": "ambiguous-profit-clarification",
+    "question": "帮我查一下利润",
+    "expected": {
+      "outcome": "clarification_required"
+    }
   }
 ]
