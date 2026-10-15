@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from src.online_query.query_understanding import (
+    QueryUnderstandingClarificationRequired,
     SemanticQueryCandidate,
     SemanticQueryValidationError,
     candidate_from_payload,
@@ -28,7 +29,8 @@ class SemanticEvaluationLoadError(RuntimeError):
 class QueryUnderstandingCase:
     id: str
     question: str
-    expected: SemanticQueryCandidate
+    expected: SemanticQueryCandidate | None
+    expected_outcome: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -211,7 +213,8 @@ def load_query_understanding_cases(
             QueryUnderstandingCase(
                 id=case_id,
                 question=question,
-                expected=expected,
+                expected=expected[0],
+                expected_outcome=expected[1],
             )
         )
     return tuple(cases)
@@ -227,6 +230,29 @@ def evaluate_query_understanding(
     for case in cases:
         try:
             actual = adapter.understand(case.question)
+            if case.expected_outcome is not None:
+                if (
+                    not isinstance(actual, QueryUnderstandingClarificationRequired)
+                    or actual.outcome != case.expected_outcome
+                ):
+                    results.append(
+                        QueryUnderstandingEvaluation(
+                            case_id=case.id,
+                            passed=False,
+                            failure_reason="受控结果与期望不一致",
+                            reason_code="OUTCOME_MISMATCH",
+                        )
+                    )
+                else:
+                    results.append(
+                        QueryUnderstandingEvaluation(case_id=case.id, passed=True)
+                    )
+                continue
+            if not isinstance(actual, SemanticQueryCandidate):
+                raise SemanticQueryValidationError(
+                    "期望结构化候选",
+                    reason="CANDIDATE_TYPE_INVALID",
+                )
             validate_candidate(actual, original_question=case.question)
         except SemanticQueryValidationError as exc:
             results.append(
@@ -249,6 +275,7 @@ def evaluate_query_understanding(
             )
             continue
 
+        assert case.expected is not None
         mismatch = _semantic_mismatch(actual, case.expected)
         if mismatch is None:
             results.append(QueryUnderstandingEvaluation(case_id=case.id, passed=True))
@@ -265,23 +292,32 @@ def evaluate_query_understanding(
     return tuple(results)
 
 
-def _expected_candidate(value: object, index: int) -> SemanticQueryCandidate:
+def _expected_candidate(
+    value: object, index: int
+) -> tuple[SemanticQueryCandidate | None, str | None]:
     if not isinstance(value, Mapping):
         raise SemanticEvaluationLoadError(f"第 {index} 条案例 expected 必须是对象")
+    if set(value) == {"outcome"}:
+        if value["outcome"] != "clarification_required":
+            raise SemanticEvaluationLoadError(f"第 {index} 条案例 outcome 不受支持")
+        return None, "clarification_required"
     missing = _EXPECTED_FIELDS - set(value)
     extra = set(value) - _EXPECTED_FIELDS
     if missing or extra:
         raise SemanticEvaluationLoadError(f"第 {index} 条案例 expected 字段无效")
     try:
-        return candidate_from_payload(
-            {
-                "query_type": value["query_type"],
-                "subjects": [],
-                "metrics": value["metrics"],
-                "dimensions": value["dimensions"],
-                "time": value["time"],
-                "filters": [],
-            }
+        return (
+            candidate_from_payload(
+                {
+                    "query_type": value["query_type"],
+                    "subjects": [],
+                    "metrics": value["metrics"],
+                    "dimensions": value["dimensions"],
+                    "time": value["time"],
+                    "filters": [],
+                }
+            ),
+            None,
         )
     except SemanticQueryValidationError as exc:
         raise SemanticEvaluationLoadError(

@@ -13,7 +13,10 @@ from evaluation.suites.query_understanding.semantic_evaluation import (
     render_query_understanding_report,
     write_query_understanding_report,
 )
-from src.online_query.query_understanding import candidate_from_payload
+from src.online_query.query_understanding import (
+    QueryUnderstandingClarificationRequired,
+    candidate_from_payload,
+)
 
 
 class _AdapterFailure(ValueError):
@@ -30,7 +33,7 @@ class SemanticEvaluationTest(unittest.TestCase):
         )
 
     def test_cases_cover_no_time_and_explicit_time_boundaries(self) -> None:
-        self.assertEqual(len(self.cases), 6)
+        self.assertEqual(len(self.cases), 7)
         no_time = next(
             case for case in self.cases if case.id == "current-context-no-time"
         )
@@ -46,13 +49,20 @@ class SemanticEvaluationTest(unittest.TestCase):
             case for case in self.cases if case.id == "today-explicit-time"
         )
         self.assertIsNotNone(explicit_time.expected.time)
+        clarification = next(
+            case for case in self.cases if case.id == "ambiguous-profit-clarification"
+        )
+        self.assertEqual(clarification.expected_outcome, "clarification_required")
+        self.assertIsNone(clarification.expected)
 
     def test_evaluator_compares_structured_semantics(self) -> None:
         class ExpectedAdapter:
             def understand(self, question: str):
-                return next(
-                    case.expected for case in self.cases if case.question == question
-                )
+                case = next(case for case in self.cases if case.question == question)
+                if case.expected_outcome == "clarification_required":
+                    return QueryUnderstandingClarificationRequired()
+                assert case.expected is not None
+                return case.expected
 
             def __init__(self, cases):
                 self.cases = cases
@@ -62,7 +72,7 @@ class SemanticEvaluationTest(unittest.TestCase):
             ExpectedAdapter(self.cases),
         )
 
-        self.assertEqual(len(results), 6)
+        self.assertEqual(len(results), 7)
         self.assertTrue(all(result.passed for result in results))
         self.assertTrue(all(result.reason_code is None for result in results))
 

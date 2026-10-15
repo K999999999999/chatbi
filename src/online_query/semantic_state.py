@@ -24,6 +24,10 @@ class SemanticCertificationError(ValueError):
     """当前发布事实不足以认证业务语义。"""
 
 
+class SemanticConditionClarificationError(SemanticCertificationError):
+    """当前条件引用无法对应本轮已选指标，需要用户澄清。"""
+
+
 class SemanticSQLMismatch(ValueError):
     """SQL与事先认证业务条件不一致。"""
 
@@ -45,6 +49,7 @@ def prepare_restoration_state(semantic: ValidatedSemanticQuery, context: QueryCo
     available = facts["metrics"]
     metrics = []
     canonical_metrics = []
+    selected_records = []
     for requested in semantic.metrics:
         matches = [
             m
@@ -56,6 +61,7 @@ def prepare_restoration_state(semantic: ValidatedSemanticQuery, context: QueryCo
         record = matches[0]
         name = record.get("name", record.get("metric_name"))
         canonical_metrics.append(name)
+        selected_records.append(record)
         metrics.append(
             {
                 key: record[key]
@@ -80,7 +86,42 @@ def prepare_restoration_state(semantic: ValidatedSemanticQuery, context: QueryCo
         metrics[-1]["dependency_definitions"] = _dependency_definitions(
             record, available, {name}
         )
-    semantic = replace(semantic, metrics=tuple(canonical_metrics))
+    conditions = semantic.restoration_conditions
+
+    def selected_metric_name(requested: str) -> str:
+        matches = [
+            record
+            for record in selected_records
+            if requested
+            in {
+                record.get("name", record.get("metric_name")),
+                *record.get("aliases", []),
+            }
+        ]
+        if len(matches) != 1:
+            raise SemanticConditionClarificationError("指标条件未指向当前已认证指标")
+        return matches[0].get("name", matches[0].get("metric_name"))
+
+    canonical_orders = tuple(
+        replace(item, target=selected_metric_name(item.target))
+        if item.target_kind == "metric"
+        else item
+        for item in conditions.order_by
+    )
+    canonical_aggregate_filters = tuple(
+        replace(item, metric=selected_metric_name(item.metric))
+        for item in conditions.aggregate_filters
+    )
+    conditions = replace(
+        conditions,
+        order_by=canonical_orders,
+        aggregate_filters=canonical_aggregate_filters,
+    )
+    semantic = replace(
+        semantic,
+        metrics=tuple(canonical_metrics),
+        restoration_conditions=conditions,
+    )
     config = load_query_bindings()
     bindings = dict(config["dimensions"])
     bindings.update(config["entity_fields"])

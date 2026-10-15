@@ -278,6 +278,57 @@ def test_existing_single_metric_having_is_preserved_and_not_replaced_by_where():
     assert db.calls == 1
 
 
+def test_metric_alias_is_canonicalized_for_history_order_and_having():
+    from src.online_query.restoration_conditions import AggregateFilter, BusinessOrder
+
+    original = ranked_request()
+    conditions = replace(
+        original.semantic_query.restoration_conditions,
+        order_by=(BusinessOrder("metric", "人民币销售额", "desc", "first"),),
+        aggregate_filters=(AggregateFilter("人民币销售额", "gt", ("100",)),),
+    )
+    semantic = replace(
+        original.semantic_query,
+        metrics=("人民币销售额",),
+        restoration_conditions=conditions,
+    )
+    request = replace(original, semantic_query=semantic)
+    sql = SQL.replace("ORDER BY", "HAVING SUM(f.net_sales_amount_cny)>100 ORDER BY")
+    result = OnlineQueryService(
+        FixedSQL(sql), CountingDatabase(), context_loader=published_context
+    ).execute(request)
+
+    assert isinstance(result, QuerySuccess)
+    assert result.semantic_query is not None
+    assert result.semantic_query.metrics == ("人民币净销售额",)
+    assert result.semantic_query.restoration_conditions is not None
+    certified = result.semantic_query.restoration_conditions
+    assert certified.order_by[0].target == "人民币净销售额"
+    assert certified.aggregate_filters[0].metric == "人民币净销售额"
+
+
+def test_replaced_metric_with_old_having_is_clarification_before_sql():
+    from src.online_query.restoration_conditions import AggregateFilter
+
+    original = ranked_request()
+    semantic = replace(
+        original.semantic_query,
+        metrics=("人民币毛利",),
+        restoration_conditions=replace(
+            original.semantic_query.restoration_conditions,
+            aggregate_filters=(AggregateFilter("人民币净销售额", "gt", ("100",)),),
+        ),
+    )
+    db = CountingDatabase()
+    result = OnlineQueryService(
+        FixedSQL(SQL), db, context_loader=published_context
+    ).execute(replace(original, semantic_query=semantic))
+
+    assert isinstance(result, QueryFailure)
+    assert result.error_code.value == "CLARIFICATION_REQUIRED"
+    assert db.calls == 0
+
+
 def test_synthetic_unknown_join_key_cannot_certify_restorable_state():
     context = published_context()
     facts = {
@@ -298,7 +349,6 @@ def test_synthetic_unknown_join_key_cannot_certify_restorable_state():
 
 
 def test_completed_status_filter_uses_certified_existing_metric_value():
-    from dataclasses import replace
     from src.online_query.query_understanding import FilterOperator, ValidatedFilter
 
     request = ranked_request()

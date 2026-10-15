@@ -31,7 +31,11 @@ from .query_trace import (
 )
 from .query_understanding import ValidatedSemanticQuery
 from .result_metadata import build_result_metadata
-from .semantic_state import prepare_restoration_state, validate_restoration_sql
+from .semantic_state import (
+    SemanticConditionClarificationError,
+    prepare_restoration_state,
+    validate_restoration_sql,
+)
 
 
 def _execute_query(
@@ -63,6 +67,8 @@ def _execute_query(
             )
         except ExecutionStopped:
             raise
+        except SemanticConditionClarificationError:
+            return failure_factory(request_id, QueryErrorCode.CLARIFICATION_REQUIRED)
         except Exception as exc:
             logging.getLogger(__name__).warning(
                 "History query semantic certification failed: error_type=%s",

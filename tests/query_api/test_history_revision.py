@@ -6,7 +6,11 @@ from types import SimpleNamespace
 import pytest
 
 from src.online_query.query_understanding import candidate_from_payload
-from src.online_query.restoration_conditions import BusinessOrder, RestorationConditions
+from src.online_query.restoration_conditions import (
+    AggregateFilter,
+    BusinessOrder,
+    RestorationConditions,
+)
 from src.query_api.history_codec import decode_query_state
 from src.query_api.semantic_revision import (
     SemanticRevisionError,
@@ -63,6 +67,44 @@ def test_metric_replacement_keeps_topn_and_retargets_unique_metric_order():
         "metric", "人民币毛利", "desc", "first"
     )
     assert result.dimensions == ("产品",)
+
+
+def test_metric_alias_keeps_existing_certified_aggregate_condition():
+    conditions = replace(
+        previous().restoration_conditions,
+        aggregate_filters=(AggregateFilter("人民币净销售额", "gt", ("100",)),),
+    )
+    prior = replace(previous(), restoration_conditions=conditions)
+
+    result = revise_history_semantic_query(
+        prior,
+        "改看营收",
+        query_understanding=adapter(metrics=("营收",)),
+    )
+
+    assert result.metrics == ("营收",)
+    assert result.restoration_conditions.aggregate_filters == (
+        AggregateFilter("人民币净销售额", "gt", ("100",)),
+    )
+
+
+def test_metric_replacement_keeps_old_aggregate_until_certification():
+    conditions = replace(
+        previous().restoration_conditions,
+        aggregate_filters=(AggregateFilter("人民币净销售额", "gt", ("100",)),),
+    )
+    prior = replace(previous(), restoration_conditions=conditions)
+
+    result = revise_history_semantic_query(
+        prior,
+        "改成毛利",
+        query_understanding=adapter(metrics=("人民币毛利",)),
+    )
+
+    assert result.metrics == ("人民币毛利",)
+    assert result.restoration_conditions.aggregate_filters == (
+        AggregateFilter("人民币净销售额", "gt", ("100",)),
+    )
 
 
 def test_limit_only_delta_changes_count_and_preserves_order():
