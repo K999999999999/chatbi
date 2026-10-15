@@ -2,14 +2,18 @@
 
 import json
 import os
+import subprocess
+import sys
 from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
+from pathlib import Path
 from threading import Event
 from time import monotonic
 from uuid import uuid4
 
 import psycopg
 import pytest
-from sqlalchemy import text
+from sqlalchemy import event, text
 
 from src.chatbi_control.database import ControlDatabaseConfig, create_control_engine
 from src.chatbi_control.history import PostgresHistoryStore
@@ -141,7 +145,7 @@ def test_restart_fences_old_token_and_retains_success(history_env):
 
 
 def test_finish_waits_behind_short_history_management_lock(history_env):
-    engine, store, runtime, owner, _ = history_env
+    engine, store, runtime, owner, config = history_env
     header = store.create(owner, "query", "人民币净销售额", str(uuid4()))
     accepted = begin(store, runtime, owner, header.id)
     snapshot = encode_snapshot(
@@ -151,43 +155,259 @@ def test_finish_waits_behind_short_history_management_lock(history_env):
         source_question="人民币净销售额",
     )
 
-    lock_connection = engine.connect()
-    lock_transaction = lock_connection.begin()
-    lock_connection.execute(
-        text("SELECT id FROM history_records WHERE id=:id FOR UPDATE"),
-        {"id": header.id},
-    )
-    started = Event()
+    worker_engine = create_control_engine(config)
+    worker_application_name = "chatbi-history-lock-" + uuid4().hex[:16]
+    worker_pid = {}
+    worker_connection_ready = Event()
+
+    def configure_worker_connection(dbapi_connection, _record):
+        with dbapi_connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT set_config('application_name', %s, false)",
+                (worker_application_name,),
+            )
+            cursor.execute(
+                "SELECT set_config('statement_timeout', %s, false)", ("15000ms",)
+            )
+        dbapi_connection.commit()
+
+    def capture_worker_backend(dbapi_connection, _record, _proxy):
+        worker_pid["pid"] = dbapi_connection.info.backend_pid
+        worker_connection_ready.set()
+
+    event.listen(worker_engine, "connect", configure_worker_connection)
+    event.listen(worker_engine, "checkout", capture_worker_backend)
+    worker_store = PostgresHistoryStore(worker_engine)
 
     def finish():
-        started.set()
-        return store.finish_attempt(owner, accepted.token, snapshot, None)
+        if os.environ.get("CHATBI_HISTORY_LOCK_TEST_INJECT_WORKER_ERROR") == "1":
+            raise RuntimeError("injected history worker failure")
+        if os.environ.get("CHATBI_HISTORY_LOCK_TEST_INJECT_WORKER_TIMEOUT") == "1":
+            with worker_engine.begin() as connection:
+                connection.execute(text("SELECT pg_sleep(30)"))
+        return worker_store.finish_attempt(owner, accepted.token, snapshot, None)
 
+    def cancel_worker_backend():
+        pid = worker_pid.get("pid")
+        if pid is None:
+            return
+        with engine.begin() as canceller:
+            canceller.execute(text("SET LOCAL statement_timeout = '1s'"))
+            canceller.execute(
+                text("""SELECT pg_cancel_backend(pid)
+                    FROM pg_stat_activity
+                    WHERE pid=:pid AND datname=current_database()
+                      AND application_name=:application_name"""),
+                {"pid": pid, "application_name": worker_application_name},
+            ).scalar_one_or_none()
+
+    pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="history-lock-test")
+    lock_connection = None
+    lock_transaction = None
+    future = None
+    failure = None
+    cleanup_errors = []
     try:
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(finish)
-            assert started.wait(timeout=5)
-            deadline = monotonic() + 5
-            blocked = False
-            with engine.connect() as observer:
+        lock_connection = engine.connect()
+        lock_transaction = lock_connection.begin()
+        lock_connection.execute(
+            text("SELECT id FROM history_records WHERE id=:id FOR UPDATE"),
+            {"id": header.id},
+        )
+        future = pool.submit(finish)
+        ready_deadline = monotonic() + 5
+        while not worker_connection_ready.is_set():
+            if future.done():
+                future.result()
+                raise AssertionError(
+                    "finish worker exited before acquiring its connection"
+                )
+            remaining = ready_deadline - monotonic()
+            if remaining <= 0:
+                raise AssertionError(
+                    "finish worker connection was not observed within 5s"
+                )
+            worker_connection_ready.wait(min(remaining, 0.01))
+
+        deadline = monotonic() + 5
+        blocked = False
+        with engine.begin() as observer:
+            observer.execute(text("SET LOCAL statement_timeout = '1s'"))
+            if os.environ.get("CHATBI_HISTORY_LOCK_TEST_FORCE_PROBE_FAILURE") != "1":
                 while monotonic() < deadline:
+                    if future.done():
+                        future.result()
+                        break
                     blocked = observer.execute(
                         text("""SELECT EXISTS (
                             SELECT 1 FROM pg_stat_activity
-                            WHERE datname=current_database() AND pid<>pg_backend_pid()
-                              AND wait_event_type='Lock' AND query ILIKE '%history_records%'
-                        )""")
+                            WHERE pid=:pid AND datname=current_database()
+                              AND application_name=:application_name
+                              AND wait_event_type='Lock'
+                              AND query ILIKE '%history_records%'
+                        )"""),
+                        {
+                            "pid": worker_pid["pid"],
+                            "application_name": worker_application_name,
+                        },
                     ).scalar_one()
                     if blocked:
                         break
                     Event().wait(0.01)
-            assert blocked, "finish should wait on the short management transaction"
-            lock_transaction.commit()
-            assert future.result(timeout=5).status == "succeeded"
+        assert blocked, "finish should wait on the short management transaction"
+        lock_transaction.commit()
+        assert future.result(timeout=5).status == "succeeded"
+    except Exception as error:  # noqa: BLE001 - preserve assertion/worker error through cleanup
+        failure = error
     finally:
-        if lock_transaction.is_active:
-            lock_transaction.rollback()
-        lock_connection.close()
+        # Always release our lock before asking the worker thread to join.
+        try:
+            if lock_transaction is not None and lock_transaction.is_active:
+                lock_transaction.rollback()
+        except Exception as error:  # noqa: BLE001 - try every owned-resource cleanup
+            cleanup_errors.append(f"释放测试锁失败：{error!r}")
+        if lock_connection is not None:
+            try:
+                lock_connection.close()
+            except Exception as error:  # noqa: BLE001 - try every owned-resource cleanup
+                cleanup_errors.append(f"关闭锁连接失败：{error!r}")
+
+        if future is not None:
+            if not future.done():
+                try:
+                    future.result(timeout=5)
+                except FutureTimeoutError as error:
+                    if future.done():
+                        if failure is None:
+                            failure = error
+                        elif failure is not error:
+                            cleanup_errors.append(f"worker 退出异常：{error!r}")
+                    else:
+                        if failure is None:
+                            failure = error
+                        else:
+                            cleanup_errors.append(f"worker 清理等待超过 5s：{error!r}")
+                        try:
+                            cancel_worker_backend()
+                        except Exception as cancel_error:  # noqa: BLE001 - retain primary error
+                            cleanup_errors.append(
+                                f"取消本测试 worker 失败：{cancel_error!r}"
+                            )
+                        try:
+                            future.result(timeout=5)
+                        except FutureTimeoutError as wait_error:
+                            if future.done():
+                                if failure is None:
+                                    failure = wait_error
+                                elif failure is not wait_error:
+                                    cleanup_errors.append(
+                                        f"worker 退出异常：{wait_error!r}"
+                                    )
+                            else:
+                                cleanup_errors.append(
+                                    f"取消后 worker 仍未在 5s 内退出：{wait_error!r}"
+                                )
+                        except Exception as worker_error:  # noqa: BLE001 - retain primary error
+                            if failure is None:
+                                failure = worker_error
+                            elif failure is not worker_error:
+                                cleanup_errors.append(
+                                    f"worker 退出异常：{worker_error!r}"
+                                )
+                except Exception as worker_error:  # noqa: BLE001 - retain primary error
+                    if failure is None:
+                        failure = worker_error
+                    elif failure is not worker_error:
+                        cleanup_errors.append(f"worker 退出异常：{worker_error!r}")
+            else:
+                try:
+                    future.result()
+                except Exception as worker_error:  # noqa: BLE001 - retain primary error
+                    if failure is None:
+                        failure = worker_error
+                    elif failure is not worker_error:
+                        cleanup_errors.append(f"worker 退出异常：{worker_error!r}")
+
+        try:
+            pool.shutdown(wait=True, cancel_futures=True)
+        except Exception as error:  # noqa: BLE001 - retain primary error
+            cleanup_errors.append(f"线程池关闭失败：{error!r}")
+        try:
+            worker_engine.dispose()
+        except Exception as error:  # noqa: BLE001 - retain primary error
+            cleanup_errors.append(f"worker engine 清理失败：{error!r}")
+
+    if failure is not None:
+        for cleanup_error in cleanup_errors:
+            failure.add_note(cleanup_error)
+        raise failure
+    assert not cleanup_errors, "; ".join(cleanup_errors)
+
+
+@pytest.mark.parametrize(
+    "injection,expected_diagnostic",
+    [
+        (
+            "CHATBI_HISTORY_LOCK_TEST_FORCE_PROBE_FAILURE",
+            "finish should wait on the short management transaction",
+        ),
+        (
+            "CHATBI_HISTORY_LOCK_TEST_INJECT_WORKER_ERROR",
+            "injected history worker failure",
+        ),
+        (
+            "CHATBI_HISTORY_LOCK_TEST_INJECT_WORKER_TIMEOUT",
+            "finish should wait on the short management transaction",
+        ),
+    ],
+)
+def test_lock_wait_failures_exit_bounded_and_release_owned_sessions(
+    injection, expected_diagnostic
+):
+    command = [
+        sys.executable,
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        f"{Path(__file__).resolve()}::test_finish_waits_behind_short_history_management_lock",
+    ]
+    environment = os.environ.copy()
+    environment.pop("CHATBI_HISTORY_LOCK_TEST_FORCE_PROBE_FAILURE", None)
+    environment.pop("CHATBI_HISTORY_LOCK_TEST_INJECT_WORKER_ERROR", None)
+    environment.pop("CHATBI_HISTORY_LOCK_TEST_INJECT_WORKER_TIMEOUT", None)
+    environment[injection] = "1"
+    try:
+        result = subprocess.run(
+            command,
+            cwd=Path(__file__).resolve().parents[2],
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as error:
+        pytest.fail(f"锁等待失败路径未能在20秒内退出：{error}")
+    output = result.stdout + result.stderr
+    assert result.returncode != 0, output
+    assert expected_diagnostic in output
+
+    config = ControlDatabaseConfig.from_environment()
+    engine = create_control_engine(config)
+    try:
+        with engine.connect() as connection:
+            leaked = connection.execute(
+                text("""SELECT EXISTS (
+                    SELECT 1 FROM pg_stat_activity
+                    WHERE datname=current_database()
+                      AND application_name LIKE 'chatbi-history-lock-%'
+                )""")
+            ).scalar_one()
+        assert not leaked, "失败子测试遗留了自己的 worker 数据库连接"
+    finally:
+        engine.dispose()
 
 
 def test_single_process_guard_refuses_second_owner(history_env):
@@ -399,7 +619,7 @@ def test_analysis_delete_atomically_expires_original_run(history_env):
 
 
 def test_finish_transaction_failure_never_advances_context(history_env):
-    engine, store, runtime, owner, config = history_env
+    _engine, store, runtime, owner, config = history_env
     h = store.create(owner, "query", "销售额", str(uuid4()))
     accepted = begin(store, runtime, owner, h.id)
     trigger = "history_test_" + uuid4().hex
@@ -437,8 +657,8 @@ def test_finish_transaction_failure_never_advances_context(history_env):
 
 def test_missing_runtime_permission_rejects_startup_without_losing_data(history_env):
     from src.chatbi_control.database import (
-        verify_control_schema,
         ControlDatabaseMigrationError,
+        verify_control_schema,
     )
 
     engine, store, runtime, owner, config = history_env
@@ -469,12 +689,13 @@ def test_v2_upgrade_repeated_migration_and_old_version_marker(
     tmp_path, history_env, monkeypatch
 ):
     from dataclasses import replace
-    from pathlib import Path
+
     from psycopg import sql
+
     from src.chatbi_control.database import (
+        ControlDatabaseMigrationError,
         initialize_control_database,
         verify_control_schema,
-        ControlDatabaseMigrationError,
     )
 
     _, _, _, _, config = history_env
@@ -524,9 +745,7 @@ def test_v2_upgrade_repeated_migration_and_old_version_marker(
         finally:
             runtime.close()
         # 停止新运行时后执行基线真实 Schema verifier，保留 v3 数据回滚兼容。
-        import subprocess
         import types
-        import sys
 
         old_source = subprocess.check_output(
             ["git", "show", "afad5ac:src/chatbi_control/database.py"], text=True
@@ -534,7 +753,7 @@ def test_v2_upgrade_repeated_migration_and_old_version_marker(
         old = types.ModuleType("src.chatbi_control.rollback_database")
         old.__file__ = str(migrations.parents[1] / "src/chatbi_control/database.py")
         monkeypatch.setitem(sys.modules, old.__name__, old)
-        exec(compile(old_source, old.__file__, "exec"), old.__dict__)
+        exec(compile(old_source, old.__file__, "exec"), old.__dict__)  # noqa: S102 - isolated migration compatibility fixture
         old.verify_control_schema(engine)
         verify_control_schema(engine)
         assert store.saved_result(account, saved.id)[1] == snapshot

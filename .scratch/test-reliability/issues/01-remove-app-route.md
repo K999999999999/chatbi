@@ -1,6 +1,6 @@
 # 01 移除独立 APP 路线，保留 dev 与资源保护
 
-Status: ready-to-commit
+Status: done
 Canonical Source: [Spec](../spec.md)、[Design](../design.md)、[草案](../tickets-draft.md#01-移除独立-app-路线保留-dev-与资源保护)
 Owner: 当前主 Agent
 Change Profile: 单次退役；中等范围 / 中等风险；CLI、装配、专属构建、测试和文档闭环；无真实数据迁移。
@@ -29,7 +29,7 @@ Code Review: PASS；没有发现需修改的正确性或范围问题。TDD Red �
 
 Verification: `uv run --locked pytest -q tests/scripts/test_container_dev.py tests/scripts/test_dev_maintenance.py tests/bootstrap/test_commands.py tests/bootstrap/test_admin_recovery_command.py tests/bootstrap/test_doctor.py tests/authorization/test_admin_recovery.py`（78 passed）；开发 Compose `config --quiet`（exit 0）；`bash -n dev scripts/dev_environment.sh scripts/dev_maintenance.sh`、Ruff format / check、`python3 -m scripts.check_documentation` 和 `git diff --check` 均通过。构建入口测试确认 `./dev build` 仍只构建 `api` / `web` 开发镜像。
 
-Commit: 本地提交待执行；精确候选身份将在提交后记入工作项实时状态。没有修改本机镜像、容器、卷或备份；没有 Push / PR。
+Commit: `8a657dfb8df19bf0f2ff62af83ca20aa2798adb3`（本地）；没有修改本机镜像、容器、卷或备份；没有 Push / PR。
 
 ## Comments
 

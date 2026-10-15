@@ -1,6 +1,6 @@
 # 02 修复数据库并发测试的失败退出与清理
 
-Status: open
+Status: ready-to-commit
 Canonical Source: [Spec](../spec.md)、[Design](../design.md)、[草案](../tickets-draft.md#02-修复数据库并发测试的失败退出与清理)
 Owner: 当前主 Agent
 Change Profile: 小范围测试修复；并发 / 退出风险中等；隔离 PostgreSQL 与有界故障注入。
@@ -24,7 +24,13 @@ Migration / Rollback: 无生产或数据迁移；切片可独立恢复，不触�
 
 ## Result
 
-Pending.
+Code Review: PASS；变更仅限 PostgreSQL 集成测试与 Runbook，没有修改生产 HistoryStore / HistoryRuntime。worker 使用专属 SQLAlchemy Engine、应用名和确切 backend PID；观察只核验该 PID。失败首先回滚锁事务，再等待 worker；超时只取消匹配当前测试库 / 应用名 / PID 的连接。首个断言或 worker 错误保留，清理异常以附注记录；没有发现需修改的问题。
+
+TDD: Red 阶段新增的隔离子进程测试暴露旧实现忽略强制观察失败、仍返回成功；修复后正常锁等待通过。故障子运行分别注入观察失败、worker 异常和长 SQL，要求非零且不超过 20 秒，并检查专属 worker 会话已释放。
+
+Verification: `timeout --signal=TERM --kill-after=15s 120s ./dev test database` 最终运行通过（CI profile 5 passed；development profile 56 passed）；此前相同数据库 profiles 的重复隔离运行也通过。定向数据库集成包含真实锁观察和三类失败清理。Ruff format / check、`python3 -m scripts.check_documentation`、`git diff --check` 通过。仅使用 runner 标记的临时 PostgreSQL / 网络，没有触及日常数据库。
+
+Commit: 本地提交待执行；没有 Push / PR。
 
 ## Comments
 
