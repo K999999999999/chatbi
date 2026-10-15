@@ -18,14 +18,27 @@ test('login refresh retains identity and logout removes it', async ({ page }) =>
   await expect(page.getByRole('button', { name: '登录', exact: true })).toBeVisible();
 });
 
-test('first password change requires new login', async ({ page }) => {
-  await login(page, 'new-user');
-  await expect(page.getByRole('heading', { name: '首次登录，请修改密码' })).toBeVisible();
-  await page.getByLabel('当前密码').fill('test-password-123');
-  await page.getByLabel('新密码').fill('changed-password-123');
-  await page.getByRole('button', { name: '修改密码', exact: true }).click();
-  await expect(page.getByRole('button', { name: '登录', exact: true })).toBeVisible();
-  await page.getByLabel('密码', { exact: true }).fill('changed-password-123');
-  await page.getByRole('button', { name: '登录', exact: true }).click();
-  await expect(page.getByRole('button', { name: '退出登录' })).toBeVisible();
+test('first password change requires new login', async ({ page, request }) => {
+  const created = await request.post('/__test-support/first-password-accounts');
+  const handle = created.headers()['x-test-account-handle'];
+  try {
+    expect(created.status()).toBe(201);
+    expect(handle).toBeTruthy();
+    const account = await created.json() as { handle: string; username: string };
+    expect(account.handle).toBe(handle);
+    await login(page, account.username);
+    await expect(page.getByRole('heading', { name: '首次登录，请修改密码' })).toBeVisible();
+    await page.getByLabel('当前密码').fill('test-password-123');
+    await page.getByLabel('新密码').fill('changed-password-123');
+    await page.getByRole('button', { name: '修改密码', exact: true }).click();
+    await expect(page.getByRole('button', { name: '登录', exact: true })).toBeVisible();
+    await page.getByLabel('密码', { exact: true }).fill('changed-password-123');
+    await page.getByRole('button', { name: '登录', exact: true }).click();
+    await expect(page.getByRole('button', { name: '退出登录' })).toBeVisible();
+  } finally {
+    if (handle) {
+      const cleanup = await request.delete(`/__test-support/first-password-accounts/${handle}`);
+      expect(cleanup.status()).toBe(204);
+    }
+  }
 });

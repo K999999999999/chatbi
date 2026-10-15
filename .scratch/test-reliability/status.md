@@ -4,7 +4,7 @@
 - 调查基线：`47a9dc8cee10298504d9daec6be79712a5bf194d`。
 - [Design](design.md) 与 [Design Review](design-review.md) 已完成，Review PASS；[七项 Ticket 草案](tickets-draft.md) 已确认，[Readiness Review](ticket-readiness.md) READY；正式 Ticket 已登记在 [issues](issues/)。
 - 用户已确认七项 Ticket 拆分，并授权全部本地实施、验证和 Commit；Push / PR 仍未授权。
-- 七项正式 Ticket 已登记在 [issues](issues/)；Ticket 01 已完成并提交 `8a657dfb8df19bf0f2ff62af83ca20aa2798adb3`，Ticket 02 正在实施。
-- 下一步：复现并修复数据库并发测试失败退出与清理问题；随后按编号连续推进剩余已授权 Ticket。
+- 七项正式 Ticket 已登记在 [issues](issues/)；Ticket 01 / 02 已完成，分别提交 `8a657dfb8df19bf0f2ff62af83ca20aa2798adb3`、`41bf09e352b0838382a22f44024b55b33213666f`，Ticket 03 正在实施。
+- 下一步：隔离浏览器首次改密用例的账号生命周期，随后按编号连续推进剩余已授权 Ticket。
 - 本机实时阶段以 Git 公共目录 `harness/work-items/test-reliability/status.md` 为准；本文件仅保存规划快照。
 - 旧 `full-validation-findings` 工作项及其保留 branch / worktree 不在本目标范围。

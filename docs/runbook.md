@@ -81,7 +81,7 @@ docker run --rm -it --user "$(id -u):$(id -g)" -v "$PWD:$PWD:ro" -w "$PWD" --ent
 
 `./dev check docs`、`./dev check python`、`./dev check boundaries`仅执行所选检查；Python与CI共用固定Ruff0.16.8入口，定向通过不等于完整check通过。帮助`./dev help`不读取.env或访问Docker。
 
-check包含锁文件、文档/链接/模块边界、Python质量和网页/导出构建。Python全量回归不等于数据库或renderer验证；database分别启动独立CI/development fixture，覆盖真实权限、迁移、checkpoint、history和execution。并发History用例只观察自己 worker 的 PostgreSQL backend PID；失败时先释放本用例锁，再限时取消 / 回收自己创建的连接，故障路径也由有时限的子进程验证。web使用隔离mock API和浏览器，renderer启用真实Chromium/PDF与字体。失败返回非零，汇报skip和未执行范围。
+check包含锁文件、文档/链接/模块边界、Python质量和网页/导出构建。Python全量回归不等于数据库或renderer验证；database分别启动独立CI/development fixture，覆盖真实权限、迁移、checkpoint、history和execution。并发History用例只观察自己 worker 的 PostgreSQL backend PID；失败时先释放本用例锁，再限时取消 / 回收自己创建的连接，故障路径也由有时限的子进程验证。web使用隔离mock API和浏览器；首次改密用例由`tests.browser_support`按用例创建独立测试账号，并清理其Session / 账号，管理路由不进入生产App。renderer启用真实Chromium/PDF与字体。失败返回非零，汇报skip和未执行范围。
 
 宿主Bash负责Docker资源创建与清理，测试程序在容器执行。结构测试可只读挂载Compose CLI解析配置，测试容器无Docker socket，业务API无Docker权限。临时数据库/网络按本次标签清理，不能修改日常数据。CI仍可以内部使用uv/npm，不要求开发者在宿主安装它们。
 

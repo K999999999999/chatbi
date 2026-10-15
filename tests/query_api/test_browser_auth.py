@@ -2,8 +2,9 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import Mock
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -15,10 +16,10 @@ from src.authorization import (
     hash_password,
 )
 from src.chatbi_control.bootstrap import seed_rbac
-from src.chatbi_control.models import Base, User
+from src.chatbi_control.models import Base, User, UserSession
 from src.online_query.contracts import QuerySuccess
-from tests.operations_support import create_app
 from src.query_api.browser import COOKIE_NAME, BrowserSettings
+from tests.operations_support import create_app
 
 
 def test_browser_login_is_explicitly_unavailable_without_web_configuration():
@@ -84,6 +85,106 @@ def browser():
     with TestClient(app) as client:
         yield client, service, clock, auth
     engine.dispose()
+
+
+def test_browser_support_app_owns_unique_first_password_accounts(monkeypatch):
+    from tests import browser_support
+
+    test_engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    monkeypatch.setattr(
+        browser_support, "create_engine", lambda *_args, **_kwargs: test_engine
+    )
+    monkeypatch.setattr(
+        browser_support, "create_app", lambda *_args, **_kwargs: FastAPI()
+    )
+    app = browser_support.create_browser_app()
+    route = "/__test-support/first-password-accounts"
+    try:
+        with TestClient(app) as client:
+            first = client.post(route)
+            assert first.status_code == 201, first.text
+            first_account = first.json()
+            second = client.post(route)
+            assert second.status_code == 201, second.text
+            second_account = second.json()
+            assert first_account["handle"] != second_account["handle"]
+            assert first_account["username"].startswith("browser-first-")
+            assert second_account["username"].startswith("browser-first-")
+            assert first_account["username"] != second_account["username"]
+
+            now = datetime.now(UTC)
+            with sessionmaker(test_engine, expire_on_commit=False)() as session:
+                first_user = session.scalar(
+                    select(User).where(User.username == first_account["username"])
+                )
+                second_user = session.scalar(
+                    select(User).where(User.username == second_account["username"])
+                )
+                assert first_user is not None and first_user.must_change_password
+                assert second_user is not None and second_user.must_change_password
+                first_id, second_id = first_user.id, second_user.id
+                session.add_all(
+                    [
+                        UserSession(
+                            token_hash="a" * 64,
+                            user_id=first_id,
+                            last_seen_at=now,
+                            expires_at=now + timedelta(minutes=30),
+                            absolute_expires_at=now + timedelta(days=7),
+                        ),
+                        UserSession(
+                            token_hash="b" * 64,
+                            user_id=second_id,
+                            last_seen_at=now,
+                            expires_at=now + timedelta(minutes=30),
+                            absolute_expires_at=now + timedelta(days=7),
+                        ),
+                    ]
+                )
+                session.commit()
+
+            assert client.delete(f"{route}/analyst").status_code == 404
+            assert (
+                client.delete(f"{route}/{first_account['handle']}").status_code == 204
+            )
+            assert (
+                client.delete(f"{route}/{first_account['handle']}").status_code == 404
+            )
+            with sessionmaker(test_engine)() as session:
+                assert session.get(User, first_id) is None
+                assert session.get(User, second_id) is not None
+                assert (
+                    session.scalar(
+                        select(UserSession).where(UserSession.user_id == first_id)
+                    )
+                    is None
+                )
+                assert (
+                    session.scalar(
+                        select(UserSession).where(UserSession.user_id == second_id)
+                    )
+                    is not None
+                )
+                assert (
+                    session.scalar(select(User).where(User.username == "analyst"))
+                    is not None
+                )
+            assert (
+                client.delete(f"{route}/{second_account['handle']}").status_code == 204
+            )
+    finally:
+        test_engine.dispose()
+
+
+def test_production_auth_app_has_no_browser_test_account_lifecycle(browser):
+    client, _, _, _ = browser
+    route = "/__test-support/first-password-accounts"
+    assert client.post(route).status_code == 404
+    assert client.delete(f"{route}/not-a-test-account").status_code == 404
 
 
 def login(client, username="analyst"):

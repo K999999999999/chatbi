@@ -1,6 +1,6 @@
 # 02 修复数据库并发测试的失败退出与清理
 
-Status: ready-to-commit
+Status: done
 Canonical Source: [Spec](../spec.md)、[Design](../design.md)、[草案](../tickets-draft.md#02-修复数据库并发测试的失败退出与清理)
 Owner: 当前主 Agent
 Change Profile: 小范围测试修复；并发 / 退出风险中等；隔离 PostgreSQL 与有界故障注入。
@@ -30,7 +30,7 @@ TDD: Red 阶段新增的隔离子进程测试暴露旧实现忽略强制观察�
 
 Verification: `timeout --signal=TERM --kill-after=15s 120s ./dev test database` 最终运行通过（CI profile 5 passed；development profile 56 passed）；此前相同数据库 profiles 的重复隔离运行也通过。定向数据库集成包含真实锁观察和三类失败清理。Ruff format / check、`python3 -m scripts.check_documentation`、`git diff --check` 通过。仅使用 runner 标记的临时 PostgreSQL / 网络，没有触及日常数据库。
 
-Commit: 本地提交待执行；没有 Push / PR。
+Commit: `41bf09e352b0838382a22f44024b55b33213666f`（本地）；没有 Push / PR。
 
 ## Comments
 

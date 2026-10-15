@@ -1,6 +1,6 @@
 # 03 首次改密浏览器用例使用独立账号
 
-Status: open
+Status: ready-to-commit
 Canonical Source: [Spec](../spec.md)、[Design](../design.md)、[草案](../tickets-draft.md#03-首次改密浏览器用例使用独立账号)
 Owner: 当前主 Agent
 Change Profile: 小范围测试 fixture 生命周期修复；中低风险；浏览器 / HTTP 与隔离 SQLite 支持应用。
@@ -24,7 +24,13 @@ Migration / Rollback: 无真实账号迁移；仅回退测试装配，不读写�
 
 ## Result
 
-Pending.
+Code Review: PASS；未修改 `src.query_api` 或首次改密业务逻辑。测试支持应用为每次创建随机账号并签发不透明句柄，删除只能操作本进程签发且名称仍在测试命名空间内的账号；SQLAlchemy 删除级联清理 Session。生产 `create_app` 未装配该 Router，定向 404 检查通过；没有发现需修改的问题。
+
+TDD: Red 阶段支持应用账号创建请求返回 404；新增测试固定这一行为目标。实现后测试创建两个不同账号、验证初始首次改密状态、清理目标及其 Session、拒绝伪造句柄且保留 analyst。Playwright 用例在 `finally` 删除自己账号，清理失败会导致测试失败。
+
+Verification: `uv run --locked pytest -q tests/query_api/test_browser_auth.py`（22 passed）；`./dev test web auth.spec.ts --grep 'first password change' --repeat-each=2`（首次改密 2 passed，Vite dev 代理 1 passed）；完整 `./dev test web`（浏览器 67 passed，Vite dev 代理 1 passed）。Ruff format / check、文档链接检查、TypeScript typecheck 均通过。浏览器 runner 构建的是 `chatbi-browser-dev:local` 测试环境，不构建业务 APP 镜像；临时测试容器和网络由 runner 清理。
+
+Commit: 本地提交待执行；没有 Push / PR。
 
 ## Comments
 
