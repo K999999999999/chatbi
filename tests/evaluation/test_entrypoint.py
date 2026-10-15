@@ -1,5 +1,6 @@
 """Evaluation（评测）可运行入口测试。"""
 
+import hashlib
 import json
 import unittest
 from decimal import Decimal
@@ -33,6 +34,16 @@ class _FakeGenerator:
     def generate(self, prompt: str) -> str:
         self.prompts.append(prompt)
         return self._sql
+
+
+class _CaseMutatingGenerator(_FakeGenerator):
+    def __init__(self, sql: str, cases_path: Path) -> None:
+        super().__init__(sql)
+        self._cases_path = cases_path
+
+    def generate(self, prompt: str) -> str:
+        self._cases_path.write_text("[]", encoding="utf-8")
+        return super().generate(prompt)
 
 
 class _FakeExecutor:
@@ -163,6 +174,33 @@ class EvaluationEntrypointTest(unittest.TestCase):
         self.database_fingerprint_patch.start()
         self.addCleanup(self.database_fingerprint_patch.stop)
 
+    def assert_report_identity(self, report, report_path: Path, markdown: str) -> None:
+        metadata = report["metadata"]
+        provenance = metadata["provenance"]
+        self.assertEqual(metadata["run_id"], report_path.stem)
+        self.assertIn(metadata["run_id"], markdown)
+        self.assertEqual(provenance["version"], 1)
+        self.assertIn(provenance["consistency"], {"stable", "unverified"})
+        self.assertEqual(provenance["source_start"], provenance["source_end"])
+        self.assertEqual(provenance["inputs_start"], provenance["inputs_end"])
+        self.assertTrue(provenance["inputs_start"]["verified"])
+        self.assertEqual(
+            provenance["inputs_start"]["fingerprints"]["test_set"],
+            metadata["test_set_hash"],
+        )
+        if "context_hash" in provenance["inputs_start"]:
+            self.assertEqual(
+                provenance["inputs_start"]["context_hash"],
+                metadata["context_hash"],
+            )
+        model_configuration = metadata["model_configuration"]
+        self.assertEqual(model_configuration["model"], metadata["model"])
+        self.assertRegex(metadata["model_configuration_hash"], r"^[0-9a-f]{64}$")
+        self.assertEqual(
+            model_configuration["model_endpoint_hash"],
+            metadata["model_endpoint_hash"],
+        )
+
     def test_business_analysis_mode_fails_closed_without_llm_judge(self) -> None:
         from evaluation.__main__ import run_cli
 
@@ -291,8 +329,9 @@ class EvaluationEntrypointTest(unittest.TestCase):
                 stdout=stdout,
                 stderr=StringIO(),
             )
-            reports = list(output_dir.glob("*-business-analysis.json"))
+            reports = list(output_dir.glob("*.json"))
             report = json.loads(reports[0].read_text(encoding="utf-8"))
+            summary_report = next(output_dir.glob("*.md")).read_text(encoding="utf-8")
 
         self.assertEqual(exit_code, 1)
         self.assertEqual(report["metadata"]["sales_mart_seed_version"], "dev-seed-v1")
@@ -300,6 +339,7 @@ class EvaluationEntrypointTest(unittest.TestCase):
         self.assertEqual(report["summary"]["outcome_accuracy"], 1.0)
         self.assertEqual(report["summary"]["plan_accuracy"], 0.0)
         self.assertEqual(report["summary"]["summary_accuracy"], 0.0)
+        self.assert_report_identity(report, reports[0], summary_report)
         self.assertIn("Business Analysis End-to-End Accuracy: 0.00%", stdout.getvalue())
 
     def test_runs_same_online_service_and_writes_report(self) -> None:
@@ -373,12 +413,79 @@ class EvaluationEntrypointTest(unittest.TestCase):
         self.assertEqual(report["metadata"]["sales_mart_seed_version"], "dev-seed-v1")
         self.assertEqual(report["metadata"]["sales_mart_data_hash"], "a" * 64)
         self.assertEqual(report["cases"][0]["status"], "PASS")
+        self.assert_report_identity(report, reports[0], summary_report)
         self.assertIn("本次共评测 1 条：成功 1 条", summary_report)
         self.assertIn("本次未执行自动基线比较", summary_report)
         self.assertEqual(len(generator.prompts), 1)
         self.assertEqual(len(executor.calls), 2)
         self.assertIn("Execution Accuracy: 100.00%", stdout.getvalue())
         self.assertIn("Summary Report:", stdout.getvalue())
+
+    def test_report_marks_case_set_changed_during_evaluation(self) -> None:
+        from evaluation.__main__ import run_cli
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            cases_path = root / "cases.json"
+            sql = "SELECT t.value FROM mart_sales.test_table AS t;"
+            cases_path.write_text(
+                json.dumps(
+                    [
+                        {
+                            "id": "S01",
+                            "schema_name": "mart_sales",
+                            "category": "simple",
+                            "question": "测试问题",
+                            "description": "测试",
+                            "expected_sql": sql,
+                        }
+                    ],
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            original_cases = cases_path.read_bytes()
+            context_file = root / "context.json"
+            context_file.write_text("[]", encoding="utf-8")
+            context = QueryContext(
+                prompt_context="{}",
+                allowed_tables=frozenset({"mart_sales.test_table"}),
+                allowed_columns={"mart_sales.test_table": frozenset({"value"})},
+            )
+            output_dir = root / "reports"
+            exit_code = run_cli(
+                ["--cases", str(cases_path), "--output-dir", str(output_dir)],
+                environ={"LLM_MODEL": "test-model"},
+                context_loader=lambda: context,
+                generator_factory=lambda environ: _CaseMutatingGenerator(
+                    sql,
+                    cases_path,
+                ),
+                executor_factory=lambda environ: _FakeExecutor(
+                    QueryData(columns=("value",), rows=((1,),), truncated=False)
+                ),
+                context_paths={"context": context_file},
+                stdout=StringIO(),
+                stderr=StringIO(),
+            )
+            report_path = next(output_dir.glob("*.json"))
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+
+        provenance = report["metadata"]["provenance"]
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(provenance["consistency"], "changed")
+        self.assertNotEqual(
+            provenance["inputs_start"],
+            provenance["inputs_end"],
+        )
+        self.assertEqual(
+            report["metadata"]["test_set_hash"],
+            provenance["inputs_start"]["fingerprints"]["test_set"],
+        )
+        self.assertEqual(
+            report["metadata"]["test_set_hash"],
+            hashlib.sha256(original_cases).hexdigest(),
+        )
 
     def test_multi_turn_mode_runs_query_api_conversations_and_writes_separate_report(
         self,
@@ -457,8 +564,8 @@ class EvaluationEntrypointTest(unittest.TestCase):
                     stderr=StringIO(),
                 )
 
-            reports = list(output_dir.glob("*-multi-turn.json"))
-            summaries = list(output_dir.glob("*-multi-turn.md"))
+            reports = list(output_dir.glob("*.json"))
+            summaries = list(output_dir.glob("*.md"))
             report = json.loads(reports[0].read_text(encoding="utf-8"))
             summary_report = summaries[0].read_text(encoding="utf-8")
 
@@ -474,6 +581,7 @@ class EvaluationEntrypointTest(unittest.TestCase):
         self.assertEqual(report["summary"]["conversation_accuracy"], 1.0)
         self.assertEqual(report["summary"]["execution_accuracy"], 1.0)
         self.assertEqual(len(report["cases"][0]["turns"]), 2)
+        self.assert_report_identity(report, reports[0], summary_report)
         self.assertIn("Multi-Turn Conversation Accuracy: 100.00%", stdout.getvalue())
         self.assertIn("查询执行准确率", summary_report)
 
@@ -694,10 +802,12 @@ class EvaluationEntrypointTest(unittest.TestCase):
 
             reports = list(output_dir.glob("*.json"))
             report = json.loads(reports[0].read_text(encoding="utf-8"))
+            summary_report = next(output_dir.glob("*.md")).read_text(encoding="utf-8")
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(report["summary"]["passed"], 1)
         self.assertEqual(report["summary"]["failed"], 0)
+        self.assert_report_identity(report, reports[0], summary_report)
         self.assertIn("Query Understanding Accuracy: 100.00%", stdout.getvalue())
 
     def test_returns_nonzero_when_evaluation_has_failed_case(self) -> None:

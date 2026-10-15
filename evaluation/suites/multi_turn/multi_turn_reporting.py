@@ -185,6 +185,10 @@ def render_multi_turn_markdown(report: Mapping[str, object]) -> str:
             f"- Git Commit：{_cell(metadata.get('git_commit'))}",
             f"- Git Dirty：{_cell(metadata.get('git_dirty'))}",
             f"- Model：{_cell(metadata.get('model'))}",
+            f"- Temperature：{_cell(metadata.get('temperature'))}",
+            f"- Max Tokens：{_cell(metadata.get('max_tokens'))}",
+            f"- Timeout：{_cell(metadata.get('timeout_seconds'))}",
+            f"- Run Consistency：{_cell(_consistency(metadata))}",
             f"- RAG 资产：{_cell(metadata.get('rag_asset_version'))}",
             "",
         ]
@@ -198,6 +202,12 @@ def _accuracy(value: object) -> str:
 
 def _mapping(value: object) -> Mapping[str, object]:
     return value if isinstance(value, Mapping) else {}
+
+
+def _consistency(metadata: Mapping[str, object]) -> str:
+    provenance = _mapping(metadata.get("provenance"))
+    value = provenance.get("consistency")
+    return value if isinstance(value, str) else "未确认"
 
 
 def _string_list(value: object) -> list[str]:

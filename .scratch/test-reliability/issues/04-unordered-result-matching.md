@@ -1,6 +1,6 @@
 # 04 修正无序结果的容差匹配
 
-Status: ready-to-commit
+Status: done
 Canonical Source: [Spec](../spec.md)、[Design](../design.md)、[草案](../tickets-draft.md#04-修正无序结果的容差匹配)
 Owner: 当前主 Agent
 Change Profile: 小范围确定性评测算法修复；评分影响中等；不调用模型 / 数据库。
@@ -30,7 +30,7 @@ Code Review: PASS；审查基线为 Ticket 03 提交 `dbb948c81f5bcbc02d39c8dd22
 
 Verification: `uv run --locked pytest -q tests/evaluation/single_turn tests/evaluation/multi_turn`（30 passed）；`uv run --locked pytest -q tests/evaluation`（92 passed、1 skipped、22 subtests passed）；`uv run --locked ruff check evaluation/suites/single_turn/evaluator.py tests/evaluation/single_turn/test_evaluator.py`、`python3 -m scripts.check_documentation`、`git diff --check` 均通过。新增 100 行稠密候选测试无计时断言，不调用模型或数据库。
 
-Commit: 本地提交待执行；没有 Push / PR。
+Commit: `9654f2d83a46b869c0f98a64f3f80e574cc1eb33`（本地）；没有 Push / PR。
 
 ## Comments
 

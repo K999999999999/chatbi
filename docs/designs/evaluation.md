@@ -79,7 +79,7 @@ validate_sql(case.expected_sql, context)
 行比较：
 
 - `order_sensitive=true`：按返回顺序逐行比较。
-- 默认：在未匹配标准行中寻找完整相等行，匹配后移除；最多 100 行，使用简单的平方复杂度匹配即可，能够保留重复行数量。
+- 默认：忽略行顺序，按现有逐值比较规则建立实际行与标准行的候选配对，并用多项式增广路径判断是否存在覆盖全部行的一一匹配。容差重叠时不得依赖首次贪心命中；重复行数量仍必须一致。
 
 不通过排序实现无序比较，避免 `NULL`、字符串、日期和数值混合时产生不可比较问题。
 
@@ -97,7 +97,10 @@ git_dirty
 model
 temperature
 max_tokens
+timeout_seconds
 model_endpoint_hash
+model_configuration_hash
+judge_configuration_hash
 test_set_hash
 context_hash
 reference_result_hash
@@ -105,10 +108,16 @@ sales_mart_seed_version
 sales_mart_data_summary
 sales_mart_data_hash
 sales_mart_data_hash_algorithm
+model_configuration
+judge_configuration
+provenance
 ```
 
-- `git_commit`：当前代码提交。
-- `git_dirty`：运行开始前是否存在未提交改动。
+- `run_id`：UTC 时间、短提交、套件名和随机唯一后缀；固定时间与提交也不得重用。
+- `git_commit` / `git_dirty`：运行开始时的代码提交与未提交状态。
+- `provenance`：版本 1 的开始 / 结束时间、源码身份和输入指纹；源码 Hash 只写入指纹，不写入 diff 正文。源码或输入起止不同为 `changed`，读取失败为 `unverified`，只有起止一致才为 `stable`。
+- `model_configuration` / `model_configuration_hash`：报告实际使用的有效模型、temperature、max_tokens、上限裁剪后的 timeout 和端点 Hash，并对安全配置规范化后计算 Hash。
+- `judge_configuration` / `judge_configuration_hash`：仅经营分析适用；单独记录 Judge 模型及配置，Judge 的 temperature 固定为 `0`。
 - `model_endpoint_hash`：只记录地址指纹，不把真实 Endpoint（端点）写入报告。
 - `test_set_hash`：标准测试集内容指纹。
 - `context_hash`：五个结构和指标文件的整体内容指纹。
@@ -129,6 +138,7 @@ reports/evaluation/<run_id>.md
 ```
 
 JSON 是机器可读评测证据；Markdown 是由同一份 JSON 数据确定性生成的人类可读总结，不重新调用 LLM 或数据库。
+JSON 与 Markdown 以排他方式创建，必须属于同一 Run ID；撞名时返回失败且保留旧文件，部分写入失败不能返回成功。历史报告保持可读、Baseline 比较兼容；历史内容不得补造 provenance，正式验收器拒绝缺少新证明或 `consistency` 非 `stable` 的报告。
 
 报告文件是评测证据，可以单独 Commit。版本 Tag 遵循仓库整体版本规则，不由 Evaluation 模块单独决定；不自动 Push（推送）远程仓库。
 

@@ -7,6 +7,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from evaluation.common.reporting import model_configuration_fingerprint
+from scripts.verification_report import (
+    ReportWriteError,
+    create_run_id,
+    write_report_pair,
+)
 from src.online_query.query_understanding import (
     QueryUnderstandingClarificationRequired,
     SemanticQueryCandidate,
@@ -44,34 +50,71 @@ class QueryUnderstandingEvaluation:
 def create_query_understanding_report(
     results: Sequence[QueryUnderstandingEvaluation],
     *,
-    git_commit: str,
-    git_dirty: bool,
+    git_commit: str | None,
+    git_dirty: bool | None,
     model: str,
     cases_path: Path,
+    run_id: str | None = None,
+    test_set_hash: str | None = None,
+    model_configuration: Mapping[str, object] | None = None,
+    provenance: Mapping[str, object] | None = None,
     created_at: datetime | None = None,
 ) -> dict[str, object]:
     """创建不包含 Prompt 或模型原始输出的语义评测报告。"""
 
-    commit = git_commit.strip()
-    if not commit:
-        raise SemanticEvaluationLoadError("语义评测报告缺少 Git Commit")
+    commit = git_commit.strip() if isinstance(git_commit, str) else None
     if not isinstance(model, str) or not model.strip():
         raise SemanticEvaluationLoadError("语义评测报告缺少 LLM_MODEL")
     created = datetime.now(UTC) if created_at is None else created_at
     if created.tzinfo is None:
         raise SemanticEvaluationLoadError("语义评测报告时间必须包含时区")
     created_utc = created.astimezone(UTC)
-    timestamp = created_utc.strftime("%Y%m%dT%H%M%SZ")
+    effective_model = dict(model_configuration) if model_configuration else None
     passed = sum(item.passed for item in results)
     failed = len(results) - passed
     return {
         "metadata": {
-            "run_id": f"{timestamp}-{commit[:7]}-query-understanding",
+            "run_id": (
+                run_id
+                if run_id is not None
+                else create_run_id(
+                    commit or "", suite="query-understanding", now=created_utc
+                )
+            ),
             "created_at": created_utc.isoformat().replace("+00:00", "Z"),
             "git_commit": commit,
             "git_dirty": git_dirty,
             "model": model.strip(),
             "cases_file": cases_path.name,
+            "evaluation_suite": "query_understanding",
+            "test_set_hash": test_set_hash,
+            "temperature": (
+                effective_model.get("temperature")
+                if effective_model is not None
+                else None
+            ),
+            "max_tokens": (
+                effective_model.get("max_tokens")
+                if effective_model is not None
+                else None
+            ),
+            "timeout_seconds": (
+                effective_model.get("timeout_seconds")
+                if effective_model is not None
+                else None
+            ),
+            "model_endpoint_hash": (
+                effective_model.get("model_endpoint_hash")
+                if effective_model is not None
+                else None
+            ),
+            "model_configuration": effective_model,
+            "model_configuration_hash": (
+                model_configuration_fingerprint(effective_model)
+                if effective_model is not None
+                else None
+            ),
+            "provenance": dict(provenance) if provenance is not None else None,
         },
         "summary": {
             "total_cases": len(results),
@@ -145,9 +188,16 @@ def render_query_understanding_report(report: Mapping[str, object]) -> str:
             "## 运行信息",
             "",
             f"- Run ID：{metadata.get('run_id', '')}",
+            f"- 运行时间：{metadata.get('created_at', '')}",
             f"- Git Commit：{metadata.get('git_commit', '')}",
             f"- Git Dirty：{metadata.get('git_dirty', '')}",
             f"- Model：{metadata.get('model', '')}",
+            f"- Temperature：{metadata.get('temperature', '')}",
+            f"- Max Tokens：{metadata.get('max_tokens', '')}",
+            f"- Timeout：{metadata.get('timeout_seconds', '')}",
+            f"- Endpoint Hash：{metadata.get('model_endpoint_hash', '')}",
+            f"- Test Set Hash：{metadata.get('test_set_hash', '')}",
+            f"- Run Consistency：{_provenance_consistency(metadata)}",
             "",
         ]
     )
@@ -161,18 +211,32 @@ def write_query_understanding_report(
 ) -> None:
     """写入语义评测 JSON 与 Markdown 报告。"""
 
+    metadata = report.get("metadata")
+    run_id = metadata.get("run_id") if isinstance(metadata, Mapping) else None
+    if (
+        not isinstance(run_id, str)
+        or json_path.parent != markdown_path.parent
+        or json_path.stem != run_id
+        or markdown_path.stem != run_id
+    ):
+        raise SemanticEvaluationLoadError("语义评测 JSON / Markdown Run ID 不一致")
     try:
-        json_path.parent.mkdir(parents=True, exist_ok=True)
-        json_path.write_text(
+        write_report_pair(
+            json_path.parent,
+            run_id,
             json.dumps(report, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        markdown_path.write_text(
             render_query_understanding_report(report),
-            encoding="utf-8",
         )
-    except (OSError, TypeError, ValueError):
+    except (OSError, ReportWriteError, TypeError, ValueError):
         raise SemanticEvaluationLoadError("语义评测报告无法写入") from None
+
+
+def _provenance_consistency(metadata: Mapping[str, object]) -> str:
+    provenance = metadata.get("provenance")
+    if not isinstance(provenance, Mapping):
+        return "未确认"
+    consistency = provenance.get("consistency")
+    return consistency if isinstance(consistency, str) else "未确认"
 
 
 def load_query_understanding_cases(

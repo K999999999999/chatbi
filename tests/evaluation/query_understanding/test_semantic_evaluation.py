@@ -156,13 +156,16 @@ class SemanticEvaluationTest(unittest.TestCase):
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
+            run_id = report["metadata"]["run_id"]
+            json_path = root / f"{run_id}.json"
+            markdown_path = root / f"{run_id}.md"
             write_query_understanding_report(
                 report,
-                root / "report.json",
-                root / "report.md",
+                json_path,
+                markdown_path,
             )
-            self.assertTrue((root / "report.json").exists())
-            self.assertTrue((root / "report.md").exists())
+            self.assertTrue(json_path.exists())
+            self.assertTrue(markdown_path.exists())
 
 
 if __name__ == "__main__":

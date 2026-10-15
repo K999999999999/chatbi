@@ -18,6 +18,65 @@ from src.online_query.contracts import QueryData
 
 
 class EvaluationReportingTest(unittest.TestCase):
+    def test_effective_model_configuration_preserves_zero_and_redacts_endpoint(self):
+        from evaluation.common.reporting import (
+            collect_model_configuration,
+            model_configuration_fingerprint,
+        )
+
+        environment = {
+            "LLM_MODEL": "judge-model",
+            "LLM_TEMPERATURE": "0.7",
+            "LLM_MAX_TOKENS": "2048",
+            "LLM_TIMEOUT_SECONDS": "90",
+            "LLM_BASE_URL": "https://private.example/v1",
+            "LLM_API_KEY": "secret-key",
+        }
+        configuration = collect_model_configuration(
+            environment,
+            temperature_override=0.0,
+        )
+        different_configuration = collect_model_configuration(
+            {
+                **environment,
+                "LLM_MAX_TOKENS": "2048",
+            },
+        )
+
+        self.assertEqual(configuration["temperature"], 0.0)
+        self.assertEqual(configuration["timeout_seconds"], 30.0)
+        self.assertEqual(configuration["max_tokens"], 2048)
+        self.assertNotIn("private.example", str(configuration))
+        self.assertNotIn("secret-key", str(configuration))
+        self.assertNotEqual(
+            model_configuration_fingerprint(configuration),
+            model_configuration_fingerprint(different_configuration),
+        )
+
+    def test_same_timestamp_and_commit_produce_distinct_run_ids(self) -> None:
+        from evaluation.common.reporting import collect_run_metadata
+
+        now = datetime(2026, 10, 15, 12, tzinfo=UTC)
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            test_set = root / "cases.json"
+            test_set.write_text("[]", encoding="utf-8")
+            context_file = root / "metrics.json"
+            context_file.write_text("[]", encoding="utf-8")
+            values = {
+                "git_commit": "abcdef1234567890",
+                "git_dirty": False,
+                "environ": {"LLM_MODEL": "test-model"},
+                "test_set_path": test_set,
+                "context_paths": {"metrics": context_file},
+                "now": now,
+            }
+
+            first = collect_run_metadata(self._run((CaseStatus.PASS,)), **values)
+            second = collect_run_metadata(self._run((CaseStatus.PASS,)), **values)
+
+        self.assertNotEqual(first.run_id, second.run_id)
+
     def test_collects_reproducible_metadata_without_secrets_or_endpoint(self) -> None:
         from evaluation.common.reporting import collect_run_metadata
 
@@ -48,11 +107,16 @@ class EvaluationReportingTest(unittest.TestCase):
             )
 
         encoded = json.dumps(metadata.to_dict(), ensure_ascii=False)
-        self.assertEqual(metadata.run_id, "20260831T120000Z-abcdef1")
+        self.assertRegex(
+            metadata.run_id,
+            r"^20260831T120000Z-abcdef1-single-turn-[0-9a-f]{12}$",
+        )
         self.assertEqual(metadata.git_commit, "abcdef1234567890")
         self.assertEqual(metadata.model, "test-model")
         self.assertEqual(metadata.temperature, 0.1)
         self.assertEqual(metadata.max_tokens, 1200)
+        self.assertEqual(metadata.timeout_seconds, 30.0)
+        self.assertEqual(metadata.model_configuration["temperature"], 0.1)
         self.assertNotIn("internal.example", encoded)
         self.assertNotIn("secret-key", encoded)
         self.assertNotIn("secret-password", encoded)

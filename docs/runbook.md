@@ -109,6 +109,10 @@ check包含锁文件、文档/链接/模块边界、Python质量和网页/导出
 
 初始化并启动对应开发基础设施，使用真实LLM配置和现有固定案例；不自动重建RAG、不修改评测案例。报告写入ignored `reports/evaluation/`，只适用于记录的提交、案例与模型/数据/资产身份。基线对比可以继续传递评测原参数，容器路径统一使用 `/workspace/reports/evaluation/`。Secret和原始敏感内容不得进入报告。
 
+每次运行先记录起点 Git / 案例 / 上下文指纹，在评测与必要清理后再记录终点；报告 `provenance.consistency` 为 `stable`、`changed` 或 `unverified`。运行中源码或输入变化仍可生成诊断报告，但不能用于正式 clean 验收；Git 或输入身份无法读取时不得按 stable 处理。Run ID 含时间、短提交、套件和随机部分，同名 JSON / Markdown 通过排他创建防覆盖；保存冲突或部分写入会失败，不会覆盖旧证据。历史报告仍可读取和参与既有 Baseline 比较，但缺少新 provenance 的旧报告不能通过新的正式验收。
+
+报告仅记录非敏感的有效模型配置：temperature、max_tokens、有效 timeout、Endpoint Hash 及其规范化配置 Hash，不写 API Key 或完整 Endpoint。经营分析另记 Judge 配置和 Hash；Judge temperature 为 `0`，与业务模型 temperature 分开。辅助 Query Understanding 报告记录实际语义题集 Hash；该套件不适用的数据库指纹保持缺省，不造值。
+
 评测报告的确定性校验（无LLM、无业务查询）：
 
 ```bash

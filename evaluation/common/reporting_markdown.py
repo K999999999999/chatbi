@@ -232,6 +232,7 @@ def _render_baseline_comparison(report: Mapping[str, object]) -> list[str]:
 
 
 def _render_run_info(metadata: Mapping[str, object]) -> list[str]:
+    provenance = _object_mapping(metadata.get("provenance")) or {}
     lines = [
         "",
         "## 运行信息",
@@ -241,6 +242,10 @@ def _render_run_info(metadata: Mapping[str, object]) -> list[str]:
         f"- Git Commit：{_markdown_cell(metadata.get('git_commit'))}",
         f"- Git Dirty：{_markdown_cell(metadata.get('git_dirty'))}",
         f"- Model：{_markdown_cell(metadata.get('model'))}",
+        f"- Temperature：{_markdown_cell(metadata.get('temperature'))}",
+        f"- Max Tokens：{_markdown_cell(metadata.get('max_tokens'))}",
+        f"- Timeout：{_markdown_cell(metadata.get('timeout_seconds'))}",
+        f"- Run Consistency：{_markdown_cell(provenance.get('consistency'))}",
         f"- RAG 资产：{_markdown_cell(metadata.get('rag_asset_version'))}",
     ]
     seed_version = metadata.get("sales_mart_seed_version")

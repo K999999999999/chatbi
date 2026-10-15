@@ -9,7 +9,10 @@ import math
 import re
 import sys
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from pathlib import Path
+
+from .reporting import model_configuration_fingerprint
 
 SUITES = {
     "single_turn_query": "single_turn",
@@ -27,7 +30,9 @@ _SHARED_METADATA = (
     "model",
     "temperature",
     "max_tokens",
+    "timeout_seconds",
     "model_endpoint_hash",
+    "model_configuration_hash",
 )
 
 
@@ -149,6 +154,18 @@ def validate_report(
     tokens = metadata.get("max_tokens")
     if type(tokens) is not int or tokens <= 0:
         errors.append("metadata.max_tokens: invalid")
+    timeout = metadata.get("timeout_seconds")
+    if (
+        type(timeout) not in (int, float)
+        or not math.isfinite(timeout)
+        or timeout <= 0
+        or timeout > 30
+    ):
+        errors.append("metadata.timeout_seconds: invalid")
+    errors.extend(_model_configuration_errors(metadata))
+    errors.extend(_provenance_errors(metadata, expected_commit=expected_commit))
+    if suite == "business_analysis":
+        errors.extend(_judge_configuration_errors(metadata))
     errors.extend(_check_counts(summary, len(cases)))
     accuracy_fields = {
         "single_turn_query": ("execution_accuracy", "case_accuracy"),
@@ -186,6 +203,126 @@ def validate_report(
                     )
                 )
     return tuple(errors)
+
+
+def _model_configuration_errors(metadata: Mapping[str, object]) -> list[str]:
+    configuration = metadata.get("model_configuration")
+    if not isinstance(configuration, Mapping):
+        return ["metadata.model_configuration: missing or invalid"]
+    errors = []
+    for field in ("model", "temperature", "max_tokens", "timeout_seconds"):
+        if configuration.get(field) != metadata.get(field):
+            errors.append(f"metadata.model_configuration.{field}: mismatch")
+    endpoint_hash = configuration.get("model_endpoint_hash")
+    if (
+        endpoint_hash != metadata.get("model_endpoint_hash")
+        or not isinstance(endpoint_hash, str)
+        or _HASH.fullmatch(endpoint_hash) is None
+    ):
+        errors.append("metadata.model_configuration.model_endpoint_hash: invalid")
+    try:
+        configuration_hash = model_configuration_fingerprint(configuration)
+    except (TypeError, ValueError):
+        configuration_hash = None
+    if metadata.get("model_configuration_hash") != configuration_hash:
+        errors.append("metadata.model_configuration_hash: mismatch")
+    return errors
+
+
+def _judge_configuration_errors(metadata: Mapping[str, object]) -> list[str]:
+    configuration = metadata.get("judge_configuration")
+    if not isinstance(configuration, Mapping):
+        return ["metadata.judge_configuration: missing or invalid"]
+    errors = []
+    if configuration.get("model") != metadata.get("model"):
+        errors.append("metadata.judge_configuration.model: mismatch")
+    temperature = configuration.get("temperature")
+    if type(temperature) not in (int, float) or temperature != 0.0:
+        errors.append("metadata.judge_configuration.temperature: must be 0")
+    if configuration.get("max_tokens") != metadata.get("max_tokens"):
+        errors.append("metadata.judge_configuration.max_tokens: mismatch")
+    timeout = configuration.get("timeout_seconds")
+    if (
+        type(timeout) not in (int, float)
+        or not math.isfinite(timeout)
+        or timeout <= 0
+        or timeout > 30
+    ):
+        errors.append("metadata.judge_configuration.timeout_seconds: invalid")
+    endpoint_hash = configuration.get("model_endpoint_hash")
+    if endpoint_hash != metadata.get("model_endpoint_hash"):
+        errors.append("metadata.judge_configuration.model_endpoint_hash: mismatch")
+    try:
+        configuration_hash = model_configuration_fingerprint(configuration)
+    except (TypeError, ValueError):
+        configuration_hash = None
+    if metadata.get("judge_configuration_hash") != configuration_hash:
+        errors.append("metadata.judge_configuration_hash: mismatch")
+    return errors
+
+
+def _provenance_errors(
+    metadata: Mapping[str, object],
+    *,
+    expected_commit: str,
+) -> list[str]:
+    provenance = metadata.get("provenance")
+    if not isinstance(provenance, Mapping):
+        return ["metadata.provenance: missing or invalid"]
+    errors = []
+    if type(provenance.get("version")) is not int or provenance.get("version") != 1:
+        errors.append("metadata.provenance.version: unsupported")
+    if provenance.get("consistency") != "stable":
+        errors.append("metadata.provenance.consistency: must be stable")
+    started_at, finished_at = (
+        provenance.get("started_at"),
+        provenance.get("finished_at"),
+    )
+    try:
+        started = datetime.fromisoformat(started_at)
+        finished = datetime.fromisoformat(finished_at)
+        if started.tzinfo is None or finished.tzinfo is None or finished < started:
+            raise ValueError("invalid run interval")
+    except (TypeError, ValueError):
+        errors.append("metadata.provenance.timestamps: invalid")
+
+    source_start = provenance.get("source_start")
+    source_end = provenance.get("source_end")
+    for name, source in (("source_start", source_start), ("source_end", source_end)):
+        if not isinstance(source, Mapping) or source.get("verified") is not True:
+            errors.append(f"metadata.provenance.{name}: unverified")
+            continue
+        if source.get("git_commit") != expected_commit:
+            errors.append(f"metadata.provenance.{name}.git_commit: mismatch")
+        if source.get("git_dirty") is not False:
+            errors.append(f"metadata.provenance.{name}.git_dirty: must be false")
+        if _valid_hash(source.get("tracked_changes_hash")) is False:
+            errors.append(f"metadata.provenance.{name}.tracked_changes_hash: invalid")
+    if isinstance(source_start, Mapping) and isinstance(source_end, Mapping):
+        if dict(source_start) != dict(source_end):
+            errors.append("metadata.provenance.source: changed")
+
+    inputs_start = provenance.get("inputs_start")
+    inputs_end = provenance.get("inputs_end")
+    for name, inputs in (("inputs_start", inputs_start), ("inputs_end", inputs_end)):
+        if not isinstance(inputs, Mapping) or inputs.get("verified") is not True:
+            errors.append(f"metadata.provenance.{name}: unverified")
+            continue
+        fingerprints = inputs.get("fingerprints")
+        if not isinstance(fingerprints, Mapping) or fingerprints.get(
+            "test_set"
+        ) != metadata.get("test_set_hash"):
+            errors.append(f"metadata.provenance.{name}.test_set: mismatch")
+        if inputs.get("context_hash") != metadata.get("context_hash"):
+            errors.append(f"metadata.provenance.{name}.context_hash: mismatch")
+    if isinstance(inputs_start, Mapping) and isinstance(inputs_end, Mapping):
+        if dict(inputs_start) != dict(inputs_end):
+            errors.append("metadata.provenance.inputs: changed")
+    return errors
+
+
+def _valid_hash(value: object) -> bool:
+    return isinstance(value, str) and _HASH.fullmatch(value) is not None
 
 
 def _read_report(path: Path) -> dict:

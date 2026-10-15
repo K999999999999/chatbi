@@ -6,14 +6,22 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime, time
 from decimal import Decimal, InvalidOperation
+from math import isfinite
 from pathlib import Path
 from typing import Protocol
 
+from scripts.verification_report import (
+    ReportWriteError,
+    create_run_id,
+)
+from scripts.verification_report import (
+    write_report_pair as write_exclusive_report_pair,
+)
 from src.online_query.contracts import QueryData
 
+from ..suites.single_turn.runner import CaseStatus, EvaluationRun
 from .reporting_errors import ReportingError
 from .reporting_markdown import render_markdown_report
-from ..suites.single_turn.runner import CaseStatus, EvaluationRun
 
 
 class EvaluationReferenceRun(Protocol):
@@ -37,8 +45,8 @@ class SalesMartDataFingerprint:
 class RunMetadata:
     run_id: str
     created_at: str
-    git_commit: str
-    git_dirty: bool
+    git_commit: str | None
+    git_dirty: bool | None
     model: str
     temperature: float
     max_tokens: int
@@ -46,11 +54,17 @@ class RunMetadata:
     test_set_hash: str
     context_hash: str
     reference_result_hash: str
+    timeout_seconds: float = 30.0
     sales_mart_seed_version: str | None = None
     sales_mart_data_summary: Mapping[str, object] | None = None
     sales_mart_data_hash: str | None = None
     sales_mart_data_hash_algorithm: str | None = None
     rag_asset_version: str | None = None
+    model_configuration: Mapping[str, object] | None = None
+    model_configuration_hash: str | None = None
+    judge_configuration: Mapping[str, object] | None = None
+    judge_configuration_hash: str | None = None
+    provenance: Mapping[str, object] | None = None
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -59,50 +73,62 @@ class RunMetadata:
 def collect_run_metadata(
     run: EvaluationReferenceRun,
     *,
-    git_commit: str,
-    git_dirty: bool,
+    git_commit: str | None,
+    git_dirty: bool | None,
     environ: Mapping[str, str],
     test_set_path: Path,
     context_paths: Mapping[str, Path],
+    input_test_set_hash: str | None = None,
+    input_context_hash: str | None = None,
     sales_mart_fingerprint: SalesMartDataFingerprint | None = None,
     rag_asset_version: str | None = None,
+    run_id: str | None = None,
+    provenance: Mapping[str, object] | None = None,
+    judge_configuration: Mapping[str, object] | None = None,
     now: datetime | None = None,
 ) -> RunMetadata:
     """只收集非敏感配置和内容指纹。"""
 
-    commit = git_commit.strip()
-    model = environ.get("LLM_MODEL", "").strip()
-    if not commit:
-        raise ReportingError("缺少 Git Commit")
-    if not model:
-        raise ReportingError("缺少 LLM_MODEL")
-
-    try:
-        temperature = float(environ.get("LLM_TEMPERATURE", "0.1"))
-        max_tokens = int(environ.get("LLM_MAX_TOKENS", "1200"))
-    except ValueError:
-        raise ReportingError("LLM 数字配置无效") from None
-    if max_tokens <= 0:
-        raise ReportingError("LLM_MAX_TOKENS 必须大于 0")
+    commit = git_commit.strip() if isinstance(git_commit, str) else ""
+    model_configuration = collect_model_configuration(environ)
+    model = str(model_configuration["model"])
+    temperature = float(model_configuration["temperature"])
+    max_tokens = int(model_configuration["max_tokens"])
+    timeout = float(model_configuration["timeout_seconds"])
+    endpoint_hash = str(model_configuration["model_endpoint_hash"])
+    safe_judge_configuration = (
+        dict(judge_configuration) if judge_configuration is not None else None
+    )
 
     created = datetime.now(UTC) if now is None else now
     if created.tzinfo is None:
         raise ReportingError("运行时间必须包含时区")
     created_utc = created.astimezone(UTC)
-    timestamp = created_utc.strftime("%Y%m%dT%H%M%SZ")
-
     return RunMetadata(
-        run_id=f"{timestamp}-{commit[:7]}",
+        run_id=(
+            run_id
+            if run_id is not None
+            else create_run_id(commit, suite="single-turn", now=created_utc)
+        ),
         created_at=created_utc.isoformat().replace("+00:00", "Z"),
-        git_commit=commit,
+        git_commit=commit or None,
         git_dirty=git_dirty,
         model=model,
         temperature=temperature,
         max_tokens=max_tokens,
-        model_endpoint_hash=_hash_text(environ.get("LLM_BASE_URL", "").strip()),
-        test_set_hash=_hash_file(test_set_path),
-        context_hash=_hash_named_files(context_paths),
+        model_endpoint_hash=endpoint_hash,
+        test_set_hash=(
+            input_test_set_hash
+            if input_test_set_hash is not None
+            else _hash_file(test_set_path)
+        ),
+        context_hash=(
+            input_context_hash
+            if input_context_hash is not None
+            else _hash_named_files(context_paths)
+        ),
         reference_result_hash=_hash_reference_results(run.reference_results),
+        timeout_seconds=timeout,
         sales_mart_seed_version=(
             sales_mart_fingerprint.seed_version
             if sales_mart_fingerprint is not None
@@ -124,7 +150,65 @@ def collect_run_metadata(
             else None
         ),
         rag_asset_version=rag_asset_version,
+        model_configuration=model_configuration,
+        model_configuration_hash=model_configuration_fingerprint(model_configuration),
+        judge_configuration=safe_judge_configuration,
+        judge_configuration_hash=(
+            model_configuration_fingerprint(safe_judge_configuration)
+            if safe_judge_configuration is not None
+            else None
+        ),
+        provenance=dict(provenance) if provenance is not None else None,
     )
+
+
+def collect_model_configuration(
+    environ: Mapping[str, str],
+    *,
+    temperature_override: float | None = None,
+) -> dict[str, object]:
+    """Return effective safe ChatOpenAI settings without endpoint or credentials."""
+
+    model = environ.get("LLM_MODEL", "").strip()
+    if not model:
+        raise ReportingError("缺少 LLM_MODEL")
+    try:
+        temperature = (
+            float(environ.get("LLM_TEMPERATURE", "0.1"))
+            if temperature_override is None
+            else temperature_override
+        )
+        max_tokens = int(environ.get("LLM_MAX_TOKENS", "1200"))
+        timeout = min(float(environ.get("LLM_TIMEOUT_SECONDS", "30")), 30.0)
+    except (TypeError, ValueError):
+        raise ReportingError("LLM 数字配置无效") from None
+    if (
+        not isfinite(temperature)
+        or max_tokens <= 0
+        or not isfinite(timeout)
+        or timeout <= 0
+    ):
+        raise ReportingError("LLM 数字配置无效")
+    return {
+        "model": model,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "timeout_seconds": timeout,
+        "model_endpoint_hash": _hash_text(environ.get("LLM_BASE_URL", "").strip()),
+    }
+
+
+def model_configuration_fingerprint(configuration: Mapping[str, object]) -> str:
+    """Hash canonical, already-redacted effective model settings."""
+
+    payload = json.dumps(
+        dict(configuration),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 def create_report(
@@ -322,6 +406,29 @@ def write_markdown_report(report: Mapping[str, object], path: Path) -> None:
         path.write_text(render_markdown_report(report), encoding="utf-8")
     except OSError:
         raise ReportingError("评测总结报告无法写入") from None
+
+
+def write_evaluation_report_pair(
+    report: Mapping[str, object],
+    output_directory: Path,
+    markdown_content: str,
+) -> tuple[Path, Path]:
+    """Persist the JSON and its rendered Markdown as one exclusive run pair."""
+
+    metadata = _object_mapping(report.get("metadata"))
+    run_id = metadata.get("run_id") if metadata is not None else None
+    if not isinstance(run_id, str) or not run_id:
+        raise ReportingError("评测报告缺少 Run ID")
+    try:
+        json_content = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
+        return write_exclusive_report_pair(
+            output_directory,
+            run_id,
+            json_content,
+            markdown_content,
+        )
+    except (ReportWriteError, TypeError, ValueError):
+        raise ReportingError("评测 JSON / Markdown 报告未能完整保存") from None
 
 
 def load_report(path: Path) -> dict[str, object]:

@@ -1,6 +1,6 @@
 # 05 四套 AI 评测统一追溯、防覆盖与正式验收
 
-Status: open
+Status: in-progress
 Canonical Source: [Spec](../spec.md)、[Design](../design.md)、[草案](../tickets-draft.md#05-四套-ai-评测统一追溯防覆盖与正式验收)
 Owner: 当前主 Agent
 Change Profile: 中等跨套件工具 / 报告改动；证据兼容风险中等；不改业务执行或评分。
@@ -26,7 +26,15 @@ Migration / Rollback: 新报告增量写入，不改写历史；回退代码保�
 
 ## Result
 
-Pending.
+Implemented versioned start/end provenance and content fingerprints for all four evaluation suites, safe effective model / Judge configuration fingerprints, unique Run IDs, and exclusive JSON / Markdown pair writes. Formal acceptance now rejects reports with missing, changed, or unverified provenance; historical report loading and baseline comparison remain compatible. Corrected the documented Query Understanding case count to 7. No evaluation data, scoring thresholds, or model behavior changed, and no paid LLM / database run was performed.
+
+Review: PASS；基线 `9654f2d83a46b869c0f98a64f3f80e574cc1eb33`；范围为本 Ticket 的报告工具、四套入口与适配、验收测试和相关文档。What：统一运行身份、配置追溯与安全落盘；Why：避免测试中身份变化或报告覆盖造成证据不可信；Risk：新报告采用增量格式，缺少新 provenance 的历史报告不再满足新的正式验收，但仍可读取和比较；Verification：下列确定性测试、静态检查与文档检查通过。Findings：无。Review Dimensions：Correctness / Comprehension / Consistency / Testability / Architecture / Security 均通过。
+
+Verification：`uv run --locked pytest -q tests/evaluation tests/scripts/test_verification_report.py`（103 passed、1 skipped、26 subtests passed）；`bash scripts/check_python_quality.sh`、`uv run --locked ruff format --check scripts/verification_report.py`、`uv run --locked ruff check --select E4,E7,E9,F scripts/verification_report.py`、`python3 -m scripts.check_documentation`、`git diff --check` 均通过。未运行 LLM、数据库、镜像构建或 CI。
+
+Roadmap：不修改 `docs/roadmap.md`；Ticket 05 是已确认测试可靠性目标内的执行项，未改变已确认范围、依赖、验收或路线优先级。
+
+Commit：本地提交待执行；没有 Push / PR。
 
 ## Comments
 

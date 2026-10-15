@@ -243,8 +243,7 @@ class ResultComparisonTest(unittest.TestCase):
         from evaluation.suites.single_turn.evaluator import results_match
 
         expected_rows = tuple(
-            (Decimal(1) + Decimal(index) / Decimal(1000000000),)
-            for index in range(100)
+            (Decimal(1) + Decimal(index) / Decimal(1000000000),) for index in range(100)
         )
         actual_rows = tuple(reversed(expected_rows))
 
