@@ -1,6 +1,6 @@
 # 07 CI 接入关键数据库与 PDF 检查及证据
 
-Status: in-progress
+Status: done
 Canonical Source: [Spec](../spec.md)、[Design](../design.md)、[草案](../tickets-draft.md#07-ci-接入关键数据库与-pdf-检查及证据)
 Owner: 当前主 Agent
 Change Profile: 小至中等 workflow 改动；自动门禁风险中等；复用现有 job 和本地软件套件。
@@ -35,7 +35,7 @@ Verification：`./dev test all` 退出码 0，1206 total：1152 passed、54 skip
 
 Review：PASS；基线 `9f85b034bf996ee3c42786553cc96987c8484b34`；范围为既有 PostgreSQL CI job、development DB / renderer 接入、回归测试、Runbook 和全量验证中暴露的测试装配可靠性修正。What：保持 job 身份并补齐 development 数据库与真实 PDF 检查和失败证据上传；Why：普通 CI 覆盖本地关键软件套件且可追溯；Risk：复用 PostgreSQL 服务需显式清除先前 profile 留下的测试角色，已由顺序验证覆盖；Failure behavior：pytest、migration、renderer 或 image build 失败均保持非零，后置 artifact 仍尝试上传。最终审查无遗留发现；Correctness / Comprehension / Consistency / Testability / Architecture / Security 均通过。
 
-Roadmap：不修改 `docs/roadmap.md`；Ticket 07 属已确认测试可靠性目标内的实施，未改变范围、依赖、验收或优先级。Commit：本地实施提交将在提交后补记；没有 Push / PR。
+Roadmap：不修改 `docs/roadmap.md`；Ticket 07 属已确认测试可靠性目标内的实施，未改变范围、依赖、验收或优先级。Commit：`a022faf0cbc78c14e053ce2728646092f08c6787`（本地）；没有 Push / PR。
 
 ## Comments
 
