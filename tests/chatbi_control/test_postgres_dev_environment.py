@@ -21,8 +21,9 @@ from langgraph.graph import END, START, StateGraph
 from psycopg.conninfo import make_conninfo
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
-from sqlalchemy import event, func, select, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine, event, func, select, text
+from sqlalchemy.engine import URL
+from sqlalchemy.orm import Session, sessionmaker
 from starlette.requests import Request
 
 from src.business_analysis.run_store import (
@@ -728,6 +729,282 @@ class PostgresDevelopmentEnvironmentTest(unittest.TestCase):
                     "DELETE FROM users WHERE username IN (%s, %s)",
                     (first_name, second_name),
                 )
+            engine.dispose()
+
+    def _assert_concurrent_first_admin_creation_is_serialized(
+        self, *, initially_seeded: bool
+    ) -> None:
+        from src.chatbi_control.bootstrap import (
+            BootstrapError,
+            create_first_admin,
+            seed_rbac,
+        )
+
+        config = ControlDatabaseConfig.from_environment(require_migrator=False)
+        suffix = uuid4().hex[:12]
+        usernames = (
+            f"first-admin-race-a-{suffix}",
+            f"first-admin-race-b-{suffix}",
+        )
+        application_names = (
+            f"first-admin-a-{suffix}",
+            f"first-admin-b-{suffix}",
+        )
+        if initially_seeded:
+            engine = create_control_engine(config)
+        else:
+            engine = create_engine(
+                URL.create(
+                    "postgresql+psycopg",
+                    username=os.environ["POSTGRES_CONTROL_MIGRATOR_USER"],
+                    password=os.environ["POSTGRES_MIGRATOR_PASSWORD"],
+                    host=config.host,
+                    port=config.port,
+                    database=config.database,
+                ),
+                pool_pre_ping=True,
+            )
+
+        with (
+            self._connect(
+                config.database,
+                user_variable="POSTGRES_CONTROL_MIGRATOR_USER",
+                password_variable="POSTGRES_MIGRATOR_PASSWORD",
+            ) as connection,
+            connection.cursor() as cursor,
+        ):
+            cursor.execute("SELECT count(*) FROM users")
+            self.assertEqual(cursor.fetchone(), (0,))
+            if not initially_seeded:
+                cursor.execute("DELETE FROM role_permissions")
+                cursor.execute("DELETE FROM roles")
+                cursor.execute("DELETE FROM permissions")
+
+        first_admin_check = threading.Event()
+        second_admin_check = threading.Event()
+        second_lock_attempted = threading.Event()
+        release_first = threading.Event()
+        release_second = threading.Event()
+        successes: list[str] = []
+        rejected: list[tuple[str, str]] = []
+        errors: list[str] = []
+
+        def coordinate_queries(
+            _connection,
+            _cursor,
+            statement: str,
+            _parameters,
+            _context,
+            _executemany: bool,
+        ) -> None:
+            thread_name = threading.current_thread().name
+            normalized = " ".join(statement.lower().split())
+            if (
+                thread_name == "first-admin-race-b"
+                and "pg_advisory_xact_lock" in normalized
+            ):
+                second_lock_attempted.set()
+            if "from users" not in normalized or "user_roles" not in normalized:
+                return
+            if thread_name == "first-admin-race-a":
+                first_admin_check.set()
+                if not release_first.wait(timeout=10):
+                    raise TimeoutError("first admin transaction was not released")
+            elif thread_name == "first-admin-race-b":
+                second_admin_check.set()
+                if not release_first.is_set() and not release_second.wait(timeout=10):
+                    raise TimeoutError("second admin transaction was not released")
+
+        def create_admin(username: str, application_name: str) -> None:
+            try:
+                with Session(engine) as session, session.begin():
+                    session.execute(
+                        text("SELECT set_config('application_name', :name, true)"),
+                        {"name": application_name},
+                    )
+                    create_first_admin(
+                        session,
+                        username=username,
+                        password="initial-admin-password-123",
+                    )
+                successes.append(username)
+            except BootstrapError as exc:
+                rejected.append((username, str(exc)))
+            except BaseException as exc:
+                errors.append(type(exc).__name__)
+
+        first = threading.Thread(
+            target=create_admin,
+            args=(usernames[0], application_names[0]),
+            name="first-admin-race-a",
+        )
+        second = threading.Thread(
+            target=create_admin,
+            args=(usernames[1], application_names[1]),
+            name="first-admin-race-b",
+        )
+        lock_wait_observed = False
+        event.listen(engine, "before_cursor_execute", coordinate_queries)
+        try:
+            first.start()
+            self.assertTrue(
+                first_admin_check.wait(timeout=10),
+                "first transaction did not reach the no-admin check",
+            )
+            second.start()
+
+            deadline = time.monotonic() + 5
+            with (
+                self._connect(
+                    config.database,
+                    user_variable="POSTGRES_CONTROL_MIGRATOR_USER",
+                    password_variable="POSTGRES_MIGRATOR_PASSWORD",
+                ) as connection,
+                connection.cursor() as cursor,
+            ):
+                while time.monotonic() < deadline:
+                    cursor.execute(
+                        """
+                        SELECT wait_event_type, wait_event
+                        FROM pg_stat_activity
+                        WHERE application_name = %s
+                          AND datname = current_database()
+                        """,
+                        (application_names[1],),
+                    )
+                    activity = cursor.fetchone()
+                    if activity == ("Lock", "advisory"):
+                        lock_wait_observed = True
+                        break
+                    if second_admin_check.is_set():
+                        break
+                    time.sleep(0.02)
+
+            release_first.set()
+            release_second.set()
+            first.join(timeout=10)
+            second.join(timeout=10)
+            self.assertFalse(first.is_alive(), "first admin transaction did not finish")
+            self.assertFalse(
+                second.is_alive(), "second admin transaction did not finish"
+            )
+            self.assertTrue(
+                lock_wait_observed,
+                "second transaction did not wait on a PostgreSQL advisory lock",
+            )
+            self.assertTrue(
+                second_lock_attempted.is_set(),
+                "second transaction did not execute the first-admin lock query",
+            )
+            self.assertEqual(errors, [])
+            self.assertEqual(successes, [usernames[0]])
+            self.assertEqual(
+                rejected,
+                [(usernames[1], "首个管理员已经初始化，不能重复执行")],
+            )
+            with (
+                self._connect(
+                    config.database,
+                    user_variable="POSTGRES_CONTROL_MIGRATOR_USER",
+                    password_variable="POSTGRES_MIGRATOR_PASSWORD",
+                ) as connection,
+                connection.cursor() as cursor,
+            ):
+                cursor.execute(
+                    """
+                    SELECT users.username
+                    FROM users
+                    JOIN user_roles ON user_roles.user_id = users.id
+                    JOIN roles ON roles.id = user_roles.role_id
+                    WHERE roles.name = 'admin' AND users.username = ANY(%s)
+                    ORDER BY users.username
+                    """,
+                    (list(usernames),),
+                )
+                self.assertEqual(cursor.fetchall(), [(usernames[0],)])
+        finally:
+            release_first.set()
+            release_second.set()
+            first.join(timeout=10)
+            if second.ident is not None:
+                second.join(timeout=10)
+            event.remove(engine, "before_cursor_execute", coordinate_queries)
+            with (
+                self._connect(
+                    config.database,
+                    user_variable="POSTGRES_CONTROL_MIGRATOR_USER",
+                    password_variable="POSTGRES_MIGRATOR_PASSWORD",
+                ) as connection,
+                connection.cursor() as cursor,
+            ):
+                cursor.execute(
+                    "DELETE FROM users WHERE username = ANY(%s)",
+                    (list(usernames),),
+                )
+            if not initially_seeded:
+                with Session(engine) as session, session.begin():
+                    seed_rbac(session)
+            engine.dispose()
+
+    def test_concurrent_first_admin_creation_during_initial_rbac_seed(self) -> None:
+        self._assert_concurrent_first_admin_creation_is_serialized(
+            initially_seeded=False
+        )
+
+    def test_concurrent_first_admin_creation_with_existing_admin_role(self) -> None:
+        self._assert_concurrent_first_admin_creation_is_serialized(
+            initially_seeded=True
+        )
+
+    def test_failed_first_admin_transaction_releases_postgres_lock(self) -> None:
+        from src.chatbi_control.bootstrap import create_first_admin
+
+        config = ControlDatabaseConfig.from_environment(require_migrator=False)
+        engine = create_control_engine(config)
+        username = f"first-admin-rollback-{uuid4().hex[:12]}"
+        try:
+            with patch(
+                "src.chatbi_control.bootstrap.hash_password",
+                side_effect=RuntimeError("controlled password-hash failure"),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "controlled"):
+                    with Session(engine) as session, session.begin():
+                        create_first_admin(
+                            session,
+                            username=username,
+                            password="initial-admin-password-123",
+                        )
+
+            with Session(engine) as session, session.begin():
+                session.execute(text("SET LOCAL statement_timeout = '5s'"))
+                create_first_admin(
+                    session,
+                    username=username,
+                    password="initial-admin-password-123",
+                )
+
+            with (
+                self._connect(
+                    config.database,
+                    user_variable="POSTGRES_CONTROL_MIGRATOR_USER",
+                    password_variable="POSTGRES_MIGRATOR_PASSWORD",
+                ) as connection,
+                connection.cursor() as cursor,
+            ):
+                cursor.execute(
+                    "SELECT username FROM users WHERE username = %s", (username,)
+                )
+                self.assertEqual(cursor.fetchone(), (username,))
+        finally:
+            with (
+                self._connect(
+                    config.database,
+                    user_variable="POSTGRES_CONTROL_MIGRATOR_USER",
+                    password_variable="POSTGRES_MIGRATOR_PASSWORD",
+                ) as connection,
+                connection.cursor() as cursor,
+            ):
+                cursor.execute("DELETE FROM users WHERE username = %s", (username,))
             engine.dispose()
 
     def test_analysis_runs_are_owner_bound_checkpointed_and_expired(self) -> None:

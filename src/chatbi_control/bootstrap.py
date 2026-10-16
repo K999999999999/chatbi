@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from src.authorization.passwords import hash_password
@@ -24,6 +24,8 @@ FIXED_ROLES: tuple[tuple[str, str], ...] = (
     ("admin", "ChatBI 管理员"),
     ("analyst", "ChatBI 查询用户"),
 )
+
+_FIRST_ADMIN_ADVISORY_LOCK_KEY = "chatbi.bootstrap.create-first-admin.v1"
 
 
 class BootstrapError(RuntimeError):
@@ -63,6 +65,11 @@ def create_first_admin(session: Session, *, username: str, password: str) -> Use
     """只允许在尚无管理员时创建首个管理员。"""
 
     normalized_username = normalize_username(username)
+    if session.get_bind().dialect.name == "postgresql":
+        session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+            {"key": _FIRST_ADMIN_ADVISORY_LOCK_KEY},
+        )
     existing_admin = session.scalar(
         select(User).join(User.roles).where(Role.name == "admin").limit(1)
     )

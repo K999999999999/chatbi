@@ -33,14 +33,14 @@ python -m src.bootstrap build-rag [--structure-dir PATH] [--metrics-path PATH] [
 | 命令 | 行为与失败边界 |
 | --- | --- |
 | migrate | 幂等建立 Control DB、固定 RBAC、checkpoint 和 grants；不创建管理员；成功 0、迁移失败 1 |
-| create-admin | 隐藏输入密码并确认，显式创建首个管理员；已存在管理员时拒绝；成功 0、操作失败 1、两次密码不一致 2 |
+| create-admin | 隐藏输入密码并确认，显式创建首个管理员；已存在管理员时拒绝；PostgreSQL 在检查管理员前取得专用事务级 advisory lock，将检查、固定 RBAC seed 与用户创建保持在同一事务中；成功 0、操作失败 1、两次密码不一致 2 |
 | recover-admin | 可信本机交互装配、显式目标及运行身份、原子恢复和强制审计；见[恢复Contract](admin-recovery.md) |
 | prepare-model | 下载固定 revision 的 BGE-M3 到既有缓存目录；成功且配置文件存在返回 0，失败返回 1，不输出凭据 |
 | build-rag | 使用现有 builder 校验、构建、验证并原子发布；成功发布 0，未发布结果 1；构建异常仍报告失败，释放临时 Qdrant client 并保护已发布资产 |
 
 缺少必需子命令、未知参数等解析错误返回 2，不加载运行配置。运行资源不使用迁移身份；管理员密码不进入参数、配置模板、Seed、文档或日志。
 
-服务启动不自动运行这些命令，不重播 Seed。Compose、开发重置与结构导出由dev宿主编排，不新增宿主Python要求；账号规则归authorization，不依赖Bootstrap/Docker。
+服务启动不自动运行这些命令，不重播 Seed。首个管理员的 PostgreSQL 事务锁使用独立身份，不与 HistoryRuntime 或其他锁用途共用；SQLite 保留既有串行软件测试，不据此宣称并发互斥。Compose、开发重置与结构导出由dev宿主编排，不新增宿主Python要求；账号规则归authorization，不依赖Bootstrap/Docker。
 
 ## 验证
 
