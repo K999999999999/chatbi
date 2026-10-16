@@ -176,6 +176,8 @@ class ReportingTest(unittest.TestCase):
         self.assertIn('"program_attribution"', model.prompt)
         self.assertIn("不得修改其指标口径、数值、变化方向", model.prompt)
         self.assertIn("必须按此字段描述方向", model.prompt)
+        self.assertIn("至多 3 个产品", model.prompt)
+        self.assertIn("不得说这些产品未查询、结果缺失或无法判断贡献", model.prompt)
 
     def test_summary_returns_human_readable_report_with_completed_evidence(
         self,
