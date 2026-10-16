@@ -124,6 +124,25 @@ def test_compose_network_lookup_uses_the_workspace_compose_project(
     )
 
 
+def test_compose_network_lookup_rejects_insecure_default_env_before_compose(
+    monkeypatch, tmp_path
+):
+    canary = "LEGACY_COMPOSE_ENV_CANARY"
+    env_file = tmp_path / ".env"
+    env_file.write_text(f"LLM_API_KEY={canary}\n")
+    env_file.chmod(0o644)
+    monkeypatch.setattr(
+        run_database_tests,
+        "_run_docker",
+        lambda *_args, **_kwargs: pytest.fail("不安全配置不能交给Compose"),
+    )
+
+    with pytest.raises(PermissionError) as failure:
+        run_database_tests._compose_default_network("docker", tmp_path)
+
+    assert canary not in str(failure.value)
+
+
 def test_database_mount_uses_host_workspace_inside_devcontainer(monkeypatch):
     monkeypatch.setenv("LOCAL_WORKSPACE_FOLDER", "/host/workspace/chatbi-engine")
 

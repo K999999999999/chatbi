@@ -1,5 +1,25 @@
 #!/usr/bin/env bash
 # 共享宿主目标解析；调用方先验证命令和参数，再读取配置。
+validate_env_file_permissions() {
+    local path=$1 metadata owner mode mode_bits
+    if [[ ! -f "$path" ]]; then
+        echo '缺少本地配置；复制 .env.example 并填写配置后重试。' >&2
+        return 2
+    fi
+    metadata=$(stat -c '%u:%a' -- "$path" 2>/dev/null) || metadata=
+    owner=${metadata%%:*}
+    mode=${metadata#*:}
+    if [[ "$metadata" == *:* && "$mode" =~ ^[0-7]{3,4}$ ]]; then
+        mode_bits=$((8#$mode))
+        if [[ "$owner" == "$(id -u)" ]] \
+            && (( (mode_bits & 0400) != 0 && (mode_bits & ~0600) == 0 )); then
+            return 0
+        fi
+    fi
+    echo '本地配置必须由当前用户拥有且仅当前用户可读；请检查属主并执行 chmod 600 <配置文件> 后重试。' >&2
+    return 2
+}
+
 initialize_environment() {
     if (($# != 1)) || [[ "$1" != dev ]]; then
         echo '维护目标无效；当前只支持 dev。' >&2
@@ -11,7 +31,7 @@ initialize_environment() {
     override=${CHATBI_DEV_COMPOSE_OVERRIDE:-}
     compose_files=(-f "$root/docker-compose.yml" -f "$root/docker-compose.dev.yml")
     services=(api web postgres qdrant)
-    [[ -f "$env_file" ]] || { echo '缺少本地配置；复制 .env.example 并填写配置后重试。' >&2; return 2; }
+    validate_env_file_permissions "$env_file" || return 2
     export CHATBI_DEV_UID=${CHATBI_DEV_UID:-$(id -u)}
     export CHATBI_DEV_GID=${CHATBI_DEV_GID:-$(id -g)}
     export CHATBI_DEV_SECCOMP_PROFILE=${CHATBI_DEV_SECCOMP_PROFILE:-$root/docker/third-party/playwright-seccomp-profile.json}

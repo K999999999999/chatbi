@@ -5,11 +5,11 @@
 所有命令从仓库根目录的WSL / Linux Bash执行。宿主只需Git、Docker Engine、Compose（隔离验收要求至少2.24.4）；不需要宿主Python、uv、Node、`.venv`或`node_modules`。开发镜像准备依赖，Compose组织服务，`dev`提供统一开发入口。
 
 ```bash
-cp .env.example .env
+test -e .env || install -m 600 .env.example .env
 ./dev hooks install
 ```
 
-已有配置不要覆盖。Git Hook脚本只修改当前clone的local hooksPath，遇到已有其他有效Hook会拒绝覆盖；按[Git流程](agents/git-pr-workflow.md)保留并处理。
+已有配置不要覆盖。`.env` 必须由当前 Linux 用户拥有且仅当前用户可读；建议权限为 `600`。开发入口在把配置交给 Compose 前、直接读取配置的脚本在读取前都会检查属主和权限，不安全时拒绝且不显示配置内容；按提示检查属主并执行 `chmod 600 .env`。`./dev help` 不读取配置。Git Hook脚本只修改当前clone的local hooksPath，遇到已有其他有效Hook会拒绝覆盖；按[Git流程](agents/git-pr-workflow.md)保留并处理。
 
 填写 `.env` 的 `LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL`、数据库密码、Qdrant Key和随机 `CHATBI_ADMIN_SECRET_KEY`。模板中的本地演示密码仅用于回环环境；真实配置不进入Git、镜像或报告。构建前可以用以下基础容器命令生成签名Key，再自行填写到本地配置：
 
@@ -131,7 +131,7 @@ CI保留`PostgreSQL integration` job及其临时PostgreSQL服务，依次运行�
 
 `/health`只表示HTTP存活，`/ready`才反映应用依赖就绪；模型状态来自近期真实调用，不做定时收费探测。管理员可以查看依赖、模型和执行额度，网页不显示备份状态；刷新不延长登录期限。应用保护见[就绪Contract](specs/application-readiness.md)。
 
-- 缺少配置：检查 `.env` 必需字段；不要输出完整Compose配置或Secret定位。
+- 缺少配置：检查 `.env` 必需字段；权限拒绝时检查属主并执行 `chmod 600 <配置文件>`；不要输出完整Compose配置或Secret定位。
 - 首次PG不healthy：先执行migrate，不等待未迁移的checkpoint健康状态。
 - 模型/索引未准备：显式prepare-model/build-rag；来源校验失败不能通过删校验或静态回退解决。
 - 端口占用：调整本项目端口后重试，不杀未知进程；确认实际网页Origin随端口更新。

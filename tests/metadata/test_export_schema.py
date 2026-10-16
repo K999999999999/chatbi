@@ -1,10 +1,14 @@
 """结构导出保留字段值示例的测试。"""
 
 import json
+import sys
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Self
+from unittest.mock import patch
 
 from scripts.metadata.export_schema import (
     CanonicalSchema,
@@ -12,13 +16,80 @@ from scripts.metadata.export_schema import (
     MetadataExportError,
     TableMetadata,
     extract_schema,
+    main,
     load_column_value_examples,
     project_columns,
 )
+from scripts.metadata.export_schema_input import load_env
 from scripts.metadata.export_schema_models import EXPECTED_TABLES
 
 
 class ExportSchemaTest(unittest.TestCase):
+    def test_load_env_accepts_owner_only_configuration(self) -> None:
+        with TemporaryDirectory() as directory:
+            env_file = Path(directory) / ".env"
+            env_file.write_text("POSTGRES_HOST=127.0.0.1\n", encoding="utf-8")
+            env_file.chmod(0o600)
+
+            self.assertEqual(load_env(env_file), {"POSTGRES_HOST": "127.0.0.1"})
+
+    def test_load_env_rejects_group_readable_configuration_without_echoing_it(
+        self,
+    ) -> None:
+        canary = "METADATA_ENV_PERMISSION_CANARY"
+        with TemporaryDirectory() as directory:
+            env_file = Path(directory) / ".env"
+            env_file.write_text(f"POSTGRES_PASSWORD={canary}\n", encoding="utf-8")
+            env_file.chmod(0o644)
+
+            with self.assertRaises(PermissionError) as failure:
+                load_env(env_file)
+
+        self.assertNotIn(canary, str(failure.exception))
+
+    def test_load_env_does_not_accept_configuration_owned_by_another_user(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            env_file = Path(directory) / ".env"
+            env_file.write_text("POSTGRES_HOST=127.0.0.1\n", encoding="utf-8")
+            env_file.chmod(0o600)
+            with patch(
+                "scripts.environment_permissions.os.getuid",
+                return_value=env_file.stat().st_uid + 1,
+            ):
+                with self.assertRaises(PermissionError):
+                    load_env(env_file)
+
+    def test_metadata_cli_reports_safe_permission_fix_without_echoing_config(
+        self,
+    ) -> None:
+        canary = "METADATA_CLI_PERMISSION_CANARY"
+        with TemporaryDirectory() as directory:
+            env_file = Path(directory) / ".env"
+            env_file.write_text(f"POSTGRES_PASSWORD={canary}\n", encoding="utf-8")
+            env_file.chmod(0o644)
+            output = StringIO()
+            with (
+                patch.object(
+                    sys,
+                    "argv",
+                    [
+                        "export_schema",
+                        "--env-file",
+                        str(env_file),
+                        "--output-dir",
+                        str(Path(directory) / "output"),
+                    ],
+                ),
+                redirect_stdout(output),
+            ):
+                result = main()
+
+        self.assertEqual(result, 1)
+        self.assertIn("chmod 600", output.getvalue())
+        self.assertNotIn(canary, output.getvalue())
+
     def test_extract_schema_ignores_development_seed_metadata(self) -> None:
         connection = _CatalogConnection()
 

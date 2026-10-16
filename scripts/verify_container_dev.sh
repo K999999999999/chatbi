@@ -11,6 +11,8 @@ mode=${1:-isolated}
 if [[ "$mode" != isolated && "$mode" != real ]]; then
     echo '用法: scripts/verify_container_dev.sh {isolated|real}' >&2; exit 2
 fi
+export CHATBI_DEV_ENV_FILE=${CHATBI_DEV_ENV_FILE:-$root/.env}
+validate_env_file_permissions "$CHATBI_DEV_ENV_FILE" || exit 2
 browser_image=chatbi-browser-dev:local
 dirty=false
 if [[ -n "$(git status --porcelain)" ]]; then
@@ -26,7 +28,6 @@ umask 077
 mkdir -p "$work/report"
 mkdir -p "$root/reports/browser-real" "$root/reports/browser-real-artifacts"
 export CHATBI_PUBLISHED_REPORT_DIR=$(host_source_path "$root/reports")
-export CHATBI_DEV_ENV_FILE=${CHATBI_DEV_ENV_FILE:-$root/.env}
 export CHATBI_DEV_COMPOSE_OVERRIDE="$work/compose.yml"
 export CHATBI_DEV_UID=$(id -u) CHATBI_DEV_GID=$(id -g)
 export CHATBI_DEV_SECCOMP_PROFILE=${CHATBI_DEV_SECCOMP_PROFILE:-$root/docker/third-party/playwright-seccomp-profile.json}

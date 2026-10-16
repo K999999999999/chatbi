@@ -145,6 +145,7 @@ def docker_fake(tmp_path):
     fake.chmod(0o755)
     env_file = tmp_path / ".env"
     env_file.write_text("# 不含真实凭据的隔离配置\n")
+    env_file.chmod(0o600)
     return {
         "PATH": f"{tmp_path}:{os.environ['PATH']}",
         "DOCKER_CALLS": str(tmp_path / "calls.jsonl"),
@@ -371,6 +372,60 @@ def test_missing_config_gives_safe_actionable_message(docker_fake):
     )
     assert result.returncode != 0
     assert ".env.example" in result.stderr
+
+
+def test_group_readable_config_is_rejected_before_compose(docker_fake):
+    env_file = Path(docker_fake["CHATBI_DEV_ENV_FILE"])
+    env_file.write_text("CONFIG_SECRET_CANARY=do-not-print\n")
+    env_file.chmod(0o644)
+
+    result = invoke(["up"], docker_fake)
+
+    assert result.returncode == 2
+    assert "chmod 600" in result.stderr
+    assert "CONFIG_SECRET_CANARY" not in result.stdout + result.stderr
+    assert not Path(docker_fake["DOCKER_CALLS"]).exists()
+
+
+def test_config_owned_by_another_user_is_rejected_before_compose(docker_fake, tmp_path):
+    fake_stat = tmp_path / "stat"
+    fake_stat.write_text(
+        "#!/usr/bin/env python3\n"
+        "import os, sys\n"
+        "if sys.argv[1:3] == ['-c', '%u:%a']:\n"
+        "    print(f'{os.getuid() + 1}:600')\n"
+        "else:\n"
+        "    os.execv('/usr/bin/stat', ['/usr/bin/stat', *sys.argv[1:]])\n"
+    )
+    fake_stat.chmod(0o755)
+    env = {**docker_fake, "PATH": f"{tmp_path}:{os.environ['PATH']}"}
+
+    result = invoke(["up"], env)
+
+    assert result.returncode == 2
+    assert "属主" in result.stderr
+    assert not Path(docker_fake["DOCKER_CALLS"]).exists()
+
+
+def test_help_does_not_validate_or_read_unsafe_config(docker_fake):
+    Path(docker_fake["CHATBI_DEV_ENV_FILE"]).chmod(0o644)
+
+    result = invoke(["help"], docker_fake)
+
+    assert result.returncode == 0
+    assert "环境管理" in result.stdout
+    assert not Path(docker_fake["DOCKER_CALLS"]).exists()
+
+
+def test_container_acceptance_rejects_unsafe_config_before_compose(docker_fake):
+    Path(docker_fake["CHATBI_DEV_ENV_FILE"]).chmod(0o644)
+    env = {**docker_fake, "CHATBI_CONTAINER_ALLOW_DIRTY": "1"}
+
+    result = invoke(["verify", "dev", "isolated"], env)
+
+    assert result.returncode == 2
+    assert "chmod 600" in result.stderr
+    assert not Path(docker_fake["DOCKER_CALLS"]).exists()
 
 
 def test_migration_failure_does_not_enter_full_health_wait(docker_fake):

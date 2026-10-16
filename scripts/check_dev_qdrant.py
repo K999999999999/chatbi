@@ -9,12 +9,21 @@ from urllib.request import Request, urlopen
 
 from dotenv import dotenv_values
 
+from scripts.environment_permissions import validate_environment_file
+
+
+def _environment_path() -> Path:
+    configured = os.environ.get("CHATBI_DEV_ENV_FILE", "").strip()
+    return Path(configured) if configured else Path(__file__).resolve().parents[1] / ".env"
+
 
 def _setting(name: str, default: str) -> str:
     current = os.getenv(name, "").strip()
     if current:
         return current
-    values = dotenv_values(Path(__file__).resolve().parents[1] / ".env")
+    env_file = _environment_path()
+    validate_environment_file(env_file)
+    values = dotenv_values(env_file)
     configured = values.get(name)
     return configured.strip() if configured else default
 
@@ -35,8 +44,12 @@ def _check(
 
 
 def main() -> int:
-    endpoint = _setting("RAG_QDRANT_URL", "http://127.0.0.1:6333")
-    api_key = _setting("QDRANT_API_KEY", "")
+    try:
+        endpoint = _setting("RAG_QDRANT_URL", "http://127.0.0.1:6333")
+        api_key = _setting("QDRANT_API_KEY", "")
+    except PermissionError as error:
+        print(str(error), file=sys.stderr)
+        return 2
     if not api_key:
         print("QDRANT_API_KEY is required in .env.", file=sys.stderr)
         return 2
