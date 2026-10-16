@@ -58,10 +58,7 @@ class SynchronousExecutionControl:
 
 
 @contextmanager
-def admit(request, auth, request_id, *, seconds):
-    state = request.app.state
-    operations = getattr(state, "operations", None)
-    runtime = getattr(state, "execution_runtime", None)
+def admit_owner(auth, request_id, *, operations, runtime, seconds):
     if operations is None or not operations.ready or runtime is None:
         raise AdmissionRejected(
             QueryFailure(
@@ -90,3 +87,16 @@ def admit(request, auth, request_id, *, seconds):
         yield SynchronousExecutionControl(seconds)
     finally:
         lease.release()
+
+
+@contextmanager
+def admit(request, auth, request_id, *, seconds):
+    state = request.app.state
+    with admit_owner(
+        auth,
+        request_id,
+        operations=getattr(state, "operations", None),
+        runtime=getattr(state, "execution_runtime", None),
+        seconds=seconds,
+    ) as control:
+        yield control

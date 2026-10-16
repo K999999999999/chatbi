@@ -101,13 +101,24 @@ class BrowserHistoryStore:
         return row[1]
 
     def begin_attempt(
-        self, owner, id, question, operation_id, revision, request_id, epoch
+        self,
+        owner,
+        id,
+        question,
+        operation_id,
+        revision,
+        request_id,
+        epoch,
+        *,
+        before_accept=None,
     ):
         h = self.header(owner, id)
         if h.active_turn_id:
             raise busy()
         if h.context_revision != revision:
             raise stale()
+        if before_accept is not None:
+            before_accept(h.kind)
         ordinal = 1 + max(
             (t.ordinal for t in self.turn_data.values() if t.history_id == id),
             default=0,
@@ -136,7 +147,15 @@ class BrowserHistoryStore:
         return AcceptedAttempt(ExecutionToken(id, t.id, epoch, ordinal), t, state)
 
     def begin_analysis_attempt(
-        self, owner, id, operation_id, revision, request_id, epoch
+        self,
+        owner,
+        id,
+        operation_id,
+        revision,
+        request_id,
+        epoch,
+        *,
+        before_accept=None,
     ):
         h = self.header(owner, id)
         if h.record_revision != revision:
@@ -149,6 +168,7 @@ class BrowserHistoryStore:
             h.context_revision,
             request_id,
             epoch,
+            before_accept=before_accept,
         )
 
     def begin_execution_attempt(
@@ -511,6 +531,8 @@ class BrowserHistoryStore:
         request_id,
         epoch,
         new_id,
+        *,
+        before_accept=None,
     ):
         history_title = None
         if source_kind == "saved":
@@ -532,6 +554,8 @@ class BrowserHistoryStore:
             else:
                 turn = self.turn(owner, source_id, source_turn_id)
                 question, snapshot = turn.question, turn.snapshot
+        if before_accept is not None:
+            before_accept(kind)
         h = self.create(
             owner, kind, question, operation_id, id=new_id, title=history_title
         )

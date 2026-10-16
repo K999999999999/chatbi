@@ -1,7 +1,7 @@
 """历史Use Case：持久受理先于执行，成功快照与状态一起提交。"""
 
 import logging
-from contextlib import nullcontext
+from contextlib import ExitStack, contextmanager, nullcontext
 
 from src.authorization.query_entry import AuthorizedQueryService
 from src.business_analysis.application import BusinessAnalysisSuccess
@@ -11,6 +11,7 @@ from src.online_query.contracts import (
     ExecutionControl,
     ExecutionProgressObserver,
     ExecutionStage,
+    ExecutionStopReason,
     ExecutionStopped,
     QueryFailure,
     QueryRequest,
@@ -20,6 +21,7 @@ from src.online_query.semantic_state import SemanticCertificationError
 
 from .history_codec import decode_query_state, encode_snapshot, public_snapshot
 from .history_contracts import HistoryError, HistoryStore
+from .admission import AdmissionRejected
 from .query_response import analysis_payload, query_payload
 from .semantic_revision import SemanticRevisionError, revise_history_semantic_query
 
@@ -35,10 +37,37 @@ class HistoryApplication:
         certifier=None,
         analysis_service=None,
         analysis_guard=None,
+        admission=None,
     ):
         self.store, self.runtime, self.query_service = store, runtime, query_service
         self.query_understanding, self.certifier = query_understanding, certifier
         self.analysis_service, self.analysis_guard = analysis_service, analysis_guard
+        self.admission = admission
+
+    @contextmanager
+    def _new_attempt_admission(self, auth, request_id, *, seconds):
+        if self.admission is None:
+            yield None, None
+            return
+
+        state = {"control": None, "entered": False}
+        with ExitStack() as stack:
+
+            def before_accept(kind=None):
+                if state["entered"]:
+                    return
+                active_seconds = seconds(kind) if callable(seconds) else seconds
+                try:
+                    state["control"] = stack.enter_context(
+                        self.admission(auth, request_id, seconds=active_seconds)
+                    )
+                    state["entered"] = True
+                except AdmissionRejected as exc:
+                    raise HistoryError(
+                        exc.result.error_code.value, exc.result.error_message
+                    ) from None
+
+            yield before_accept, state
 
     def restore(self, state):
         semantic = decode_query_state(state)
@@ -154,24 +183,31 @@ class HistoryApplication:
                 "原分析任务已过期或无法恢复，请新建分析",
             )
         with self.runtime.executing(history_id):
-            accepted = self.store.begin_analysis_attempt(
-                auth.user_id,
-                history_id,
-                operation_id,
-                revision,
-                request_id,
-                self.runtime.epoch,
-            )
-            return self._execute_attempt(
-                auth,
-                request_id,
-                history_id,
-                header.first_question,
-                accepted,
-                reauthenticate=reauthenticate,
-                kind="analysis",
-                analysis_run_id=header.analysis_run_id,
-            )
+            with self._new_attempt_admission(auth, request_id, seconds=1200) as (
+                before_accept,
+                state,
+            ):
+                options = {"before_accept": before_accept} if before_accept else {}
+                accepted = self.store.begin_analysis_attempt(
+                    auth.user_id,
+                    history_id,
+                    operation_id,
+                    revision,
+                    request_id,
+                    self.runtime.epoch,
+                    **options,
+                )
+                return self._execute_attempt(
+                    auth,
+                    request_id,
+                    history_id,
+                    header.first_question,
+                    accepted,
+                    reauthenticate=reauthenticate,
+                    kind="analysis",
+                    analysis_run_id=header.analysis_run_id,
+                    execution_control=state["control"] if state else None,
+                )
 
     def submit_query(
         self,
@@ -189,23 +225,30 @@ class HistoryApplication:
         if header.kind != "query":
             raise HistoryError("INVALID_REQUEST", "分析历史不能提交问数追问")
         with self.runtime.executing(history_id):
-            accepted = self.store.begin_attempt(
-                auth.user_id,
-                history_id,
-                question,
-                operation_id,
-                revision,
-                request_id,
-                self.runtime.epoch,
-            )
-            return self._execute_attempt(
-                auth,
-                request_id,
-                history_id,
-                question,
-                accepted,
-                reauthenticate=reauthenticate,
-            )
+            with self._new_attempt_admission(auth, request_id, seconds=180) as (
+                before_accept,
+                state,
+            ):
+                options = {"before_accept": before_accept} if before_accept else {}
+                accepted = self.store.begin_attempt(
+                    auth.user_id,
+                    history_id,
+                    question,
+                    operation_id,
+                    revision,
+                    request_id,
+                    self.runtime.epoch,
+                    **options,
+                )
+                return self._execute_attempt(
+                    auth,
+                    request_id,
+                    history_id,
+                    question,
+                    accepted,
+                    reauthenticate=reauthenticate,
+                    execution_control=state["control"] if state else None,
+                )
 
     def requery(
         self,
@@ -223,28 +266,36 @@ class HistoryApplication:
         self.authorize(auth, request_id)
         new_id = str(uuid4())
         with self.runtime.executing(new_id):
-            header, accepted = self.store.begin_requery(
-                auth.user_id,
-                source_kind,
-                source_id,
-                source_turn_id,
-                operation_id,
-                request_id,
-                self.runtime.epoch,
-                new_id,
-            )
-            result = self._execute_attempt(
+            with self._new_attempt_admission(
                 auth,
                 request_id,
-                header.id,
-                accepted.turn.question,
-                accepted,
-                reauthenticate=reauthenticate,
-                requery=True,
-                kind=header.kind,
-                analysis_run_id=header.analysis_run_id,
-            )
-            return self.store.header(auth.user_id, header.id), result
+                seconds=lambda kind: 1200 if kind == "analysis" else 180,
+            ) as (before_accept, state):
+                options = {"before_accept": before_accept} if before_accept else {}
+                header, accepted = self.store.begin_requery(
+                    auth.user_id,
+                    source_kind,
+                    source_id,
+                    source_turn_id,
+                    operation_id,
+                    request_id,
+                    self.runtime.epoch,
+                    new_id,
+                    **options,
+                )
+                result = self._execute_attempt(
+                    auth,
+                    request_id,
+                    header.id,
+                    accepted.turn.question,
+                    accepted,
+                    reauthenticate=reauthenticate,
+                    requery=True,
+                    kind=header.kind,
+                    analysis_run_id=header.analysis_run_id,
+                    execution_control=state["control"] if state else None,
+                )
+                return self.store.header(auth.user_id, header.id), result
 
     def _execute_attempt(
         self,
@@ -288,8 +339,30 @@ class HistoryApplication:
                     progress_observer=progress_observer,
                     execution_control=execution_control,
                 )
-        except ExecutionStopped:
-            raise
+        except ExecutionStopped as stopped:
+            if (
+                execution_id is not None
+                or stopped.reason is not ExecutionStopReason.DEADLINE_EXCEEDED
+            ):
+                raise
+            try:
+                return self._finish_attempt(
+                    auth.user_id,
+                    accepted.token,
+                    None,
+                    {
+                        "request_id": request_id,
+                        "error_code": "QUERY_TIMEOUT",
+                        "error_message": "执行超过服务端时限",
+                    },
+                )
+            except HistoryError:
+                raise HistoryError(
+                    "HISTORY_SAVE_UNCONFIRMED",
+                    "结果未确认，请刷新历史",
+                    history_id=history_id,
+                    turn_id=accepted.turn.id,
+                ) from None
         except AnalysisExecutionBusy:
             self._finish_attempt(
                 auth.user_id,

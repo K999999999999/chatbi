@@ -372,6 +372,7 @@ class PostgresHistoryStore:
         new_id,
         *,
         execution_data=None,
+        before_accept=None,
     ):
         digest = operation_hash(
             {
@@ -501,6 +502,8 @@ class PostgresHistoryStore:
                 from src.query_api.history_codec import public_snapshot
 
                 public_snapshot(snapshot)
+            if before_accept is not None:
+                before_accept(kind)
             inserted = connection.execute(
                 text("""INSERT INTO history_records(id,owner_user_id,kind,title,first_question,creation_operation_id,creation_operation_hash,analysis_run_id)
                 VALUES (:id,:owner,:kind,:title,:question,:op,:hash,:run)
@@ -699,7 +702,16 @@ class PostgresHistoryStore:
 
     @_database_errors
     def begin_attempt(
-        self, owner, history_id, question, operation_id, revision, request_id, epoch
+        self,
+        owner,
+        history_id,
+        question,
+        operation_id,
+        revision,
+        request_id,
+        epoch,
+        *,
+        before_accept=None,
     ):
         digest = operation_hash({"question": question, "context_revision": revision})
         with self.engine.begin() as connection:
@@ -713,11 +725,20 @@ class PostgresHistoryStore:
                 request_id,
                 epoch,
                 digest,
+                before_accept=before_accept,
             )
 
     @_database_errors
     def begin_analysis_attempt(
-        self, owner, history_id, operation_id, revision, request_id, epoch
+        self,
+        owner,
+        history_id,
+        operation_id,
+        revision,
+        request_id,
+        epoch,
+        *,
+        before_accept=None,
     ):
         with self.engine.begin() as connection:
             header = _owned(connection, owner, history_id, lock=True)
@@ -740,6 +761,7 @@ class PostgresHistoryStore:
                 request_id,
                 epoch,
                 digest,
+                before_accept=before_accept,
             )
 
     def _begin(
@@ -753,6 +775,8 @@ class PostgresHistoryStore:
         request_id,
         epoch,
         digest,
+        *,
+        before_accept=None,
     ):
         header = _owned(connection, owner, history_id, lock=True)
         previous = (
@@ -782,6 +806,8 @@ class PostgresHistoryStore:
         ).scalar_one_or_none()
         if str(current_epoch) != epoch:
             raise storage_unavailable()
+        if before_accept is not None:
+            before_accept(header["kind"])
         turn_id = str(uuid4())
         generation = header["execution_generation"] + 1
         turn = (

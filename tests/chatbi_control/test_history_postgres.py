@@ -80,6 +80,7 @@ def begin(
     revision=0,
     operation=None,
     question="人民币净销售额",
+    before_accept=None,
 ):
     return store.begin_attempt(
         owner,
@@ -89,6 +90,7 @@ def begin(
         revision,
         "history-test",
         runtime.epoch,
+        before_accept=before_accept,
     )
 
 
@@ -98,7 +100,16 @@ def test_success_failure_and_duplicate_are_durable(history_env):
     header = store.create(owner, "query", "人民币净销售额", creation)
     assert store.create(owner, "query", "人民币净销售额", creation).id == header.id
     operation = str(uuid4())
-    accepted = begin(store, runtime, owner, header.id, operation=operation)
+    admitted = []
+    accepted = begin(
+        store,
+        runtime,
+        owner,
+        header.id,
+        operation=operation,
+        before_accept=lambda kind: admitted.append(kind),
+    )
+    assert admitted == ["query"]
     with pytest.raises(HistoryError, match="正在执行"):
         begin(store, runtime, owner, header.id)
     snapshot = encode_snapshot(
@@ -110,19 +121,76 @@ def test_success_failure_and_duplicate_are_durable(history_env):
     success = store.finish_attempt(owner, accepted.token, snapshot, None)
     assert success.status == "succeeded"
     assert store.header(owner, header.id).context_revision == 1
-    duplicate = begin(store, runtime, owner, header.id, operation=operation)
+    duplicate = begin(
+        store,
+        runtime,
+        owner,
+        header.id,
+        operation=operation,
+        before_accept=lambda _kind: pytest.fail("幂等重放不能重新准入"),
+    )
     assert duplicate.token is None and duplicate.turn.id == success.id
     with pytest.raises(HistoryError, match="请刷新"):
         begin(store, runtime, owner, header.id)
-    second = begin(store, runtime, owner, header.id, revision=1)
+    second_operation = str(uuid4())
+    second = begin(
+        store,
+        runtime,
+        owner,
+        header.id,
+        revision=1,
+        operation=second_operation,
+    )
     assert second.base_state == snapshot["query_state"]
     store.finish_attempt(owner, second.token, None, {"error_code": "LLM_ERROR"})
     current = store.header(owner, header.id)
     assert current.context_revision == 1 and current.last_success_turn_id == success.id
     assert store.turn(owner, header.id, success.id).snapshot == snapshot
+    failed_replay = begin(
+        store,
+        runtime,
+        owner,
+        header.id,
+        revision=1,
+        operation=second_operation,
+        before_accept=lambda _kind: pytest.fail("失败重放不能重新准入"),
+    )
+    assert failed_replay.token is None
     with pytest.raises(HistoryError) as cross_owner:
         store.header(owner + 100000, header.id)
     assert cross_owner.value.code == "HISTORY_UNAVAILABLE"
+
+
+def test_rejected_admission_rolls_back_before_creating_history_attempt(history_env):
+    engine, store, runtime, owner, _ = history_env
+    header = store.create(owner, "query", "销售额", str(uuid4()))
+    operation = str(uuid4())
+
+    def reject(_kind):
+        raise HistoryError("SERVICE_NOT_READY", "服务未就绪")
+
+    with pytest.raises(HistoryError) as rejected:
+        begin(
+            store,
+            runtime,
+            owner,
+            header.id,
+            operation=operation,
+            before_accept=reject,
+        )
+
+    assert rejected.value.code == "SERVICE_NOT_READY"
+    assert store.header(owner, header.id).active_turn_id is None
+    with engine.connect() as connection:
+        assert (
+            connection.execute(
+                text(
+                    "SELECT count(*) FROM history_turns WHERE history_id=:history AND operation_id=:operation"
+                ),
+                {"history": header.id, "operation": operation},
+            ).scalar_one()
+            == 0
+        )
 
 
 def test_restart_fences_old_token_and_retains_success(history_env):
@@ -428,6 +496,7 @@ def test_requery_copies_source_in_acceptance_transaction_and_is_idempotent(histo
     )
     source_turn = store.finish_attempt(owner, accepted.token, snapshot, None)
     operation = str(uuid4())
+    admitted = []
     header, requery = store.begin_requery(
         owner,
         "history",
@@ -437,7 +506,9 @@ def test_requery_copies_source_in_acceptance_transaction_and_is_idempotent(histo
         "r",
         runtime.epoch,
         str(uuid4()),
+        before_accept=lambda kind: admitted.append(kind),
     )
+    assert admitted == ["query"]
     assert header.first_question == "改看按产品毛利"
     assert requery.turn.question == "改看按产品毛利"
     assert (
@@ -464,6 +535,7 @@ def test_requery_copies_source_in_acceptance_transaction_and_is_idempotent(histo
         "r2",
         runtime.epoch,
         str(uuid4()),
+        before_accept=lambda _kind: pytest.fail("幂等重放不能重新准入"),
     )
     assert (
         same_header.id == header.id
@@ -471,6 +543,40 @@ def test_requery_copies_source_in_acceptance_transaction_and_is_idempotent(histo
         and duplicate.turn.id == finished.id
     )
     assert store.turn(owner, source.id, source_turn.id).snapshot == snapshot
+
+
+def test_rejected_requery_admission_rolls_back_new_history(history_env):
+    engine, store, runtime, owner, _ = history_env
+    source = store.create(owner, "analysis", "经营分析", str(uuid4()))
+    operation = str(uuid4())
+    new_id = str(uuid4())
+
+    def reject(kind):
+        assert kind == "analysis"
+        raise HistoryError("EXECUTION_LIMIT_REACHED", "额度已满")
+
+    with pytest.raises(HistoryError) as rejected:
+        store.begin_requery(
+            owner,
+            "history",
+            source.id,
+            None,
+            operation,
+            "request",
+            runtime.epoch,
+            new_id,
+            before_accept=reject,
+        )
+
+    assert rejected.value.code == "EXECUTION_LIMIT_REACHED"
+    with engine.connect() as connection:
+        assert (
+            connection.execute(
+                text("SELECT count(*) FROM history_records WHERE id=:id"),
+                {"id": new_id},
+            ).scalar_one()
+            == 0
+        )
 
 
 def committed_query(store, runtime, owner, title="销售额"):

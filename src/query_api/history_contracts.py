@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from hashlib import sha256
-from typing import Protocol
+from typing import Callable, Protocol
 
 
 class HistoryFailureKind(str, Enum):
@@ -133,6 +133,8 @@ class HistoryStore(Protocol):
         revision: int,
         request_id: str,
         epoch: str,
+        *,
+        before_accept: Callable[[str], None] | None = None,
     ) -> AcceptedAttempt: ...
     def begin_execution_attempt(self, **kwargs): ...
     def begin_execution_requery(self, **kwargs): ...
@@ -165,6 +167,8 @@ class HistoryStore(Protocol):
         revision: int,
         request_id: str,
         epoch: str,
+        *,
+        before_accept: Callable[[str], None] | None = None,
     ) -> AcceptedAttempt: ...
     def begin_requery(
         self,
@@ -176,6 +180,8 @@ class HistoryStore(Protocol):
         request_id: str,
         epoch: str,
         new_id: str,
+        *,
+        before_accept: Callable[[str], None] | None = None,
     ) -> tuple[HistoryHeader, AcceptedAttempt]: ...
     def rename_history(
         self, owner: int, history_id: str, title: str, revision: int
