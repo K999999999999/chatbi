@@ -21,4 +21,8 @@ Ticket 07已完成并Commit `1b40dbf`。候选完整 Python 为1071 passed、58�
 
 Ticket 08已完成并Commit `cb434d9`。候选完整 Python 为1081 passed、58条件性 skipped、0 failed（run `20261016T194109Z-cb434d9-test-python-24425a44e317`；报告因 skip 为incomplete）；Python质量307文件、文档检查及Diff均PASS（runs `20261016T194313Z-cb434d9-check-python-a4783cdba32c`、`20261016T194330Z-cb434d9-check-docs-d5c2762751d7`），报告provenance stable，Review PASS。Linux配置读取及Compose调用前执行文件属主/模式检查，涵盖开发、容器验证、Qdrant、metadata导出及数据库测试入口；本机 `.env` 元数据为当前用户所有、mode 600，未读取或改动内容。未运行隔离容器业务验收和真实LLM评测，留待后续Ticket。
 
-下一步：开始实施Ticket 09首个管理员事务并发互斥，再按依赖连续实施余下Tickets；远端发布未授权。
+Ticket 08完成时下一步为Ticket 09首个管理员事务并发互斥，现已完成；远端发布未授权。
+
+Ticket 09已完成并Commit `2eb1aa3`。候选完整Python为1081 passed、61条件性 skipped、155 subtests、0 failed（run `20261016T195538Z-2eb1aa3-test-python-7ecbbc7cd978`；报告因skip为incomplete）；隔离数据库CI 5 passed、development PostgreSQL 63 passed、cleanup passed（run `20261016T195743Z-2eb1aa3-test-database-fe96c3eb91b1`）；Python质量307文件与Bootstrap文档链接检查PASS（runs `20261016T195911Z-2eb1aa3-check-python-4d39efe7f3f2`、`20261016T195931Z-2eb1aa3-check-docs-0db4dc376256`）。报告provenance stable，Review与Diff检查PASS。真实PG并发覆盖预置角色及首次seed、受控拒绝、回滚释放锁；无Schema变化。真实LLM评测与隔离容器业务验收尚未运行。
+
+下一步：开始实施Ticket 10真实评测入口与基线验证，再按依赖连续实施余下Tickets；远端发布未授权。
