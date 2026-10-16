@@ -272,6 +272,7 @@ async function executionView(page: Page, executionId: string, userId: number): P
 }
 
 test('源码挂载实际触发 Python 重载与 Vite 热更新', async ({ page }) => {
+  test.skip(process.env.CHATBI_CONTAINER_HOT_RELOAD_ENABLED !== '1', '源码热更新仅在隔离验收中执行');
   test.skip(process.env.CHATBI_CONTAINER_RESTART_PHASE === '1');
   const backend = '/workspace/backend-src/query_api/app.py';
   const css = '/workspace/frontend/src/style.css';
@@ -291,17 +292,20 @@ test('源码挂载实际触发 Python 重载与 Vite 热更新', async ({ page }
     await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--chatbi-hot-check').trim()),
       { timeout: 30000 }).toBe('1');
     writeFileSync(reportPath('hot-reload.json'), JSON.stringify({
-      commit: process.env.CHATBI_CONTAINER_COMMIT, experiment_dirty: true,
+      commit: process.env.CHATBI_CONTAINER_COMMIT, isolated_source_copy: true,
       python_reload: true, vite_hmr: true,
     }));
   } finally {
-    let concurrentChange = false;
-    if (readFileSync(backend, 'utf8') === changedBackend) writeFileSync(backend, originalBackend);
-    else concurrentChange = true;
-    const currentCss = readFileSync(css, 'utf8');
-    if (currentCss === changedCss) writeFileSync(css, originalCss);
-    else if (currentCss !== originalCss) concurrentChange = true;
-    if (concurrentChange) throw new Error('源码被并发修改，已恢复可安全恢复的文件并保留现场');
+    let restoreFailed = false;
+    try {
+      writeFileSync(backend, originalBackend);
+      writeFileSync(css, originalCss);
+      restoreFailed = readFileSync(backend, 'utf8') !== originalBackend
+        || readFileSync(css, 'utf8') !== originalCss;
+    } catch {
+      restoreFailed = true;
+    }
+    if (restoreFailed) throw new Error('隔离源码副本恢复失败，宿主备份仍由验收入口保留');
   }
   await expect.poll(async () => {
     try { return (await (await page.request.get('/health')).json()).status; } catch { return 'restarting'; }

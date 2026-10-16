@@ -25,6 +25,10 @@
 
 `verify dev`是独立的业务验收，不并入软件测试摘要。运行中`browser.json`留在私有暂存目录供流程更新；清理后以独立Run ID排他发布到`reports/browser-real/<run_id>.json`，原始证据放在`reports/browser-real-artifacts/<run_id>/`。摘要区分`container-dev`与宿主`browser-real`，包含清理状态、浏览器用例计数并关联RAG配置身份文件`runtime.json`；RAG身份从应用实际使用的`RAG_MODEL_DIR/config.json`读取。报告冲突不会覆盖既有结果。
 
+默认isolated验收从固定revision派生当前worktree私有的`.model-cache/`路径，先显式`prepare-model`再`build-rag`，索引输出放在独立临时目录。Python与Vite热更新只通过覆盖两个单文件挂载到临时可写副本；项目`src/`与`frontend/src/`目录继续只读。验收退出时从私有备份恢复副本并核对SHA-256，结果写入`hot-reload-recovery.json`。INT/TERM会进入同一清理路径；SIGKILL不可捕获，临时目录中的`hot-reload/recovery-manifest.txt`和备份保留供人工按精确Compose project恢复。
+
+验收账号的`account.pending.json`在创建事务提交前持久化精确`id`与`username`，提交后再原子改名为`account.json`。清理同时接受两种记录，只按这组身份禁用账号并撤销Session；事务回滚时若记录对应用户不存在，则记录为空操作清理成功，不触碰其他同名前缀账号。清理失败保留身份记录、凭证清理结果和非成功报告。
+
 诊断维护：doctor dev只读有界检查依赖/HTTP/资产，不启动或修复、不改密、不调用LLM，未知不ready；metadata export使用既有catalog SELECT并写三份结构JSON，不改Semantic、不隐式build-rag；reset postgres/qdrant仅开发项目，经确认、归属与停止验证后只删目标卷。PG重建Seed和完整迁移但不创建管理员；QD只重建服务。API/Web保持停止，卷删除不可回滚；取消、外部卷、标签错及停止失败不删除。
 
 协作：hooks install复用本机安装器，harness check只读本机Git记录；无业务配置要求。普通clone/linked worktree保留真实Git公共目录身份，Git不可见不能当clean。开发保留CHATBI_DEV_ENV_FILE/CHATBI_DEV_COMPOSE_OVERRIDE及宿主路径/UID规则；维护目标固定为dev，并拒绝旧APP / Stable Compose资源。

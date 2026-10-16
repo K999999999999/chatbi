@@ -5,6 +5,7 @@ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$root"
 host_root=${LOCAL_WORKSPACE_FOLDER:-$root}
 source "$root/scripts/dev_environment.sh"
+source "$root/scripts/container_hot_reload.sh"
 prepare_git_mounts
 git_worktree=$(git -C "$root" rev-parse --absolute-git-dir)
 mode=${1:-isolated}
@@ -34,19 +35,58 @@ export CHATBI_DEV_SECCOMP_PROFILE=${CHATBI_DEV_SECCOMP_PROFILE:-$root/docker/thi
 export CHATBI_CONTAINER_REPORT_DIR="$work/report"
 business_run_id=
 printf 'services:\n' > "$work/compose.yml"
+hot_reload_ready=false
+hot_reload_root="$work/hot-reload"
 if [[ "$mode" == isolated ]]; then
     export COMPOSE_PROJECT_NAME="chatbi-verify-$(date +%s)-$$"
     export POSTGRES_PUBLISHED_PORT=${CHATBI_VERIFY_PG_PORT:-15433}
     export CHATBI_DEV_API_PORT=${CHATBI_VERIFY_API_PORT:-18080}
     export CHATBI_DEV_WEB_PORT=${CHATBI_VERIFY_WEB_PORT:-18173}
     browser_image=chatbi-browser-result-export-v1:local
+    model_revision=$(sed -nE 's/^DEFAULT_MODEL_REVISION = "([0-9a-f]{40})"$/\1/p' "$root/src/rag_offline/config.py")
+    [[ "$model_revision" =~ ^[0-9a-f]{40}$ ]] || {
+        echo '无法解析固定模型 revision；隔离验收停止。' >&2
+        exit 2
+    }
+    [[ ! -L "$root/.model-cache" ]] || {
+        echo '隔离模型缓存目录不能是符号链接；请保留并检查现有目录。' >&2
+        exit 2
+    }
+    export RAG_MODEL_DIR="$root/.model-cache/bge-m3-${model_revision:0:12}"
+    [[ ! -L "$RAG_MODEL_DIR" ]] || {
+        echo '隔离模型快照目录不能是符号链接；请保留并检查现有目录。' >&2
+        exit 2
+    }
+    mkdir -p -- "$RAG_MODEL_DIR"
     export RAG_OUTPUT_DIR="$work/rag"
     mkdir -p "$RAG_OUTPUT_DIR"
-    cat >> "$work/compose.yml" <<'YAML'
+    if container_hot_reload_init "$root" "$work" "$COMPOSE_PROJECT_NAME" \
+        "$CHATBI_DEV_COMPOSE_OVERRIDE"; then
+        :
+    else
+        hot_reload_init_status=$?
+        echo "热更新备份初始化失败；源码目录未写入，临时证据保留在：$hot_reload_root" >&2
+        exit "$hot_reload_init_status"
+    fi
+    hot_backend=$HOT_RELOAD_BACKEND
+    hot_style=$HOT_RELOAD_STYLE
+    hot_reload_ready=true
+    echo "隔离热更新副本及恢复备份：$hot_reload_root"
+    cat >> "$work/compose.yml" <<YAML
   api:
     image: chatbi-result-export-v1:local
+    volumes:
+      - type: bind
+        source: $hot_backend
+        target: /workspace/src/query_api/app.py
+        read_only: false
   web:
     image: chatbi-web-result-export-v1:local
+    volumes:
+      - type: bind
+        source: $hot_style
+        target: /workspace/frontend/src/style.css
+        read_only: false
   qdrant:
     ports: !override []
 YAML
@@ -124,8 +164,10 @@ business_finish() {
         --cleanup-status "$cleanup_status"
     )
     for file in browser.json cleanup.json runtime.json images.jsonl export-verification.json \
-        recovery.json test-summary-initial.json test-summary-restart.json \
+        recovery.json hot-reload-recovery.json model-prepared.json test-summary-initial.json test-summary-restart.json \
         test-errors-initial.json test-errors-restart.json; do
+        [[ ( "$file" != model-prepared.json && "$file" != hot-reload-recovery.json ) \
+            || -f "$root/reports/browser-real-artifacts/$business_run_id/$file" ]] || continue
         arguments+=(--artifact "browser-real-artifacts/$business_run_id/$file")
     done
     if ((result == 130 || result == 143)); then arguments+=(--interrupted); fi
@@ -139,8 +181,12 @@ business_finish() {
 finish() {
     local result=$? cleanup_status=not_run cleanup_result=0 cleanup_step_status=not_run artifact_directory file label
     trap - EXIT
+    trap '' INT TERM
+    if [[ "$hot_reload_ready" == true ]]; then
+        container_hot_reload_restore "$work/report" || result=1
+    fi
     if [[ -n "$business_run_id" ]]; then business_step_start cleanup || cleanup_result=1; fi
-    if [[ -f "$work/report/account.json" ]]; then
+    if [[ -f "$work/report/account.json" || -f "$work/report/account.pending.json" ]]; then
         tools cleanup || cleanup_result=1
     elif ((result == 0)); then
         cleanup_result=1
@@ -162,7 +208,7 @@ finish() {
         artifact_directory="$root/reports/browser-real-artifacts/$business_run_id"
         if mkdir -m 700 -- "$artifact_directory"; then
             for file in browser.json cleanup.json runtime.json images.jsonl export-verification.json \
-                recovery.json test-summary-initial.json test-summary-restart.json \
+                recovery.json hot-reload-recovery.json model-prepared.json test-summary-initial.json test-summary-restart.json \
                 test-errors-initial.json test-errors-restart.json; do
                 if [[ -f "$work/report/$file" ]]; then
                     cp -- "$work/report/$file" "$artifact_directory/$file" || result=1
@@ -177,7 +223,7 @@ finish() {
     fi
 
     if ((cleanup_result == 0)); then
-        if [[ -f "$work/report/account.json" ]]; then
+        if [[ -f "$work/report/account.json" || -f "$work/report/account.pending.json" ]]; then
             cleanup_status=passed
             cleanup_step_status=passed
         else
@@ -210,11 +256,13 @@ finish() {
         business_finish "$result" "$cleanup_status" || result=2
     else
         echo '业务验收报告未能启动；验收未开始，且不生成通过结论。' >&2
-        echo "诊断暂存目录：$work" >&2
     fi
+    [[ ! -d "$work" ]] || echo "诊断暂存目录（含可恢复源码备份）：$work" >&2
     exit "$result"
 }
 trap finish EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 if ! "$root/dev" build; then
     echo '开发镜像准备失败；业务验收报告工具尚不可用，因此本次结果未确认。' >&2
     exit 1
@@ -226,6 +274,7 @@ prepare_business() {
     if [[ "$mode" == isolated ]]; then
         "${compose[@]}" run --rm --no-deps -T -e CHATBI_CONTAINER_ISOLATED=1 \
             --entrypoint python tools -m tests.container_dev_support admin || return $?
+        "$root/dev" prepare-model > "$work/report/model-prepared.json" || return $?
         local started=$SECONDS
         "$root/dev" build-rag > "$work/report/rag-build.log" 2>&1 || return $?
         echo "CPU索引构建耗时：$((SECONDS-started))秒"
@@ -248,9 +297,19 @@ prepare_business() {
     [[ -n "$web_id" ]]
 }
 run_browser() {
+    local -a hot_reload_mounts=()
+    local hot_reload_enabled=0
+    if [[ "$mode" == isolated ]]; then
+        hot_reload_enabled=1
+        hot_reload_mounts=(
+            -v "$hot_backend:/workspace/backend-src/query_api/app.py:rw"
+            -v "$hot_style:/workspace/frontend/src/style.css:rw"
+        )
+    fi
     docker run --rm --network "container:$web_id" --user "$(id -u):$(id -g)" \
         --env-file "$work/report/credentials.env" \
         -e LANG=C.UTF-8 -e LC_ALL=C.UTF-8 -e CHATBI_CONTAINER_REAL_E2E=1 \
+        -e "CHATBI_CONTAINER_HOT_RELOAD_ENABLED=$hot_reload_enabled" \
         -e "CHATBI_CONTAINER_RESTART_PHASE=${CHATBI_CONTAINER_RESTART_PHASE:-0}" \
         -e "CHATBI_CONTAINER_BASE_URL=http://127.0.0.1:${CHATBI_DEV_WEB_PORT:-5173}" \
         -e "CHATBI_CONTAINER_COMMIT=$(git rev-parse HEAD)" \
@@ -262,6 +321,7 @@ run_browser() {
         -v "$root/frontend/playwright.container.config.ts:/workspace/frontend/playwright.container.config.ts:ro" \
         -v "$root/frontend/playwright.container-reporter.ts:/workspace/frontend/playwright.container-reporter.ts:ro" \
         -v "$root/frontend/test-support:/workspace/frontend/test-support:ro" \
+        "${hot_reload_mounts[@]}" \
         "$browser_image" npx playwright test --config playwright.container.config.ts
 }
 browser_initial() {

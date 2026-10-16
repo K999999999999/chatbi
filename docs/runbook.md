@@ -97,11 +97,11 @@ CI保留`PostgreSQL integration` job及其临时PostgreSQL服务，依次运行�
 ./dev verify dev # 默认isolated；也可显式传isolated
 ```
 
-`./dev verify dev real`显式验收日常开发环境，会重启服务、执行热更新及专用账号操作；默认isolated使用独立项目。原scripts/verify_container_*.sh仍可直接调用，退出码、报告、clean要求与清理规则保持。
+`./dev verify dev real`显式验收日常开发环境，会重启服务并执行专用账号操作；热更新写入仅在默认isolated阶段执行，real阶段跳过该隔离专用用例。默认isolated使用独立Compose project、专用卷、临时RAG输出和当前worktree私有的固定revision模型缓存。原scripts/verify_container_*.sh仍可直接调用，退出码、报告、clean要求与清理规则保持。
 
 `verify dev`的业务验收与`dev test`软件测试身份分开。运行中可变的`browser.json`留在私有暂存目录；完成账号 / 临时资源清理后，排他发布唯一摘要到`reports/browser-real/<run_id>.json`，相关证据位于`reports/browser-real-artifacts/<run_id>/`。摘要关联浏览器机器计数、源码起止身份、清理状态和`runtime.json`；该文件的模型身份由应用内实际`RAG_MODEL_DIR/config.json`生成。宿主`npm run test:real`也使用独立run目录与不可覆盖最终JSON；它不是日常软件回归入口。真实业务验收需要远端模型调用，不由`./dev test all`自动触发。
 
-热更新检查可能临时修改源码，执行器必须恢复；运行记录绑定候选、镜像、模型、Seed、RAG和资源身份。历史验收不能重标为当前候选。
+isolated热更新把`src/query_api/app.py`和`frontend/src/style.css`覆盖挂载为本次临时目录中的可写副本，其余源码目录保持只读；Playwright只改写这两份副本。退出清理从私有备份恢复副本并核对SHA-256，恢复失败会使验收失败并保留备份。INT/TERM进入清理路径；SIGKILL不可捕获，精确Compose project、覆盖文件和恢复备份保存在输出的`/tmp/chatbi-container-verify.*`目录中，可按其中`hot-reload/recovery-manifest.txt`恢复。验收账号身份在事务提交前写入私有pending记录；异常时按精确用户ID和用户名禁用账号并撤销Session，不按用户名片段批量处理。运行记录绑定候选、镜像、模型、Seed、RAG和资源身份。历史验收不能重标为当前候选。
 
 ## 4. AI Evaluation
 
