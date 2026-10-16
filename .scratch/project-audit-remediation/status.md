@@ -25,4 +25,8 @@ Ticket 08完成时下一步为Ticket 09首个管理员事务并发互斥，现�
 
 Ticket 09已完成并Commit `2eb1aa3`。候选完整Python为1081 passed、61条件性 skipped、155 subtests、0 failed（run `20261016T195538Z-2eb1aa3-test-python-7ecbbc7cd978`；报告因skip为incomplete）；隔离数据库CI 5 passed、development PostgreSQL 63 passed、cleanup passed（run `20261016T195743Z-2eb1aa3-test-database-fe96c3eb91b1`）；Python质量307文件与Bootstrap文档链接检查PASS（runs `20261016T195911Z-2eb1aa3-check-python-4d39efe7f3f2`、`20261016T195931Z-2eb1aa3-check-docs-0db4dc376256`）。报告provenance stable，Review与Diff检查PASS。真实PG并发覆盖预置角色及首次seed、受控拒绝、回滚释放锁；无Schema变化。真实LLM评测与隔离容器业务验收尚未运行。
 
-下一步：开始实施Ticket 10真实评测入口与基线验证，再按依赖连续实施余下Tickets；远端发布未授权。
+Ticket 09完成时下一步为Ticket 10真实评测入口与基线验证，现已完成；远端发布未授权。
+
+Ticket 10已完成并Commit `7ff3399`。候选完整Python为1085 passed、61条件性 skipped、155 subtests、0 failed（run `20261016T201322Z-7ff3399-test-python-420a3a5ddba3`；报告因skip为incomplete）；隔离数据库CI 5 passed、development 63 passed、cleanup passed（run `20261016T201525Z-7ff3399-test-database-65fddca4ba3e`）；Web 81 passed（run `20261016T201647Z-7ff3399-test-web-7cc036188bb0`）；旧兼容PostgreSQL development profile 56 passed；Python质量307文件及Runbook文档链接检查PASS（runs `20261016T201837Z-7ff3399-check-python-6bc5fb280aa1`、`20261016T201853Z-7ff3399-check-docs-6542290a7060`）。报告provenance stable，Review与Diff检查PASS。真实 GitHub runner、Windows 和模型/LLM执行未在本机运行；正式评测由T12 clean candidate完成。
+
+下一步：开始实施Ticket 11隔离容器验收资源生命周期，再按依赖连续实施余下Tickets；远端发布未授权。
