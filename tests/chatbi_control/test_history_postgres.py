@@ -254,7 +254,8 @@ def test_finish_waits_behind_short_history_management_lock(history_env):
                 (worker_application_name,),
             )
             cursor.execute(
-                "SELECT set_config('statement_timeout', %s, false)", ("15000ms",)
+                "SELECT set_config('statement_timeout', %s, false)",
+                ("15000ms",),
             )
         dbapi_connection.commit()
 
@@ -271,6 +272,7 @@ def test_finish_waits_behind_short_history_management_lock(history_env):
             raise RuntimeError("injected history worker failure")
         if os.environ.get("CHATBI_HISTORY_LOCK_TEST_INJECT_WORKER_TIMEOUT") == "1":
             with worker_engine.begin() as connection:
+                connection.execute(text("SET LOCAL statement_timeout = '6000ms'"))
                 connection.execute(text("SELECT pg_sleep(30)"))
         return worker_store.finish_attempt(owner, accepted.token, snapshot, None)
 
