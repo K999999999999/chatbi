@@ -22,6 +22,9 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 from sqlalchemy import event, text
 
+from src.business_analysis.application import BusinessAnalysisSuccess
+from src.business_analysis.execution import TaskResult, TaskStatus
+from src.business_analysis.reporting import BusinessAnalysisReport
 from src.business_analysis.run_store import (
     AnalysisRunConflict,
     PostgresAnalysisRunStore,
@@ -32,7 +35,7 @@ from src.online_query.contracts import QuerySuccess
 from src.query_api.history_codec import encode_snapshot
 from src.query_api.history_contracts import HistoryError
 from src.query_api.history_runtime import HistoryRuntime
-from src.query_api.query_response import query_payload
+from src.query_api.query_response import analysis_payload, query_payload
 from tests.query_api.history_fixtures import query_state
 
 
@@ -606,6 +609,80 @@ def committed_query(store, runtime, owner, title="销售额"):
     )
     turn = store.finish_attempt(owner, accepted.token, snapshot, None)
     return store.header(owner, header.id), turn, snapshot
+
+
+def test_invalid_nested_analysis_snapshot_is_rejected_by_copy_and_export(history_env):
+    engine, store, runtime, owner, _ = history_env
+    question = "毛利分析"
+    header = store.create(owner, "analysis", question, str(uuid4()))
+    accepted = store.begin_analysis_attempt(
+        owner, header.id, str(uuid4()), 0, "analysis-request", runtime.epoch
+    )
+    report = BusinessAnalysisReport(
+        title="毛利变化",
+        executive_summary="毛利增加。",
+        key_findings=("毛利增加。",),
+        trend_judgment="毛利增加。",
+        root_causes=(),
+        action_suggestions=(),
+        evidence_task_ids=("trend",),
+        incomplete_tasks=(),
+    )
+    result = BusinessAnalysisSuccess(
+        request_id="analysis-request",
+        report=report,
+        task_results=(
+            TaskResult(
+                "trend",
+                TaskStatus.COMPLETED,
+                columns=("product",),
+                rows=(("A",),),
+                row_count=1,
+            ),
+        ),
+        analysis_run_id=header.analysis_run_id,
+    )
+    snapshot = encode_snapshot(
+        "analysis",
+        analysis_payload(result, header.analysis_run_id),
+        original_question=question,
+    )
+    turn = store.finish_attempt(owner, accepted.token, snapshot, None)
+    canary = "POSTGRES_NESTED_SQL_CANARY"
+    snapshot["result"]["task_results"][0]["sql"] = canary
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE history_turns SET snapshot=CAST(:snapshot AS jsonb) "
+                "WHERE history_id=:history_id AND id=:turn_id"
+            ),
+            {
+                "snapshot": json.dumps(snapshot, ensure_ascii=False),
+                "history_id": header.id,
+                "turn_id": turn.id,
+            },
+        )
+
+    with pytest.raises(HistoryError) as copy_failure:
+        store.copy_result(owner, header.id, turn.id, "非法旧快照")
+    with pytest.raises(HistoryError) as export_failure:
+        store.export_snapshot(owner, "history_turn", header.id, turn.id)
+
+    assert copy_failure.value.code == "HISTORY_SNAPSHOT_UNAVAILABLE"
+    assert export_failure.value.code == "HISTORY_SNAPSHOT_UNAVAILABLE"
+    assert canary not in str(copy_failure.value)
+    assert canary not in str(export_failure.value)
+    with engine.connect() as connection:
+        assert (
+            connection.execute(
+                text(
+                    "SELECT count(*) FROM saved_results "
+                    "WHERE owner_user_id=:owner AND source_turn_id=:turn_id"
+                ),
+                {"owner": owner, "turn_id": turn.id},
+            ).scalar_one()
+            == 0
+        )
 
 
 def test_saved_copy_survives_source_deletion_and_stale_delete_is_rejected(history_env):

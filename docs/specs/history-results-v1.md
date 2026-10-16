@@ -127,6 +127,7 @@
 - 所有读取 / 修改 / 删除 / 续聊 / 重查 / 恢复操作核验当前账号、归属及当前权限，用户历史私有；首版仍共享同一套业务数据，不新增行列级隔离。
 - Cookie 写操作保留 CSRF，客户端提供的用户编号不决定归属；返回标题、问题、SQL、报告均作不可信文本显示，不执行 HTML / 脚本。
 - 不持久化登录凭证或 AuthContext，不把内部路径、Secret、完整模型 Prompt 或 checkpoint 私有对象复制到公开快照。查询 SQL 的查看入口及分析不公开 SQL 的现有边界保持。
+- 历史详情、另存成果及导出在公开前按当前 Query / Analysis DTO 逐层校验 `report`、`task_results`、`error`、`attribution` 和 `result_metadata`。未知或异常嵌套结构返回 `HISTORY_SNAPSHOT_UNAVAILABLE`；不能删除非法字段后把不完整结果作为成功公开。旧快照缺少可选 `result_metadata` 仍可读取；合法 Query `sql` 字段和表格单元格文本按原 Contract 保留，不按字段名扫描文本内容。
 
 ## 验收标准
 

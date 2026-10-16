@@ -8,6 +8,9 @@ from types import SimpleNamespace
 import pytest
 
 from src.authorization.contracts import AuthContext
+from src.business_analysis.application import BusinessAnalysisSuccess
+from src.business_analysis.execution import TaskResult, TaskStatus
+from src.business_analysis.reporting import BusinessAnalysisReport
 from src.online_query.contracts import (
     ExecutionStopReason,
     ExecutionStopped,
@@ -375,6 +378,75 @@ def test_completed_analysis_snapshot_reads_after_checkpoint_expiry_without_execu
         AUTH, "r", "h", "op", 0, reauthenticate=lambda: AUTH
     )
     assert result == TURN and entry.executions == 0 and store.finish_calls == 0
+
+
+def test_invalid_nested_analysis_payload_is_saved_as_controlled_failure(
+    monkeypatch,
+):
+    canary = "APPLICATION_NESTED_SECRET_CANARY"
+    public_result = {
+        "request_id": "r",
+        "analysis_run_id": "analysis-run",
+        "mode": "analysis",
+        "report": {"title": "毛利分析", "metadata": {"secret": canary}},
+        "task_results": [],
+    }
+    monkeypatch.setattr(
+        "src.query_api.history.analysis_payload",
+        lambda *_args: public_result,
+    )
+
+    class AnalysisService:
+        def analyze(self, *_args, **_kwargs):
+            return BusinessAnalysisSuccess(
+                request_id="r",
+                report=BusinessAnalysisReport(
+                    title="毛利分析",
+                    executive_summary="毛利变化",
+                    key_findings=(),
+                    trend_judgment="毛利变化",
+                    root_causes=(),
+                    action_suggestions=(),
+                    evidence_task_ids=("trend",),
+                    incomplete_tasks=(),
+                ),
+                task_results=(
+                    TaskResult(
+                        "trend",
+                        TaskStatus.COMPLETED,
+                        columns=("product",),
+                        rows=(("A",),),
+                        row_count=1,
+                    ),
+                ),
+                analysis_run_id="analysis-run",
+            )
+
+    store = ScriptedStore()
+    app = HistoryApplication(
+        store,
+        Runtime(),
+        QueryEntry(),
+        analysis_service=AnalysisService(),
+    )
+
+    with pytest.raises(HistoryError) as failure:
+        app._execute_attempt(
+            AUTH,
+            "r",
+            "h",
+            "毛利分析",
+            store.begin_attempt(),
+            reauthenticate=lambda: AUTH,
+            kind="analysis",
+            analysis_run_id="analysis-run",
+        )
+
+    assert failure.value.code == "HISTORY_SNAPSHOT_UNAVAILABLE"
+    assert canary not in str(failure.value)
+    assert store.finish_calls == 1
+    assert store.finished_snapshot is None
+    assert store.finished_error["error_code"] == "HISTORY_SNAPSHOT_UNAVAILABLE"
 
 
 def test_history_passes_report_stream_port_only_for_a_capable_r4_observer():

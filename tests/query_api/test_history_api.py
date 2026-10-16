@@ -14,7 +14,25 @@ from src.query_api.history_contracts import (
     HistoryError,
     HistoryFailureKind,
     HistoryHeader,
+    HistoryTurn,
 )
+from src.query_api.history_codec import public_snapshot
+
+
+def _malformed_analysis_snapshot():
+    canary = "HISTORY_API_NESTED_SQL_CANARY"
+    return {
+        "version": 1,
+        "kind": "analysis",
+        "original_question": "毛利为什么变化？",
+        "result": {
+            "request_id": "analysis-request",
+            "analysis_run_id": "analysis-run",
+            "mode": "analysis",
+            "report": {"title": "毛利变化", "sql": canary},
+            "task_results": [],
+        },
+    }, canary
 
 
 class Provider:
@@ -131,6 +149,86 @@ def test_create_history_returns_no_private_owner_or_state():
     assert "owner_user_id" not in response.json()
     assert "query_state" not in response.json()
     assert response.headers["cache-control"] == "no-store"
+
+
+def test_reopening_invalid_analysis_snapshot_returns_controlled_unavailable_error():
+    history_id = "81fc7ae0-e7c2-408c-bc62-28c2e506bf78"
+    turn_id = "6cc90b65-f9c2-4f92-9f7f-f9c60a9f8970"
+    snapshot, canary = _malformed_analysis_snapshot()
+
+    class HistoryApplication:
+        def turn(self, *_args):
+            return HistoryTurn(
+                id=turn_id,
+                history_id=history_id,
+                ordinal=1,
+                question="毛利为什么变化？",
+                status="succeeded",
+                request_id="analysis-request",
+                created_at=datetime(2026, 10, 4, tzinfo=UTC),
+                public_error=None,
+                snapshot=snapshot,
+            )
+
+    app = create_app(
+        service=SimpleNamespace(),
+        identity_provider=Provider(),
+        policy_store=Policy(),
+        audit_sink=Audit(),
+        history_store=Store(),
+        history_runtime=SimpleNamespace(check=lambda: None),
+    )
+    with TestClient(app) as client:
+        app.state.history_application = HistoryApplication()
+        response = client.get(f"/api/v1/histories/{history_id}/turns/{turn_id}")
+
+    assert response.status_code == 422
+    assert response.json()["error_code"] == "HISTORY_SNAPSHOT_UNAVAILABLE"
+    assert canary not in response.text
+
+
+def test_saving_invalid_analysis_snapshot_fails_before_persisting_copy():
+    history_id = "81fc7ae0-e7c2-408c-bc62-28c2e506bf78"
+    turn_id = "6cc90b65-f9c2-4f92-9f7f-f9c60a9f8970"
+    snapshot, canary = _malformed_analysis_snapshot()
+
+    class CorruptStore:
+        copies = 0
+
+        def copy_result(self, *_args):
+            public_snapshot(snapshot)
+            self.copies += 1
+
+    class HistoryApplication:
+        store = CorruptStore()
+
+        def authorize(self, *_args):
+            return None
+
+    app = create_app(
+        service=SimpleNamespace(),
+        identity_provider=Provider(),
+        policy_store=Policy(),
+        audit_sink=Audit(),
+        history_store=Store(),
+        history_runtime=SimpleNamespace(check=lambda: None),
+    )
+    with TestClient(app) as client:
+        history_application = HistoryApplication()
+        app.state.history_application = history_application
+        response = client.post(
+            "/api/v1/saved-results",
+            json={
+                "history_id": history_id,
+                "turn_id": turn_id,
+                "title": "毛利分析",
+            },
+        )
+
+    assert response.status_code == 422
+    assert response.json()["error_code"] == "HISTORY_SNAPSHOT_UNAVAILABLE"
+    assert canary not in response.text
+    assert history_application.store.copies == 0
 
 
 @pytest.mark.parametrize(
