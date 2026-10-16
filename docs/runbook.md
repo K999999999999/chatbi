@@ -127,6 +127,8 @@ CI保留`PostgreSQL integration` job及其临时PostgreSQL服务，依次运行�
 
 保留原验收器的report/cases/suite参数与完整提交、RAG、案例身份检查。普通clone和linked worktree均使用真实Git公共目录；WSL/Linux直接映射，Dev Container通过LOCAL_WORKSPACE_FOLDER映射宿主源路径及默认开发项目名，临时测试挂载保存在共享工作区的ignored .local/dev-tools并按宿主路径传递；COMPOSE_PROJECT_NAME及用户override保持优先。Git公共目录在工作区外且宿主路径不同的linked worktree，可用CHATBI_GIT_COMMON_DIR_HOST显式提供同一公共目录的宿主位置；挂载必须匹配，Git检查失败不能当作clean。
 
+托管 Real E2E 在构建 RAG 前运行 `prepare-model`，并把固定 revision 对应的本地模型目录用于索引构建和后续在线评测；模型准备失败会阻断构建与正式评测。旧 PostgreSQL 兼容测试入口的 readiness 探测和开发 fixture 查询均通过容器内 `127.0.0.1` TCP 服务，不以初始化期间的 Unix socket 实例作为就绪信号。
+
 ## 5. 健康与故障处理
 
 `/health`只表示HTTP存活，`/ready`才反映应用依赖就绪；模型状态来自近期真实调用，不做定时收费探测。管理员可以查看依赖、模型和执行额度，网页不显示备份状态；刷新不延长登录期限。应用保护见[就绪Contract](specs/application-readiness.md)。

@@ -249,25 +249,40 @@ def create_browser_app():
                         {
                             "index": 0,
                             "name": "产品",
+                            "data_type": "string",
                             "role": "dimension",
                             "certified": True,
                             "semantic_name": "产品",
                             "definition": None,
                             "unit": None,
                             "format": "raw",
+                            "reason_code": None,
                         },
                         {
                             "index": 1,
                             "name": "销售额",
+                            "data_type": "number",
                             "role": "metric",
                             "certified": True,
                             "semantic_name": "人民币净销售额",
                             "definition": "净销售额定义",
                             "unit": {"key": "CNY", "label": "元"},
                             "format": "money",
+                            "reason_code": None,
                         },
                         *[
-                            {"index": index, "name": name, "certified": False}
+                            {
+                                "index": index,
+                                "name": name,
+                                "data_type": "unknown",
+                                "role": "unknown",
+                                "semantic_name": None,
+                                "definition": None,
+                                "unit": None,
+                                "format": "raw",
+                                "certified": False,
+                                "reason_code": None,
+                            }
                             for index, name in enumerate(("空值", "零", "空串"), 2)
                         ],
                     ],

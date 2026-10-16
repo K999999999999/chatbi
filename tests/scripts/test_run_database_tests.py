@@ -108,6 +108,36 @@ def test_resolve_host_port_accepts_only_loopback_mapping() -> None:
         run_database_tests._resolve_host_port("0.0.0.0:43127\n")
 
 
+def test_wait_until_ready_probes_the_postgres_tcp_listener() -> None:
+    with patch.object(
+        run_database_tests.subprocess,
+        "run",
+        return_value=SimpleNamespace(returncode=0, stdout="", stderr=""),
+    ) as run:
+        run_database_tests._wait_until_ready("docker", "chatbi-db-test-a")
+
+    arguments = run.call_args.args[0]
+    assert arguments[:3] == ["docker", "exec", "chatbi-db-test-a"]
+    assert arguments[3] == "pg_isready"
+    assert arguments[arguments.index("--host") + 1] == "127.0.0.1"
+
+
+def test_fixture_readiness_query_uses_the_postgres_tcp_listener() -> None:
+    with patch.object(
+        run_database_tests.subprocess,
+        "run",
+        return_value=SimpleNamespace(returncode=0, stdout="ready\n", stderr=""),
+    ) as run:
+        result = run_database_tests._container_query(
+            "docker", "chatbi-db-test-a", "chatbi_control", "SELECT 'ready'"
+        )
+
+    assert result == "ready"
+    arguments = run.call_args.args[0]
+    assert arguments[3] == "psql"
+    assert arguments[arguments.index("--host") + 1] == "127.0.0.1"
+
+
 def test_compose_network_lookup_uses_the_workspace_compose_project(
     monkeypatch, tmp_path
 ):

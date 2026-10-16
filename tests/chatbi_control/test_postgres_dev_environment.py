@@ -863,21 +863,22 @@ class PostgresDevelopmentEnvironmentTest(unittest.TestCase):
                 connection.cursor() as cursor,
             ):
                 while time.monotonic() < deadline:
-                    cursor.execute(
-                        """
-                        SELECT wait_event_type, wait_event
-                        FROM pg_stat_activity
-                        WHERE application_name = %s
-                          AND datname = current_database()
-                        """,
-                        (application_names[1],),
-                    )
-                    activity = cursor.fetchone()
-                    if activity == ("Lock", "advisory"):
-                        lock_wait_observed = True
-                        break
                     if second_admin_check.is_set():
                         break
+                    if second_lock_attempted.is_set():
+                        cursor.execute(
+                            """
+                            SELECT wait_event_type, wait_event
+                            FROM pg_stat_activity
+                            WHERE application_name = %s
+                              AND datname = current_database()
+                            """,
+                            (application_names[1],),
+                        )
+                        activity = cursor.fetchone()
+                        if activity == ("Lock", "advisory"):
+                            lock_wait_observed = True
+                            break
                     time.sleep(0.02)
 
             release_first.set()
