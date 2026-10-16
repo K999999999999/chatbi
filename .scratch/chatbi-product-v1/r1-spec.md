@@ -1,6 +1,6 @@
 # R1：电脑端 Web 对话与经营分析入口
 
-状态：用户于 2026-10-03 整体确认；不是已实现或已验收的功能。技术细化见 [R1 Design](r1-design.md)。
+状态：已于 2026-10-03 完成电脑端 Web 对话实现与本地验收；最终候选为 clean `0e4000b1455c9a67d4daae3f4992da6d79a8ac0b`。验收范围、结果及未覆盖事项见[历史验收记录](history/acceptance--web-dialogue-v1-20261003.md)：未进行公网部署，不构成生产部署证明。技术细化见 [R1 Design](r1-design.md)。
 
 ## Problem Statement
 

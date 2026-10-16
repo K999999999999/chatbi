@@ -1,2 +1,4 @@
 # PostgreSQL runs these bind-mounted scripts in Linux containers on all hosts.
 database/init/*.sh text eol=lf
+# Preserve intentional Markdown hard breaks in the byte-identical historical audit.
+docs/audits/project-audit-20261016.md whitespace=-blank-at-eol
