@@ -8,14 +8,8 @@ from scripts import start_dev_api
 
 
 def test_control_database_can_become_ready_after_unknown_and_failure(monkeypatch):
-    probe = Mock(
-        side_effect=[
-            {"control_database": "unknown"},
-            {"control_database": "not_ready"},
-            {"control_database": "ready"},
-        ]
-    )
-    monkeypatch.setattr(start_dev_api, "ProcessReadinessProbe", lambda: probe)
+    probe = Mock(side_effect=[False, False, True])
+    monkeypatch.setattr(start_dev_api, "probe_control_database", probe)
     monkeypatch.setattr("time.sleep", lambda _: None)
     assert start_dev_api.wait_for_control_database() is True
 
@@ -23,8 +17,8 @@ def test_control_database_can_become_ready_after_unknown_and_failure(monkeypatch
 def test_startup_timeout_does_not_launch_api_or_expose_probe_details(
     monkeypatch, capsys
 ):
-    probe = Mock(return_value={"control_database": "not_ready"})
-    monkeypatch.setattr(start_dev_api, "ProcessReadinessProbe", lambda: probe)
+    probe = Mock(return_value=False)
+    monkeypatch.setattr(start_dev_api, "probe_control_database", probe)
     clock = iter((0, 0, 121))
     monkeypatch.setattr("time.monotonic", lambda: next(clock))
     monkeypatch.setattr("time.sleep", lambda _: None)
@@ -36,8 +30,8 @@ def test_startup_timeout_does_not_launch_api_or_expose_probe_details(
 
 
 def test_ready_database_launches_api_with_hot_reload(monkeypatch):
-    probe = Mock(return_value={"control_database": "ready"})
-    monkeypatch.setattr(start_dev_api, "ProcessReadinessProbe", lambda: probe)
+    probe = Mock(return_value=True)
+    monkeypatch.setattr(start_dev_api, "probe_control_database", probe)
     launch = Mock(side_effect=RuntimeError("exec replaced the process"))
     monkeypatch.setattr("os.execvp", launch)
     with pytest.raises(RuntimeError, match="exec replaced the process"):

@@ -52,6 +52,32 @@ def test_probe_timeout_is_terminated_and_next_probe_can_recover():
     assert set(recovered().values()) == {"ready"}
 
 
+def test_control_database_startup_probe_suppresses_failure_and_disposes_engine(
+    monkeypatch,
+):
+    from src.bootstrap import readiness
+    from src.chatbi_control import database
+
+    engine = Mock()
+
+    class FakeControlConfig:
+        @classmethod
+        def from_environment(cls, *, require_migrator):
+            assert require_migrator is False
+            return cls()
+
+    monkeypatch.setattr(database, "ControlDatabaseConfig", FakeControlConfig)
+    monkeypatch.setattr(database, "create_control_engine", lambda _config: engine)
+    monkeypatch.setattr(
+        readiness,
+        "verify_control_schema",
+        Mock(side_effect=RuntimeError("private database detail")),
+    )
+
+    assert readiness.probe_control_database() is False
+    engine.dispose.assert_called_once_with()
+
+
 def test_observer_counts_actual_model_success_and_failure_without_payloads():
     state = OperationsState()
     model = Mock()
