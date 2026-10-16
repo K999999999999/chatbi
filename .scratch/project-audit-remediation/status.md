@@ -19,4 +19,6 @@ Ticket 06已完成并Commit `066e2b2`。候选定向 Python 32 passed、0 skippe
 
 Ticket 07已完成并Commit `1b40dbf`。候选完整 Python 为1071 passed、58条件性 skipped、155 subtests、0 failed（run `20261016T192654Z-1b40dbf-test-python-d9a0546fce35`；报告因 skip 为incomplete）；数据库CI 5 passed、development PostgreSQL 60 passed、cleanup passed（run `20261016T192900Z-1b40dbf-test-database-3a81bee9c622`）；Python质量307文件、文档检查、Diff及Review均PASS（runs `20261016T193023Z-1b40dbf-check-python-04d97d1246ca`、`20261016T193040Z-1b40dbf-check-docs-083cac6a646b`）。报告provenance均stable。实现递归审计details校验、持久化前安全快照及历史公开 DTO 嵌套校验；覆盖合法旧分类、metadata缺省、Query SQL文本、重开/另存/导出和真实隔离PostgreSQL，未扫描或改写日常数据库。
 
-下一步：开始实施Ticket 08本机配置权限及读入前保护，再按依赖连续实施余下Tickets；远端发布未授权。
+Ticket 08已完成并Commit `cb434d9`。候选完整 Python 为1081 passed、58条件性 skipped、0 failed（run `20261016T194109Z-cb434d9-test-python-24425a44e317`；报告因 skip 为incomplete）；Python质量307文件、文档检查及Diff均PASS（runs `20261016T194313Z-cb434d9-check-python-a4783cdba32c`、`20261016T194330Z-cb434d9-check-docs-d5c2762751d7`），报告provenance stable，Review PASS。Linux配置读取及Compose调用前执行文件属主/模式检查，涵盖开发、容器验证、Qdrant、metadata导出及数据库测试入口；本机 `.env` 元数据为当前用户所有、mode 600，未读取或改动内容。未运行隔离容器业务验收和真实LLM评测，留待后续Ticket。
+
+下一步：开始实施Ticket 09首个管理员事务并发互斥，再按依赖连续实施余下Tickets；远端发布未授权。
