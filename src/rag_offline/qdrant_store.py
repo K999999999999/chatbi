@@ -40,18 +40,16 @@ class QdrantAssetStore:
     ) -> "QdrantAssetStore":
         try:
             from qdrant_client import QdrantClient
-        except ImportError as exc:
+        except ImportError:
             raise QdrantStoreError(
                 "未安装 qdrant-client，无法连接向量库；请先同步项目依赖"
-            ) from exc
+            ) from None
 
         if path:
             try:
                 client = QdrantClient(path=path)
             except Exception as exc:
-                raise QdrantStoreError(
-                    f"无法打开 Qdrant 本地目录 {path}：{exc}"
-                ) from exc
+                raise _client_failure("连接失败", exc) from None
             return cls(client)
         if not url:
             raise QdrantStoreError("Qdrant 必须配置 url 或 path")
@@ -62,7 +60,7 @@ class QdrantAssetStore:
         try:
             client = QdrantClient(**kwargs)
         except Exception as exc:
-            raise QdrantStoreError(f"无法连接 Qdrant {url}：{exc}") from exc
+            raise _client_failure("连接失败", exc) from None
         return cls(client)
 
     def create_collection(self, collection_name: str, dimension: int) -> None:
@@ -85,7 +83,7 @@ class QdrantAssetStore:
                 },
             )
         except Exception as exc:
-            raise QdrantStoreError(f"创建集合失败 {collection_name}：{exc}") from exc
+            raise _client_failure("创建集合失败", exc) from None
 
     def upsert_documents(
         self,
@@ -125,7 +123,7 @@ class QdrantAssetStore:
                 wait=True,
             )
         except Exception as exc:
-            raise QdrantStoreError(f"写入集合失败 {collection_name}：{exc}") from exc
+            raise _client_failure("写入集合失败", exc) from None
 
     def validate_collection(
         self,
@@ -151,9 +149,7 @@ class QdrantAssetStore:
             value = _field(result, "count")
             return int(value)
         except Exception as exc:
-            raise QdrantStoreError(
-                f"读取集合数量失败 {collection_name}：{exc}"
-            ) from exc
+            raise _client_failure("读取集合数量失败", exc) from None
 
     def scroll_payloads(
         self,
@@ -179,9 +175,7 @@ class QdrantAssetStore:
                     with_vectors=False,
                 )
             except Exception as exc:
-                raise QdrantStoreError(
-                    f"读取集合 Payload 失败 {collection_name}：{exc}"
-                ) from exc
+                raise _client_failure("读取集合 Payload 失败", exc) from None
 
             if not isinstance(response, tuple) or len(response) != 2:
                 raise QdrantStoreError(f"集合 {collection_name} 返回了无效 Scroll 响应")
@@ -238,9 +232,12 @@ class QdrantAssetStore:
             kwargs.pop("query", None)
             kwargs.pop("using", None)
             kwargs["query_vector"] = list(query.dense)
-            response = self._client.search(**kwargs)
+            try:
+                response = self._client.search(**kwargs)
+            except Exception as exc:
+                raise _client_failure("检索集合失败", exc) from None
         except Exception as exc:
-            raise QdrantStoreError(f"检索集合失败 {collection_name}：{exc}") from exc
+            raise _client_failure("检索集合失败", exc) from None
 
         points = _field(response, "points", response)
         hits: list[SearchHit] = []
@@ -272,29 +269,32 @@ class QdrantAssetStore:
         except Exception as exc:
             if _is_not_found(exc):
                 return False
-            raise QdrantStoreError(f"检查集合失败 {collection_name}：{exc}") from exc
+            raise _client_failure("检查集合失败", exc) from None
 
     def delete_collection(self, collection_name: str) -> None:
-        try:
-            if self.collection_exists(collection_name):
+        if self.collection_exists(collection_name):
+            try:
                 self._client.delete_collection(collection_name=collection_name)
-        except Exception as exc:
-            raise QdrantStoreError(f"删除失败集合 {collection_name}：{exc}") from exc
+            except Exception as exc:
+                raise _client_failure("删除集合失败", exc) from None
 
     def close(self) -> None:
-        close = getattr(self._client, "close", None)
-        if close is not None:
-            close()
+        try:
+            close = getattr(self._client, "close", None)
+            if close is not None:
+                close()
+        except Exception as exc:
+            raise _client_failure("关闭客户端失败", exc) from None
 
     def _load_models(self) -> Any:
         if self._models is not None:
             return self._models
         try:
             from qdrant_client import models
-        except ImportError as exc:
+        except ImportError:
             raise QdrantStoreError(
                 "未安装 qdrant-client，无法创建 Qdrant 模型对象"
-            ) from exc
+            ) from None
         self._models = models
         return models
 
@@ -324,6 +324,12 @@ def _point_id(document: RetrievalDocument) -> str:
             f"chatbi-rag/{document.collection}/{document.document_id}",
         )
     )
+
+
+def _client_failure(stage: str, error: Exception) -> QdrantStoreError:
+    """只暴露静态操作阶段与异常类型，丢弃 SDK 错误正文及连接上下文。"""
+
+    return QdrantStoreError(f"Qdrant {stage}（{type(error).__name__}）")
 
 
 def _field(value: Any, name: str, default: Any = None) -> Any:

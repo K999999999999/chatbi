@@ -1,8 +1,10 @@
 """Qdrant Asset Store（Qdrant 资产适配器）只读行为测试。"""
 
 from dataclasses import dataclass
+import sys
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 from src.rag_offline.embedding import EmbeddedText, SparseEmbedding
 from src.rag_offline.qdrant_store import QdrantAssetStore, QdrantStoreError
@@ -121,6 +123,96 @@ class QdrantAssetStoreTest(unittest.TestCase):
 
         with self.assertRaisesRegex(QdrantStoreError, "读取集合 Payload 失败"):
             store.scroll_payloads("metric-build")
+
+    def test_connection_failure_hides_url_credentials_query_and_exception(self) -> None:
+        url = "https://URL_USER_CANARY:URL_PASS_CANARY@qdrant.internal:6333/?token=QUERY_CANARY"
+        api_key = "API_KEY_CANARY"
+
+        class _BrokenQdrantClient:
+            def __init__(self, **_kwargs):
+                raise RuntimeError(f"{url} {api_key} EXCEPTION_CANARY")
+
+        module = SimpleNamespace(QdrantClient=_BrokenQdrantClient)
+        with patch.dict(sys.modules, {"qdrant_client": module}):
+            with self.assertRaises(QdrantStoreError) as caught:
+                QdrantAssetStore.connect(url=url, api_key=api_key)
+
+        message = str(caught.exception)
+        self.assertIn("连接", message)
+        self.assertIn("RuntimeError", message)
+        for canary in (
+            "URL_USER_CANARY",
+            "URL_PASS_CANARY",
+            "QUERY_CANARY",
+            api_key,
+            "EXCEPTION_CANARY",
+        ):
+            self.assertNotIn(canary, message)
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertTrue(caught.exception.__suppress_context__)
+
+    def test_search_failure_hides_sensitive_client_exception(self) -> None:
+        canaries = (
+            "URL_USER_CANARY",
+            "QUERY_CANARY",
+            "API_KEY_CANARY",
+            "EXCEPTION_CANARY",
+        )
+
+        class _BrokenClient:
+            def query_points(self, **_kwargs):
+                raise RuntimeError(" ".join(canaries))
+
+        store = QdrantAssetStore(_BrokenClient())
+        query = EmbeddedText(
+            dense=(1.0, 0.0), sparse=SparseEmbedding(indices=(1,), values=(1.0,))
+        )
+        with self.assertRaises(QdrantStoreError) as caught:
+            store.search("metric-build", query)
+
+        self.assertIn("检索", str(caught.exception))
+        self.assertIn("RuntimeError", str(caught.exception))
+        for canary in canaries:
+            self.assertNotIn(canary, str(caught.exception))
+        self.assertTrue(caught.exception.__suppress_context__)
+
+    def test_legacy_search_failure_hides_sensitive_client_exception(self) -> None:
+        canary = "LEGACY_SEARCH_EXCEPTION_CANARY"
+
+        class _LegacyClient:
+            def search(self, **_kwargs):
+                raise RuntimeError(canary)
+
+        store = QdrantAssetStore(_LegacyClient())
+        query = EmbeddedText(
+            dense=(1.0, 0.0),
+            sparse=SparseEmbedding(indices=(1,), values=(1.0,)),
+        )
+
+        with self.assertRaises(QdrantStoreError) as caught:
+            store.search("metric-build", query)
+
+        self.assertIn("检索", str(caught.exception))
+        self.assertIn("RuntimeError", str(caught.exception))
+        self.assertNotIn(canary, str(caught.exception))
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertTrue(caught.exception.__suppress_context__)
+
+    def test_close_failure_hides_sensitive_client_exception(self) -> None:
+        canary = "CLOSE_EXCEPTION_CANARY"
+
+        class _BrokenClient:
+            def close(self):
+                raise RuntimeError(canary)
+
+        with self.assertRaises(QdrantStoreError) as caught:
+            QdrantAssetStore(_BrokenClient()).close()
+
+        self.assertIn("关闭客户端", str(caught.exception))
+        self.assertIn("RuntimeError", str(caught.exception))
+        self.assertNotIn(canary, str(caught.exception))
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertTrue(caught.exception.__suppress_context__)
 
 
 if __name__ == "__main__":

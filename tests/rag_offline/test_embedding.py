@@ -1,6 +1,10 @@
 """Embedding Provider（向量化提供者）契约测试。"""
 
 import unittest
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier, Event, Lock
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from src.rag_offline.embedding import (
     BgeM3EmbeddingProvider,
@@ -84,6 +88,88 @@ class EmbeddingProviderTest(unittest.TestCase):
 
         with self.assertRaisesRegex(EmbeddingError, "不能为空"):
             provider.embed_documents([""])
+
+    def test_concurrent_first_load_constructs_one_shared_model(self) -> None:
+        worker_count = 4
+        provider = BgeM3EmbeddingProvider(model_name_or_path="prepared-model")
+        provider.MODEL_DIMENSION = 4
+        start = Barrier(worker_count)
+        construction_started = Event()
+        allow_construction = Event()
+        count_lock = Lock()
+        construction_count = 0
+        model = _FakeModel()
+
+        def construct(*_args, **_kwargs):
+            nonlocal construction_count
+            with count_lock:
+                construction_count += 1
+            construction_started.set()
+            if not allow_construction.wait(timeout=3):
+                raise RuntimeError("test construction gate timed out")
+            return model
+
+        namespace = SimpleNamespace(BGEM3FlagModel=construct)
+        with patch("src.rag_offline.embedding.Path.is_dir", return_value=True):
+            with patch.dict("sys.modules", {"FlagEmbedding": namespace}):
+                with ThreadPoolExecutor(max_workers=worker_count) as pool:
+                    futures = [
+                        pool.submit(
+                            lambda: (start.wait(timeout=3), provider._load_model())[1]
+                        )
+                        for _ in range(worker_count)
+                    ]
+                    self.assertTrue(construction_started.wait(timeout=3))
+                    allow_construction.set()
+                    loaded = [future.result(timeout=3) for future in futures]
+
+        self.assertEqual(construction_count, 1)
+        self.assertTrue(all(value is model for value in loaded))
+        self.assertIs(provider._load_model(), model)
+
+    def test_failed_first_load_releases_lock_for_a_later_attempt(self) -> None:
+        provider = BgeM3EmbeddingProvider(model_name_or_path="prepared-model")
+        model = _FakeModel()
+        calls = 0
+
+        def construct(*_args, **_kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise RuntimeError("temporary model initialization failure")
+            return model
+
+        namespace = SimpleNamespace(BGEM3FlagModel=construct)
+        with patch("src.rag_offline.embedding.Path.is_dir", return_value=True):
+            with patch.dict("sys.modules", {"FlagEmbedding": namespace}):
+                with self.assertRaisesRegex(EmbeddingError, "无法加载 Embedding 模型"):
+                    provider._load_model()
+                self.assertIs(provider._load_model(), model)
+
+        self.assertEqual(calls, 2)
+
+    def test_model_inference_is_not_serialized_by_the_load_lock(self) -> None:
+        barrier = Barrier(2)
+
+        class _ConcurrentModel:
+            def encode(self, texts, **_kwargs):
+                barrier.wait(timeout=2)
+                return {
+                    "dense_vecs": [[0.1] * 4 for _ in texts],
+                    "lexical_weights": [{1: 1.0} for _ in texts],
+                }
+
+        provider = BgeM3EmbeddingProvider(
+            model_name_or_path="injected-model",
+            model=_ConcurrentModel(),
+        )
+        provider.MODEL_DIMENSION = 4
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(
+                pool.map(provider.embed_documents, (("第一段",), ("第二段",)))
+            )
+
+        self.assertEqual([len(result) for result in results], [1, 1])
 
 
 if __name__ == "__main__":

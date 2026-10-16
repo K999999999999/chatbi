@@ -59,7 +59,8 @@ V1 使用 `FlagEmbedding 1.4.2` 的 BGE-M3：
 - dense 向量维度固定为 1024。
 - 同时保存 dense 和 lexical sparse 向量。
 - 当前重载校验和评测使用 dense 路由；Hybrid Search 仍不在本模块范围内。
-- 本地 `models/bge-m3` 存在时优先加载本地模型，否则使用配置的模型 ID。
+- 运行时只从配置的本地模型快照加载；`prepare-model` 准备固定 revision，缺少快照时 fail-closed，不以模型 ID 隐式联网下载或回退。
+- 模型在首次 Embedding 调用时延迟加载。同一 provider 的首次构造由实例级锁保护并复用成功实例；锁不覆盖后续推理调用。
 
 ### QdrantAssetStore
 
