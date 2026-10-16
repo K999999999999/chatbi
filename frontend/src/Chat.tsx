@@ -13,8 +13,10 @@ type Entry = { id: number; question: string; turnId?: string; saved?: boolean; r
   operationId?: string; executionStatus?: string; stopReason?: string | null; stage?: ExecutionStage | null;
   completedTasks?: number; totalTasks?: number | null; reportDraft?: ReportDraft | null; draftInterrupted?: boolean };
 type Edit = { action: 'save' | 'rename-history' | 'rename-result'; title: string; turnId?: string };
-type UncertainExecution = { operationId: string; path: string; body: Record<string, unknown>; historyId: string;
-  kind: Mode; entryId: number; question: string };
+type UncertainExecution = {
+  operationId: string; path: string; body: Record<string, unknown>; source: 'history' | 'saved-result';
+  requery: boolean; historyId?: string; kind: Mode; entryId: number; question: string;
+};
 const stageLabels: Record<ExecutionStage, string> = {
   query_understanding: '理解问题', retrieval: '检索业务语义', sql_generation: '生成查询', sql_validation: '校验查询', query_execution: '执行查询',
   analysis_understanding: '理解分析请求', analysis_plan_validation: '校验分析计划', analysis_query_tasks: '执行分析任务',
@@ -249,8 +251,8 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
     const version = begin(); const abort = new AbortController(); controller.current = abort; setEdit(undefined);
     const entryId = target === 'query' ? Math.max(0, ...entries.map(item => item.id)) + 1 : 1;
     const operationId = crypto.randomUUID(); let traceId = '';
-    if (!resume) { setDrafts(all => ({ ...all, [target]: '' })); setRecords(all => ({ ...all, [target]: target === 'query' ? [...all.query, { id: entryId, question, operationId }] : [{ id: entryId, question, operationId }] })); }
     let uncertainCandidate: UncertainExecution | null = null;
+    if (!resume) { setDrafts(all => ({ ...all, [target]: '' })); setRecords(all => ({ ...all, [target]: target === 'query' ? [...all.query, { id: entryId, question, operationId }] : [{ id: entryId, question, operationId }] })); }
     try {
       const h = ((target === 'query' || resume) ? header : undefined) ?? historyHeader(await request('/api/v1/histories',
         { kind: target, first_question: question, operation_id: crypto.randomUUID() }, user.user_id, abort.signal));
@@ -267,7 +269,7 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
           response = object(await request(`/api/v1/executions/by-operation/${operationId}`, undefined, user.user_id, AbortSignal.timeout(30000)));
         } catch (recoveryError) {
           if (recoveryError instanceof APIError && (recoveryError.status === 401 || recoveryError.status === 403)) throw recoveryError;
-          uncertainCandidate = { operationId, path, body, historyId: h.id, kind: target, entryId, question };
+          uncertainCandidate = { operationId, path, body, source: 'history', requery: false, historyId: h.id, kind: target, entryId, question };
           throw new Error('受理结果暂未确认。可刷新该历史恢复观察；本请求不会自动重发。');
         }
       }
@@ -313,7 +315,18 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
       try { response = object(await request(path, body, user.user_id, AbortSignal.timeout(30000))); }
       catch (submissionError) {
         if (wasSubmissionRejected(submissionError)) throw submissionError;
-        response = object(await request(`/api/v1/executions/by-operation/${operationId}`, undefined, user.user_id, AbortSignal.timeout(30000)));
+        try {
+          response = object(await request(`/api/v1/executions/by-operation/${operationId}`, undefined, user.user_id, AbortSignal.timeout(30000)));
+        } catch (recoveryError) {
+          if (recoveryError instanceof APIError && (recoveryError.status === 401 || recoveryError.status === 403)) throw recoveryError;
+          const target: Mode = saved?.kind ?? header!.kind;
+          const uncertainCandidate: UncertainExecution = { operationId, path, body, source: saved ? 'saved-result' : 'history', requery: true,
+            ...(saved ? {} : { historyId: header!.id }), kind: target, entryId: item?.id ?? 1,
+            question: item?.question ?? saved?.title ?? header?.title ?? '' };
+          setUncertainExecution(uncertainCandidate);
+          if (target === 'query') setBlocked(true);
+          return;
+        }
       }
       const next = historyHeader(response.history); const turn = historyTurn(response.turn); const execution = object(response.execution);
       if (typeof execution.id !== 'string' || !execution.id) throw new Error('执行受理响应无效');
@@ -347,6 +360,7 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
       if (typeof execution.id !== 'string' || !execution.id) throw new Error('执行受理响应无效');
       const result = entry(turn, pendingOperation.kind, next.analysis_run_id);
       result.executionId = execution.id; result.executionStatus = String(execution.status); result.traceId = traceId;
+      setSaved(undefined); setSavedQuery(undefined); setSavedAnalysis(undefined);
       setRecords(all => ({ ...all, [pendingOperation.kind]: pendingOperation.kind === 'analysis' ? [result]
         : all.query.some(item => item.id === pendingOperation.entryId)
           ? all.query.map(item => item.id === pendingOperation.entryId ? result : item) : [...all.query, result] }));
@@ -358,6 +372,12 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
     } catch (error) {
       if (error instanceof APIError && error.status === 401) { setRecords({ query: [], analysis: [] }); setUncertainExecution(null); onExpired(); return; }
       if (error instanceof APIError && error.status === 403) { clearPrivate('当前账号已无权查看这些记录，私有内容已清除。'); return; }
+      if (wasSubmissionRejected(error)) {
+        setUncertainExecution(current => current?.operationId === pendingOperation.operationId ? null : current);
+        if (pendingOperation.kind === 'query') setBlocked(false);
+        setNotice((error as Error).message);
+        return;
+      }
       setNotice((error as Error).message || '受理结果仍未确认。');
     } finally { done(version); }
   }
@@ -423,7 +443,9 @@ export function Chat({ user, onExpired }: { user: Identity; onExpired: () => voi
       <label>{edit.action === 'save' ? '成果名称' : '记录名称'}<input maxLength={120} value={edit.title} onChange={e => setEdit({ ...edit, title: e.target.value })}/></label>
       <button disabled={saving || (pending && edit.action !== 'save') || !edit.title.trim()}>保存名称</button><button type="button" disabled={saving || (pending && edit.action !== 'save')} onClick={() => setEdit(undefined)}>取消</button></form>}
     <div className="timeline" aria-live="polite">{notice && <p role="alert">{notice}</p>}
-      {uncertainExecution && <p role="alert">受理结果暂未确认。可刷新该历史恢复观察，或明确重试同一请求。
+      {uncertainExecution && <p role="alert">{uncertainExecution.requery
+        ? '受理结果暂未确认。可明确重试同一请求；本请求不会自动重发。'
+        : `受理结果暂未确认。可刷新${uncertainExecution.source === 'saved-result' ? '该成果' : '该历史'}恢复观察，或明确重试同一请求。`}
         <button disabled={pending} onClick={() => void retryUncertainExecution()}>明确重试同一请求</button></p>}
       {saved ? <article className="turn"><p>成果内容固定；重新查询会创建新历史。</p>
         {savedQuery && <button disabled={exporting || !user.permissions.includes('query.execute')} onClick={() => void exportResult('xlsx')}>{exporting ? '正在导出…' : '下载 XLSX'}</button>}
