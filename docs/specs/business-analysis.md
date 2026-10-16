@@ -64,7 +64,7 @@
 - 对网络、数据库暂时不可用和 LLM 服务暂时失败等可重试基础设施故障，当前 Task 自动重试一次；仍失败则保留 checkpoint，允许在有效期内恢复。澄清、授权失败和 SQL 校验失败不重试。
 - `analysis_run_id` 由客户端在首次请求前生成，并作为 LangGraph `thread_id`。同一认证用户以相同 ID 和相同问题重试时，未完成运行从 checkpoint 恢复，已完成运行返回保存结果；同一 ID 用于不同问题或不同用户时拒绝。超过 24 小时后过期的 ID 不得自动启动新分析，用户必须生成新 ID。
 - 每次 HTTP 请求仍使用独立的 `request_id` 和 `trace_id`；通过 Trace 属性关联 `analysis_run_id`，不复用这些 ID 作为 `thread_id`。
-- 使用持久化 PostgreSQL Checkpointer，将 checkpoint 写入与销售业务库分离的 `chatbi_control` 专用表；销售业务库查询连接保持只读。运行创建时绑定认证用户，恢复时重新认证并检查归属；不持久化 AuthContext 或凭证。checkpoint 保留 24 小时并自动清理。
+- 使用持久化 PostgreSQL Checkpointer，将 checkpoint 写入与销售业务库分离的 `chatbi_control` 专用表；销售业务库查询连接保持只读。运行创建时绑定认证用户，恢复时重新认证并检查归属；不持久化 AuthContext 或凭证。checkpoint 保留 24 小时并自动清理；历史删除立即使原运行 ID 失效，checkpoint 在既有清理流程中回收，失效 ID 保留为不可复用记录。
 - 当前指标目录中的“人民币净销售额”和“人民币毛利”是业务指标事实；本 Feature 不增加“销售成本”作为独立原因分析目标，也不将原始多币种交易单价作为统一价格指标。
 - 首轮不自动添加任何其他维度。用户明确提出区域等其他分析需求时，作为单独自然查询或后续需求处理，不纳入本场景的归因因素。
 

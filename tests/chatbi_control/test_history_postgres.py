@@ -6,15 +6,26 @@ import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Event
 from time import monotonic
-from uuid import uuid4
+from typing import TypedDict
+from uuid import UUID, uuid4
 
 import psycopg
 import pytest
+from langgraph.checkpoint.postgres import PostgresSaver
+from langgraph.graph import END, START, StateGraph
+from psycopg.conninfo import make_conninfo
+from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
 from sqlalchemy import event, text
 
+from src.business_analysis.run_store import (
+    AnalysisRunConflict,
+    PostgresAnalysisRunStore,
+)
 from src.chatbi_control.database import ControlDatabaseConfig, create_control_engine
 from src.chatbi_control.history import PostgresHistoryStore
 from src.online_query.contracts import QuerySuccess
@@ -23,6 +34,11 @@ from src.query_api.history_contracts import HistoryError
 from src.query_api.history_runtime import HistoryRuntime
 from src.query_api.query_response import query_payload
 from tests.query_api.history_fixtures import query_state
+
+
+class _CheckpointState(TypedDict):
+    value: int
+
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("RUN_DEVELOPMENT_DATABASE_TESTS") != "1",
@@ -722,6 +738,184 @@ def test_analysis_delete_atomically_expires_original_run(history_env):
             owner_subject="local:test-owner",
             question="两期经营分析",
         )
+
+
+def test_expired_analysis_checkpoints_are_cleaned_atomically(history_env):
+    engine, store, runtime, owner, config = history_env
+    run_store = PostgresAnalysisRunStore(engine)
+    base_time = datetime.now(UTC)
+    cleanup_time = base_time + timedelta(days=2)
+    deleted_header = store.create(owner, "analysis", "已删除分析", str(uuid4()))
+    deleted_run_id = deleted_header.analysis_run_id
+    legacy_run_id = uuid4()
+    rollback_run_id = uuid4()
+    active_run_id = uuid4()
+    run_ids = (
+        deleted_run_id,
+        str(legacy_run_id),
+        str(rollback_run_id),
+        str(active_run_id),
+    )
+    pool = ConnectionPool(
+        make_conninfo(**config.app_connection_kwargs()),
+        kwargs={"autocommit": True, "row_factory": dict_row},
+        min_size=1,
+        max_size=2,
+        open=True,
+    )
+
+    def checkpoint(run_id, question):
+        run_store.claim(
+            UUID(run_id),
+            owner_subject="local:test-owner",
+            question=question,
+            now=base_time,
+        )
+        graph.invoke(
+            {"value": 1},
+            config={"configurable": {"thread_id": run_id}},
+        )
+
+    def checkpoint_counts(run_id):
+        with engine.connect() as connection:
+            return tuple(
+                connection.execute(
+                    text(f"SELECT count(*) FROM {table} WHERE thread_id=:run_id"),
+                    {"run_id": run_id},
+                ).scalar_one()
+                for table in ("checkpoints", "checkpoint_blobs", "checkpoint_writes")
+            )
+
+    def run_metadata(run_id):
+        with engine.connect() as connection:
+            return connection.execute(
+                text(
+                    """SELECT status, expires_at, updated_at
+                       FROM business_analysis_runs WHERE analysis_run_id=:run_id"""
+                ),
+                {"run_id": run_id},
+            ).one()
+
+    saver = PostgresSaver(pool)
+    builder = StateGraph(_CheckpointState)
+    builder.add_node("save", lambda state: {"value": state["value"] + 1})
+    builder.add_edge(START, "save")
+    builder.add_edge("save", END)
+    graph = builder.compile(checkpointer=saver)
+
+    try:
+        checkpoint(deleted_run_id, "已删除分析")
+        store.delete_history(
+            owner,
+            deleted_header.id,
+            deleted_header.record_revision,
+            "local:test-owner",
+        )
+
+        checkpoint(str(legacy_run_id), "遗留过期分析")
+        checkpoint(str(rollback_run_id), "清理回滚分析")
+        checkpoint(str(active_run_id), "仍有效分析")
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """UPDATE business_analysis_runs
+                       SET status='expired', expires_at=:expired
+                       WHERE analysis_run_id=:run_id"""
+                ),
+                {"expired": base_time - timedelta(seconds=1), "run_id": legacy_run_id},
+            )
+            connection.execute(
+                text(
+                    """UPDATE business_analysis_runs
+                       SET expires_at=:expired
+                       WHERE analysis_run_id=:run_id"""
+                ),
+                {
+                    "expired": base_time - timedelta(seconds=1),
+                    "run_id": rollback_run_id,
+                },
+            )
+            connection.execute(
+                text(
+                    """UPDATE business_analysis_runs
+                       SET expires_at=:expires
+                       WHERE analysis_run_id=:run_id"""
+                ),
+                {
+                    "expires": base_time + timedelta(days=10),
+                    "run_id": active_run_id,
+                },
+            )
+
+        query_header, query_turn, _snapshot = committed_query(
+            store, runtime, owner, "需独立保留的结果"
+        )
+        saved = store.copy_result(owner, query_header.id, query_turn.id, "独立结果")
+        before = {run_id: checkpoint_counts(run_id) for run_id in run_ids}
+        metadata_before = {run_id: run_metadata(run_id) for run_id in run_ids}
+        assert all(all(count > 0 for count in counts) for counts in before.values())
+
+        def fail_blob_delete(
+            _connection, _cursor, statement, _parameters, _context, _many
+        ):
+            if statement.lstrip().upper().startswith("DELETE FROM CHECKPOINT_BLOBS"):
+                raise RuntimeError("injected checkpoint cleanup failure")
+
+        event.listen(engine, "before_cursor_execute", fail_blob_delete)
+        try:
+            with pytest.raises(
+                RuntimeError, match="injected checkpoint cleanup failure"
+            ):
+                run_store.cleanup_expired(now=cleanup_time)
+        finally:
+            event.remove(engine, "before_cursor_execute", fail_blob_delete)
+
+        assert {run_id: checkpoint_counts(run_id) for run_id in run_ids} == before
+        assert {run_id: run_metadata(run_id) for run_id in run_ids} == metadata_before
+
+        assert run_store.cleanup_expired(now=cleanup_time) >= 3
+        assert all(checkpoint_counts(run_id) == (0, 0, 0) for run_id in run_ids[:3])
+        assert checkpoint_counts(str(active_run_id)) == before[str(active_run_id)]
+        assert run_store.cleanup_expired(now=cleanup_time) == 0
+        with pytest.raises(AnalysisRunConflict, match="EXPIRED"):
+            run_store.claim(
+                UUID(deleted_run_id),
+                owner_subject="local:test-owner",
+                question="已删除分析",
+                now=cleanup_time,
+            )
+        with pytest.raises(AnalysisRunConflict, match="EXPIRED"):
+            run_store.claim(
+                legacy_run_id,
+                owner_subject="local:test-owner",
+                question="遗留过期分析",
+                now=cleanup_time,
+            )
+        assert (
+            run_store.claim(
+                active_run_id,
+                owner_subject="local:test-owner",
+                question="仍有效分析",
+                now=cleanup_time,
+            ).status
+            == "active"
+        )
+        assert store.saved_result(owner, saved.id)[1] == _snapshot
+    finally:
+        pool.close()
+        with engine.begin() as connection:
+            for run_id in run_ids:
+                for table in ("checkpoint_writes", "checkpoint_blobs", "checkpoints"):
+                    connection.execute(
+                        text(f"DELETE FROM {table} WHERE thread_id=:run_id"),
+                        {"run_id": run_id},
+                    )
+        with psycopg.connect(**config.migrator_connection_kwargs()) as connection:
+            for run_id in run_ids:
+                connection.execute(
+                    "DELETE FROM business_analysis_runs WHERE analysis_run_id=%s",
+                    (run_id,),
+                )
 
 
 def test_finish_transaction_failure_never_advances_context(history_env):
