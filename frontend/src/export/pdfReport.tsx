@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { productClassificationLabel } from '../analysisClassification';
 
 type PdfSource = {
   kind: 'analysis';
@@ -32,7 +33,6 @@ const directionNames: Record<string, string> = {
   increases_target_metric: '增加目标指标', decreases_target_metric: '降低目标指标',
   no_change_to_target_metric: '目标指标无变化',
 };
-const classificationNames: Record<string, string> = { continuing: '持续产品', new: '新增产品', discontinued: '退出产品' };
 const incompleteNames: Record<string, string> = {
   failed: '查询任务失败', skipped: '查询任务因依赖未执行', empty_result: '查询任务没有返回数据', truncated: '查询任务结果已截断',
 };
@@ -182,6 +182,45 @@ function displayCell(value: Cell): string {
   if (typeof value === 'boolean') return value ? 'true' : 'false';
   return String(value);
 }
+function evidenceTablesMatch(root: HTMLElement, tasks: PdfTask[]): boolean {
+  const sections = [...root.querySelectorAll<HTMLElement>('[data-pdf-task]')];
+  if (sections.length !== tasks.length) return false;
+  for (const task of tasks) {
+    const section = sections.find(item => item.dataset.pdfTask === task.task_id);
+    if (!section) return false;
+    const tables = [...section.querySelectorAll<HTMLTableElement>('[data-pdf-table]')];
+    if (tables.length !== Math.ceil(task.columns.length / 2)) return false;
+    for (let block = 0; block < tables.length; block += 1) {
+      const start = block * 2;
+      const selected = task.columns.slice(start, start + 2);
+      const table = tables[block];
+      const headers = [...table.querySelectorAll<HTMLTableCellElement>('thead th[data-pdf-column-index]')];
+      if (headers.length !== selected.length) return false;
+      if (headers.some((header, offset) => header.dataset.pdfColumnIndex !== String(start + offset)
+        || header.textContent !== `第${start + offset + 1}列 · ${selected[offset]}`)) return false;
+
+      const rows = [...table.querySelectorAll<HTMLTableRowElement>('tbody tr')];
+      if (task.rows.length === 0) {
+        if (rows.length !== 1 || rows[0].dataset.pdfRowIndex !== undefined) return false;
+        const cells = [...rows[0].cells];
+        if (cells.length !== 2 || cells[0].textContent !== '—'
+          || cells[1].textContent !== '该任务没有返回数据行。' || cells[1].colSpan !== selected.length) return false;
+        continue;
+      }
+      if (rows.length !== task.rows.length) return false;
+      for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+        const row = rows[rowIndex];
+        const cells = [...row.cells];
+        if (row.dataset.pdfRowIndex !== String(rowIndex + 1) || cells.length !== selected.length + 1
+          || cells[0].textContent !== String(rowIndex + 1)) return false;
+        for (let offset = 0; offset < selected.length; offset += 1) {
+          if (cells[offset + 1].textContent !== displayCell(task.rows[rowIndex][start + offset])) return false;
+        }
+      }
+    }
+  }
+  return true;
+}
 function metadataLines(metadata?: Record<string, unknown>): string[] {
   if (!metadata) return ['指标定义、单位和时间范围未保存在此任务快照中。'];
   const lines: string[] = [];
@@ -250,7 +289,7 @@ function Attribution({ attribution }: { attribution: PdfAttribution }) {
         const magnitude = relativeWidth(product.change, values);
         const positive = !product.change.startsWith('-') && product.change !== '0';
         return <div className="pdf-contribution-row" key={index} data-pdf-product>
-          <div className="pdf-contribution-label">{product.product_name}<small>{classificationNames[product.classification] ?? '分类未确认'} · {directionNames[product.effect_on_metric] ?? '方向未确认'} · {product.change}</small></div>
+          <div className="pdf-contribution-label">{product.product_name}<small>{productClassificationLabel(product.classification) ?? '分类未确认'} · {directionNames[product.effect_on_metric] ?? '方向未确认'} · {product.change}</small></div>
           <div className="pdf-contribution-track"><span className={positive ? 'positive' : 'negative'} style={{ width: `${magnitude / maxWidth * 100}%` }}/></div>
         </div>;
       })}
@@ -259,10 +298,10 @@ function Attribution({ attribution }: { attribution: PdfAttribution }) {
     {products.length ? <table className="pdf-data-table pdf-attribution-table"><thead><tr><th>产品</th><th>产品变化贡献</th><th>因素</th><th>因素贡献</th><th>对目标指标的影响</th></tr></thead>
       <tbody>{products.flatMap((product, productIndex) => product.factors.length
         ? product.factors.map((factor, factorIndex) => <tr key={`${productIndex}-${factorIndex}`} data-pdf-factor>
-          <td>{factorIndex === 0 ? `${product.product_name}（${classificationNames[product.classification] ?? '分类未确认'}）` : ''}</td>
+          <td>{factorIndex === 0 ? `${product.product_name}（${productClassificationLabel(product.classification) ?? '分类未确认'}）` : ''}</td>
           <td>{factorIndex === 0 ? `${product.change} · ${directionNames[product.effect_on_metric] ?? '方向未确认'}` : ''}</td>
           <td>{factor.name}</td><td>{factor.amount}</td><td>{directionNames[factor.effect_on_metric] ?? '方向未确认'}</td></tr>)
-        : [<tr key={`${productIndex}-empty`}><td>{product.product_name}（{classificationNames[product.classification] ?? '分类未确认'}）</td>
+        : [<tr key={`${productIndex}-empty`}><td>{product.product_name}（{productClassificationLabel(product.classification) ?? '分类未确认'}）</td>
           <td>{product.change}</td><td colSpan={3}>没有已返回因素明细。</td></tr>])}</tbody></table>
       : <p>报告快照没有返回产品贡献明细。</p>}
   </section>;
@@ -278,7 +317,7 @@ function EvidenceTask({ task }: { task: PdfTask }) {
     {task.error && task.status !== 'completed' && <p className="pdf-warning">任务说明：{task.error}</p>}
     <div className="pdf-task-metadata">{metadata.map((line, index) => <p key={index}>{line}</p>)}</div>
     {!blocks.length ? <p>该任务没有可展示的数据列。</p> : blocks.map(start => {
-      const selected = task.columns.map((name, offset) => ({ name, index: start + offset })).slice(0, 2);
+      const selected = task.columns.slice(start, start + 2).map((name, offset) => ({ name, index: start + offset }));
       return <table className="pdf-data-table pdf-evidence-table" data-pdf-table key={start}>
         <thead><tr><th>原行号</th>{selected.map(column => <th data-pdf-column-index={column.index} key={column.index}>第{column.index + 1}列 · {column.name}</th>)}</tr></thead>
         <tbody>{task.rows.length ? task.rows.map((row, rowIndex) => <tr data-pdf-row-index={rowIndex + 1} key={rowIndex}>
@@ -303,7 +342,9 @@ export function PdfReport({ request }: { request: PdfRenderRequest }) {
         if (!root || root.scrollWidth > root.clientWidth || [...root.querySelectorAll<HTMLElement>('*')].some(item =>
           item.scrollWidth > item.clientWidth + 2 && !item.matches('.pdf-contribution-track'))) throw new Error('PDF 页面存在横向溢出');
         const actual = taskCoverageFromDOM(root, parsed, request.render_hash);
-        if (!sameCoverage(expected, actual)) throw new Error('PDF 内容 coverage 与成功快照不一致');
+        if (!sameCoverage(expected, actual) || !evidenceTablesMatch(root, parsed.tasks)) {
+          throw new Error('PDF 证据列名、列序号或单元格值与成功快照不一致');
+        }
         if (active) window.__chatbiRenderState = { status: 'ready', manifest: actual };
       } catch (error) {
         if (active) window.__chatbiRenderState = { status: 'failed', code: 'PDF_RENDER_FAILED',

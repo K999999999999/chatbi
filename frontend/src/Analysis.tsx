@@ -3,11 +3,12 @@ import { object, strings, tableData, text, ResultView, type TableData } from './
 import { DataChart } from './Chart';
 import { buildContributionPlan, contributionColumn } from './chartPlan';
 import { displayValue, roundedToZero } from './numberFormat';
+import { normalizeProductClassification, productClassificationLabel, type ProductClassification } from './analysisClassification';
 import type { ReportDraft } from './execution';
 import type { ExportSource } from './api';
 
 type Task = TableData & { task_id: string; status: string; error: string | null };
-type Product = { product_name: string; change: string; classification: string; effect_on_metric: string; factors: { name: string; amount: string; effect_on_metric: string }[] };
+type Product = { product_name: string; change: string; classification: ProductClassification | null; effect_on_metric: string; factors: { name: string; amount: string; effect_on_metric: string }[] };
 type Attribution = { metric_name: string; comparison_period: string; current_period: string;
   comparison_value: string; current_value: string; total_change: string; direction: string; products: Product[]; omitted_product_count: number };
 type Report = { title: string; executive_summary: string; key_findings: string[]; trend_judgment: string;
@@ -29,8 +30,7 @@ function attribution(value: unknown): Attribution {
     comparison_value: amount(p.comparison_value), current_value: amount(p.current_value), total_change: amount(p.total_change),
     direction: text(p.direction), omitted_product_count: Number(p.omitted_product_count), products: array(p.products).map(value => {
       const product = object(value);
-      const classification = text(product.classification);
-      if (!['continuing', 'new', 'discontinued'].includes(classification)) throw new Error('产品分类无效');
+      const classification = normalizeProductClassification(product.classification);
       return { product_name: text(product.product_name), change: amount(product.change), classification, effect_on_metric: effect(product.effect_on_metric),
         factors: array(product.factors).map(value => { const factor = object(value); return { name: text(factor.name), amount: amount(factor.amount), effect_on_metric: effect(factor.effect_on_metric) }; }) };
     }) };
@@ -53,7 +53,6 @@ export function analysisResult(value: unknown, expectedId: string): AnalysisResu
         const task = object(value); return { task_id: text(task.task_id), reasons: strings(task.reasons) }; }),
       ...(r.attribution === undefined ? {} : { attribution: attribution(r.attribution) }) } };
 }
-const classifications: Record<string, string> = { continuing: '持续产品', new: '新增产品', discontinued: '退出产品' };
 const statuses: Record<string, string> = { completed: '完成', failed: '失败', skipped: '跳过' };
 function Lines({ title, lines }: { title: string; lines: string[] }) {
   return lines.length > 0 && <section><h3>{title}</h3><ul>{lines.map((line, i) => <li key={i}>{line}</li>)}</ul></section>;
@@ -82,10 +81,10 @@ function AttributionView({ data: a, exportSource, canExport, userId }: {
       {a.products.map((p, i) => <option key={i} value={i}>{p.product_name}</option>)}</select></label>}
     {factors && <details open><summary>因素贡献图</summary><DataChart plan={factors} exportSource={exportSource}
       canExport={canExport} userId={userId} productIndex={selected}/></details>}
-    {product && <p>{classifications[product.classification]}：{product.product_name}</p>}
+    {product && <p>{productClassificationLabel(product.classification) ?? '分类未确认'}：{product.product_name}</p>}
     {product && !product.factors.length && <p>没有可用因素，不补造价格或成本贡献。</p>}
     <details open><summary>贡献表格</summary><div className="table-scroll"><table><thead><tr><th>产品</th><th>分类</th><th>变化贡献</th><th>方向</th></tr></thead><tbody>
-      {a.products.map((p, i) => <tr key={i}><td>{p.product_name}</td><td>{classifications[p.classification]}</td><td>{displayValue(p.change, column)}<details className="raw-value"><summary>查看原始值</summary><code>{p.change}</code></details></td><td>{effects[p.effect_on_metric]}</td></tr>)}
+      {a.products.map((p, i) => <tr key={i}><td>{p.product_name}</td><td>{productClassificationLabel(p.classification) ?? '分类未确认'}</td><td>{displayValue(p.change, column)}<details className="raw-value"><summary>查看原始值</summary><code>{p.change}</code></details></td><td>{effects[p.effect_on_metric]}</td></tr>)}
     </tbody></table></div>{product && <ul>{product.factors.map((f, i) => <li key={i}><span>{f.name}：{displayValue(f.amount, column)} · {effects[f.effect_on_metric]}</span><details className="raw-value"><summary>查看原始值</summary><code>{f.amount}</code></details></li>)}</ul>}</details>
   </section>;
 }
