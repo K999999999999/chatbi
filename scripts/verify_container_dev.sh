@@ -15,6 +15,7 @@ fi
 export CHATBI_DEV_ENV_FILE=${CHATBI_DEV_ENV_FILE:-$root/.env}
 validate_env_file_permissions "$CHATBI_DEV_ENV_FILE" || exit 2
 browser_image=chatbi-browser-dev:local
+python_image=${CHATBI_DEV_PYTHON_IMAGE:-chatbi-python-dev:local}
 dirty=false
 if [[ -n "$(git status --porcelain)" ]]; then
     dirty=true
@@ -114,12 +115,14 @@ tools_module() {
         tools "$@"
 }
 verification_module() {
-    "${compose[@]}" run --rm --no-deps -T --entrypoint python \
+    docker run --rm --init --user "$CHATBI_DEV_UID:$CHATBI_DEV_GID" \
+        --workdir "$root" --network none \
+        -e PYTHONDONTWRITEBYTECODE=1 \
         -v "$host_root:$root:ro" "${git_mounts[@]}" \
         -e "GIT_DIR=$git_worktree" -e "GIT_WORK_TREE=$root" \
         "${git_environment[@]}" \
         -v "$CHATBI_PUBLISHED_REPORT_DIR:/published-reports" \
-        tools "$@"
+        --entrypoint python "$python_image" "$@"
 }
 business_step_start() {
     verification_module -m scripts.verification_report step-start \
