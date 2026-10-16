@@ -12,6 +12,8 @@
 
 ## 已确认的后续方向
 
+已确认全仓审计问题修复目标，范围为[审计报告](audits/project-audit-20261016.md)中的22项问题（AUD014已排除）；[Spec](../.scratch/project-audit-remediation/spec.md)、设计审查修订和12项Ticket拆分均已确认。截至2026-10-17，Ticket 01–06已完成，现按依赖继续实施Ticket 07。整体验收包含软件回归、真实PostgreSQL并发、真实LLM三套正式评测及隔离容器业务验收；不扩展产品能力、不重排其他路线优先级，未运行的整体验收不得视为通过。
+
 已完成dev分类入口与本机管理员恢复目标，按[Spec](../.scratch/dev-command-entrypoints/spec.md)交付七项Ticket；当时纳入的标准APP管理路线已由后续[测试可靠性目标](../.scratch/test-reliability/spec.md)确认退役，历史候选和验证仍见[原验收记录](../.scratch/dev-command-entrypoints/acceptance.md)。
 
 已完成测试可靠性与运行路线精简目标，按[Spec](../.scratch/test-reliability/spec.md)完成七项Ticket，覆盖本地测试可靠性、报告追溯及 CI 中的 development 数据库与 PDF renderer 检查；[PR #86](https://github.com/K999999999999/chatbi/pull/86) 已合并，最终 8 项 required checks 全部通过。真实 LLM 评测与业务验收未运行；不改变其他路线优先级。

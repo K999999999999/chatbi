@@ -15,4 +15,6 @@ Ticket 04已完成并Commit `0b3755c`。候选上 `./dev test web` 71 passed（r
 
 Ticket 05已完成并Commit `51d8f48`。定向 `./dev test web frontend/tests/history.spec.ts` 12 passed（run `20261016T185132Z-6f69b47-test-web-47706fa566bb`）；完整 `./dev test web` 79 passed（run `20261016T185258Z-51d8f48-test-web-cad932127fe9`）；候选报告 provenance stable，Review PASS。完整回归包含问数/分析历史、保存成果重查、原操作ID复用、迟到受理的同一执行观察、确定拒绝后的显式新操作、401/403和账号生命周期清理。
 
-下一步：开始实施Ticket 06共享Embedding加载互斥与Qdrant日志脱敏，再按依赖继续其余Ticket；发布未授权。
+Ticket 06已完成并Commit `066e2b2`。候选定向 Python 32 passed、0 skipped（run `20261016T190428Z-066e2b2-test-python-fdc989378278`）；完整 Python 测试 1052 passed、57 条件性 skipped、0 failed（run `20261016T190445Z-066e2b2-test-python-1e82a5932aae`，因 skip 报告状态为 `incomplete`）；`./dev check python` 307 files / all checks passed（run `20261016T190456Z-066e2b2-check-python-709e21ef4410`）；`./dev check docs` PASS（run `20261016T190456Z-066e2b2-check-docs-f40baad43b90`）。各报告 provenance stable，Diff 检查与Review PASS。未在此Ticket加载真实模型，按计划留给后续隔离评测验证。
+
+下一步：开始实施Ticket 07嵌套审计与快照校验，再按依赖连续实施余下Tickets；远端发布未授权。
