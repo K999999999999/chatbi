@@ -13,4 +13,6 @@ Ticket 03验证：候选 `7a46415` 上 `./dev test database` 为CI 5 passed、is
 
 Ticket 04已完成并Commit `0b3755c`。候选上 `./dev test web` 71 passed（run `20261016T183628Z-0b3755c-test-web-c2ae9ae720f9`）、`./dev test renderer` 2 passed（run `20261016T183817Z-0b3755c-test-renderer-759f41e475fb`）、`./dev check python` 307 files / all checks passed（run `20261016T183835Z-0b3755c-check-python-4a1b2cdf5d09`）、`./dev check docs` PASS（run `20261016T183853Z-0b3755c-check-docs-1d8d592af71c`）；候选报告 provenance 均 stable；Review PASS。Ticket 04未运行全项目数据库回归、真实LLM评测或隔离Compose业务验收，这些由后续Ticket处理。
 
-下一步：开始实施Ticket 05查询重试运行状态恢复，再按依赖继续其余Ticket；发布未授权。
+Ticket 05已完成并Commit `51d8f48`。定向 `./dev test web frontend/tests/history.spec.ts` 12 passed（run `20261016T185132Z-6f69b47-test-web-47706fa566bb`）；完整 `./dev test web` 79 passed（run `20261016T185258Z-51d8f48-test-web-cad932127fe9`）；候选报告 provenance stable，Review PASS。完整回归包含问数/分析历史、保存成果重查、原操作ID复用、迟到受理的同一执行观察、确定拒绝后的显式新操作、401/403和账号生命周期清理。
+
+下一步：开始实施Ticket 06共享Embedding加载互斥与Qdrant日志脱敏，再按依赖继续其余Ticket；发布未授权。
