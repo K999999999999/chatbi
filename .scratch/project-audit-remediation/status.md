@@ -29,4 +29,6 @@ Ticket 09完成时下一步为Ticket 10真实评测入口与基线验证，现�
 
 Ticket 10已完成并Commit `7ff3399`。候选完整Python为1085 passed、61条件性 skipped、155 subtests、0 failed（run `20261016T201322Z-7ff3399-test-python-420a3a5ddba3`；报告因skip为incomplete）；隔离数据库CI 5 passed、development 63 passed、cleanup passed（run `20261016T201525Z-7ff3399-test-database-65fddca4ba3e`）；Web 81 passed（run `20261016T201647Z-7ff3399-test-web-7cc036188bb0`）；旧兼容PostgreSQL development profile 56 passed；Python质量307文件及Runbook文档链接检查PASS（runs `20261016T201837Z-7ff3399-check-python-6bc5fb280aa1`、`20261016T201853Z-7ff3399-check-docs-6542290a7060`）。报告provenance stable，Review与Diff检查PASS。真实 GitHub runner、Windows 和模型/LLM执行未在本机运行；正式评测由T12 clean candidate完成。
 
-下一步：开始实施Ticket 11隔离容器验收资源生命周期，再按依赖连续实施余下Tickets；远端发布未授权。
+Ticket 11已完成并Commit `0c4be10`。隔离热更新限定到临时单文件副本并核对恢复Hash；验收账号身份在事务提交前持久化，失败清理按精确ID+用户名执行；isolated模型准备显式先于build-rag且RAG输出隔离。staged候选定向Python 52 passed、Web 81 passed、Python质量309 files、Docs、Diff与Review均PASS，报告provenance stable（runs `20261016T203505Z-c2a3d92-test-python-465ba47ff3b6`、`20261016T203533Z-c2a3d92-test-web-8c18f3093293`、`20261016T203505Z-c2a3d92-check-python-d4e9002dd543`、`20261016T203505Z-c2a3d92-check-docs-2f6fb0a1eca9`）。INT/TERM、恢复失败和账号提交前后故障注入通过。完整isolated Compose验收与三套真实LLM评测仍由最终Ticket执行，不将其预先标为通过。
+
+下一步：实施Ticket 12文档状态修正并完成最终候选验收；远端发布未授权。
