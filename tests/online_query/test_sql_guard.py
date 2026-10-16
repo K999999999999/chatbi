@@ -260,6 +260,40 @@ GROUP BY c.customer_type
                 with self.assertRaises(SQLRejectedError):
                     validate_sql(sql, self.multi_context)
 
+    def test_multi_metric_rejects_grouping_extensions(self) -> None:
+        sql = _valid_multi_metric_sql()
+        candidates = (
+            sql.replace(
+                "GROUP BY c.customer_type",
+                "GROUP BY c.customer_type, GROUPING SETS ((c.customer_type), ())",
+            ),
+            sql.replace(
+                "GROUP BY c.customer_type",
+                "GROUP BY GROUPING SETS ((c.customer_type), ())",
+            ),
+            sql.replace(
+                "GROUP BY c.customer_type",
+                "GROUP BY c.customer_type, ROLLUP (c.customer_type)",
+            ),
+            sql.replace(
+                "GROUP BY c.customer_type",
+                "GROUP BY ROLLUP (c.customer_type)",
+            ),
+            sql.replace(
+                "GROUP BY c.customer_type",
+                "GROUP BY c.customer_type, CUBE (c.customer_type)",
+            ),
+            sql.replace(
+                "GROUP BY c.customer_type",
+                "GROUP BY CUBE (c.customer_type)",
+            ),
+        )
+
+        for candidate in candidates:
+            with self.subTest(sql=candidate):
+                with self.assertRaises(SQLRejectedError):
+                    validate_sql(candidate, self.multi_context)
+
     def test_cte_join_and_output_alias_is_rejected_by_v1_shape(self) -> None:
         sql = """
 WITH sales AS (
