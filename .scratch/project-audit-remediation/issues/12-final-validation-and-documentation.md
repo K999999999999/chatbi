@@ -102,3 +102,11 @@ clean候选`7a2032e9a2288a93f3e17701034d1a231f79cc06`隔离容器验收run `2026
 这个结果把失败从重启流程扩大到长会话中的后续提交；它不能证明失败时服务真的已ready，因为报告没采集拒绝后的状态。针对遗漏的验收前置条件，现为每次独立问数/分析提交前调用既有75秒有界匿名`/ready` helper（不自动重放拒绝请求），并在失败报告保存HTTP状态与安全ready值。已覆盖月度、分类、分析、Top-N、取消后的新操作、重启续聊和显式重查等步骤，服务端readiness与admission Contract未变。完整Web run `20261017T121342Z-7a2032e-test-web-e41158c68e72`通过：packaged 82/82、web-dev 1/1、build和typecheck通过，provenance stable但`git_dirty=true`，为迭代验证。`./dev check docs` PASS（run `20261017T121730Z-7a2032e-check-docs-d58f12b82e79`）。增量Review PASS，BASE `7a2032e9a2288a93f3e17701034d1a231f79cc06`，范围限于`frontend/tests/container-real.spec.ts`：每次用户新提交前检查readiness、记录失败阶段和失败后公开状态；未改服务端逻辑或自动重试行为。`git diff --check`通过。
 
 下一步：完成文档检查、Review和本地Commit；在新clean候选上重新运行隔离业务验收，确认首次、多次连续提交及重启阶段，不能把该测试门禁修正视为API 503根因已消除。Ticket 12仍in-progress；正式AI报告及61项条件性skip未变，不改readiness Contract、模型参数、案例或验收门槛，远端发布未授权。
+
+### 2026-10-17 `8772df5` clean UAT 完成
+
+clean候选`8772df5f54844afbcb2f773a797ae17f2288f3d5`隔离验收run `20261017T121906Z-8772df5-business-acceptance-container-dev-836855368b89`，provenance stable、`git_dirty=false`。prepare、browser-initial、restart-recovery、browser-restart、exports和cleanup六个步骤均passed；首阶段真实问数、追问、月度/分类查询、经营分析、历史/另存成果、跨页恢复/取消/继续查询均成功；重启后未确认执行、上一成功轮次、历史续聊、显式重查及XLSX/PNG/PDF导出均通过。热更新源码恢复，验收账号已禁用且活动Session为0，精确Compose项目、network和volumes均移除。
+
+报告`status`与`business_acceptance_status`为`incomplete`，counts为3 passed / 3 skipped / 0 failed / 0 errors：初始和重启两个浏览器阶段各自跳过不适用的另一阶段用例（初始2 passed/1 skipped，重启1 passed/2 skipped）；报告Contract将任何skip判为incomplete，不能把业务用例全绿等同完整验收通过。真实运行中公开`/ready`曾短暂返回503，既有有界等待在后续ready后才提交；浏览器阶段无因SERVICE_NOT_READY拒绝而失败。最终报告与完整产物保留于`/home/jojo/Projects/chatbi-engine-audit-remediation-uat-20261017-8772df5/reports/browser-real/`及`reports/browser-real-artifacts/`。
+
+T12和全仓目标继续in-progress：正式AI评测仍以`97268ca`为基线，单轮S02在Provider阶段失败且未验证别名检索效果，多轮`MT-FILTER-REPLACE`仍为`SQL_REJECTED`；全量测试此前61项条件skip仍使结果为incomplete。本次只验证隔离浏览器验收路径，不改变应用readiness/admission、评测案例、Seed、模型参数或门槛，也不据此宣称22项审计问题全部关闭。无需再为同一候选重跑完整UAT；后续工作应聚焦正式评测失败和既有skip归属，任何会改变目标/Contract的处理先回到已确认Spec边界。
