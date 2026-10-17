@@ -12,7 +12,7 @@
 
 ## 已确认的后续方向
 
-已确认全仓审计问题修复目标，范围为[审计报告](audits/project-audit-20261016.md)中的22项问题（AUD014已排除）；[Spec](../.scratch/project-audit-remediation/spec.md)、设计审查修订和12项Ticket拆分均已确认。Ticket 01–11已完成，Ticket 12进入收尾。clean候选`c95ca34`上的三套正式AI Evaluation分别为single-turn 29/29、business-analysis 10/10、multi-turn 7/7（15/15轮），隔离容器业务验收3/3且无skip；三套报告通过官方validator。为避免总测试重复报告条件skip，测试编排将PostgreSQL/PDF用例交给已有隔离专用阶段执行；真实LLM端到端单测由正式AI Evaluation覆盖。改动后`./dev test all`为1255/1255、0 skip，`./dev check`通过；结果与收尾记录见[Ticket 12](../.scratch/project-audit-remediation/issues/12-final-validation-and-documentation.md)。历史S02 Provider失败和多轮SQL Guard拒绝均未复现且根因未知，用户已确认暂缓定位；不标记为已修复或归因测试集/LLM/Guard。阿里云Trace配置已传入，但无GetTrace查询凭据确认云端收件。当前工作仍是本地候选，Ticket 12记录与本地提交完成后再报告整体状态；远端发布未授权。
+已确认全仓审计问题修复目标，范围为[审计报告](audits/project-audit-20261016.md)中的22项问题（AUD014已排除）；[Spec](../.scratch/project-audit-remediation/spec.md)、设计审查修订和12项Ticket拆分均已确认。Ticket 01–12的本地实现、验证、Review和Commit已完成，最终候选`a43b320`工作区干净：`./dev test all` 1255/1255、0 skip，`./dev check`通过。clean候选`c95ca34`上的正式AI Evaluation为single-turn 29/29、business-analysis 10/10、multi-turn 7/7（15/15轮），隔离容器业务验收3/3且无skip；报告均clean且provenance stable，三套Evaluation通过官方validator。`a43b320`仅更新测试编排与收尾文档，未改变应用行为或Contract，详细报告及证据复用边界见[Ticket 12](../.scratch/project-audit-remediation/issues/12-final-validation-and-documentation.md)。两条历史失败的底层原因/拒绝分类按用户决定暂缓定位，不视作已修复；阿里云Trace配置已传入，但未能查询确认云端收件。修复当前仅在本地分支，远端Push/PR尚未授权。
 
 已完成dev分类入口与本机管理员恢复目标，按[Spec](../.scratch/dev-command-entrypoints/spec.md)交付七项Ticket；当时纳入的标准APP管理路线已由后续[测试可靠性目标](../.scratch/test-reliability/spec.md)确认退役，历史候选和验证仍见[原验收记录](../.scratch/dev-command-entrypoints/acceptance.md)。
 

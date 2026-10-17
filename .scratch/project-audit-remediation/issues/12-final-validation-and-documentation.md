@@ -180,3 +180,11 @@ T12和全仓目标继续in-progress：正式AI评测仍以`97268ca`为基线，�
 改动后`./dev test all` run `20261017T183655Z-c95ca34-test-all-ce1b02387147`通过：Python 1102/1102、Database CI 5/5、隔离development PostgreSQL 63/63、Web packaged 82/82、Web dev 1/1、PDF renderer 2/2，总计1255/1255、0 skip、0失败，清理通过。JUnit确认PostgreSQL Service 集成用例由development阶段执行；PDF renderer用例由renderer阶段执行。此前同候选一次Web阶段出现的两项浏览器失败，在单独Web复跑及本次全量回归中均未复现；保留其失败报告，不据此认定稳定缺陷。完整`./dev check` run `20261017T184345Z-c95ca34-check-all-c3ac9c17faf2`通过，包含文档、模块边界、Python质量、前端类型检查及普通/导出构建；构建有既存大chunk提示，不影响通过。
 
 本次测试编排改动的代码审查结论PASS：排除项都有后续隔离专用阶段或同一Ticket正式AI评测的明确覆盖；无断言或验收阈值变化。验证报告的provenance为stable，但因运行时此脚本尚未提交而`git_dirty=true`。此报告、检查结果、评测和隔离业务验收需一起按源码/Contract变化边界记录；代码与业务Contract未变的既有clean正式评测和UAT证据可复用。Ticket 12仍in-progress，直至本地提交与收尾记录完成；远端发布未授权。
+
+### 2026-10-18 clean候选最终验证与本地完成
+
+测试编排和前述Review结果提交为`a43b320 test(container): 去重全量回归环境阶段`。在该clean提交上重新运行`./dev test all`，run `20261017T184527Z-a43b320-test-all-2ac2f5f79ab3`通过，provenance stable、`git_dirty=false`：Python 1102/1102、Database CI 5/5、development PostgreSQL 63/63、Web packaged 82/82、Web dev 1/1、PDF renderer 2/2，总计1255/1255，0 skip、0 failure，资源清理通过。干净提交上的完整`./dev check` run `20261017T191309Z-a43b320-check-all-da00e5d7ed1b`通过；普通前端和导出构建仅报告已有大chunk提示。提交后的`./dev check docs`和`git diff --check`也通过。
+
+正式single-turn 29/29、business-analysis 10/10、multi-turn 7/7（15/15轮）以及隔离容器业务验收3/3、0 skip均在clean候选`c95ca34`完成，provenance stable，三套Evaluation经官方validator通过。`a43b320`相对该已验收候选只增加`test all`阶段去重与验收文档，没有改应用代码、AI行为、公开Contract或业务验收流程；因此以上评测/UAT结果适用于当前候选，原报告保留其真实绑定SHA，不伪称由`a43b320`直接运行。
+
+最终代码Review与Diff检查PASS；本地工作区干净。Ticket 12及全仓审计修复目标的本地实施、验证、Review和Commit均完成。历史S02 `PROVIDER_CALL_FAILED`底层原因及历史`MT-FILTER-APPEND-T1 SQL_REJECTED`分类/根因按用户决定暂缓定位，不标成已修复；OTLP配置已传入，但阿里云收件未能用GetTrace查询确认。没有Push/PR授权，后续如需进入远端主线，应另行明确发布授权；不自动清理保留的其它本机候选分支。

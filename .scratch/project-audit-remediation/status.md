@@ -1,7 +1,7 @@
 # 审计修复规划状态
 
-Status: in-progress
-Stage: 实施中
+Status: complete
+Stage: 本地交付完成
 
 目标：修复2026-10-16全仓审计的22项问题，并完成软件回归、真实LLM评测与隔离容器业务验收。AUD014不属于缺陷。
 
@@ -10,6 +10,8 @@ Stage: 实施中
 当前行为依据是[已确认Spec](spec.md)，缺陷来源为[原审计报告](../../docs/audits/project-audit-20261016.md)。当前阶段、授权和下一步以Git公共目录中的`project-audit-remediation`实时记录为准。
 
 2026-10-18 Ticket 12整体验收最新状态：clean候选`c95ca34`上的正式评测为single-turn 29/29、business-analysis 10/10、multi-turn 7/7（15/15轮），隔离容器业务验收3/3、0 skip，均有clean且provenance stable报告；三套报告官方validator通过。为消除总测试报告把已在隔离阶段执行的PostgreSQL/PDF用例再次计为conditional skip，`scripts/container_tasks.sh`的`test all` Python阶段改为排除这些重复阶段；真实LLM集成单测由同一工作项要求的正式AI评测覆盖。改动后的全量回归1255/1255、0 skip，完整`./dev check`通过。当前验证是在该脚本改动尚未提交时完成，报告provenance stable但`git_dirty=true`；增量Review与本地提交仍待完成。两条历史失败根因已按用户决定暂缓；阿里云Trace收件仍无查询凭据确认。远端发布未授权。
+
+2026-10-18 本地收尾完成：候选`a43b320`包含最后的测试阶段去重和收尾文档，已本地提交、工作区干净。clean提交验证`./dev test all`为1255/1255、0 skip（run `20261017T184527Z-a43b320-test-all-2ac2f5f79ab3`），`./dev check`通过（run `20261017T191309Z-a43b320-check-all-da00e5d7ed1b`）；三套clean正式Evaluation及clean隔离UAT仍适用于该提交，因为新增提交只改验证编排与文档、没有改变应用行为或Contract。对应证据和复用边界记于[Ticket 12](issues/12-final-validation-and-documentation.md)。22项审计目标的本地实现、验证、Review和Commit完成；两条历史失败根因按用户决定暂缓，阿里云收件未查询确认。远端Push/PR未授权；保留的其它本机分支按Harness记录，不自动清理或发布。
 
 2026-10-18 Ticket 12双出口Trace目标复跑：候选`787b6a4`、匹配隔离RAG下`MT-FILTER-APPEND` 2/2轮PASS，报告`20261017T165454Z-787b6a4-multi-turn-f32fffd9480b`，provenance stable、clean。逐轮Trace：T1 `a4faae7f0616f32b52e090939fd17e04`、T2 `9fd323ff7ec40351976f61312172fe51`；tools标准输出已呈现安全Console Span，内容采集false。阿里云OTLP配置已传入，但无GetTrace查询凭据，未确认云端收件。历史一次T1 `SQL_REJECTED`仍不可复现，不能归因测试集、LLM或Guard；Ticket 12继续in-progress。第一次错误Compose的unverified报告保留但不作为验收证据。完整记录见[Ticket 12](issues/12-final-validation-and-documentation.md)。
 
