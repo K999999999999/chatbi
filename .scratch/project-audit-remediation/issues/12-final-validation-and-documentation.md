@@ -125,8 +125,16 @@ T12和全仓目标继续in-progress：正式AI评测仍以`97268ca`为基线，�
 
 ### 2026-10-17 S02 检索歧义根因确认
 
-对`20261017T144156Z-2690f68-single-turn-7b83a440b22a`的`retrieval/AMBIGUOUS`完成只读复核。评测候选`src/semantic/metrics.json`指纹为`51832c3e...a3c91af4`，包含“已完成订单明细有多少行”别名；当时实际使用的RAG资产`20261014T103325Z-66fde892ef79`在`manifest.json`记录`metrics_sha256=17399264...b35193628`，Qdrant对应`metric:已完成订单明细行数` payload只含旧别名“订单明细行数”，缺少新别名。旧索引对S02原话的向量查询返回7个候选，未命中唯一精确指标名称/别名；确定性planner因此按fail-closed规则返回`AMBIGUOUS`。根因是语义事实源已更新、评测复用的RAG派生资产未重建，不是S02测试集、LLM或接口错误。
+对`20261017T144156Z-2690f68-single-turn-7b83a440b22a`的`retrieval/AMBIGUOUS`完成只读复核。评测候选`src/semantic/metrics.json`指纹为`51832c3ed84750dddb09998f11b602265b038db23e3af81d62f63561a3c91af4`，包含“已完成订单明细有多少行”别名；当时实际使用的RAG资产`20261014T103325Z-66fde892ef79`在`manifest.json`记录`metrics_sha256=17399264e05942fc6e42e4dadf3d834d987e8e3952584fa23356232b35193628`，Qdrant对应`metric:已完成订单明细行数` payload只含旧别名“订单明细行数”，缺少新别名。旧索引对S02原话的向量查询返回7个候选，未命中唯一精确指标名称/别名；确定性planner因此按fail-closed规则返回`AMBIGUOUS`。根因是语义事实源已更新、评测复用的RAG派生资产未重建，不是S02测试集、LLM或接口错误。
 
 为验证而非改动日常服务，在候选worktree的`.local/dev-tools/rag-s02-diagnostic`显式构建隔离RAG版本`20261017T153637Z-s02-alias-diagnostic`，未更改主`data/rag/current.json`（仍指向`20261014T103325Z-66fde892ef79`）。新manifest指标指纹与候选指标源完全一致；新Qdrant payload包含两个预期别名。使用此隔离资产、现有固定S02单案例及不变Seed/模型参数复跑，报告`20261017T153843Z-19074fb-single-turn-baeaff273c37`为1/1 PASS、provenance stable、RAG版本为新隔离build。该结果确认重建索引可解决S02检索歧义；它是Ticket诊断报告，不替代候选`97268ca`上历史正式评测报告，也没有切换主服务。工作树干净，日常API/Postgres/Qdrant/Web容器未重启。
 
 后续若要让运行中的`master`服务使用该别名，需要先将别名代码纳入实际运行版本，再显式build-rag并按新候选重跑相关验收；不可单独切换到候选索引，因为当前master的指标源仍是旧hash。Ticket 12和整体审计目标仍in-progress。
+
+### 2026-10-18 匹配 RAG 资产上的完整 Evaluation
+
+使用候选`ba3e4e71bef58b2da2298b7ea9773a9844122e4e`、隔离 RAG `20261017T153637Z-s02-alias-diagnostic`及原模型/Seed，旧评测报告未覆盖：完整 single-turn `20261017T154150Z-ba3e4e7-single-turn-777ea6d23283`为29/29 PASS、`git_dirty=false`、provenance stable（S02通过）；business-analysis `20261017T155838Z-ba3e4e7-business-analysis-a73f3d908772`为10/10 PASS、provenance stable，但`git_dirty=true`，因为本地当时有一个新生成的MT-FILTER-APPEND诊断用例子集文件；不能把该报告作为clean候选验收。
+
+同候选的完整 multi-turn `20261017T155056Z-ba3e4e7-multi-turn-2645134e9c53`为6/7 PASS、stable、clean；`MT-FILTER-REPLACE`通过，`MT-FILTER-APPEND-T1`返回`SQL_REJECTED`，失败Trace ID为`ff988982811b6eb3ac269408c5425047`。同一`MT-FILTER-APPEND`单案例随后在本机in-memory Span exporter下复跑`20261017T155715Z-ba3e4e7-multi-turn-4e531ce3b87b`为1/1 PASS；因子集文件未提交，该诊断报告`git_dirty=true`。因此拒绝没有稳定复现，不能断言是SQL Guard规则错误或LLM错误。该通过复跑未产生拒绝 Span，无法拿它还原前次拒绝类别。
+
+对`ba3e4e7`三套报告运行官方`evaluate validate`，因multi-turn 6/7以及business-analysis的dirty provenance返回失败。完整多轮失败报告有Trace ID；代码已将固定`chatbi.sql_guard.rejection_code`写入拒绝Span，但本机未配置阿里云`GetTrace`查询用RAM凭据，故未能读取该次失败Span的拒绝类别，Trace后端是否已收到该Span也未通过查询确认。原失败报告、单案例复跑及Trace ID均保留；未改模型、Prompt、Guard规则、用例或阈值，Ticket 12继续in-progress。
