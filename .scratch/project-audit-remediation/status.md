@@ -9,6 +9,8 @@ Stage: 实施中
 
 当前行为依据是[已确认Spec](spec.md)，缺陷来源为[原审计报告](../../docs/audits/project-audit-20261016.md)。当前阶段、授权和下一步以Git公共目录中的`project-audit-remediation`实时记录为准。
 
+2026-10-18 Ticket 12整体验收最新状态：clean候选`c95ca34`上的正式评测为single-turn 29/29、business-analysis 10/10、multi-turn 7/7（15/15轮），隔离容器业务验收3/3、0 skip，均有clean且provenance stable报告；三套报告官方validator通过。为消除总测试报告把已在隔离阶段执行的PostgreSQL/PDF用例再次计为conditional skip，`scripts/container_tasks.sh`的`test all` Python阶段改为排除这些重复阶段；真实LLM集成单测由同一工作项要求的正式AI评测覆盖。改动后的全量回归1255/1255、0 skip，完整`./dev check`通过。当前验证是在该脚本改动尚未提交时完成，报告provenance stable但`git_dirty=true`；增量Review与本地提交仍待完成。两条历史失败根因已按用户决定暂缓；阿里云Trace收件仍无查询凭据确认。远端发布未授权。
+
 2026-10-18 Ticket 12双出口Trace目标复跑：候选`787b6a4`、匹配隔离RAG下`MT-FILTER-APPEND` 2/2轮PASS，报告`20261017T165454Z-787b6a4-multi-turn-f32fffd9480b`，provenance stable、clean。逐轮Trace：T1 `a4faae7f0616f32b52e090939fd17e04`、T2 `9fd323ff7ec40351976f61312172fe51`；tools标准输出已呈现安全Console Span，内容采集false。阿里云OTLP配置已传入，但无GetTrace查询凭据，未确认云端收件。历史一次T1 `SQL_REJECTED`仍不可复现，不能归因测试集、LLM或Guard；Ticket 12继续in-progress。第一次错误Compose的unverified报告保留但不作为验收证据。完整记录见[Ticket 12](issues/12-final-validation-and-documentation.md)。
 
 2026-10-18 按用户要求完整复跑multi-turn：报告`20261017T165930Z-e0d747e-multi-turn-114cbd777814`为7/7场景、15/15轮PASS，clean、provenance stable；T1 `MT-FILTER-APPEND` Trace `8594b9872c15d8d64c06242d56063be0`本地链路覆盖校验、理解、RAG检索、LLM、SQL Guard及数据库执行，Guard未拒绝，内容采集false。Span日志保存在`.local/dev-tools/mt-full-dual-export-e0d747e.log`（mode 0600）。阿里云收件仍未通过查询确认。历史一次拒绝仍无拒绝码与根因，完整套件此次未复现；不能声称已修复或测试集有误。Ticket 12其余验收继续，见[详细记录](issues/12-final-validation-and-documentation.md)。

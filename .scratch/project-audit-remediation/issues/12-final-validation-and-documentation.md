@@ -172,3 +172,11 @@ T12和全仓目标继续in-progress：正式AI评测仍以`97268ca`为基线，�
 ### 2026-10-18 历史失败根因暂缓定位
 
 用户确认暂缓继续追查两条未复现的历史失败：S02 `PROVIDER_CALL_FAILED` 的底层 Provider 原因，以及 `MT-FILTER-APPEND-T1 SQL_REJECTED` 的历史 Guard 拒绝分类。现有报告/Trace没有足够信息回填根因，继续重复调用也没有新增诊断价值。两项保留为“历史现象、根因未知、暂缓定位”，不标成已修复、不归因测试集/LLM/Guard，也不阻止按当前候选结果继续其他验收；若后续复现，再依据完整本地 Trace 和错误分类继续定位。Ticket 12保持in-progress，其他验收门槛仍按原Spec处理。
+
+### 2026-10-18 全量测试阶段去重与最终检查
+
+检查原`./dev test all`报告中的61项conditional skip后，确认其中60项PostgreSQL/PDF测试会在后续隔离database/renderer阶段执行；另1项真实LLM端到端集成测试由本Ticket的正式AI Evaluation覆盖。`scripts/container_tasks.sh`现让Python阶段排除这些由专用阶段负责的测试文件，专用阶段仍按原命令运行，没有改动断言、skip策略或业务行为。
+
+改动后`./dev test all` run `20261017T183655Z-c95ca34-test-all-ce1b02387147`通过：Python 1102/1102、Database CI 5/5、隔离development PostgreSQL 63/63、Web packaged 82/82、Web dev 1/1、PDF renderer 2/2，总计1255/1255、0 skip、0失败，清理通过。JUnit确认PostgreSQL Service 集成用例由development阶段执行；PDF renderer用例由renderer阶段执行。此前同候选一次Web阶段出现的两项浏览器失败，在单独Web复跑及本次全量回归中均未复现；保留其失败报告，不据此认定稳定缺陷。完整`./dev check` run `20261017T184345Z-c95ca34-check-all-c3ac9c17faf2`通过，包含文档、模块边界、Python质量、前端类型检查及普通/导出构建；构建有既存大chunk提示，不影响通过。
+
+本次测试编排改动的代码审查结论PASS：排除项都有后续隔离专用阶段或同一Ticket正式AI评测的明确覆盖；无断言或验收阈值变化。验证报告的provenance为stable，但因运行时此脚本尚未提交而`git_dirty=true`。此报告、检查结果、评测和隔离业务验收需一起按源码/Contract变化边界记录；代码与业务Contract未变的既有clean正式评测和UAT证据可复用。Ticket 12仍in-progress，直至本地提交与收尾记录完成；远端发布未授权。

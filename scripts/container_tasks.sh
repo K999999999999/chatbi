@@ -207,6 +207,20 @@ python_tests() {
     return "$exit_code"
 }
 
+python_tests_for_all() {
+    # These suites run below with isolated PostgreSQL/Chromium; the real-LLM
+    # integration case is covered by the separately required AI evaluations.
+    python_tests \
+        --ignore=tests/chatbi_control/test_admin_recovery_postgres.py \
+        --ignore=tests/chatbi_control/test_execution_postgres.py \
+        --ignore=tests/chatbi_control/test_history_postgres.py \
+        --ignore=tests/chatbi_control/test_postgres_dev_environment.py \
+        --ignore=tests/evaluation/common/test_database_fingerprint.py \
+        --ignore=tests/online_query/test_database_integration.py \
+        --ignore=tests/online_query/test_service_integration.py \
+        --ignore=tests/query_api/test_result_export_pdf_renderer.py
+}
+
 renderer_tests() {
     local filtered=false exit_code report_code own_report=false
     (($# == 0)) || filtered=true
@@ -525,7 +539,7 @@ test_all() {
     if verification_begin test all dev-container python false; then :; else return $?; fi
     for suite in python database web renderer; do
         case "$suite" in
-            python) task_runner=python_tests ;;
+            python) task_runner=python_tests_for_all ;;
             database) task_runner=database_task ;;
             web) task_runner=web_task ;;
             renderer) task_runner=renderer_tests ;;
