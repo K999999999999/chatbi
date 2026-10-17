@@ -9,6 +9,8 @@ Stage: 实施中
 
 当前行为依据是[已确认Spec](spec.md)，缺陷来源为[原审计报告](../../docs/audits/project-audit-20261016.md)。当前阶段、授权和下一步以Git公共目录中的`project-audit-remediation`实时记录为准。
 
+2026-10-18 Ticket 12双出口Trace目标复跑：候选`787b6a4`、匹配隔离RAG下`MT-FILTER-APPEND` 2/2轮PASS，报告`20261017T165454Z-787b6a4-multi-turn-f32fffd9480b`，provenance stable、clean。逐轮Trace：T1 `a4faae7f0616f32b52e090939fd17e04`、T2 `9fd323ff7ec40351976f61312172fe51`；tools标准输出已呈现安全Console Span，内容采集false。阿里云OTLP配置已传入，但无GetTrace查询凭据，未确认云端收件。历史一次T1 `SQL_REJECTED`仍不可复现，不能归因测试集、LLM或Guard；Ticket 12继续in-progress。第一次错误Compose的unverified报告保留但不作为验收证据。完整记录见[Ticket 12](issues/12-final-validation-and-documentation.md)。
+
 Ticket 03验证：候选 `7a46415` 上 `./dev test database` 为CI 5 passed、isolated development PostgreSQL 59 passed（run `20261016T181403Z-7a46415-test-database-3cf13e780edf`）；`./dev check python` 307 files already formatted / all checks passed（run `20261016T181403Z-7a46415-check-python-1e64d0a951bf`）；`./dev check docs` PASS（run `20261016T181403Z-7a46415-check-docs-b7775d9ab860`）。
 
 Ticket 04已完成并Commit `0b3755c`。候选上 `./dev test web` 71 passed（run `20261016T183628Z-0b3755c-test-web-c2ae9ae720f9`）、`./dev test renderer` 2 passed（run `20261016T183817Z-0b3755c-test-renderer-759f41e475fb`）、`./dev check python` 307 files / all checks passed（run `20261016T183835Z-0b3755c-check-python-4a1b2cdf5d09`）、`./dev check docs` PASS（run `20261016T183853Z-0b3755c-check-docs-1d8d592af71c`）；候选报告 provenance 均 stable；Review PASS。Ticket 04未运行全项目数据库回归、真实LLM评测或隔离Compose业务验收，这些由后续Ticket处理。

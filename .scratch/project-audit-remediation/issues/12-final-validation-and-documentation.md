@@ -153,4 +153,10 @@ T12和全仓目标继续in-progress：正式AI评测仍以`97268ca`为基线，�
 
 本地运行验证完成：只重建了API容器，运行代码挂载为候选分支`54e90e6`；Web、PostgreSQL、Qdrant容器未重建且保持健康。API health为healthy；一个不触发LLM的校验请求返回`X-Trace-ID=780de292b8a059560a564321e92d558d`，该ID已在API容器本地日志中找到；近5分钟未见安全Exporter初始化/导出警告。容器内`CHATBI_OBSERVABILITY_ENABLED=true`、本地Console export=true、内容采集=false，OTLP endpoint/headers仍指向已配置的阿里云。未查询云端，因此仅确认本地导出和远端配置，未确认阿里云已接收该条Trace。
 
-下一步计划：仅运行现有`MT-FILTER-APPEND`目标用例，重点确认失败是否再次发生于T1（T1本身是独立的第一季度销售额查询，T2才追加华东筛选）；保留原始评测报告，并按新Trace ID检索API本地日志、检查`chatbi.sql_guard.rejection_code`和失败前链路。如果T1通过，记录本次仍不可复现，不归因于测试集或Guard规则；若失败，则按固定拒绝分类继续判断，不采集SQL/原始模型内容、不更改案例、模型参数或门槛。只在确认确定性代码缺陷后才做对应修复和定向回归。
+### 2026-10-18 `MT-FILTER-APPEND` 双出口目标复跑
+
+目标案例在候选`787b6a41fb33163666aeb3abb0a00f03646a4bd7`和匹配的隔离RAG `20261017T153637Z-s02-alias-diagnostic`上复跑。有效报告`20261017T165454Z-787b6a4-multi-turn-f32fffd9480b`为2/2轮PASS、`git_dirty=false`、provenance stable；T1 Trace ID为`a4faae7f0616f32b52e090939fd17e04`，T2为`9fd323ff7ec40351976f61312172fe51`。此前一次通过运行因使用主分支Compose、报告provenance未验证且tools未收到OTel开关，不作为双出口验证；该报告仍保留。此次改用候选Compose与隔离RAG，未重建API、Web、PostgreSQL或Qdrant。
+
+评测tools标准输出已看到两轮的安全Console Span，包含`query.request`、`llm.query_understanding`、`retrieval.plan`、`asset.resolve`、`embedding.query`和`table.search`等阶段；T2 `query.request`标记`evaluation.case_id=MT-FILTER-APPEND`、`evaluation.turn_id=MT-FILTER-APPEND-T2`、`chatbi.outcome=SUCCESS`，`chatbi.content_capture.enabled=false`。本次无SQL Guard拒绝，因此没有新的`chatbi.sql_guard.rejection_code`。本机`.env`的阿里云OTLP endpoint和headers已传入tools；由于没有阿里云GetTrace查询凭据，不能确认云端收到这些Span。
+
+本次T1和T2都通过；连同此前两次定向复跑，历史完整套件中唯一的`MT-FILTER-APPEND-T1 SQL_REJECTED`仍未复现，现有证据不能认定测试集有误，也不能确定该历史拒绝来自LLM或确定性代码。历史失败Trace `ff988982811b6eb3ac269408c5425047`的具体拒绝分类仍未知；不改案例、Seed、模型参数、Prompt、Guard规则或门槛，不因单次历史失败改业务逻辑。Ticket 12继续in-progress，待按既定Done When处理其他未完成验收项。
