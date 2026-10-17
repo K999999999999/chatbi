@@ -122,3 +122,11 @@ T12和全仓目标继续in-progress：正式AI评测仍以`97268ca`为基线，�
 当前复跑没有重现历史 S02 `PROVIDER_CALL_FAILED` 或 MT-FILTER-REPLACE `SQL_REJECTED`，因此不能由本次结果断言历史根因；新增字段为后续重现提供可查分类。历史正式报告、候选97268ca结果、模型参数、案例、Seed、评测门槛与readiness Contract均未改动。主工作区既有用户文档修改保留，未启动或清理日常服务。增量 Code Review：PASS，BASE `2690f68e9e09225433cff4d91172196145f1daec`；本地提交后Ticket 12仍保持in-progress。
 
 本次增量已本地Commit `a034a61 fix(observability): 补齐评测失败链路诊断`，无Push/PR；Ticket 12和全仓审计目标继续in-progress。
+
+### 2026-10-17 S02 检索歧义根因确认
+
+对`20261017T144156Z-2690f68-single-turn-7b83a440b22a`的`retrieval/AMBIGUOUS`完成只读复核。评测候选`src/semantic/metrics.json`指纹为`51832c3e...a3c91af4`，包含“已完成订单明细有多少行”别名；当时实际使用的RAG资产`20261014T103325Z-66fde892ef79`在`manifest.json`记录`metrics_sha256=17399264...b35193628`，Qdrant对应`metric:已完成订单明细行数` payload只含旧别名“订单明细行数”，缺少新别名。旧索引对S02原话的向量查询返回7个候选，未命中唯一精确指标名称/别名；确定性planner因此按fail-closed规则返回`AMBIGUOUS`。根因是语义事实源已更新、评测复用的RAG派生资产未重建，不是S02测试集、LLM或接口错误。
+
+为验证而非改动日常服务，在候选worktree的`.local/dev-tools/rag-s02-diagnostic`显式构建隔离RAG版本`20261017T153637Z-s02-alias-diagnostic`，未更改主`data/rag/current.json`（仍指向`20261014T103325Z-66fde892ef79`）。新manifest指标指纹与候选指标源完全一致；新Qdrant payload包含两个预期别名。使用此隔离资产、现有固定S02单案例及不变Seed/模型参数复跑，报告`20261017T153843Z-19074fb-single-turn-baeaff273c37`为1/1 PASS、provenance stable、RAG版本为新隔离build。该结果确认重建索引可解决S02检索歧义；它是Ticket诊断报告，不替代候选`97268ca`上历史正式评测报告，也没有切换主服务。工作树干净，日常API/Postgres/Qdrant/Web容器未重启。
+
+后续若要让运行中的`master`服务使用该别名，需要先将别名代码纳入实际运行版本，再显式build-rag并按新候选重跑相关验收；不可单独切换到候选索引，因为当前master的指标源仍是旧hash。Ticket 12和整体审计目标仍in-progress。
