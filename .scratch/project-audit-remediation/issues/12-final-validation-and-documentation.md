@@ -187,4 +187,4 @@ T12和全仓目标继续in-progress：正式AI评测仍以`97268ca`为基线，�
 
 正式single-turn 29/29、business-analysis 10/10、multi-turn 7/7（15/15轮）以及隔离容器业务验收3/3、0 skip均在clean候选`c95ca34`完成，provenance stable，三套Evaluation经官方validator通过。`a43b320`相对该已验收候选只增加`test all`阶段去重与验收文档，没有改应用代码、AI行为、公开Contract或业务验收流程；因此以上评测/UAT结果适用于当前候选，原报告保留其真实绑定SHA，不伪称由`a43b320`直接运行。
 
-最终代码Review与Diff检查PASS；本地工作区干净。Ticket 12及全仓审计修复目标的本地实施、验证、Review和Commit均完成。历史S02 `PROVIDER_CALL_FAILED`底层原因及历史`MT-FILTER-APPEND-T1 SQL_REJECTED`分类/根因按用户决定暂缓定位，不标成已修复；OTLP配置已传入，但阿里云收件未能用GetTrace查询确认。没有Push/PR授权，后续如需进入远端主线，应另行明确发布授权；不自动清理保留的其它本机候选分支。
+最终代码Review与Diff检查PASS；本地工作区干净。Ticket 12及全仓审计修复目标的本地实施、验证、Review和Commit均完成。历史S02 `PROVIDER_CALL_FAILED`底层原因及历史`MT-FILTER-APPEND-T1 SQL_REJECTED`分类/根因按用户决定暂缓定位，不标成已修复；OTLP配置已传入，但阿里云收件未能用GetTrace查询确认。2026-10-18用户明确授权将本地候选向`master`提交PR。仓库Ruleset要求8项CI检查并启用Squash Auto-merge；达到合并条件后由GitHub自动合并，Agent不直接人工合并。保留的其他本机候选分支不自动清理。
