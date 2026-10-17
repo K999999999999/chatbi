@@ -60,3 +60,13 @@ Comments: 按已确认Spec、设计审查和READY拆分登记。审计报告副�
 本轮只读实现Review：PASS，BASE `7ba52e1fcf9cc3140700982b77085dfabe1bacef`，范围为S02指标别名/源事实测试，以及容器验收readiness等待与503捕获辅助；未改查询、业务或readiness产品行为，未扩大评测阈值。定向Python 20 passed / 3 subtests、Web 83 passed、Python质量、文档链接和Shell语法检查通过；`git diff --check`通过。Clean candidate上的容器复验仍待执行；目前只提交本地，不Push/PR。
 
 代码本地Commit：`f67221b fix(semantic): 修复订单明细行数指标识别`；`c345827 test(container): 修正真实验收就绪时序`。二者均通过相应定向回归、Review和Diff检查；c345827后的隔离容器实测尚未执行。
+
+### 2026-10-17 `9b81160` clean UAT 与就绪轮询修正
+
+clean candidate `9b81160498604a176d6693df98a1ad90345d9231` 的隔离业务验收 run `20261017T105025Z-9b81160-business-acceptance-container-dev-444bd63da584` provenance stable、`git_dirty=false`；prepare通过，browser-initial为1 passed / 1 failed / 1 skipped，后续restart与最终exports阶段未运行，cleanup通过。实际首次问数在所有六个业务执行阶段完成，返回成功快照；一次 XLSX 导出成功。随后验收轮询失败，安全错误为`应用在75000ms内未就绪（最近状态：http_401）`。失败点是验收helper误把需登录身份的`/api/v1/operations/status`用作公共就绪探针；该接口在`src/query_api/operations_api.py`明确执行只读身份认证。现有匿名`/ready`才是服务健康与就绪探针。证据支持测试等待目标错误，不支持将这次失败归因为问数业务缺陷。
+
+失败报告中的验收账号已禁用、活动Session为0；容器、专用volume和network均按精确Compose项目身份移除；热更新源码恢复Hash与备份相同，日常Compose未操作。完整报告和产物保留于detached UAT工作树`/home/jojo/Projects/chatbi-engine-audit-remediation-uat-20261017/reports/browser-real/`及`reports/browser-real-artifacts/`。
+
+已在审计分支修正测试代码：统一`frontend/tests/container-real.spec.ts`首次和追问前就绪检查，删除重复的身份态helper；`frontend/tests/helpers.ts`改为轮询匿名`/ready`，仅HTTP成功且`status=ready`时继续；`frontend/tests/operations.spec.ts`覆盖匿名状态从unknown/not_ready到ready恢复及超时。该修改不改产品接口、权限或readiness Contract。TDD红测报告`20261017T105827Z-9b81160-test-web-f3240f47153a`（2项预期失败，断言公开`/ready`时旧helper仍请求身份态接口）；修正后定向浏览器测试`20261017T105948Z-9b81160-test-web-0ad2ce348418` packaged 2/2、dev 1/1通过；完整Web `20261017T110059Z-9b81160-test-web-68bc922c0423` packaged 82/82、dev 1/1通过。上述是9b工作树上的实现迭代验证，provenance stable但`git_dirty=true`，不是clean候选门禁。`./dev check docs` PASS（run `20261017T110430Z-9b81160-check-docs-aeec5a7dfc31`），`git diff --check`通过；本次只读Code Review PASS，BASE `9b81160498604a176d6693df98a1ad90345d9231`，范围限于三项frontend测试文件。
+
+下一步：本地提交该测试修正及记录，基于新clean HEAD再次运行隔离容器业务验收并保留新报告。Ticket 12仍为in-progress；正式AI评测仍绑定`97268ca`且单轮、多轮验证器未通过，61项条件性skip仍使全量软件结果为incomplete。不得绕过readiness、改模型参数或用此次helper修正宣称业务验收通过。

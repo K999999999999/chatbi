@@ -39,11 +39,11 @@ export async function waitForOperationsReady(
     try {
       lastStatus = await page.evaluate(async () => {
         try {
-          const response = await fetch('/api/v1/operations/status', { cache: 'no-store' });
+          const response = await fetch('/ready', { cache: 'no-store' });
           const payload: unknown = await response.json();
           if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return 'invalid';
-          const state = payload as { status?: unknown; query_available?: unknown };
-          if (response.ok && state.status === 'ready' && state.query_available === true) return 'ready';
+          const state = payload as { status?: unknown };
+          if (response.ok && state.status === 'ready') return 'ready';
           if (state.status === 'not_ready' || state.status === 'unknown') return state.status;
           return `http_${response.status}`;
         } catch {

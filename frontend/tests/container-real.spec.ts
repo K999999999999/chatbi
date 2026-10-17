@@ -332,15 +332,6 @@ test('源码挂载实际触发 Python 重载与 Vite 热更新', async ({ page }
   }, { timeout: 60000 }).toBe('ok');
 });
 
-async function waitForApplicationReady(page: Page, userId: number) {
-  await expect.poll(() => page.evaluate(async id => {
-    const response = await fetch('/api/v1/operations/status', {
-      headers: { 'X-ChatBI-User-ID': String(id) }, credentials: 'same-origin', cache: 'no-store',
-    });
-    return response.ok ? (await response.json()).status : 'unknown';
-  }, userId), { timeout: 60000, intervals: [250, 500, 1000] }).toBe('ready');
-}
-
 test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', async ({ page, browser }) => {
   test.skip(process.env.CHATBI_CONTAINER_RESTART_PHASE === '1');
   const reference = JSON.parse(process.env.CHATBI_CONTAINER_REFERENCE!);
@@ -356,7 +347,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
   const account = JSON.parse(readFileSync(reportPath('account.json'), 'utf8')) as { id: number };
   try {
     await login(page, process.env.CHATBI_REAL_E2E_USERNAME!, process.env.CHATBI_REAL_E2E_PASSWORD!);
-    await waitForApplicationReady(page, account.id);
+    await waitForOperationsReady(page);
     await page.evaluate(() => { window.__chatbiCaptureExecutionStreams = true; });
     const firstResponse = waitForExecutionResult(page, 240000);
     await send(page, '2025年2月已完成订单的人民币净销售额是多少？');

@@ -39,16 +39,16 @@ test('服务拒绝追问时显示确定原因，恢复后沿用成功上下文',
 });
 
 test('容器验收轮询公开就绪状态，并在服务恢复后才继续', async ({ page }) => {
-  await login(page);
+  await page.goto('/');
   const statuses = ['unknown', 'not_ready', 'ready'] as const;
   let attempts = 0;
-  await page.route('**/api/v1/operations/status', route => {
+  await page.route('**/ready', route => {
     const status = statuses[Math.min(attempts, statuses.length - 1)];
     attempts += 1;
     return route.fulfill({
       status: status === 'ready' ? 200 : 503,
       headers: { 'Cache-Control': 'no-store' },
-      json: { version: 1, status, checked_at: null, query_available: status === 'ready', message: '' },
+      json: { status, checked_at: null },
     });
   });
 
@@ -60,11 +60,11 @@ test('容器验收轮询公开就绪状态，并在服务恢复后才继续', as
 });
 
 test('就绪状态持续失败时验收等待在边界内退出并记录安全状态', async ({ page }) => {
-  await login(page);
-  await page.route('**/api/v1/operations/status', route => route.fulfill({
+  await page.goto('/');
+  await page.route('**/ready', route => route.fulfill({
     status: 503,
     headers: { 'Cache-Control': 'no-store' },
-    json: { version: 1, status: 'not_ready', checked_at: null, query_available: false, message: '' },
+    json: { status: 'not_ready', checked_at: null },
   }));
 
   await expect(waitForOperationsReady(page, { timeoutMs: 100, intervalMs: 10 }))
