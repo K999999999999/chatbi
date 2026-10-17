@@ -9,7 +9,9 @@ from typing import Protocol
 from langchain_openai import ChatOpenAI
 
 from ..observability.contracts import TraceRecorder
+from ..observability.failure_diagnostics import provider_failure_attributes
 from .contracts import ExecutionControl, ExecutionStopped
+from .query_trace import safe_enrich
 
 
 class LLMError(RuntimeError):
@@ -112,6 +114,11 @@ class LangChainSQLGenerator:
         except ExecutionStopped:
             raise
         except Exception as exc:
+            if self._trace_recorder is not None:
+                safe_enrich(
+                    self._trace_recorder,
+                    attributes=provider_failure_attributes(exc),
+                )
             raise LLMError("LLM 调用失败") from exc
 
         content = getattr(response, "content", None)

@@ -36,6 +36,7 @@ from .semantic_state import (
     prepare_restoration_state,
     validate_restoration_sql,
 )
+from .sql_guard import SQLRejectedError
 
 
 def _execute_query(
@@ -149,6 +150,7 @@ def _execute_query(
         except ExecutionStopped:
             raise
         except Exception as exc:
+            _enrich_sql_guard_rejection(trace_recorder, exc)
             if require_restorable:
                 logging.getLogger(__name__).warning(
                     "History query SQL validation failed: stage=candidate_scope "
@@ -176,6 +178,7 @@ def _execute_query(
         except ExecutionStopped:
             raise
         except Exception as exc:
+            _enrich_sql_guard_rejection(trace_recorder, exc)
             if require_restorable:
                 logging.getLogger(__name__).warning(
                     "History query SQL validation failed: stage=sql_guard "
@@ -267,3 +270,12 @@ def _execute_query(
                 validated_sql, data, context, semantic_query
             ),
         )
+
+
+def _enrich_sql_guard_rejection(trace_recorder, error: Exception) -> None:
+    if not isinstance(error, SQLRejectedError) or error.reason_code is None:
+        return
+    _safe_enrich(
+        trace_recorder,
+        attributes={"chatbi.sql_guard.rejection_code": error.reason_code.value},
+    )

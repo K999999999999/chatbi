@@ -3,9 +3,9 @@
 from collections.abc import Mapping
 from pathlib import Path
 
-from .multi_turn_evaluation import MultiTurnEvaluationRun
 from ...common.reporting import RunMetadata, compare_baseline
 from ...common.reporting_errors import ReportingError
+from .multi_turn_evaluation import MultiTurnEvaluationRun
 
 
 def create_multi_turn_report(
@@ -57,6 +57,7 @@ def create_multi_turn_report(
                         "failure_reason": turn.failure_reason,
                         "duration_ms": turn.duration_ms,
                         "generated_sql": turn.generated_sql,
+                        "trace_id": turn.trace_id,
                     }
                     for turn in case.turns
                 ],
@@ -131,8 +132,9 @@ def render_multi_turn_markdown(report: Mapping[str, object]) -> str:
                 "",
                 f"覆盖：{_cell(', '.join(_string_list(case.get('coverage'))))}",
                 "",
-                "| 轮次 | 期望 outcome / 错误码 | 状态 | 实际错误码 | 原因 |",
-                "|---|---|---|---|---|",
+                "| 轮次 | 期望 outcome / 错误码 | 状态 | 实际错误码 | "
+                "Trace ID | 原因 |",
+                "|---|---|---|---|---|---|",
             ]
         )
         turns = case.get("turns")
@@ -144,11 +146,15 @@ def render_multi_turn_markdown(report: Mapping[str, object]) -> str:
                 if error_code:
                     expected = f"{expected} / {error_code}"
                 lines.append(
-                    "| {turn_id} | {expected} | {status} | {actual} | {reason} |".format(
+                    (
+                        "| {turn_id} | {expected} | {status} | {actual} | "
+                        "{trace_id} | {reason} |"
+                    ).format(
                         turn_id=_cell(turn.get("turn_id")),
                         expected=_cell(expected),
                         status=_cell(turn.get("status")),
                         actual=_cell(turn.get("query_error_code") or "-"),
+                        trace_id=_cell(turn.get("trace_id") or "-"),
                         reason=_cell(turn.get("failure_reason") or "-"),
                     )
                 )
@@ -161,7 +167,10 @@ def render_multi_turn_markdown(report: Mapping[str, object]) -> str:
         comparison_mapping = _mapping(comparison)
         if comparison_mapping.get("comparable") is True:
             lines.append(
-                "Baseline 状态：COMPARABLE；回退 {regressions} 个场景，改善 {improvements} 个场景。".format(
+                (
+                    "Baseline 状态：COMPARABLE；回退 {regressions} 个场景，"
+                    "改善 {improvements} 个场景。"
+                ).format(
                     regressions=len(
                         _string_list(comparison_mapping.get("regressions"))
                     ),

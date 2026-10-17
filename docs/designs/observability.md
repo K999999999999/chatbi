@@ -80,7 +80,7 @@ TraceScope 必须区分 Owning Scope（拥有根链路的作用域）和 Borrowe
 
 - 每个 OTel Span 都使用 `record_exception=false` 和 `set_status_on_exception=false`；
 - 不调用 `record_exception()`，不把 `str(exc)`、堆栈、连接信息或 Provider 原始响应写入 Span；
-- 只允许写入固定枚举中的 `chatbi.error.type`、公开 `chatbi.error_code` 和受控 Outcome；
+- 只允许写入固定枚举中的 `chatbi.error.type`、公开 `chatbi.error_code`、受控 Outcome，以及 Observability Spec 定义的 Provider 分类 / 有界 HTTP 状态 / 可重试分类和 SQL Guard 原因代码；
 - Safe Warning 也只能写组件、阶段和固定错误分类，不得携带原始异常文本；
 - 如果未来需要完整堆栈，只能进入单独的受保护、脱敏后的内部日志链路，不属于本 V1 Trace 和 Langfuse 数据。
 
@@ -134,6 +134,7 @@ FastAPI Middleware 持有 HTTP 路径的 Root Trace（根链路），所以能�
 - 已有活动 Trace：继续使用；
 - Evaluation 创建 `QueryRequest(source=EVALUATION)`；
 - Root Span 记录 `evaluation.case_id`，通过现有 `request_id=evaluation-<case_id>` 关联评测案例。
+- 多轮 Evaluation 对每个实际请求轮次创建独立 Root Trace，同时记录固定 `evaluation.case_id`、`evaluation.turn_id` 和 `chatbi.request.id`；JSON / Markdown 报告写入对应 `trace_id`。没有实际执行请求的轮次保持 `null`。
 
 Evaluation 外层拥有自己创建的 Root Trace；`OnlineQueryService` 只借用该 Trace。直接评测入口没有外层 Trace 时，由 Service 拥有并结束 Root Trace。所有拥有者退出时都必须清理 Context，避免下一次请求继承上一条链路。
 
@@ -237,6 +238,10 @@ chatbi.request.source
 chatbi.outcome
 chatbi.error_code
 chatbi.error.type
+chatbi.provider.error_category
+chatbi.provider.http_status_code
+chatbi.provider.retryable
+chatbi.sql_guard.rejection_code
 chatbi.content_capture.enabled
 chatbi.rag.asset_version
 chatbi.retrieval.request_shape
@@ -266,7 +271,7 @@ chatbi.database.truncated
 业务拒绝不冒充系统故障，但必须记录公开 `error_code`。发生 fallback 时，原失败 Span 标为 `ERROR`，上层 `retrieval.execute` 标为 `FALLBACK_SUCCESS`；如果最终查询成功，Root Trace 最终仍为 `SUCCESS`。
 
 OTel Status 也不能从异常自动带出原始文本：所有 `start_as_current_span()` 调用显式关闭自动异常记录和自动 Status 描述；业务代码只根据固定映射写入 `StatusCode.ERROR` 或受控的 `StatusCode.UNSET`。
-Trace 仅记录固定的 `chatbi.error.type` 和公开 `chatbi.error_code`，不记录异常类名、`str(exc)`、完整堆栈、连接信息或 Provider 原始响应。
+Trace 仅记录固定的 `chatbi.error.type`、公开 `chatbi.error_code`、白名单 Provider 分类 / HTTP 状态 / 可重试分类和 SQL Guard 原因代码；不记录异常类名、`str(exc)`、完整堆栈、连接信息或 Provider 原始响应。
 
 
 ## 内容安全
@@ -344,6 +349,8 @@ CLI 退出前只执行一次 Flush，使 20 个案例的 Span 能发送完成。
 - JSON 明确输出 `trace_id`；Markdown 对每个实际执行案例列出 `case_id`、`request_id` 和 `trace_id`；
 - 不在报告中复制整棵 Trace、Prompt 或 Span 属性；
 - 旧 Baseline（基线）没有该字段时仍可读取和比较。
+
+多轮评测的 `MultiTurnTurnEvaluation` 对每个实际请求轮次保存 Evaluation Root Trace ID，并按轮次写入 JSON / Markdown 报告；case / turn 编号经过安全标识符白名单处理。
 
 ### 电脑端 Web
 

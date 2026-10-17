@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock, patch
 
+from src.observability.tracing import create_in_memory_recorder
 from src.online_query.llm import LLMError
 from src.online_query.query_understanding import (
     QueryType,
@@ -332,6 +333,54 @@ class QueryUnderstandingLLMTest(unittest.TestCase):
             "llm.query_understanding",
             attributes=None,
         )
+
+    def test_provider_timeout_trace_has_safe_category(self) -> None:
+        recorder, exporter = create_in_memory_recorder()
+        model = Mock()
+        model.invoke.side_effect = [
+            TimeoutError("first private provider detail"),
+            TimeoutError("private provider detail"),
+        ]
+        adapter = LangChainQueryUnderstanding(model, trace_recorder=recorder)
+
+        with self.assertRaises(LLMError):
+            adapter.understand("私有问题正文")
+
+        span = next(
+            item
+            for item in exporter.get_finished_spans()
+            if item.name == "llm.query_understanding"
+        )
+        self.assertEqual(
+            span.attributes.get("chatbi.provider.error_category"), "TIMEOUT"
+        )
+        self.assertTrue(span.attributes.get("chatbi.provider.retryable"))
+        self.assertNotIn("private provider detail", repr(span.attributes))
+        self.assertNotIn("私有问题正文", repr(span.attributes))
+
+    def test_provider_http_status_trace_is_bounded(self) -> None:
+        class ProviderError(Exception):
+            status_code = 429
+
+        recorder, exporter = create_in_memory_recorder()
+        model = Mock()
+        model.invoke.side_effect = [ProviderError("private response body")] * 2
+        adapter = LangChainQueryUnderstanding(model, trace_recorder=recorder)
+
+        with self.assertRaises(LLMError):
+            adapter.understand("查询销售额")
+
+        span = next(
+            item
+            for item in exporter.get_finished_spans()
+            if item.name == "llm.query_understanding"
+        )
+        self.assertEqual(
+            span.attributes.get("chatbi.provider.error_category"), "RATE_LIMITED"
+        )
+        self.assertEqual(span.attributes.get("chatbi.provider.http_status_code"), 429)
+        self.assertTrue(span.attributes.get("chatbi.provider.retryable"))
+        self.assertNotIn("private response body", repr(span.attributes))
 
     @patch("src.online_query.query_understanding_llm.ChatOpenAI")
     def test_from_env_keeps_provider_internal_retries_disabled(

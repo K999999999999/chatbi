@@ -1,10 +1,12 @@
 """使用 SQLGlot 对 LLM SQL 候选做确定性安全校验。"""
 
+from collections.abc import Callable
+
 from sqlglot import exp, parse
 from sqlglot.errors import SqlglotError
 
 from ..contracts import QueryContext, ValidatedSQL
-from .sql_guard_errors import SQLRejectedError
+from .sql_guard_errors import SQLGuardRejectionCode, SQLRejectedError
 from .sql_guard_join import validate_join_constraints
 from .sql_guard_metrics import validate_metric_filters, validate_metric_formulas
 from .sql_guard_multi_metric import validate_multi_metric_expression
@@ -78,37 +80,65 @@ class _ValidationSession:
         self._ensure_candidate()
         expression = self._parse()
         if any(expression.find(node_type) for node_type in _FORBIDDEN_NODE_TYPES):
-            raise SQLRejectedError("SQL 包含禁止的写入、结构修改或锁定操作")
+            raise SQLRejectedError(
+                "SQL 包含禁止的写入、结构修改或锁定操作",
+                reason_code=SQLGuardRejectionCode.FORBIDDEN_OPERATION,
+            )
         if expression.find(exp.With) is not None:
-            raise SQLRejectedError("V1 SQL 不支持 CTE")
+            raise SQLRejectedError(
+                "V1 SQL 不支持 CTE",
+                reason_code=SQLGuardRejectionCode.UNSUPPORTED_FEATURE,
+            )
 
-        _reject_dangerous_functions(expression)
+        _run_guard(
+            SQLGuardRejectionCode.UNAPPROVED_FUNCTION,
+            lambda: _reject_dangerous_functions(expression),
+        )
         if not self._scope_validated:
             self._validate_scope(expression)
         if len(self._context.metric_constraints) >= 2:
-            validate_multi_metric_expression(
-                expression,
-                self._context,
-                allow_expression_dimensions=self._allow_expression_dimensions,
+            _run_guard(
+                SQLGuardRejectionCode.MULTI_METRIC_CONSTRAINT_REJECTED,
+                lambda: validate_multi_metric_expression(
+                    expression,
+                    self._context,
+                    allow_expression_dimensions=self._allow_expression_dimensions,
+                ),
             )
         else:
             if expression.args.get("joins"):
-                validate_join_constraints(expression, self._context)
+                _run_guard(
+                    SQLGuardRejectionCode.JOIN_CONSTRAINT_REJECTED,
+                    lambda: validate_join_constraints(expression, self._context),
+                )
             if self._context.metric_constraints:
                 bindings = _table_bindings(expression)
-                validate_metric_filters(expression, self._context, bindings)
+                _run_guard(
+                    SQLGuardRejectionCode.METRIC_CONSTRAINT_REJECTED,
+                    lambda: validate_metric_filters(
+                        expression, self._context, bindings
+                    ),
+                )
                 projections = [
                     projection.this if isinstance(projection, exp.Alias) else projection
                     for projection in expression.expressions
                     if projection.find(exp.AggFunc) is not None
                 ]
-                validate_metric_formulas(projections, self._context, bindings)
+                _run_guard(
+                    SQLGuardRejectionCode.METRIC_CONSTRAINT_REJECTED,
+                    lambda: validate_metric_formulas(
+                        projections, self._context, bindings
+                    ),
+                )
 
         return ValidatedSQL(sql=self._candidate)
 
     def _ensure_candidate(self) -> None:
         if not self._candidate or self._candidate == "CANNOT_ANSWER":
-            raise SQLRejectedError("SQL 候选为空或不是 SQL")
+            raise SQLRejectedError(
+                "SQL 候选为空或不是 SQL",
+                reason_code=SQLGuardRejectionCode.CANDIDATE_INVALID,
+            )
 
     def _parse(self) -> exp.Select:
         if self._expression is None:
@@ -118,9 +148,18 @@ class _ValidationSession:
     def _validate_scope(self, expression: exp.Select) -> None:
         physical_tables = _physical_tables(expression)
         if not physical_tables:
-            raise SQLRejectedError("SQL 必须读取 mart_sales 物理表")
-        _validate_physical_tables(physical_tables, self._context)
-        _validate_columns(expression, self._context)
+            raise SQLRejectedError(
+                "SQL 必须读取 mart_sales 物理表",
+                reason_code=SQLGuardRejectionCode.TABLE_SCOPE_REJECTED,
+            )
+        _run_guard(
+            SQLGuardRejectionCode.TABLE_SCOPE_REJECTED,
+            lambda: _validate_physical_tables(physical_tables, self._context),
+        )
+        _run_guard(
+            SQLGuardRejectionCode.COLUMN_SCOPE_REJECTED,
+            lambda: _validate_columns(expression, self._context),
+        )
         self._scope_validated = True
 
 
@@ -158,8 +197,15 @@ def validate_multi_metric_sql(candidate: str, context: QueryContext) -> None:
         return
     sql = candidate.strip()
     if not sql or sql == "CANNOT_ANSWER":
-        raise SQLRejectedError("SQL 候选为空或不是 SQL")
-    validate_multi_metric_expression(_parse_single_select(sql), context)
+        raise SQLRejectedError(
+            "SQL 候选为空或不是 SQL",
+            reason_code=SQLGuardRejectionCode.CANDIDATE_INVALID,
+        )
+    expression = _parse_single_select(sql)
+    _run_guard(
+        SQLGuardRejectionCode.MULTI_METRIC_CONSTRAINT_REJECTED,
+        lambda: validate_multi_metric_expression(expression, context),
+    )
 
 
 def _parse_single_select(sql: str) -> exp.Select:
@@ -170,18 +216,44 @@ def _parse_single_select(sql: str) -> exp.Select:
             if statement is not None
         ]
     except SqlglotError:
-        raise SQLRejectedError("SQL 无法按 PostgreSQL 解析") from None
+        raise SQLRejectedError(
+            "SQL 无法按 PostgreSQL 解析",
+            reason_code=SQLGuardRejectionCode.SQL_PARSE_ERROR,
+        ) from None
 
     if len(statements) != 1:
-        raise SQLRejectedError("只允许一条 SQL")
+        raise SQLRejectedError(
+            "只允许一条 SQL",
+            reason_code=SQLGuardRejectionCode.STATEMENT_COUNT_INVALID,
+        )
     expression = statements[0]
     if not isinstance(expression, exp.Select):
-        raise SQLRejectedError("只允许单层 SELECT")
+        raise SQLRejectedError(
+            "只允许单层 SELECT",
+            reason_code=SQLGuardRejectionCode.SELECT_ONLY,
+        )
     if any(node is not expression for node in expression.find_all(exp.Select)):
-        raise SQLRejectedError("只允许单层 SELECT，不支持子查询")
+        raise SQLRejectedError(
+            "只允许单层 SELECT，不支持子查询",
+            reason_code=SQLGuardRejectionCode.SUBQUERY_UNSUPPORTED,
+        )
     return expression
 
 
 def _reject_dangerous_functions(expression: exp.Expression) -> None:
     if expression.find(exp.Anonymous):
-        raise SQLRejectedError("SQL 包含未认证的数据库函数")
+        raise SQLRejectedError(
+            "SQL 包含未认证的数据库函数",
+            reason_code=SQLGuardRejectionCode.UNAPPROVED_FUNCTION,
+        )
+
+
+def _run_guard(reason_code: SQLGuardRejectionCode, action: Callable[[], None]) -> None:
+    """为一类确定性校验附上固定代码，不传播异常消息。"""
+
+    try:
+        return action()
+    except SQLRejectedError as exc:
+        if exc.reason_code is None:
+            exc.reason_code = reason_code
+        raise

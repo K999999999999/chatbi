@@ -85,6 +85,7 @@ query.request
 ### 全链路
 
 - `request_id`、`trace_id`；
+- 多轮 Evaluation 的 JSON / Markdown 报告为每个实际请求轮次记录 `trace_id`，Root Span 同时记录固定 `evaluation.case_id` 和 `evaluation.turn_id`；未执行请求的轮次为 `null`；
 - 服务和应用版本；
 - 运行环境；
 - 请求来源：HTTP、内部调用或 Evaluation；
@@ -107,14 +108,18 @@ query.request
 - 模型标识；
 - 调用耗时和成功、失败状态；
 - Provider 返回时记录输入、输出和总 Token 数；
+- Provider 调用失败时记录固定 `chatbi.provider.error_category`，可安全读取时附带 100–599 的 HTTP 状态码，以及表示错误类别通常是否可重试的 Boolean；该字段是诊断分类，不触发额外重试；
+- 分类只允许 `TIMEOUT`、`CONNECTION`、`RATE_LIMITED`、`AUTHENTICATION`、`CLIENT_ERROR`、`SERVER_ERROR`、`UNKNOWN`；不记录异常类名、异常文本、响应正文或 Provider 配置；
 - Token 信息缺失不得导致查询失败；
 - `llm.generate` 使用标准 GenAI 操作、模型和 Usage 属性；若通用属性不能被验收平台识别，只能在基础设施适配器中增加最小平台兼容字段；
 - V1 不计算或承诺费用。
 
+本地 Evaluation 工具容器复用 `CHATBI_OBSERVABILITY_ENABLED`、`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` 和 `OTEL_EXPORTER_OTLP_HEADERS` 导出 Trace；`CHATBI_TRACE_CONTENT_ENABLED` 在该容器中固定为 `false`。Trace 配置缺失或导出失败不得改变 Evaluation 业务结果。
+
 ### SQL 与数据库
 
 - Candidate Scope Check（候选范围检查）是否通过；
-- SQL Guard 是否通过及安全失败分类；
+- SQL Guard 是否通过及固定 `chatbi.sql_guard.rejection_code`：`CANDIDATE_INVALID`、`SQL_PARSE_ERROR`、`STATEMENT_COUNT_INVALID`、`SELECT_ONLY`、`SUBQUERY_UNSUPPORTED`、`FORBIDDEN_OPERATION`、`UNSUPPORTED_FEATURE`、`UNAPPROVED_FUNCTION`、`TABLE_SCOPE_REJECTED`、`COLUMN_SCOPE_REJECTED`、`JOIN_CONSTRAINT_REJECTED`、`METRIC_CONSTRAINT_REJECTED`、`MULTI_METRIC_CONSTRAINT_REJECTED`；
 - 默认只记录 SQL 摘要或 Hash（哈希），不记录完整 SQL；
 - 数据库执行耗时、成功、错误或超时状态；
 - 返回行数和 `truncated`；
@@ -133,7 +138,7 @@ query.request
 异常安全规则：
 
 - OTel/Langfuse 不自动记录完整异常、堆栈或 `str(exc)`；
-- 只记录固定错误类型、公开错误码和受控状态；
+- 只记录固定错误类型、公开错误码、受控状态，以及本 Spec 明确列出的 Provider / SQL Guard 安全分类；
 - 生产环境如果未来需要完整排障堆栈，应进入独立的受保护、脱敏内部日志系统，不通过放宽 Trace 内容开关实现；该日志系统不属于本 V1。
 
 本地受控调试可以通过独立配置临时记录完整问题和最终校验 SQL，但必须满足：
@@ -149,7 +154,7 @@ query.request
 - 查询成功：Root Trace 和全部已执行 Span 标记成功，并记录最终行数和截断状态。
 - 业务无法回答：在发生决定的节点记录业务拒绝，最终状态关联 `CANNOT_ANSWER`。
 - SQL 被拒绝：对应检查 Span 标记拒绝，数据库 Span 不得出现。
-- LLM、Retrieval 或数据库技术故障：对应 Span 标记技术失败并记录安全分类。
+- LLM、Retrieval 或数据库技术故障：对应 Span 标记技术失败并记录安全分类；Provider 故障使用固定 Provider 分类，SQL 拒绝使用固定 Guard 原因代码。
 - 数据库超时：数据库 Span 标记超时，最终状态关联 `QUERY_TIMEOUT`。
 - Retrieval fallback：原失败 Span 和 fallback 路径都必须可见。
 - 可观测后端不可用：不得改变原 QuerySuccess、QueryFailure、HTTP 状态和错误码，不得触发业务重试。
@@ -177,7 +182,7 @@ query.request
 - 无效 HTTP 请求仍返回原错误 JSON，并包含 `X-Trace-ID`。
 - `request_id` 与 `trace_id` 能稳定关联，但保持不同语义。
 - Token 信息存在时被记录，缺失时不影响查询。
-- 默认 Trace 不包含完整问题、Prompt、SQL、结果、Secret 或原始敏感异常。
+- 默认 Trace 不包含完整问题、Prompt、SQL、结果、Secret 或原始敏感异常；Provider 状态码和错误分类、SQL Guard 原因代码只能通过固定值白名单。
 - 客户端伪造 Trace Context 不会改变 V1 HTTP Root Trace；一次请求只产生一个 Root Trace，且上下文不会泄漏到下一次请求。
 - OTel 自动异常记录关闭时，异常消息和堆栈不会进入 Trace、Langfuse 或安全 Warning。
 - 可观测后端抛出异常、超时或不可用时，原查询结果不变。

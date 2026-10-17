@@ -9,10 +9,11 @@ from .sql_guard import (
     validate_multi_metric_sql,
     validate_sql,
 )
-
+from .sql_guard_errors import SQLGuardRejectionCode
 
 __all__ = [
     "ALLOWED_SCHEMA",
+    "SQLGuardRejectionCode",
     "SQLRejectedError",
     "_new_validation_session",
     "_parse_single_select",

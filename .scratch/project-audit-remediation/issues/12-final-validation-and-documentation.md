@@ -110,3 +110,15 @@ clean候选`8772df5f54844afbcb2f773a797ae17f2288f3d5`隔离验收run `20261017T1
 报告`status`与`business_acceptance_status`为`incomplete`，counts为3 passed / 3 skipped / 0 failed / 0 errors：初始和重启两个浏览器阶段各自跳过不适用的另一阶段用例（初始2 passed/1 skipped，重启1 passed/2 skipped）；报告Contract将任何skip判为incomplete，不能把业务用例全绿等同完整验收通过。真实运行中公开`/ready`曾短暂返回503，既有有界等待在后续ready后才提交；浏览器阶段无因SERVICE_NOT_READY拒绝而失败。最终报告与完整产物保留于`/home/jojo/Projects/chatbi-engine-audit-remediation-uat-20261017-8772df5/reports/browser-real/`及`reports/browser-real-artifacts/`。
 
 T12和全仓目标继续in-progress：正式AI评测仍以`97268ca`为基线，单轮S02在Provider阶段失败且未验证别名检索效果，多轮`MT-FILTER-REPLACE`仍为`SQL_REJECTED`；全量测试此前61项条件skip仍使结果为incomplete。本次只验证隔离浏览器验收路径，不改变应用readiness/admission、评测案例、Seed、模型参数或门槛，也不据此宣称22项审计问题全部关闭。无需再为同一候选重跑完整UAT；后续工作应聚焦正式评测失败和既有skip归属，任何会改变目标/Contract的处理先回到已确认Spec边界。
+
+### 2026-10-17 `2690f68` 失败 Trace 诊断增量（未提交候选）
+
+针对历史正式失败补充有限 Provider 错误分类、SQL Guard 固定拒绝码及多轮逐轮 Trace 关联。Review 发现本地 Evaluation `tools` 容器原先没有接收 API 已使用的 OTel 开关、endpoint 和 headers；`docker-compose.dev.yml`现将这些本地配置传给 tools，内容采集在该容器中继续强制关闭。Spec / Design / Runbook 同步记录此配置和逐轮 Trace ID。Trace 字段不改变公开错误、查询行为或模型重试。
+
+候选 `2690f68e9e09225433cff4d91172196145f1daec` 上相关测试75 passed；`./dev check python` PASS（run `20261017T144958Z-2690f68-check-python-4e739ae7a018`），`./dev check docs` PASS（run `20261017T144935Z-2690f68-check-docs-6202de1fc15f`），Compose tools 环境解析确认 OTel true、endpoint / headers 已设置、内容采集 false。`git diff --check`和本次限定文件的格式 / 静态检查通过。
+
+真实单案例复跑均使用现有 S02 与 MT-FILTER-REPLACE 固定案例、主开发服务中的既有数据库/RAG/模型资产；旧正式报告未覆盖：S02 run `20261017T144156Z-2690f68-single-turn-7b83a440b22a`仍FAIL，但本次失败阶段为`retrieval`、内部原因`AMBIGUOUS`、公开错误码`CANNOT_ANSWER`，Trace ID `2e87dc9b648e827753e104399d15a82c`；MT-FILTER-REPLACE run `20261017T144725Z-2690f68-multi-turn-ca8d7a4c9f78`为1/1场景、2/2轮PASS，轮次 Trace ID 分别为`bea38f8518c92c675ba8948f72e99603`和`87b62e51986f0210304fac8666e6bde8`。两份报告 `provenance=stable`，存放在忽略目录`reports/evaluation/trace-failure-diagnostics/`。多轮 JSON / Markdown 已新增逐轮 Trace ID，可按 ID 检索链路。
+
+当前复跑没有重现历史 S02 `PROVIDER_CALL_FAILED` 或 MT-FILTER-REPLACE `SQL_REJECTED`，因此不能由本次结果断言历史根因；新增字段为后续重现提供可查分类。历史正式报告、候选97268ca结果、模型参数、案例、Seed、评测门槛与readiness Contract均未改动。主工作区既有用户文档修改保留，未启动或清理日常服务。增量 Code Review：PASS，BASE `2690f68e9e09225433cff4d91172196145f1daec`；本地提交后Ticket 12仍保持in-progress。
+
+本次增量已本地Commit `a034a61 fix(observability): 补齐评测失败链路诊断`，无Push/PR；Ticket 12和全仓审计目标继续in-progress。

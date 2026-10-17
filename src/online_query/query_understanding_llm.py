@@ -10,6 +10,7 @@ from typing import Iterator, Protocol, runtime_checkable
 from langchain_openai import ChatOpenAI
 
 from ..observability.contracts import ErrorType, TraceOutcome, TraceRecorder
+from ..observability.failure_diagnostics import provider_failure_attributes
 from ..semantic.metric_vocabulary import (
     format_metric_vocabulary,
     load_metric_vocabulary,
@@ -325,11 +326,14 @@ aggregate_filters每项metric、operator(equals/in/gt/gte/lt/lte)、values(十�
             try:
                 yield
             except LLMError as exc:
+                attributes = {
+                    "chatbi.query_understanding.reason": exc.reason,
+                }
+                if exc.reason == "PROVIDER_CALL_FAILED":
+                    attributes.update(provider_failure_attributes(exc.__cause__ or exc))
                 safe_enrich(
                     self._trace_recorder,
-                    attributes={
-                        "chatbi.query_understanding.reason": exc.reason,
-                    },
+                    attributes=attributes,
                     outcome=TraceOutcome.TECHNICAL_FAILURE,
                     error_type=ErrorType.LLM,
                     error_code="LLM_ERROR",

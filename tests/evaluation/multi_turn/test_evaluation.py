@@ -129,6 +129,7 @@ class MultiTurnEvaluationTest(unittest.TestCase):
         self.assertIn("expected_error_code", cases[0].validation_error or "")
 
     def test_runs_whole_conversations_in_isolated_shared_sessions(self) -> None:
+        from evaluation.common.reporting import RunMetadata
         from evaluation.suites.multi_turn.multi_turn_evaluation import (
             ConversationResponse,
             MultiTurnCase,
@@ -136,6 +137,11 @@ class MultiTurnEvaluationTest(unittest.TestCase):
             MultiTurnTurn,
             run_multi_turn_evaluation,
         )
+        from evaluation.suites.multi_turn.multi_turn_reporting import (
+            create_multi_turn_report,
+            render_multi_turn_markdown,
+        )
+        from src.observability.tracing import create_in_memory_recorder
 
         cases = (
             MultiTurnCase(
@@ -242,11 +248,13 @@ class MultiTurnEvaluationTest(unittest.TestCase):
             clients.append(client)
             return client
 
+        trace_recorder, exporter = create_in_memory_recorder()
         run = run_multi_turn_evaluation(
             cases,
             client_factory,
             _FakeExecutor(),
             self.context,
+            trace_recorder=trace_recorder,
         )
 
         self.assertEqual(
@@ -266,6 +274,37 @@ class MultiTurnEvaluationTest(unittest.TestCase):
         self.assertEqual(run.summary.conversation_accuracy, 0.5)
         self.assertEqual(run.summary.execution_accuracy, 3 / 4)
         self.assertEqual(run.summary.outcome_accuracy, 1.0)
+        self.assertTrue(all(turn.trace_id for case in run.cases for turn in case.turns))
+        spans = exporter.get_finished_spans()
+        evaluation_spans = [
+            span for span in spans if span.attributes.get("evaluation.turn_id")
+        ]
+        self.assertEqual(len(evaluation_spans), 5)
+        self.assertTrue(
+            all(span.attributes.get("evaluation.case_id") for span in evaluation_spans)
+        )
+        report = create_multi_turn_report(
+            run,
+            RunMetadata(
+                run_id="run",
+                created_at="2026-10-17T00:00:00Z",
+                git_commit=None,
+                git_dirty=True,
+                model="model",
+                temperature=0.0,
+                max_tokens=1,
+                model_endpoint_hash="endpoint-hash",
+                test_set_hash="test-hash",
+                context_hash="context-hash",
+                reference_result_hash="reference-hash",
+            ),
+        )
+        report_turns = [turn for case in report["cases"] for turn in case["turns"]]
+        self.assertTrue(all(turn["trace_id"] for turn in report_turns))
+        rendered_report = render_multi_turn_markdown(report)
+        self.assertTrue(
+            all(turn["trace_id"] in rendered_report for turn in report_turns)
+        )
 
     def test_normalizes_numeric_values_serialized_as_strings_by_query_api(self) -> None:
         from evaluation.suites.multi_turn.multi_turn_evaluation import (

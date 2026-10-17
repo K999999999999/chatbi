@@ -1,7 +1,7 @@
 """T2 Online Query 主链路 Trace 的独立确定性测试。"""
 
-from hashlib import sha256
 import unittest
+from hashlib import sha256
 from unittest.mock import Mock, patch
 
 from src.observability.contracts import TraceOutcome
@@ -20,8 +20,8 @@ from src.online_query.contracts import (
     RetrievalStatus,
 )
 from src.online_query.database import DatabaseError, DatabaseQueryTimeout
-from src.online_query.service import OnlineQueryService
 from src.online_query.query_understanding import candidate_from_payload
+from src.online_query.service import OnlineQueryService
 
 
 class T2ObservabilityTest(unittest.TestCase):
@@ -140,6 +140,22 @@ class T2ObservabilityTest(unittest.TestCase):
                     TraceOutcome.BUSINESS_REJECTION.value,
                 )
                 self.assertEqual(root.attributes["chatbi.error_code"], error_code.value)
+
+    def test_sql_guard_trace_records_rule_category_without_candidate(self) -> None:
+        candidate = "SELECT pg_sleep(1) FROM mart_sales.fct_sales_order_line"
+        self.generator.generate.return_value = candidate
+
+        result = self._service().execute(QueryRequest(question="查询订单"))
+
+        self._assert_failure(result, QueryErrorCode.SQL_REJECTED)
+        spans = self.exporter.get_finished_spans()
+        guard = next(span for span in spans if span.name == "sql.guard")
+        self.assertEqual(
+            guard.attributes.get("chatbi.sql_guard.rejection_code"),
+            "UNAPPROVED_FUNCTION",
+        )
+        self.assertNotIn(candidate, repr(guard.attributes))
+        self.assertNotIn("database.execute", {span.name for span in spans})
 
     def test_sql_guard_rejection_does_not_create_database_span(self) -> None:
         with patch(
