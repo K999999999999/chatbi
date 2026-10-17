@@ -2,7 +2,13 @@ import { test, expect, type Locator, type Page, type Request } from '@playwright
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { reportPath } from '../test-support/report-path';
-import { login, send, isFinalExecutionResponse } from './helpers';
+import {
+  isExecutionSubmissionRejection,
+  isFinalExecutionResponse,
+  login,
+  send,
+  waitForOperationsReady,
+} from './helpers';
 import { querySnapshot } from '../src/results';
 import { analysisResult } from '../src/Analysis';
 import { buildChartPlans } from '../src/chartPlan';
@@ -89,6 +95,20 @@ function safeErrorMessage(error: unknown) {
     if (secret) message = message.split(secret).join('[redacted]');
   }
   return message.slice(0, 1000);
+}
+
+async function waitForExecutionResult(page: Page, timeout: number) {
+  const response = await page.waitForResponse(async candidate =>
+    await isFinalExecutionResponse(candidate) || isExecutionSubmissionRejection(candidate),
+  { timeout });
+  if (isExecutionSubmissionRejection(response)) {
+    const payload = await response.json().catch(() => ({})) as { error_code?: unknown };
+    const code = typeof payload.error_code === 'string' && safeExecutionErrorCodes.has(payload.error_code)
+      ? payload.error_code
+      : 'UNCLASSIFIED';
+    throw new Error(`执行请求被拒绝（HTTP ${response.status()}，${code}）`);
+  }
+  return response;
 }
 
 declare global {
@@ -338,7 +358,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     await login(page, process.env.CHATBI_REAL_E2E_USERNAME!, process.env.CHATBI_REAL_E2E_PASSWORD!);
     await waitForApplicationReady(page, account.id);
     await page.evaluate(() => { window.__chatbiCaptureExecutionStreams = true; });
-    const firstResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
+    const firstResponse = waitForExecutionResult(page, 240000);
     await send(page, '2025年2月已完成订单的人民币净销售额是多少？');
     const firstHttp = await firstResponse;
     const firstPayload = await firstHttp.json();
@@ -362,7 +382,10 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     const firstSource = { kind: 'history_turn', history_id: firstPayload.history.id, turn_id: firstPayload.turn.id };
     exportedFiles.push(await captureExport(page, page.getByRole('button', { name: '下载 XLSX', exact: true }),
       'xlsx', 'r5-current-query.xlsx', firstSource, snapshotEvidence(first)));
-    const secondResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
+    evidence.step = 'readiness-before-followup';
+    evidence.readiness_before_followup = await waitForOperationsReady(page);
+    evidence.step = 'query-stage-evidence';
+    const secondResponse = waitForExecutionResult(page, 240000);
     await send(page, '改成2025年3月');
     const secondHttp = await secondResponse;
     const secondPayload = await secondHttp.json();
@@ -379,7 +402,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     expect(first.result_metadata?.scope.time?.start).toBe('2025-02-01');
     expect(second.result_metadata?.scope.time?.start).toBe('2025-03-01');
     await page.getByRole('button', { name: '新建问数对话' }).click();
-    const trendResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
+    const trendResponse = waitForExecutionResult(page, 240000);
     await send(page, '按月份列出2025年已完成订单的人民币净销售额、人民币毛利和毛利率。');
     evidence.step = 'monthly-query';
     const trendHttp = await trendResponse;
@@ -414,7 +437,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
       'png', 'r5-current-query-chart.png', monthlySource));
     evidence.monthly_mixed_units = { rows: trend.rows.length, reference_matches: true, money_series: 2, chart_units: trendPlans.plans.map(p => p.id), metadata_status: trendMetadata.status };
     await page.getByRole('button', { name: '新建问数对话' }).click();
-    const categoryResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
+    const categoryResponse = waitForExecutionResult(page, 240000);
     await send(page, '按产品线列出2025年已完成订单的人民币净销售额和人民币销售成本。');
     const categoryPayload = await (await categoryResponse).json();
     const category = querySnapshot(categoryPayload.turn.snapshot);
@@ -436,7 +459,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     evidence.category_same_unit = { rows: category.rows.length, reference_matches: true, series: 2, metadata_status: categoryMeta.status };
     evidence.step = 'analysis-request';
     await page.getByRole('button', { name: '经营分析', exact: true }).click();
-    const analysisResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 1200000 });
+    const analysisResponse = waitForExecutionResult(page, 1200000);
     await send(page, '分析2025年3月相比2025年2月的人民币毛利变化及产品因素贡献。');
     const analysisHttp = await analysisResponse;
     evidence.analysis_http_status = analysisHttp.status();
@@ -533,7 +556,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
       'png', 'r5-saved-query-chart.png', { kind: 'saved_result', saved_result_id: savedId }));
     await page.getByRole('button', { name: '新建问数对话', exact: true }).click();
     evidence.step = 'top-n-query';
-    const rankedResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
+    const rankedResponse = waitForExecutionResult(page, 240000);
     await send(page, '2025年3月按人民币净销售额从高到低列出前3个产品。');
     const rankedPayload = await (await rankedResponse).json(); const ranked = querySnapshot(rankedPayload.turn.snapshot);
     expect(ranked.rows.map(row => [String(row[0]), Number(row[1])])).toEqual(reference.top_products.map((row: unknown[]) => [String(row[0]), Number(row[1])]));
@@ -615,7 +638,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     await secondPage.close();
 
     evidence.step = 'post-cancel-new-operation';
-    const nextQuery = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
+    const nextQuery = waitForExecutionResult(page, 240000);
     await send(page, '只看前2个产品');
     const nextPayload = await (await nextQuery).json();
     expect(nextPayload.history.id).toBe(rankedPayload.history.id);
@@ -669,7 +692,7 @@ test('停止重启后读取长期快照、重登录、续聊与显式重查', as
         active_turn_cleared: true, prior_success_turn_preserved: true,
       }));
     }
-    const continued = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
+    const continued = waitForExecutionResult(page, 240000);
     await send(page, '只看前2个产品');
     const body = await (await continued).json(); const result = querySnapshot(body.turn.snapshot);
     expect(body.history.id).toBe(input.ranked_history_id);
@@ -699,7 +722,7 @@ test('停止重启后读取长期快照、重登录、续聊与显式重查', as
       'xlsx', 'r5-restarted-saved-query.xlsx', { kind: 'saved_result', saved_result_id: savedQueryId }));
     evidence.exports.push(await captureExport(page, page.getByRole('button', { name: /下载.* PNG/ }).first(),
       'png', 'r5-restarted-saved-query-chart.png', { kind: 'saved_result', saved_result_id: savedQueryId }));
-    const requery = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
+    const requery = waitForExecutionResult(page, 240000);
     await page.getByRole('button', { name: '重新查询当前数据', exact: true }).click();
     const newBody = await (await requery).json(); querySnapshot(newBody.turn.snapshot);
     expect(newBody.history.id).not.toBe(input.ranked_history_id);

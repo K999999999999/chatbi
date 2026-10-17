@@ -1,5 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { login, send, isFinalExecutionResponse } from './helpers';
+import {
+  isExecutionSubmissionRejection,
+  isFinalExecutionResponse,
+  login,
+  send,
+  waitForOperationsReady,
+} from './helpers';
 
 test('服务拒绝追问时显示确定原因，恢复后沿用成功上下文', async ({ page }) => {
   await login(page);
@@ -16,7 +22,9 @@ test('服务拒绝追问时显示确定原因，恢复后沿用成功上下文',
       error_message: '服务暂时不可用，请稍后重试',
     } }) : route.continue();
   });
+  const rejection = page.waitForResponse(isExecutionSubmissionRejection);
   await send(page, '改成2025年3月');
+  expect((await rejection).status()).toBe(503);
   await expect(page.getByText('服务暂时不可用，请稍后重试', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '明确重试同一请求' })).toHaveCount(0);
   await expect(page.getByRole('table')).toHaveCount(1);
@@ -28,6 +36,39 @@ test('服务拒绝追问时显示确定原因，恢复后沿用成功上下文',
   await expect(page.getByRole('table')).toHaveCount(2);
   expect(submissions[1].expected_context_revision).toBe(1);
   expect(submissions[1].operation_id).not.toBe(submissions[0].operation_id);
+});
+
+test('容器验收轮询公开就绪状态，并在服务恢复后才继续', async ({ page }) => {
+  await login(page);
+  const statuses = ['unknown', 'not_ready', 'ready'] as const;
+  let attempts = 0;
+  await page.route('**/api/v1/operations/status', route => {
+    const status = statuses[Math.min(attempts, statuses.length - 1)];
+    attempts += 1;
+    return route.fulfill({
+      status: status === 'ready' ? 200 : 503,
+      headers: { 'Cache-Control': 'no-store' },
+      json: { version: 1, status, checked_at: null, query_available: status === 'ready', message: '' },
+    });
+  });
+
+  const readiness = await waitForOperationsReady(page, { timeoutMs: 2000, intervalMs: 10 });
+
+  expect(readiness.status).toBe('ready');
+  expect(readiness.attempts).toBe(3);
+  expect(attempts).toBe(3);
+});
+
+test('就绪状态持续失败时验收等待在边界内退出并记录安全状态', async ({ page }) => {
+  await login(page);
+  await page.route('**/api/v1/operations/status', route => route.fulfill({
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+    json: { version: 1, status: 'not_ready', checked_at: null, query_available: false, message: '' },
+  }));
+
+  await expect(waitForOperationsReady(page, { timeoutMs: 100, intervalMs: 10 }))
+    .rejects.toThrow('最近状态：not_ready');
 });
 
 test('服务拒绝经营分析时显示确定原因，恢复后可以重新提交', async ({ page }) => {
