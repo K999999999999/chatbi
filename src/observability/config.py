@@ -36,6 +36,7 @@ class ObservabilityConfig:
 
     enabled: bool = False
     content_capture_enabled: bool = False
+    local_console_export_enabled: bool = False
     runtime_env: str | None = field(default=None, repr=False)
     service_name: str = "chatbi-engine"
     service_version: str = "0.1.0"
@@ -57,6 +58,16 @@ class ObservabilityConfig:
         )
         if self.content_capture_enabled != content_allowed:
             object.__setattr__(self, "content_capture_enabled", content_allowed)
+        effective_env = runtime_env or deployment_env
+        local_export_allowed = (
+            self.local_console_export_enabled is True
+            and effective_env in _ALLOWED_CONTENT_ENVS
+            and _no_conflicting_environment(runtime_env, deployment_env)
+        )
+        if self.local_console_export_enabled != local_export_allowed:
+            object.__setattr__(
+                self, "local_console_export_enabled", local_export_allowed
+            )
         object.__setattr__(
             self,
             "service_name",
@@ -117,6 +128,9 @@ class ObservabilityConfig:
         return cls(
             enabled=_parse_bool(values.get("CHATBI_OBSERVABILITY_ENABLED")) is True,
             content_capture_enabled=content_allowed,
+            local_console_export_enabled=(
+                _parse_bool(values.get("CHATBI_TRACE_CONSOLE_EXPORT_ENABLED")) is True
+            ),
             runtime_env=runtime_env,
             service_name=(values.get("OTEL_SERVICE_NAME") or "chatbi-engine").strip()
             or "chatbi-engine",

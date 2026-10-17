@@ -115,7 +115,7 @@ isolated热更新把`src/query_api/app.py`和`frontend/src/style.css`覆盖挂�
 
 初始化并启动对应开发基础设施，使用真实LLM配置和现有固定案例；不自动重建RAG、不修改评测案例。报告写入ignored `reports/evaluation/`，只适用于记录的提交、案例与模型/数据/资产身份。基线对比可以继续传递评测原参数，容器路径统一使用 `/workspace/reports/evaluation/`。Secret和原始敏感内容不得进入报告。
 
-评测工具容器沿用本地 `CHATBI_OBSERVABILITY_ENABLED`、OTLP trace endpoint 和 headers；内容采集在评测容器中固定关闭。Trace 导出失败不阻断评测。
+评测工具容器沿用本地 `CHATBI_OBSERVABILITY_ENABLED`、OTLP trace endpoint 和 headers；内容采集在评测容器中固定关闭。需要本地查看 Span 时，在本地 `.env` 显式设置 `CHATBI_TRACE_CONSOLE_EXPORT_ENABLED=true`，重建并重启 API 后可通过 `docker compose logs --since 10m api` 查看；Evaluation tools 自身的 Span 通过其容器日志查看。该开关只在 local/dev/test 生效，并把同一批经过安全属性过滤的 Span 同时发送到配置的 OTLP 后端。Trace 导出失败不阻断评测。
 
 每次运行先记录起点 Git / 案例 / 上下文指纹，在评测与必要清理后再记录终点；报告 `provenance.consistency` 为 `stable`、`changed` 或 `unverified`。运行中源码或输入变化仍可生成诊断报告，但不能用于正式 clean 验收；Git 或输入身份无法读取时不得按 stable 处理。Run ID 含时间、短提交、套件和随机部分，同名 JSON / Markdown 通过排他创建防覆盖；保存冲突或部分写入会失败，不会覆盖旧证据。历史报告仍可读取和参与既有 Baseline 比较，但缺少新 provenance 的旧报告不能通过新的正式验收。
 

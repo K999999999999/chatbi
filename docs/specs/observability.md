@@ -114,12 +114,12 @@ query.request
 - `llm.generate` 使用标准 GenAI 操作、模型和 Usage 属性；若通用属性不能被验收平台识别，只能在基础设施适配器中增加最小平台兼容字段；
 - V1 不计算或承诺费用。
 
-本地 Evaluation 工具容器复用 `CHATBI_OBSERVABILITY_ENABLED`、`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` 和 `OTEL_EXPORTER_OTLP_HEADERS` 导出 Trace；`CHATBI_TRACE_CONTENT_ENABLED` 在该容器中固定为 `false`。Trace 配置缺失或导出失败不得改变 Evaluation 业务结果。
+本地 API 与 Evaluation 工具容器复用 `CHATBI_OBSERVABILITY_ENABLED`、`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` 和 `OTEL_EXPORTER_OTLP_HEADERS` 向配置的 OTLP 后端导出 Trace。开发者可设置 `CHATBI_TRACE_CONSOLE_EXPORT_ENABLED=true`，在 `local`、`dev` 或 `test` 环境把同一批安全 Span 同步输出到应用标准输出，供 `docker compose logs api` 或工具容器日志本地查询；其他运行环境会忽略该开关。`CHATBI_TRACE_CONTENT_ENABLED` 在 Evaluation 工具容器中固定为 `false`，并且 Console 导出仍受相同的 Span 属性白名单和内容采集规则约束。Trace 配置缺失或任一 Exporter 导出失败不得改变业务结果。
 
 ### SQL 与数据库
 
 - Candidate Scope Check（候选范围检查）是否通过；
-- SQL Guard 是否通过及固定 `chatbi.sql_guard.rejection_code`：`CANDIDATE_INVALID`、`SQL_PARSE_ERROR`、`STATEMENT_COUNT_INVALID`、`SELECT_ONLY`、`SUBQUERY_UNSUPPORTED`、`FORBIDDEN_OPERATION`、`UNSUPPORTED_FEATURE`、`UNAPPROVED_FUNCTION`、`TABLE_SCOPE_REJECTED`、`COLUMN_SCOPE_REJECTED`、`JOIN_CONSTRAINT_REJECTED`、`METRIC_CONSTRAINT_REJECTED`、`MULTI_METRIC_CONSTRAINT_REJECTED`；
+- SQL Guard 是否通过及固定 `chatbi.sql_guard.rejection_code`：`UNCLASSIFIED`、`CANDIDATE_INVALID`、`SQL_PARSE_ERROR`、`STATEMENT_COUNT_INVALID`、`SELECT_ONLY`、`SUBQUERY_UNSUPPORTED`、`FORBIDDEN_OPERATION`、`UNSUPPORTED_FEATURE`、`UNAPPROVED_FUNCTION`、`TABLE_SCOPE_REJECTED`、`COLUMN_SCOPE_REJECTED`、`JOIN_CONSTRAINT_REJECTED`、`METRIC_CONSTRAINT_REJECTED`、`MULTI_METRIC_CONSTRAINT_REJECTED`；
 - 默认只记录 SQL 摘要或 Hash（哈希），不记录完整 SQL；
 - 数据库执行耗时、成功、错误或超时状态；
 - 返回行数和 `truncated`；

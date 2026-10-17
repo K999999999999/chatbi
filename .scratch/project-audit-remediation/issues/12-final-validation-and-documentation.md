@@ -144,3 +144,9 @@ T12和全仓目标继续in-progress：正式AI评测仍以`97268ca`为基线，�
 ### 2026-10-18 SQL Guard 拒绝 Trace 分类补齐
 
 继续检查失败 Trace 诊断链路时发现，已有拒绝码仅在`SQLRejectedError.reason_code`非空时输出；未分类的 Guard 异常会让该属性缺失。现增加安全兜底值`UNCLASSIFIED`，覆盖非标准异常和未附分类的`SQLRejectedError`，不记录候选SQL、异常消息或用户内容。定向回归先以缺少属性失败，修复后`./dev test python tests/online_query/test_observability_t2.py`为10 passed、6 subtests passed。此改动只改善未来 Trace 诊断；既有失败Trace `ff988982811b6eb3ac269408c5425047`无法回填，因此MT-FILTER-APPEND的历史具体拒绝原因仍未知，且两次单案例复跑均通过。
+
+### 2026-10-18 本地与阿里云双 Trace 出口
+
+为下一次定位在本地同时保留可查看的 Span，新增`CHATBI_TRACE_CONSOLE_EXPORT_ENABLED`可选开关。开启后，`local` / `dev` / `test`环境将相同安全 Span 写到进程标准输出；已有 OTLP exporter继续向阿里云发送。两类 Exporter 独立初始化和失败处理；仅本地出口失败或阿里云 exporter 初始化失败时，另一出口仍工作。输出使用既有安全属性白名单，内容采集保持关闭。Compose 将该开关传给API及评测tools；Runbook说明通过容器日志查看。
+
+本机真实`.env`已设置该开关为`true`，保留现有阿里云endpoint和headers，文件权限仍为`0600`；当前服务重建和运行验证待完成。定向回归`./dev test python tests/observability/test_config.py tests/observability/test_tracing.py tests/online_query/test_observability_t2.py`为35 passed、18 subtests passed；`./dev check python`与`./dev check docs`通过，增量Review待记录。下一步只重建API服务加载候选分支代码，验证健康和本地日志出口，再按用户已授权评测范围重跑`MT-FILTER-APPEND`目标案例；不重跑整套评测。
