@@ -325,11 +325,11 @@ run_browser() {
         -v "$root/frontend/playwright.container-reporter.ts:/workspace/frontend/playwright.container-reporter.ts:ro" \
         -v "$root/frontend/test-support:/workspace/frontend/test-support:ro" \
         "${hot_reload_mounts[@]}" \
-        "$browser_image" npx playwright test --config playwright.container.config.ts
+        "$browser_image" npx playwright test --config playwright.container.config.ts "$@"
 }
 browser_initial() {
     local result=0
-    run_browser || result=$?
+    run_browser --grep-invert '停止重启后读取长期快照、重登录、续聊与显式重查' || result=$?
     if [[ -f "$work/report/test-summary.json" ]]; then
         mv -- "$work/report/test-summary.json" "$work/report/test-summary-initial.json" || result=1
     elif ((result == 0)); then result=1; fi
@@ -352,7 +352,7 @@ restart_recovery() {
 
 browser_restart() {
     local result=0
-    CHATBI_CONTAINER_RESTART_PHASE=1 run_browser || result=$?
+    CHATBI_CONTAINER_RESTART_PHASE=1 run_browser --grep '停止重启后读取长期快照、重登录、续聊与显式重查' || result=$?
     if [[ -f "$work/report/test-summary.json" ]]; then
         mv -- "$work/report/test-summary.json" "$work/report/test-summary-restart.json" || result=1
     elif ((result == 0)); then result=1; fi
