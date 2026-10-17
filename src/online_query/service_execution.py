@@ -273,9 +273,12 @@ def _execute_query(
 
 
 def _enrich_sql_guard_rejection(trace_recorder, error: Exception) -> None:
-    if not isinstance(error, SQLRejectedError) or error.reason_code is None:
-        return
+    reason_code = (
+        error.reason_code.value
+        if isinstance(error, SQLRejectedError) and error.reason_code is not None
+        else "UNCLASSIFIED"
+    )
     _safe_enrich(
         trace_recorder,
-        attributes={"chatbi.sql_guard.rejection_code": error.reason_code.value},
+        attributes={"chatbi.sql_guard.rejection_code": reason_code},
     )

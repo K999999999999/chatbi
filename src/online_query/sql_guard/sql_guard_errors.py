@@ -6,6 +6,7 @@ from enum import StrEnum
 class SQLGuardRejectionCode(StrEnum):
     """Trace 允许记录的有限拒绝原因；不包含 Candidate 或原始消息。"""
 
+    UNCLASSIFIED = "UNCLASSIFIED"
     CANDIDATE_INVALID = "CANDIDATE_INVALID"
     SQL_PARSE_ERROR = "SQL_PARSE_ERROR"
     STATEMENT_COUNT_INVALID = "STATEMENT_COUNT_INVALID"

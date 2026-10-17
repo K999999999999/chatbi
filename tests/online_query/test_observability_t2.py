@@ -170,6 +170,24 @@ class T2ObservabilityTest(unittest.TestCase):
         self.assertIn("sql.guard", names)
         self.assertNotIn("database.execute", names)
 
+    def test_unclassified_sql_guard_failure_is_identified_without_details(self) -> None:
+        with patch(
+            "src.online_query.service._new_validation_session",
+        ) as factory:
+            factory.return_value.validate_sql.side_effect = RuntimeError(
+                "private guard detail"
+            )
+            result = self._service().execute(QueryRequest(question="查询订单"))
+
+        self._assert_failure(result, QueryErrorCode.SQL_REJECTED)
+        spans = self.exporter.get_finished_spans()
+        guard = next(span for span in spans if span.name == "sql.guard")
+        self.assertEqual(
+            guard.attributes.get("chatbi.sql_guard.rejection_code"),
+            "UNCLASSIFIED",
+        )
+        self.assertNotIn("private guard detail", repr(guard.attributes))
+
     def test_technical_failures_and_database_timeout_are_classified(self) -> None:
         scenarios = (
             (

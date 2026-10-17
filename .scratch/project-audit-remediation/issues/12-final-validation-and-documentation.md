@@ -140,3 +140,7 @@ T12和全仓目标继续in-progress：正式AI评测仍以`97268ca`为基线，�
 对`ba3e4e7`三套报告运行官方`evaluate validate`，因multi-turn 6/7以及business-analysis的dirty provenance返回失败。完整多轮失败报告有Trace ID；代码已将固定`chatbi.sql_guard.rejection_code`写入拒绝Span，但本机未配置阿里云`GetTrace`查询用RAM凭据，故未能读取该次失败Span的拒绝类别，Trace后端是否已收到该Span也未通过查询确认。原失败报告、单案例复跑及Trace ID均保留；未改模型、Prompt、Guard规则、用例或阈值，Ticket 12继续in-progress。
 
 随后在clean候选`b9c17bfb13ce3bd19e0a91ae98b0ca733b9419f6`和同一隔离RAG上对`MT-FILTER-APPEND`再运行一次：报告`20261017T160448Z-b9c17bf-multi-turn-b37929be6887`为1/1 PASS、`git_dirty=false`、provenance stable，Trace ID为`105684c993512b9e7bd2c9fb94738c7a`和`e3c417578b4514f75f50cac61df7f52d`。in-memory exporter未收到SQL Guard拒绝Span，因为本次查询通过。加上此前一次dirty单例复跑也通过，说明全套中的一次`SQL_REJECTED`当前无法稳定复现；不继续重复模型调用或据此改写业务逻辑。确切失败Span拒绝码仍未确认。
+
+### 2026-10-18 SQL Guard 拒绝 Trace 分类补齐
+
+继续检查失败 Trace 诊断链路时发现，已有拒绝码仅在`SQLRejectedError.reason_code`非空时输出；未分类的 Guard 异常会让该属性缺失。现增加安全兜底值`UNCLASSIFIED`，覆盖非标准异常和未附分类的`SQLRejectedError`，不记录候选SQL、异常消息或用户内容。定向回归先以缺少属性失败，修复后`./dev test python tests/online_query/test_observability_t2.py`为10 passed、6 subtests passed。此改动只改善未来 Trace 诊断；既有失败Trace `ff988982811b6eb3ac269408c5425047`无法回填，因此MT-FILTER-APPEND的历史具体拒绝原因仍未知，且两次单案例复跑均通过。
