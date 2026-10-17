@@ -6,6 +6,6 @@ export default defineConfig({
   plugins: [react()],
   cacheDir: process.env.CHATBI_DEV_API_TARGET ? '/tmp/chatbi-vite' : 'node_modules/.vite',
   server: { port: 5173, strictPort: true, proxy: {
-    '/auth': apiTarget, '/api': apiTarget, '/health': apiTarget,
+    '/auth': apiTarget, '/api': apiTarget, '/health': apiTarget, '/ready': apiTarget,
   } },
 });

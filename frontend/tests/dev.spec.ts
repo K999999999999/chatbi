@@ -1,7 +1,11 @@
 import { test, expect } from '@playwright/test';
 import { login, send } from './helpers';
 
-test('Vite same-origin proxy supports browser login and both modes', async ({ page }) => {
+test('Vite same-origin proxy exposes public readiness and supports browser login and both modes', async ({ page }) => {
+  const readiness = await page.request.get('/ready');
+  expect(readiness.status()).toBe(200);
+  expect(await readiness.json()).toMatchObject({ status: 'ready' });
+
   await login(page);
   await send(page, '2025年2月净销售额');
   await expect(page.getByRole('table')).toBeVisible();

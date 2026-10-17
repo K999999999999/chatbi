@@ -5,7 +5,7 @@
 - Owner: 当前主Agent；维护归属见共同规则。
 - AUD: AUD022、AUD023。
 - Blocked by: 01–11；需全部完成
-- owned files: .scratch/chatbi-product-v1/r1-spec.md；.scratch/project-navigation/spec.md；docs/roadmap.md；README.md（仅本目标入口）；docs/audits/project-audit-20261016.md（与原始报告逐字一致，供路线图和README链接在clean clone中有效）；.gitignore（排除验收器自己的运行状态文件，确保clean candidate provenance）；scripts/start_dev_api.py、src/bootstrap/readiness.py及对应确定性回归测试（修复隔离验收发现的冷启动就绪探针超时，不改变用户行为）；tests/chatbi_control/test_history_postgres.py（修正锁等待故障注入的超时预算，不放宽断言）；scripts/verify_container_dev.sh（让最终验证报告发布不依赖已清理的临时Compose文件）；frontend/tests/helpers.ts、frontend/tests/operations.spec.ts、frontend/tests/container-real.spec.ts（让真实浏览器验收等待公开就绪状态，并在受理被拒绝时立即记录安全状态，不改产品行为）；src/business_analysis/reporting.py、evaluation/suites/business_analysis/business_analysis_judge.py及对应测试（按用户确认的既有 top-3 Contract 修复总结提示和 Judge 判定边界，不更改案例或门槛）；本工作项记录及路线图引用的Spec/设计审查/Ticket草案/Readiness材料；必要现有验证编排入口（仅运行，不新增通用平台）。同目录其他文件仅在同一行为确有调用点时扩展并记录，不覆盖用户修改。
+- owned files: .scratch/chatbi-product-v1/r1-spec.md；.scratch/project-navigation/spec.md；docs/roadmap.md；README.md（仅本目标入口）；docs/audits/project-audit-20261016.md（与原始报告逐字一致，供路线图和README链接在clean clone中有效）；.gitignore（排除验收器自己的运行状态文件，确保clean candidate provenance）；scripts/start_dev_api.py、src/bootstrap/readiness.py及对应确定性回归测试（修复隔离验收发现的冷启动就绪探针超时，不改变用户行为）；tests/chatbi_control/test_history_postgres.py（修正锁等待故障注入的超时预算，不放宽断言）；scripts/verify_container_dev.sh（让最终验证报告发布不依赖已清理的临时Compose文件）；frontend/tests/helpers.ts、frontend/tests/operations.spec.ts、frontend/tests/container-real.spec.ts、frontend/tests/dev.spec.ts及`frontend/vite.config.ts`（让真实浏览器验收通过开发代理访问匿名`/ready`，并在受理被拒绝时立即记录安全状态，不改API或readiness行为）；src/business_analysis/reporting.py、evaluation/suites/business_analysis/business_analysis_judge.py及对应测试（按用户确认的既有 top-3 Contract 修复总结提示和 Judge 判定边界，不更改案例或门槛）；本工作项记录及路线图引用的Spec/设计审查/Ticket草案/Readiness材料；必要现有验证编排入口（仅运行，不新增通用平台）。同目录其他文件仅在同一行为确有调用点时扩展并记录，不覆盖用户修改。
 
 ### What to build
 
@@ -70,3 +70,11 @@ clean candidate `9b81160498604a176d6693df98a1ad90345d9231` 的隔离业务验收
 已在审计分支修正测试代码：统一`frontend/tests/container-real.spec.ts`首次和追问前就绪检查，删除重复的身份态helper；`frontend/tests/helpers.ts`改为轮询匿名`/ready`，仅HTTP成功且`status=ready`时继续；`frontend/tests/operations.spec.ts`覆盖匿名状态从unknown/not_ready到ready恢复及超时。该修改不改产品接口、权限或readiness Contract。TDD红测报告`20261017T105827Z-9b81160-test-web-f3240f47153a`（2项预期失败，断言公开`/ready`时旧helper仍请求身份态接口）；修正后定向浏览器测试`20261017T105948Z-9b81160-test-web-0ad2ce348418` packaged 2/2、dev 1/1通过；完整Web `20261017T110059Z-9b81160-test-web-68bc922c0423` packaged 82/82、dev 1/1通过。上述是9b工作树上的实现迭代验证，provenance stable但`git_dirty=true`，不是clean候选门禁。`./dev check docs` PASS（run `20261017T110430Z-9b81160-check-docs-aeec5a7dfc31`），`git diff --check`通过；本次只读Code Review PASS，BASE `9b81160498604a176d6693df98a1ad90345d9231`，范围限于三项frontend测试文件。
 
 下一步：本地提交该测试修正及记录，基于新clean HEAD再次运行隔离容器业务验收并保留新报告。Ticket 12仍为in-progress；正式AI评测仍绑定`97268ca`且单轮、多轮验证器未通过，61项条件性skip仍使全量软件结果为incomplete。不得绕过readiness、改模型参数或用此次helper修正宣称业务验收通过。
+
+### 2026-10-17 `8f37194` UAT 路由发现与修正
+
+clean候选`8f3719463909f0701d5334d566bcdf8180d8431e`隔离验收run `20261017T110718Z-8f37194-business-acceptance-container-dev-ffbb1e9013ba` provenance stable、prepare和cleanup通过，browser-initial为1 passed / 1 failed / 1 skipped。首次就绪探针返回`unavailable`，实际执行提交数为0；后续问数、重启和导出阶段未运行。精确Compose项目、专用volume与network已移除；账号禁用、0活动Session、源码恢复Hash通过，日常Compose未操作。报告与产物保留在detached候选工作树。
+
+根因是该候选的`frontend/vite.config.ts`开发代理只映射`/auth`、`/api`和`/health`，不映射API已有的匿名`/ready`；浏览器页请求未到达API。活动审计分支为Vite增加`/ready`转发，并扩展`frontend/tests/dev.spec.ts`在未登录状态请求`/ready`、断言200与`status=ready`后再运行登录、问数和分析主流程。变更仅使开发代理可访问已有公开探针，不改API、鉴权或readiness Contract。`./dev test web` run `20261017T111458Z-8f37194-test-web-35ecafb1c852`通过：packaged 82/82，web-dev 1/1；build和typecheck通过。报告provenance stable但`git_dirty=true`，为迭代验证；最新文档门禁`./dev check docs` PASS（run `20261017T111926Z-8f37194-check-docs-f4da659c3bc4`）。本次增量只读Review PASS，BASE `8f3719463909f0701d5334d566bcdf8180d8431e`，范围`frontend/vite.config.ts`、`frontend/tests/dev.spec.ts`；`git diff --check`通过。
+
+下一步：本地提交Vite映射、回归测试及本记录更新，创建新的clean detached候选后重新执行隔离容器验收。T12继续in-progress；正式AI评测的单轮S02提供方错误、多轮`MT-FILTER-REPLACE` SQL拒绝、61项条件性skip均未因本改动改变。
