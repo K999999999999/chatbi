@@ -160,3 +160,11 @@ T12和全仓目标继续in-progress：正式AI评测仍以`97268ca`为基线，�
 评测tools标准输出已看到两轮的安全Console Span，包含`query.request`、`llm.query_understanding`、`retrieval.plan`、`asset.resolve`、`embedding.query`和`table.search`等阶段；T2 `query.request`标记`evaluation.case_id=MT-FILTER-APPEND`、`evaluation.turn_id=MT-FILTER-APPEND-T2`、`chatbi.outcome=SUCCESS`，`chatbi.content_capture.enabled=false`。本次无SQL Guard拒绝，因此没有新的`chatbi.sql_guard.rejection_code`。本机`.env`的阿里云OTLP endpoint和headers已传入tools；由于没有阿里云GetTrace查询凭据，不能确认云端收到这些Span。
 
 本次T1和T2都通过；连同此前两次定向复跑，历史完整套件中唯一的`MT-FILTER-APPEND-T1 SQL_REJECTED`仍未复现，现有证据不能认定测试集有误，也不能确定该历史拒绝来自LLM或确定性代码。历史失败Trace `ff988982811b6eb3ac269408c5425047`的具体拒绝分类仍未知；不改案例、Seed、模型参数、Prompt、Guard规则或门槛，不因单次历史失败改业务逻辑。Ticket 12继续in-progress，待按既定Done When处理其他未完成验收项。
+
+### 2026-10-18 完整多轮套件复跑
+
+按用户要求，在候选`e0d747eab4046eb67e69a62a01c9b0cc0e04e4be`、同一匹配隔离RAG和双出口Compose配置下，完整运行原有multi-turn套件一次。报告`20261017T165930Z-e0d747e-multi-turn-114cbd777814`为7/7场景PASS、15/15轮PASS（14个SQL执行全部通过，1个预期错误结果通过）、7个coverage类别均100%；`git_dirty=false`、provenance stable。完整安全Console Span保存在候选`.local/dev-tools/mt-full-dual-export-e0d747e.log`（mode 0600）。
+
+完整套件中`MT-FILTER-APPEND-T1` Trace ID为`8594b9872c15d8d64c06242d56063be0`，关联25个本地Span，覆盖`query.request`、请求校验、Query Understanding、RAG计划与表/指标/列检索、Join解析、上下文与Prompt构建、LLM生成、候选范围校验、SQL Guard、数据库执行和响应序列化；根Span为`SUCCESS`，`chatbi.content_capture.enabled=false`，SQL Guard未拒绝。T2 Trace ID为`7d5cf439d4a1717ece90afc552c2908f`。本次阿里云OTLP endpoint/headers配置仍已传入tools；没有云端查询凭据，因此不声称云端收件已确认。
+
+该完整复跑加上此前三次目标单例均未复现历史完整套件中的一次T1 `SQL_REJECTED`。因此当前完整候选套件通过，但历史拒绝的具体类别与根因依旧未知；不能据此声称测试集有误或历史故障已经修复，也没有根据单次失败修改业务逻辑。正式旧候选报告及该历史Trace ID继续保留；Ticket 12仍需完成其余Done When验收项。
