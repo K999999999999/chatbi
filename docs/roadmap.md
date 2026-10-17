@@ -12,7 +12,7 @@
 
 ## 已确认的后续方向
 
-已确认全仓审计问题修复目标，范围为[审计报告](audits/project-audit-20261016.md)中的22项问题（AUD014已排除）；[Spec](../.scratch/project-audit-remediation/spec.md)、设计审查修订和12项Ticket拆分均已确认。截至2026-10-17，Ticket 01–11已完成，下一项为T12状态修正与整体验收。整体验收包含软件回归、真实PostgreSQL并发、真实LLM三套正式评测及隔离容器业务验收；不扩展产品能力、不重排其他路线优先级，未运行的整体验收不得视为通过。
+已确认全仓审计问题修复目标，范围为[审计报告](audits/project-audit-20261016.md)中的22项问题（AUD014已排除）；[Spec](../.scratch/project-audit-remediation/spec.md)、设计审查修订和12项Ticket拆分均已确认。Ticket 01–11已完成，Ticket 12仍在整体验收中。候选代码 `97268ca` 的 `./dev check` 通过；`./dev test all` 有1257 passed、61条件性 skipped、0 failed，报告因skip为incomplete。三套正式评测中单轮28/29（S02为`PROVIDER_CALL_FAILED`，未触达检索）、经营分析10/10、多轮6/7（`MT-FILTER-REPLACE`为`SQL_REJECTED`），官方报告校验未通过。S02确定性别名已修复；相关独立工作项已完成失败诊断补充，但正式单轮仍未验证该别名。隔离容器验收复跑观察到新请求收到`503 SERVICE_NOT_READY`并超时，cleanup通过但报告状态failed。随后审计分支提交S02修复`f67221b`和容器验收时序 / 错误捕获改进`c345827`；Web回归83/83通过，clean candidate隔离验收待复跑。条件skip与验收失败仍未满足Done When；详细证据和恢复条件见[Ticket 12](../.scratch/project-audit-remediation/issues/12-final-validation-and-documentation.md)。不扩展产品能力、不重排其他路线优先级。
 
 已完成dev分类入口与本机管理员恢复目标，按[Spec](../.scratch/dev-command-entrypoints/spec.md)交付七项Ticket；当时纳入的标准APP管理路线已由后续[测试可靠性目标](../.scratch/test-reliability/spec.md)确认退役，历史候选和验证仍见[原验收记录](../.scratch/dev-command-entrypoints/acceptance.md)。
 
