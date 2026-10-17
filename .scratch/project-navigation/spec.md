@@ -1,6 +1,6 @@
 # ChatBI 新人项目导航 Spec
 
-Status: 用户已于 2026-10-11 确认 Spec 和 Ticket 拆分；Design Review 为 PASS WITH MINOR FIXES，Ticket Readiness 为 READY；三个 Ticket 已连续实施，Ticket 03 等待非作者新人走查反馈。
+Status: 已完成：三个 Ticket 均已实施，非作者新人走查中发现的两处入口问题已修复并由审阅者复核通过；过程和验收边界见[验收记录](onboarding-acceptance.md)。
 
 ## Problem Statement
 

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
-import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { reportPath } from '../test-support/report-path';
@@ -24,12 +24,53 @@ test('浏览器验收报告拒绝越出报告目录的文件名', () => {
 });
 
 test('未配置目录时继续使用容器报告挂载点', () => {
-  const previous = process.env.CHATBI_CONTAINER_REPORT_DIR;
+  const previousContainer = process.env.CHATBI_CONTAINER_REPORT_DIR;
+  const previousReal = process.env.CHATBI_REAL_E2E_REPORT_DIR;
   delete process.env.CHATBI_CONTAINER_REPORT_DIR;
+  delete process.env.CHATBI_REAL_E2E_REPORT_DIR;
   try {
     expect(reportPath('browser.json')).toBe('/reports/browser.json');
   } finally {
-    if (previous !== undefined) process.env.CHATBI_CONTAINER_REPORT_DIR = previous;
+    if (previousContainer !== undefined) {
+      process.env.CHATBI_CONTAINER_REPORT_DIR = previousContainer;
+    }
+    if (previousReal !== undefined) process.env.CHATBI_REAL_E2E_REPORT_DIR = previousReal;
+  }
+});
+
+test('容器报告目录为空时回退到 host real run 并能读取 start.json', () => {
+  const previousContainer = process.env.CHATBI_CONTAINER_REPORT_DIR;
+  const previousReal = process.env.CHATBI_REAL_E2E_REPORT_DIR;
+  const directory = mkdtempSync(resolve(tmpdir(), 'chatbi-real-report-'));
+  const expected = JSON.stringify({ run_id: 'host-real-run' });
+  writeFileSync(resolve(directory, 'start.json'), expected, { mode: 0o600 });
+  process.env.CHATBI_CONTAINER_REPORT_DIR = '  ';
+  process.env.CHATBI_REAL_E2E_REPORT_DIR = directory;
+  try {
+    expect(reportPath('start.json')).toBe(resolve(directory, 'start.json'));
+    expect(readFileSync(reportPath('start.json'), 'utf8')).toBe(expected);
+  } finally {
+    if (previousContainer === undefined) delete process.env.CHATBI_CONTAINER_REPORT_DIR;
+    else process.env.CHATBI_CONTAINER_REPORT_DIR = previousContainer;
+    if (previousReal === undefined) delete process.env.CHATBI_REAL_E2E_REPORT_DIR;
+    else process.env.CHATBI_REAL_E2E_REPORT_DIR = previousReal;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('非空容器报告目录优先于 host real run 目录', () => {
+  const previousContainer = process.env.CHATBI_CONTAINER_REPORT_DIR;
+  const previousReal = process.env.CHATBI_REAL_E2E_REPORT_DIR;
+  process.env.CHATBI_CONTAINER_REPORT_DIR = 'container-reports';
+  process.env.CHATBI_REAL_E2E_REPORT_DIR = 'host-real-reports';
+  try {
+    expect(reportPath('browser.json')).toContain('container-reports');
+    expect(reportPath('browser.json')).not.toContain('host-real-reports');
+  } finally {
+    if (previousContainer === undefined) delete process.env.CHATBI_CONTAINER_REPORT_DIR;
+    else process.env.CHATBI_CONTAINER_REPORT_DIR = previousContainer;
+    if (previousReal === undefined) delete process.env.CHATBI_REAL_E2E_REPORT_DIR;
+    else process.env.CHATBI_REAL_E2E_REPORT_DIR = previousReal;
   }
 });
 

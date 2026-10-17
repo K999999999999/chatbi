@@ -362,6 +362,65 @@ class ObservabilityTracingTest(unittest.TestCase):
         )
         recorder.shutdown()
 
+    def test_console_and_otlp_exporters_receive_the_same_trace(self) -> None:
+        captured_otlp: list[object] = []
+
+        class FakeExporter:
+            def __init__(self, **kwargs):
+                del kwargs
+
+            def export(self, spans):
+                captured_otlp.extend(spans)
+
+            def shutdown(self):
+                return None
+
+        config = ObservabilityConfig(
+            enabled=True,
+            runtime_env="local",
+            deployment_environment="local",
+            local_console_export_enabled=True,
+            otlp_traces_endpoint="https://collector/v1/traces",
+        )
+        output = io.StringIO()
+        with patch.object(tracing, "OTLPSpanExporter", FakeExporter):
+            with redirect_stdout(output):
+                recorder = create_trace_recorder(config)
+                with recorder.query_trace(QuerySource.INTERNAL) as root:
+                    trace_id = root.trace_id
+                self.assertTrue(recorder._delegate._provider.force_flush())
+                recorder.shutdown()
+
+        self.assertIn(trace_id, output.getvalue())
+        self.assertTrue(captured_otlp)
+        self.assertTrue(
+            all(f"{span.context.trace_id:032x}" == trace_id for span in captured_otlp)
+        )
+
+    def test_console_export_survives_otlp_exporter_initialization_failure(self) -> None:
+        config = ObservabilityConfig(
+            enabled=True,
+            runtime_env="local",
+            deployment_environment="local",
+            local_console_export_enabled=True,
+            otlp_traces_endpoint="https://collector/v1/traces",
+        )
+        output = io.StringIO()
+        with patch.object(
+            tracing,
+            "OTLPSpanExporter",
+            side_effect=RuntimeError("endpoint-secret"),
+        ):
+            with redirect_stdout(output):
+                with self.assertLogs(tracing._LOGGER, level="WARNING") as logs:
+                    recorder = create_trace_recorder(config)
+                    with recorder.query_trace(QuerySource.INTERNAL) as root:
+                        trace_id = root.trace_id
+                    recorder.shutdown()
+
+        self.assertIn(trace_id, output.getvalue())
+        self.assertNotIn("endpoint-secret", "\n".join(logs.output))
+
     def test_worker_root_uses_immutable_carrier_link_after_http_root_closes(
         self,
     ) -> None:

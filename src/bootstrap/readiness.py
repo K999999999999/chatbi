@@ -3,6 +3,26 @@
 from src.chatbi_control.database import verify_control_schema
 
 
+def probe_control_database() -> bool:
+    """Check only the migrated control database for the API startup gate."""
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from src.chatbi_control.database import ControlDatabaseConfig, create_control_engine
+
+    engine = None
+    try:
+        engine = create_control_engine(
+            ControlDatabaseConfig.from_environment(require_migrator=False)
+        )
+        verify_control_schema(engine)
+        return True
+    except (OSError, RuntimeError, ValueError, SQLAlchemyError):
+        return False
+    finally:
+        if engine is not None:
+            engine.dispose()
+
+
 def verify_startup_dependencies(
     *, control_engine, environment: str, rag_runtime, query_executor
 ) -> None:
@@ -20,7 +40,6 @@ def probe_dependencies() -> dict[str, str]:
 
     from sqlalchemy.exc import SQLAlchemyError
 
-    from src.chatbi_control.database import ControlDatabaseConfig, create_control_engine
     from src.online_query.database import PsycopgQueryExecutor
     from src.online_query.retrieval.rag_runtime import (
         _validate_collections,
@@ -34,18 +53,7 @@ def probe_dependencies() -> dict[str, str]:
     checks = dict.fromkeys(
         ("control_database", "business_database", "qdrant", "assets"), "unknown"
     )
-    engine = None
-    try:
-        engine = create_control_engine(
-            ControlDatabaseConfig.from_environment(require_migrator=False)
-        )
-        verify_control_schema(engine)
-        checks["control_database"] = "ready"
-    except (OSError, RuntimeError, ValueError, SQLAlchemyError):
-        checks["control_database"] = "not_ready"
-    finally:
-        if engine is not None:
-            engine.dispose()
+    checks["control_database"] = "ready" if probe_control_database() else "not_ready"
     try:
         PsycopgQueryExecutor.from_env().verify_structure_metadata()
         checks["business_database"] = "ready"

@@ -1,0 +1,13 @@
+[
+  {
+    "id": "S02",
+    "schema_name": "mart_sales",
+    "category": "simple",
+    "question": "当前已完成订单明细有多少行？",
+    "description": "单事实表、状态过滤、明细行计数。",
+    "expected_sql": "SELECT COUNT(*) AS completed_order_line_count\nFROM mart_sales.fct_sales_order_line AS f\nWHERE f.order_status = 'completed';",
+    "coverage": [
+      "metric_query"
+    ]
+  }
+]

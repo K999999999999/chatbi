@@ -4,6 +4,7 @@ import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Lock
 from typing import Any, Protocol
 
 from .config import DEFAULT_MODEL, DEFAULT_MODEL_REVISION
@@ -97,6 +98,7 @@ class BgeM3EmbeddingProvider:
         self.model_revision = model_revision
         self.model_id = model_id
         self._model = model
+        self._load_lock = Lock()
 
     @property
     def dimension(self) -> int:
@@ -162,28 +164,31 @@ class BgeM3EmbeddingProvider:
     def _load_model(self) -> Any:
         if self._model is not None:
             return self._model
-        if not Path(self.model_name_or_path).is_dir():
-            raise EmbeddingError(
-                "Embedding 模型本地快照不存在；先运行 "
-                "uv run python -m src.bootstrap prepare-model"
-            )
-        try:
-            from FlagEmbedding import BGEM3FlagModel
-        except ImportError as exc:
-            raise EmbeddingError(
-                "未安装 FlagEmbedding，无法加载 BGE-M3；请先同步项目依赖"
-            ) from exc
-        try:
-            self._model = BGEM3FlagModel(
-                self.model_name_or_path,
-                use_fp16=self.use_fp16,
-                devices=self.devices,
-            )
-        except Exception as exc:
-            raise EmbeddingError(
-                f"无法加载 Embedding 模型 {self.model_name_or_path}：{exc}"
-            ) from exc
-        return self._model
+        with self._load_lock:
+            if self._model is not None:
+                return self._model
+            if not Path(self.model_name_or_path).is_dir():
+                raise EmbeddingError(
+                    "Embedding 模型本地快照不存在；先运行 "
+                    "uv run python -m src.bootstrap prepare-model"
+                )
+            try:
+                from FlagEmbedding import BGEM3FlagModel
+            except ImportError as exc:
+                raise EmbeddingError(
+                    "未安装 FlagEmbedding，无法加载 BGE-M3；请先同步项目依赖"
+                ) from exc
+            try:
+                self._model = BGEM3FlagModel(
+                    self.model_name_or_path,
+                    use_fp16=self.use_fp16,
+                    devices=self.devices,
+                )
+            except Exception as exc:
+                raise EmbeddingError(
+                    f"无法加载 Embedding 模型 {self.model_name_or_path}：{exc}"
+                ) from exc
+            return self._model
 
 
 def _validate_texts(texts: Sequence[str], label: str) -> tuple[str, ...]:

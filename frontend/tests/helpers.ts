@@ -17,6 +17,51 @@ export async function isFinalExecutionResponse(response: {
   }
 }
 
+export function isExecutionSubmissionRejection(response: {
+  url(): string;
+  status(): number;
+  request(): { method(): string };
+}): boolean {
+  return response.request().method() === 'POST'
+    && response.status() >= 400
+    && /^\/api\/v1\/.+\/(?:requery-)?executions$/.test(new URL(response.url()).pathname);
+}
+
+export async function waitForOperationsReady(
+  page: Page,
+  { timeoutMs = 75000, intervalMs = 1000 }: { timeoutMs?: number; intervalMs?: number } = {},
+) {
+  const startedAt = Date.now();
+  let attempts = 0;
+  let lastStatus = 'unavailable';
+  while (Date.now() - startedAt < timeoutMs) {
+    attempts += 1;
+    try {
+      lastStatus = await page.evaluate(async () => {
+        try {
+          const response = await fetch('/ready', { cache: 'no-store' });
+          const payload: unknown = await response.json();
+          if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return 'invalid';
+          const state = payload as { status?: unknown };
+          if (response.ok && state.status === 'ready') return 'ready';
+          if (state.status === 'not_ready' || state.status === 'unknown') return state.status;
+          return `http_${response.status}`;
+        } catch {
+          return 'unavailable';
+        }
+      });
+    } catch {
+      lastStatus = 'unavailable';
+    }
+    if (lastStatus === 'ready') {
+      return { status: 'ready' as const, attempts, elapsed_ms: Date.now() - startedAt };
+    }
+    const remaining = timeoutMs - (Date.now() - startedAt);
+    if (remaining > 0) await page.waitForTimeout(Math.min(intervalMs, remaining));
+  }
+  throw new Error(`应用在 ${timeoutMs}ms 内未就绪（最近状态：${lastStatus}）`);
+}
+
 export async function mockFinalExecution(page: Page, snapshot: unknown | ((current: unknown, call: number) => unknown)) {
   let calls = 0;
   await page.route('**/api/v1/executions/*', async route => {

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
+import math
 from typing import Protocol
 
 from sqlalchemy import select
@@ -37,7 +39,7 @@ class AuditRecord:
                 raise ValueError(f"{field_name} 必须是非空字符串")
         if self.actor_user_id is not None and self.actor_user_id <= 0:
             raise ValueError("actor_user_id 必须是正整数")
-        if any(_contains_sensitive_key(key) for key in self.details):
+        if _contains_sensitive_details(self.details):
             raise ValueError(
                 "审计 details 不能包含 Secret、Token、Password、SQL 或结果载荷"
             )
@@ -57,6 +59,7 @@ class PersistentAuditSink:
         self._session_factory = session_factory
 
     def write(self, session: Session, record: AuditRecord) -> None:
+        details = _safe_details_snapshot(record.details)
         try:
             session.add(
                 AuditEvent(
@@ -67,7 +70,7 @@ class PersistentAuditSink:
                     outcome=record.outcome,
                     request_id=record.request_id,
                     reason=record.reason,
-                    details=record.details or None,
+                    details=details or None,
                 )
             )
         except Exception as exc:  # noqa: BLE001 - audit boundary is explicit
@@ -137,3 +140,55 @@ def _contains_sensitive_key(key: object) -> bool:
             "question",
         )
     )
+
+
+def _contains_sensitive_details(details: object) -> bool:
+    """递归校验 JSON details；只检查键名，不扫描普通文本内容。"""
+
+    if type(details) is not dict:
+        return True
+    pending: list[tuple[object, bool]] = [(details, False)]
+    active: set[int] = set()
+    while pending:
+        value, exiting = pending.pop()
+        if exiting:
+            active.remove(id(value))
+            continue
+        if type(value) is dict:
+            identity = id(value)
+            if identity in active:
+                return True
+            active.add(identity)
+            pending.append((value, True))
+            for key, item in value.items():
+                if _contains_sensitive_key(key):
+                    return True
+                pending.append((item, False))
+        elif type(value) is list:
+            identity = id(value)
+            if identity in active:
+                return True
+            active.add(identity)
+            pending.append((value, True))
+            pending.extend((item, False) for item in value)
+        elif value is None or type(value) in {str, int, bool}:
+            continue
+        elif type(value) is float and math.isfinite(value):
+            continue
+        else:
+            return True
+    return False
+
+
+def _safe_details_snapshot(details: object) -> dict[str, object]:
+    """重新校验并复制可变 details，避免构造后变更绕过记录检查。"""
+
+    if _contains_sensitive_details(details):
+        raise AuditUnavailable("ChatBI 审计写入失败")
+    try:
+        snapshot = json.loads(json.dumps(details, ensure_ascii=False, allow_nan=False))
+    except (TypeError, ValueError, UnicodeError, RecursionError, RuntimeError):
+        raise AuditUnavailable("ChatBI 审计写入失败") from None
+    if _contains_sensitive_details(snapshot):
+        raise AuditUnavailable("ChatBI 审计写入失败")
+    return snapshot

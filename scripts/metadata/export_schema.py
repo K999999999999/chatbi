@@ -98,6 +98,9 @@ def main() -> int:
             args.output_dir,
             environment=dict(os.environ) if args.runtime_environment else None,
         )
+    except PermissionError as exc:
+        print(f"metadata_export_result = FAIL: {exc}")
+        return 1
     except (OSError, psycopg.Error, MetadataExportError, ValueError) as exc:
         print(f"metadata_export_result = FAIL: {type(exc).__name__}")
         return 1

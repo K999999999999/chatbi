@@ -24,6 +24,11 @@ def test_background_trace_classifies_business_failure_timeout_and_technical_erro
         None,
         None,
     )
+    assert _trace_result_classification("succeeded", None) == (
+        TraceOutcome.SUCCESS,
+        None,
+        None,
+    )
     assert _trace_result_classification("failed", {"error_code": "CANNOT_ANSWER"}) == (
         TraceOutcome.BUSINESS_REJECTION,
         None,
@@ -329,6 +334,84 @@ def test_background_execution_has_its_own_linked_trace_root():
         assert worker_root.attributes["chatbi.execution.kind"] == "query"
     finally:
         finish_worker.set()
+        runtime.close()
+
+
+def test_successful_worker_succeeded_turn_records_success_trace():
+    history_id = str(uuid4())
+    operation_id = str(uuid4())
+    allow_lookup = Event()
+    allow_lookup.set()
+
+    class SucceededStore(Store):
+        def finish_execution_attempt(
+            self, owner, _token, _snapshot, error, execution_id
+        ):
+            assert owner == 43 and error is None
+            for operation, record in self.records.items():
+                if record.id == execution_id:
+                    self.records[operation] = replace(
+                        record,
+                        status="succeeded",
+                        finished_at=datetime.now(UTC),
+                    )
+                    return
+            raise AssertionError("execution should have been accepted")
+
+    class SucceededHistoryApplication(HistoryApplication):
+        def _execute_attempt(
+            self, auth, _request_id, _history_id, _question, accepted, **options
+        ):
+            self.store.finish_execution_attempt(
+                auth.user_id,
+                accepted.token,
+                None,
+                None,
+                options["execution_id"],
+            )
+            return SimpleNamespace(status="succeeded", public_error=None)
+
+    store = SucceededStore(history_id, Event(), allow_lookup)
+    history_runtime = HistoryRuntime()
+    runtime = ExecutionRuntime(history_runtime, None)
+    recorder, exporter = create_in_memory_recorder()
+    application = ExecutionApplication(
+        SucceededHistoryApplication(store, history_runtime, Event(), Event()),
+        runtime,
+        trace_recorder=recorder,
+    )
+    auth = AuthContext("analyst", "test", user_id=43)
+
+    try:
+        application.submit(
+            auth,
+            "request",
+            history_id,
+            operation_id,
+            mode="query",
+            question="销售额",
+            expected_context_revision=0,
+            reauthenticate=lambda: auth,
+        )
+        deadline = monotonic() + 2
+        roots = []
+        while monotonic() < deadline:
+            roots = [
+                span
+                for span in exporter.get_finished_spans()
+                if span.name == "query.request"
+                and span.attributes.get("chatbi.request.source")
+                == QuerySource.EXECUTION.value
+            ]
+            if roots:
+                break
+            Event().wait(0.001)
+
+        assert len(roots) == 1
+        assert roots[0].attributes["chatbi.outcome"] == TraceOutcome.SUCCESS.value
+        assert "chatbi.error.type" not in roots[0].attributes
+        assert "chatbi.error.code" not in roots[0].attributes
+    finally:
         runtime.close()
 
 

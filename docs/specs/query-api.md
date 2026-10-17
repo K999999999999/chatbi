@@ -189,7 +189,8 @@ X-Request-ID: 可选
 - 成功、失败响应均回显 `analysis_run_id`。过期、身份 / 问题不匹配及 checkpoint 不可用使用现有 QueryFailure 结构和错误码，不暴露运行内容或 Secret。
 - Checkpoint 保留 24 小时；清理后保留最小过期登记，防止同一 UUID 被当成新分析重新执行。
 
-- `task_results` 只保留结构化数据、状态和安全公开错误，不包含 SQL、连接信息、异常堆栈或 Secret；返回行数仍受 Online Query 当前边界约束。
+- `task_results` 只保留结构化数据、状态和安全公开错误，不包含 SQL、连接信息、异常堆栈或 Secret；返回行数仍受 Online Query 当前边界约束。持久历史在详情、另存及导出前递归校验本 DTO 的公开结构；未知嵌套字段以 `HISTORY_SNAPSHOT_UNAVAILABLE` 受控拒绝，不做字段删除式脱敏。
+- 旧分析快照可以缺少可选 `result_metadata`。普通 Query 的公开 `sql` 字段和表格单元格内容按 Query Contract 处理，不对字符串内容按字段名过滤。
 - 经营分析失败沿用 `QueryFailure` 形状和本 Spec 的 HTTP 错误映射；分析报告不写入普通查询时间线。
 
 ### Multi-Turn Query V1（受控多轮查询）

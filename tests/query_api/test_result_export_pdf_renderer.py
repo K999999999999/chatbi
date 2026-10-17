@@ -94,6 +94,14 @@ def _analysis_snapshot(*, attribution: bool):
         ],
     }
     if attribution:
+        classifications = (
+            "continuing",
+            "new_product",
+            "exited_product",
+            "new",
+            "discontinued",
+            "unrecognized",
+        )
         report["attribution"] = {
             "metric_name": "人民币净销售额",
             "comparison_period": "2026年9月",
@@ -106,7 +114,7 @@ def _analysis_snapshot(*, attribution: bool):
                 {
                     "product_name": f"归因产品{i}",
                     "change": str(20 - i * 7),
-                    "classification": "continuing",
+                    "classification": classification,
                     "effect_on_metric": "increases_target_metric"
                     if i < 2
                     else "decreases_target_metric",
@@ -123,7 +131,7 @@ def _analysis_snapshot(*, attribution: bool):
                         },
                     ],
                 }
-                for i in range(4)
+                for i, classification in enumerate(classifications)
             ],
             "omitted_product_count": 1,
             "reconciliation_passed": True,
@@ -189,6 +197,23 @@ def _analysis_snapshot(*, attribution: bool):
                     "truncated": True,
                     "error": None,
                 },
+                {
+                    "task_id": "odd-columns",
+                    "status": "completed",
+                    "columns": [
+                        "奇数列字段一",
+                        "奇数列字段二",
+                        "很长中文列标题用于核对原列索引",
+                        "奇数列字段四",
+                        "奇数列字段五",
+                    ],
+                    "rows": [
+                        ["奇数值一", "奇数值二", "奇数值三", "奇数值四", "奇数末列值"]
+                    ],
+                    "row_count": 1,
+                    "truncated": False,
+                    "error": None,
+                },
             ],
         },
     }
@@ -244,7 +269,15 @@ def test_real_pdf_download_extracts_cjk_complete_evidence_and_attribution(tmp_pa
         assert "销售额" in text and "订单日期" in text and "2027-01-01" in text
         assert "居民消费和民生数据" in text
         assert "产品变化贡献图" in text and "归因产品3" in text and "单价因素3" in text
-        assert "第8列" in text and "行100-末列" in text
+        assert "第8列" in text and "经营指标第8列" in text and "行100-末列" in text
+        assert "第3列 · 经营指标第3列" in text and "北区" in text
+        assert "第4列 · 经营指标第4列" in text and "25" in text
+        assert "很长中文列标题用于核对原列索引" in text
+        assert "第5列 · 奇数列字段五" in text
+        assert "奇数末列值" in text
+        assert text.count("新增产品") == 4
+        assert text.count("退出产品") == 4
+        assert "分类未确认" in text
         assert "empty-task" in text and "月份" in text
         assert "file:///etc/passwd" in text
         assert (

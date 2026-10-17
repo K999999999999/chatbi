@@ -10,6 +10,7 @@ import select as io_select
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 import unicodedata
 import zlib
@@ -29,6 +30,49 @@ from tests.browser_real_reference import reference
 REPORT = Path("/reports")
 
 
+def _fsync_report_directory():
+    descriptor = os.open(REPORT, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _write_account_manifest(path, account):
+    """Durably publish an exact account identity without exposing credentials."""
+    descriptor, temporary = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=REPORT
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            json.dump(account, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        _fsync_report_directory()
+    except BaseException:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def _read_account_manifest():
+    for name in ("account.json", "account.pending.json"):
+        path = REPORT / name
+        if path.is_file():
+            account = json.loads(path.read_text())
+            if (
+                not isinstance(account, dict)
+                or type(account.get("id")) is not int
+                or not isinstance(account.get("username"), str)
+            ):
+                raise RuntimeError("验收账号身份记录无效")
+            return account
+    raise FileNotFoundError("验收账号身份记录不存在")
+
+
 def prepare():
     engine = create_control_engine(
         ControlDatabaseConfig.from_environment(require_migrator=False)
@@ -36,6 +80,7 @@ def prepare():
     username = f"web-e2e-container-{uuid4().hex}"
     password = secrets.token_hex(24)
     try:
+        REPORT.mkdir(exist_ok=True)
         with Session(engine) as session, session.begin():
             role = session.scalar(select(Role).where(Role.name == "analyst"))
             if role is None:
@@ -50,9 +95,12 @@ def prepare():
             session.add(user)
             session.flush()
             user_id = user.id
-        REPORT.mkdir(exist_ok=True)
-        account = REPORT / "account.json"
-        account.write_text(json.dumps({"username": username, "id": user_id}))
+            # The exact identity is durable before the database transaction can commit.
+            _write_account_manifest(
+                REPORT / "account.pending.json", {"username": username, "id": user_id}
+            )
+        os.replace(REPORT / "account.pending.json", REPORT / "account.json")
+        _fsync_report_directory()
         reference_data = reference()
         credentials = REPORT / "credentials.env"
         credentials.touch(mode=0o600)
@@ -66,7 +114,7 @@ def prepare():
 
 
 def cleanup():
-    account = json.loads((REPORT / "account.json").read_text())
+    account = _read_account_manifest()
     if not account["username"].startswith("web-e2e-container-"):
         raise RuntimeError("禁止修改非本次验收账号")
     engine = create_control_engine(
@@ -75,20 +123,31 @@ def cleanup():
     try:
         with Session(engine) as session:
             user = session.get(User, account["id"])
-            if user is None or user.username != account["username"]:
+            if user is not None and user.username != account["username"]:
                 raise RuntimeError("账号身份不一致")
-        AuthService(sessionmaker(engine)).disable_user(account["id"])
+            account_exists = user is not None
+        if account_exists:
+            AuthService(sessionmaker(engine)).disable_user(account["id"])
         with Session(engine) as session:
-            disabled = not session.get(User, account["id"]).is_active
-            active = session.scalar(
-                select(func.count())
-                .select_from(UserSession)
-                .where(
-                    UserSession.user_id == account["id"],
-                    UserSession.revoked_at.is_(None),
+            user = session.get(User, account["id"])
+            disabled = user is None or not user.is_active
+            active = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(UserSession)
+                    .where(
+                        UserSession.user_id == account["id"],
+                        UserSession.revoked_at.is_(None),
+                    )
                 )
+                if user is not None
+                else 0
             )
-        result = {"disabled": disabled, "active_sessions": active}
+        result = {
+            "disabled": disabled,
+            "active_sessions": active,
+            "account_exists": account_exists,
+        }
         (REPORT / "cleanup.json").write_text(json.dumps(result))
         if not disabled or active != 0:
             raise RuntimeError("验收账号未完整清理")
@@ -105,6 +164,11 @@ def cleanup():
             recovery = REPORT / "recovery.json"
             if recovery.exists():
                 evidence["execution_recovery"] = json.loads(recovery.read_text())
+            hot_reload_recovery = REPORT / "hot-reload-recovery.json"
+            if hot_reload_recovery.exists():
+                evidence["hot_reload_recovery"] = json.loads(
+                    hot_reload_recovery.read_text()
+                )
             exports = REPORT / "export-verification.json"
             if exports.exists():
                 evidence["export_verification"] = json.loads(exports.read_text())
@@ -118,7 +182,7 @@ def cleanup():
     finally:
         engine.dispose()
         (REPORT / "credentials.env").unlink(missing_ok=True)
-    print("容器验收账号已禁用，活跃 Session 为0。")
+    print("容器验收账号已精确清理，活跃 Session 为0。")
 
 
 def initialize_admin():

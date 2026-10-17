@@ -548,7 +548,12 @@ def _positive_limit(value):
 
 
 def _authorization_stop_reason(error):
-    status = getattr(error, "status", None)
+    status = getattr(error, "status", getattr(error, "status_code", None))
     if status in {401, 403}:
+        return ExecutionStopReason.AUTHORIZATION_REVOKED
+    if getattr(error, "code", None) in {
+        "AUTHORIZATION_DENIED",
+        "AUTHENTICATION_REQUIRED",
+    }:
         return ExecutionStopReason.AUTHORIZATION_REVOKED
     return ExecutionStopReason.AUTHORIZATION_UNAVAILABLE

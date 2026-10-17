@@ -5,11 +5,11 @@
 所有命令从仓库根目录的WSL / Linux Bash执行。宿主只需Git、Docker Engine、Compose（隔离验收要求至少2.24.4）；不需要宿主Python、uv、Node、`.venv`或`node_modules`。开发镜像准备依赖，Compose组织服务，`dev`提供统一开发入口。
 
 ```bash
-cp .env.example .env
+test -e .env || install -m 600 .env.example .env
 ./dev hooks install
 ```
 
-已有配置不要覆盖。Git Hook脚本只修改当前clone的local hooksPath，遇到已有其他有效Hook会拒绝覆盖；按[Git流程](agents/git-pr-workflow.md)保留并处理。
+已有配置不要覆盖。`.env` 必须由当前 Linux 用户拥有且仅当前用户可读；建议权限为 `600`。开发入口在把配置交给 Compose 前、直接读取配置的脚本在读取前都会检查属主和权限，不安全时拒绝且不显示配置内容；按提示检查属主并执行 `chmod 600 .env`。`./dev help` 不读取配置。Git Hook脚本只修改当前clone的local hooksPath，遇到已有其他有效Hook会拒绝覆盖；按[Git流程](agents/git-pr-workflow.md)保留并处理。
 
 填写 `.env` 的 `LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL`、数据库密码、Qdrant Key和随机 `CHATBI_ADMIN_SECRET_KEY`。模板中的本地演示密码仅用于回环环境；真实配置不进入Git、镜像或报告。构建前可以用以下基础容器命令生成签名Key，再自行填写到本地配置：
 
@@ -97,11 +97,11 @@ CI保留`PostgreSQL integration` job及其临时PostgreSQL服务，依次运行�
 ./dev verify dev # 默认isolated；也可显式传isolated
 ```
 
-`./dev verify dev real`显式验收日常开发环境，会重启服务、执行热更新及专用账号操作；默认isolated使用独立项目。原scripts/verify_container_*.sh仍可直接调用，退出码、报告、clean要求与清理规则保持。
+`./dev verify dev real`显式验收日常开发环境，会重启服务并执行专用账号操作；热更新写入仅在默认isolated阶段执行，real阶段跳过该隔离专用用例。默认isolated使用独立Compose project、专用卷、临时RAG输出和当前worktree私有的固定revision模型缓存。原scripts/verify_container_*.sh仍可直接调用，退出码、报告、clean要求与清理规则保持。
 
 `verify dev`的业务验收与`dev test`软件测试身份分开。运行中可变的`browser.json`留在私有暂存目录；完成账号 / 临时资源清理后，排他发布唯一摘要到`reports/browser-real/<run_id>.json`，相关证据位于`reports/browser-real-artifacts/<run_id>/`。摘要关联浏览器机器计数、源码起止身份、清理状态和`runtime.json`；该文件的模型身份由应用内实际`RAG_MODEL_DIR/config.json`生成。宿主`npm run test:real`也使用独立run目录与不可覆盖最终JSON；它不是日常软件回归入口。真实业务验收需要远端模型调用，不由`./dev test all`自动触发。
 
-热更新检查可能临时修改源码，执行器必须恢复；运行记录绑定候选、镜像、模型、Seed、RAG和资源身份。历史验收不能重标为当前候选。
+isolated热更新把`src/query_api/app.py`和`frontend/src/style.css`覆盖挂载为本次临时目录中的可写副本，其余源码目录保持只读；Playwright只改写这两份副本。退出清理从私有备份恢复副本并核对SHA-256，恢复失败会使验收失败并保留备份。INT/TERM进入清理路径；SIGKILL不可捕获，精确Compose project、覆盖文件和恢复备份保存在输出的`/tmp/chatbi-container-verify.*`目录中，可按其中`hot-reload/recovery-manifest.txt`恢复。验收账号身份在事务提交前写入私有pending记录；异常时按精确用户ID和用户名禁用账号并撤销Session，不按用户名片段批量处理。运行记录绑定候选、镜像、模型、Seed、RAG和资源身份。历史验收不能重标为当前候选。
 
 ## 4. AI Evaluation
 
@@ -115,6 +115,8 @@ CI保留`PostgreSQL integration` job及其临时PostgreSQL服务，依次运行�
 
 初始化并启动对应开发基础设施，使用真实LLM配置和现有固定案例；不自动重建RAG、不修改评测案例。报告写入ignored `reports/evaluation/`，只适用于记录的提交、案例与模型/数据/资产身份。基线对比可以继续传递评测原参数，容器路径统一使用 `/workspace/reports/evaluation/`。Secret和原始敏感内容不得进入报告。
 
+评测工具容器沿用本地 `CHATBI_OBSERVABILITY_ENABLED`、OTLP trace endpoint 和 headers；内容采集在评测容器中固定关闭。需要本地查看 Span 时，在本地 `.env` 显式设置 `CHATBI_TRACE_CONSOLE_EXPORT_ENABLED=true`，重建并重启 API 后可通过 `docker compose logs --since 10m api` 查看；Evaluation tools 自身的 Span 通过其容器日志查看。该开关只在 local/dev/test 生效，并把同一批经过安全属性过滤的 Span 同时发送到配置的 OTLP 后端。Trace 导出失败不阻断评测。
+
 每次运行先记录起点 Git / 案例 / 上下文指纹，在评测与必要清理后再记录终点；报告 `provenance.consistency` 为 `stable`、`changed` 或 `unverified`。运行中源码或输入变化仍可生成诊断报告，但不能用于正式 clean 验收；Git 或输入身份无法读取时不得按 stable 处理。Run ID 含时间、短提交、套件和随机部分，同名 JSON / Markdown 通过排他创建防覆盖；保存冲突或部分写入会失败，不会覆盖旧证据。历史报告仍可读取和参与既有 Baseline 比较，但缺少新 provenance 的旧报告不能通过新的正式验收。
 
 报告仅记录非敏感的有效模型配置：temperature、max_tokens、有效 timeout、Endpoint Hash 及其规范化配置 Hash，不写 API Key 或完整 Endpoint。经营分析另记 Judge 配置和 Hash；Judge temperature 为 `0`，与业务模型 temperature 分开。辅助 Query Understanding 报告记录实际语义题集 Hash；该套件不适用的数据库指纹保持缺省，不造值。
@@ -127,11 +129,13 @@ CI保留`PostgreSQL integration` job及其临时PostgreSQL服务，依次运行�
 
 保留原验收器的report/cases/suite参数与完整提交、RAG、案例身份检查。普通clone和linked worktree均使用真实Git公共目录；WSL/Linux直接映射，Dev Container通过LOCAL_WORKSPACE_FOLDER映射宿主源路径及默认开发项目名，临时测试挂载保存在共享工作区的ignored .local/dev-tools并按宿主路径传递；COMPOSE_PROJECT_NAME及用户override保持优先。Git公共目录在工作区外且宿主路径不同的linked worktree，可用CHATBI_GIT_COMMON_DIR_HOST显式提供同一公共目录的宿主位置；挂载必须匹配，Git检查失败不能当作clean。
 
+托管 Real E2E 在构建 RAG 前运行 `prepare-model`，并把固定 revision 对应的本地模型目录用于索引构建和后续在线评测；模型准备失败会阻断构建与正式评测。旧 PostgreSQL 兼容测试入口的 readiness 探测和开发 fixture 查询均通过容器内 `127.0.0.1` TCP 服务，不以初始化期间的 Unix socket 实例作为就绪信号。
+
 ## 5. 健康与故障处理
 
 `/health`只表示HTTP存活，`/ready`才反映应用依赖就绪；模型状态来自近期真实调用，不做定时收费探测。管理员可以查看依赖、模型和执行额度，网页不显示备份状态；刷新不延长登录期限。应用保护见[就绪Contract](specs/application-readiness.md)。
 
-- 缺少配置：检查 `.env` 必需字段；不要输出完整Compose配置或Secret定位。
+- 缺少配置：检查 `.env` 必需字段；权限拒绝时检查属主并执行 `chmod 600 <配置文件>`；不要输出完整Compose配置或Secret定位。
 - 首次PG不healthy：先执行migrate，不等待未迁移的checkpoint健康状态。
 - 模型/索引未准备：显式prepare-model/build-rag；来源校验失败不能通过删校验或静态回退解决。
 - 端口占用：调整本项目端口后重试，不杀未知进程；确认实际网页Origin随端口更新。

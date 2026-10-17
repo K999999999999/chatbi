@@ -6,23 +6,42 @@ import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Event
 from time import monotonic
-from uuid import uuid4
+from typing import TypedDict
+from uuid import UUID, uuid4
 
 import psycopg
 import pytest
+from langgraph.checkpoint.postgres import PostgresSaver
+from langgraph.graph import END, START, StateGraph
+from psycopg.conninfo import make_conninfo
+from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
 from sqlalchemy import event, text
 
+from src.business_analysis.application import BusinessAnalysisSuccess
+from src.business_analysis.execution import TaskResult, TaskStatus
+from src.business_analysis.reporting import BusinessAnalysisReport
+from src.business_analysis.run_store import (
+    AnalysisRunConflict,
+    PostgresAnalysisRunStore,
+)
 from src.chatbi_control.database import ControlDatabaseConfig, create_control_engine
 from src.chatbi_control.history import PostgresHistoryStore
 from src.online_query.contracts import QuerySuccess
 from src.query_api.history_codec import encode_snapshot
 from src.query_api.history_contracts import HistoryError
 from src.query_api.history_runtime import HistoryRuntime
-from src.query_api.query_response import query_payload
+from src.query_api.query_response import analysis_payload, query_payload
 from tests.query_api.history_fixtures import query_state
+
+
+class _CheckpointState(TypedDict):
+    value: int
+
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("RUN_DEVELOPMENT_DATABASE_TESTS") != "1",
@@ -80,6 +99,7 @@ def begin(
     revision=0,
     operation=None,
     question="人民币净销售额",
+    before_accept=None,
 ):
     return store.begin_attempt(
         owner,
@@ -89,6 +109,7 @@ def begin(
         revision,
         "history-test",
         runtime.epoch,
+        before_accept=before_accept,
     )
 
 
@@ -98,7 +119,16 @@ def test_success_failure_and_duplicate_are_durable(history_env):
     header = store.create(owner, "query", "人民币净销售额", creation)
     assert store.create(owner, "query", "人民币净销售额", creation).id == header.id
     operation = str(uuid4())
-    accepted = begin(store, runtime, owner, header.id, operation=operation)
+    admitted = []
+    accepted = begin(
+        store,
+        runtime,
+        owner,
+        header.id,
+        operation=operation,
+        before_accept=lambda kind: admitted.append(kind),
+    )
+    assert admitted == ["query"]
     with pytest.raises(HistoryError, match="正在执行"):
         begin(store, runtime, owner, header.id)
     snapshot = encode_snapshot(
@@ -110,19 +140,76 @@ def test_success_failure_and_duplicate_are_durable(history_env):
     success = store.finish_attempt(owner, accepted.token, snapshot, None)
     assert success.status == "succeeded"
     assert store.header(owner, header.id).context_revision == 1
-    duplicate = begin(store, runtime, owner, header.id, operation=operation)
+    duplicate = begin(
+        store,
+        runtime,
+        owner,
+        header.id,
+        operation=operation,
+        before_accept=lambda _kind: pytest.fail("幂等重放不能重新准入"),
+    )
     assert duplicate.token is None and duplicate.turn.id == success.id
     with pytest.raises(HistoryError, match="请刷新"):
         begin(store, runtime, owner, header.id)
-    second = begin(store, runtime, owner, header.id, revision=1)
+    second_operation = str(uuid4())
+    second = begin(
+        store,
+        runtime,
+        owner,
+        header.id,
+        revision=1,
+        operation=second_operation,
+    )
     assert second.base_state == snapshot["query_state"]
     store.finish_attempt(owner, second.token, None, {"error_code": "LLM_ERROR"})
     current = store.header(owner, header.id)
     assert current.context_revision == 1 and current.last_success_turn_id == success.id
     assert store.turn(owner, header.id, success.id).snapshot == snapshot
+    failed_replay = begin(
+        store,
+        runtime,
+        owner,
+        header.id,
+        revision=1,
+        operation=second_operation,
+        before_accept=lambda _kind: pytest.fail("失败重放不能重新准入"),
+    )
+    assert failed_replay.token is None
     with pytest.raises(HistoryError) as cross_owner:
         store.header(owner + 100000, header.id)
     assert cross_owner.value.code == "HISTORY_UNAVAILABLE"
+
+
+def test_rejected_admission_rolls_back_before_creating_history_attempt(history_env):
+    engine, store, runtime, owner, _ = history_env
+    header = store.create(owner, "query", "销售额", str(uuid4()))
+    operation = str(uuid4())
+
+    def reject(_kind):
+        raise HistoryError("SERVICE_NOT_READY", "服务未就绪")
+
+    with pytest.raises(HistoryError) as rejected:
+        begin(
+            store,
+            runtime,
+            owner,
+            header.id,
+            operation=operation,
+            before_accept=reject,
+        )
+
+    assert rejected.value.code == "SERVICE_NOT_READY"
+    assert store.header(owner, header.id).active_turn_id is None
+    with engine.connect() as connection:
+        assert (
+            connection.execute(
+                text(
+                    "SELECT count(*) FROM history_turns WHERE history_id=:history AND operation_id=:operation"
+                ),
+                {"history": header.id, "operation": operation},
+            ).scalar_one()
+            == 0
+        )
 
 
 def test_restart_fences_old_token_and_retains_success(history_env):
@@ -167,7 +254,8 @@ def test_finish_waits_behind_short_history_management_lock(history_env):
                 (worker_application_name,),
             )
             cursor.execute(
-                "SELECT set_config('statement_timeout', %s, false)", ("15000ms",)
+                "SELECT set_config('statement_timeout', %s, false)",
+                ("15000ms",),
             )
         dbapi_connection.commit()
 
@@ -184,6 +272,7 @@ def test_finish_waits_behind_short_history_management_lock(history_env):
             raise RuntimeError("injected history worker failure")
         if os.environ.get("CHATBI_HISTORY_LOCK_TEST_INJECT_WORKER_TIMEOUT") == "1":
             with worker_engine.begin() as connection:
+                connection.execute(text("SET LOCAL statement_timeout = '6000ms'"))
                 connection.execute(text("SELECT pg_sleep(30)"))
         return worker_store.finish_attempt(owner, accepted.token, snapshot, None)
 
@@ -428,6 +517,7 @@ def test_requery_copies_source_in_acceptance_transaction_and_is_idempotent(histo
     )
     source_turn = store.finish_attempt(owner, accepted.token, snapshot, None)
     operation = str(uuid4())
+    admitted = []
     header, requery = store.begin_requery(
         owner,
         "history",
@@ -437,7 +527,9 @@ def test_requery_copies_source_in_acceptance_transaction_and_is_idempotent(histo
         "r",
         runtime.epoch,
         str(uuid4()),
+        before_accept=lambda kind: admitted.append(kind),
     )
+    assert admitted == ["query"]
     assert header.first_question == "改看按产品毛利"
     assert requery.turn.question == "改看按产品毛利"
     assert (
@@ -464,6 +556,7 @@ def test_requery_copies_source_in_acceptance_transaction_and_is_idempotent(histo
         "r2",
         runtime.epoch,
         str(uuid4()),
+        before_accept=lambda _kind: pytest.fail("幂等重放不能重新准入"),
     )
     assert (
         same_header.id == header.id
@@ -471,6 +564,40 @@ def test_requery_copies_source_in_acceptance_transaction_and_is_idempotent(histo
         and duplicate.turn.id == finished.id
     )
     assert store.turn(owner, source.id, source_turn.id).snapshot == snapshot
+
+
+def test_rejected_requery_admission_rolls_back_new_history(history_env):
+    engine, store, runtime, owner, _ = history_env
+    source = store.create(owner, "analysis", "经营分析", str(uuid4()))
+    operation = str(uuid4())
+    new_id = str(uuid4())
+
+    def reject(kind):
+        assert kind == "analysis"
+        raise HistoryError("EXECUTION_LIMIT_REACHED", "额度已满")
+
+    with pytest.raises(HistoryError) as rejected:
+        store.begin_requery(
+            owner,
+            "history",
+            source.id,
+            None,
+            operation,
+            "request",
+            runtime.epoch,
+            new_id,
+            before_accept=reject,
+        )
+
+    assert rejected.value.code == "EXECUTION_LIMIT_REACHED"
+    with engine.connect() as connection:
+        assert (
+            connection.execute(
+                text("SELECT count(*) FROM history_records WHERE id=:id"),
+                {"id": new_id},
+            ).scalar_one()
+            == 0
+        )
 
 
 def committed_query(store, runtime, owner, title="销售额"):
@@ -484,6 +611,80 @@ def committed_query(store, runtime, owner, title="销售额"):
     )
     turn = store.finish_attempt(owner, accepted.token, snapshot, None)
     return store.header(owner, header.id), turn, snapshot
+
+
+def test_invalid_nested_analysis_snapshot_is_rejected_by_copy_and_export(history_env):
+    engine, store, runtime, owner, _ = history_env
+    question = "毛利分析"
+    header = store.create(owner, "analysis", question, str(uuid4()))
+    accepted = store.begin_analysis_attempt(
+        owner, header.id, str(uuid4()), 0, "analysis-request", runtime.epoch
+    )
+    report = BusinessAnalysisReport(
+        title="毛利变化",
+        executive_summary="毛利增加。",
+        key_findings=("毛利增加。",),
+        trend_judgment="毛利增加。",
+        root_causes=(),
+        action_suggestions=(),
+        evidence_task_ids=("trend",),
+        incomplete_tasks=(),
+    )
+    result = BusinessAnalysisSuccess(
+        request_id="analysis-request",
+        report=report,
+        task_results=(
+            TaskResult(
+                "trend",
+                TaskStatus.COMPLETED,
+                columns=("product",),
+                rows=(("A",),),
+                row_count=1,
+            ),
+        ),
+        analysis_run_id=header.analysis_run_id,
+    )
+    snapshot = encode_snapshot(
+        "analysis",
+        analysis_payload(result, header.analysis_run_id),
+        original_question=question,
+    )
+    turn = store.finish_attempt(owner, accepted.token, snapshot, None)
+    canary = "POSTGRES_NESTED_SQL_CANARY"
+    snapshot["result"]["task_results"][0]["sql"] = canary
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE history_turns SET snapshot=CAST(:snapshot AS jsonb) "
+                "WHERE history_id=:history_id AND id=:turn_id"
+            ),
+            {
+                "snapshot": json.dumps(snapshot, ensure_ascii=False),
+                "history_id": header.id,
+                "turn_id": turn.id,
+            },
+        )
+
+    with pytest.raises(HistoryError) as copy_failure:
+        store.copy_result(owner, header.id, turn.id, "非法旧快照")
+    with pytest.raises(HistoryError) as export_failure:
+        store.export_snapshot(owner, "history_turn", header.id, turn.id)
+
+    assert copy_failure.value.code == "HISTORY_SNAPSHOT_UNAVAILABLE"
+    assert export_failure.value.code == "HISTORY_SNAPSHOT_UNAVAILABLE"
+    assert canary not in str(copy_failure.value)
+    assert canary not in str(export_failure.value)
+    with engine.connect() as connection:
+        assert (
+            connection.execute(
+                text(
+                    "SELECT count(*) FROM saved_results "
+                    "WHERE owner_user_id=:owner AND source_turn_id=:turn_id"
+                ),
+                {"owner": owner, "turn_id": turn.id},
+            ).scalar_one()
+            == 0
+        )
 
 
 def test_saved_copy_survives_source_deletion_and_stale_delete_is_rejected(history_env):
@@ -616,6 +817,184 @@ def test_analysis_delete_atomically_expires_original_run(history_env):
             owner_subject="local:test-owner",
             question="两期经营分析",
         )
+
+
+def test_expired_analysis_checkpoints_are_cleaned_atomically(history_env):
+    engine, store, runtime, owner, config = history_env
+    run_store = PostgresAnalysisRunStore(engine)
+    base_time = datetime.now(UTC)
+    cleanup_time = base_time + timedelta(days=2)
+    deleted_header = store.create(owner, "analysis", "已删除分析", str(uuid4()))
+    deleted_run_id = deleted_header.analysis_run_id
+    legacy_run_id = uuid4()
+    rollback_run_id = uuid4()
+    active_run_id = uuid4()
+    run_ids = (
+        deleted_run_id,
+        str(legacy_run_id),
+        str(rollback_run_id),
+        str(active_run_id),
+    )
+    pool = ConnectionPool(
+        make_conninfo(**config.app_connection_kwargs()),
+        kwargs={"autocommit": True, "row_factory": dict_row},
+        min_size=1,
+        max_size=2,
+        open=True,
+    )
+
+    def checkpoint(run_id, question):
+        run_store.claim(
+            UUID(run_id),
+            owner_subject="local:test-owner",
+            question=question,
+            now=base_time,
+        )
+        graph.invoke(
+            {"value": 1},
+            config={"configurable": {"thread_id": run_id}},
+        )
+
+    def checkpoint_counts(run_id):
+        with engine.connect() as connection:
+            return tuple(
+                connection.execute(
+                    text(f"SELECT count(*) FROM {table} WHERE thread_id=:run_id"),
+                    {"run_id": run_id},
+                ).scalar_one()
+                for table in ("checkpoints", "checkpoint_blobs", "checkpoint_writes")
+            )
+
+    def run_metadata(run_id):
+        with engine.connect() as connection:
+            return connection.execute(
+                text(
+                    """SELECT status, expires_at, updated_at
+                       FROM business_analysis_runs WHERE analysis_run_id=:run_id"""
+                ),
+                {"run_id": run_id},
+            ).one()
+
+    saver = PostgresSaver(pool)
+    builder = StateGraph(_CheckpointState)
+    builder.add_node("save", lambda state: {"value": state["value"] + 1})
+    builder.add_edge(START, "save")
+    builder.add_edge("save", END)
+    graph = builder.compile(checkpointer=saver)
+
+    try:
+        checkpoint(deleted_run_id, "已删除分析")
+        store.delete_history(
+            owner,
+            deleted_header.id,
+            deleted_header.record_revision,
+            "local:test-owner",
+        )
+
+        checkpoint(str(legacy_run_id), "遗留过期分析")
+        checkpoint(str(rollback_run_id), "清理回滚分析")
+        checkpoint(str(active_run_id), "仍有效分析")
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """UPDATE business_analysis_runs
+                       SET status='expired', expires_at=:expired
+                       WHERE analysis_run_id=:run_id"""
+                ),
+                {"expired": base_time - timedelta(seconds=1), "run_id": legacy_run_id},
+            )
+            connection.execute(
+                text(
+                    """UPDATE business_analysis_runs
+                       SET expires_at=:expired
+                       WHERE analysis_run_id=:run_id"""
+                ),
+                {
+                    "expired": base_time - timedelta(seconds=1),
+                    "run_id": rollback_run_id,
+                },
+            )
+            connection.execute(
+                text(
+                    """UPDATE business_analysis_runs
+                       SET expires_at=:expires
+                       WHERE analysis_run_id=:run_id"""
+                ),
+                {
+                    "expires": base_time + timedelta(days=10),
+                    "run_id": active_run_id,
+                },
+            )
+
+        query_header, query_turn, _snapshot = committed_query(
+            store, runtime, owner, "需独立保留的结果"
+        )
+        saved = store.copy_result(owner, query_header.id, query_turn.id, "独立结果")
+        before = {run_id: checkpoint_counts(run_id) for run_id in run_ids}
+        metadata_before = {run_id: run_metadata(run_id) for run_id in run_ids}
+        assert all(all(count > 0 for count in counts) for counts in before.values())
+
+        def fail_blob_delete(
+            _connection, _cursor, statement, _parameters, _context, _many
+        ):
+            if statement.lstrip().upper().startswith("DELETE FROM CHECKPOINT_BLOBS"):
+                raise RuntimeError("injected checkpoint cleanup failure")
+
+        event.listen(engine, "before_cursor_execute", fail_blob_delete)
+        try:
+            with pytest.raises(
+                RuntimeError, match="injected checkpoint cleanup failure"
+            ):
+                run_store.cleanup_expired(now=cleanup_time)
+        finally:
+            event.remove(engine, "before_cursor_execute", fail_blob_delete)
+
+        assert {run_id: checkpoint_counts(run_id) for run_id in run_ids} == before
+        assert {run_id: run_metadata(run_id) for run_id in run_ids} == metadata_before
+
+        assert run_store.cleanup_expired(now=cleanup_time) >= 3
+        assert all(checkpoint_counts(run_id) == (0, 0, 0) for run_id in run_ids[:3])
+        assert checkpoint_counts(str(active_run_id)) == before[str(active_run_id)]
+        assert run_store.cleanup_expired(now=cleanup_time) == 0
+        with pytest.raises(AnalysisRunConflict, match="EXPIRED"):
+            run_store.claim(
+                UUID(deleted_run_id),
+                owner_subject="local:test-owner",
+                question="已删除分析",
+                now=cleanup_time,
+            )
+        with pytest.raises(AnalysisRunConflict, match="EXPIRED"):
+            run_store.claim(
+                legacy_run_id,
+                owner_subject="local:test-owner",
+                question="遗留过期分析",
+                now=cleanup_time,
+            )
+        assert (
+            run_store.claim(
+                active_run_id,
+                owner_subject="local:test-owner",
+                question="仍有效分析",
+                now=cleanup_time,
+            ).status
+            == "active"
+        )
+        assert store.saved_result(owner, saved.id)[1] == _snapshot
+    finally:
+        pool.close()
+        with engine.begin() as connection:
+            for run_id in run_ids:
+                for table in ("checkpoint_writes", "checkpoint_blobs", "checkpoints"):
+                    connection.execute(
+                        text(f"DELETE FROM {table} WHERE thread_id=:run_id"),
+                        {"run_id": run_id},
+                    )
+        with psycopg.connect(**config.migrator_connection_kwargs()) as connection:
+            for run_id in run_ids:
+                connection.execute(
+                    "DELETE FROM business_analysis_runs WHERE analysis_run_id=%s",
+                    (run_id,),
+                )
 
 
 def test_finish_transaction_failure_never_advances_context(history_env):

@@ -1,6 +1,7 @@
 """基于本地 OpenTelemetry SDK 的安全、Fail-open Trace Adapter。"""
 
 import re
+import sys
 from collections.abc import Mapping
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
@@ -13,6 +14,7 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import (
     BatchSpanProcessor,
+    ConsoleSpanExporter,
     SimpleSpanProcessor,
 )
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
@@ -433,9 +435,23 @@ def create_in_memory_recorder(
 def _build_provider(config: ObservabilityConfig) -> TracerProvider:
     resource = _resource_for(config)
     provider = TracerProvider(resource=resource, sampler=ALWAYS_OFF)
-    if not config.enabled or not config.otlp_traces_endpoint:
+    otlp_enabled = bool(config.otlp_traces_endpoint)
+    local_console_enabled = config.local_console_export_enabled
+    if not config.enabled or not (otlp_enabled or local_console_enabled):
         if config.enabled:
             _safe_warning("exporter_configuration")
+        return provider
+
+    provider = TracerProvider(resource=resource, sampler=ALWAYS_ON)
+    if local_console_enabled:
+        try:
+            provider.add_span_processor(
+                SimpleSpanProcessor(SafeExporter(ConsoleSpanExporter(out=sys.stdout)))
+            )
+        except Exception:
+            _safe_warning("exporter_initialization")
+
+    if not otlp_enabled:
         return provider
 
     try:
@@ -444,8 +460,6 @@ def _build_provider(config: ObservabilityConfig) -> TracerProvider:
             headers=dict(config.otlp_headers),
             timeout=config.otlp_timeout_seconds,
         )
-        # Export 开启时允许 SDK 记录 Span；关闭模式保持 AlwaysOff。
-        provider = TracerProvider(resource=resource, sampler=ALWAYS_ON)
         provider.add_span_processor(
             BatchSpanProcessor(
                 SafeExporter(exporter),
@@ -457,7 +471,8 @@ def _build_provider(config: ObservabilityConfig) -> TracerProvider:
         )
     except Exception:
         _safe_warning("exporter_initialization")
-        provider = TracerProvider(resource=resource, sampler=ALWAYS_OFF)
+        if not local_console_enabled:
+            provider = TracerProvider(resource=resource, sampler=ALWAYS_OFF)
     return provider
 
 

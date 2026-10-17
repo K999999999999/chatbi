@@ -31,6 +31,11 @@ class BusinessAnalysisJudgeTest(unittest.TestCase):
         self.assertIn('"expected_task_count": 4', plan_prompt)
         self.assertIn('"expected_tasks"', summary_prompt)
         self.assertIn('"report"', summary_prompt)
+        self.assertIn(
+            "program_attribution.products 是产品贡献的唯一判定依据",
+            summary_prompt,
+        )
+        self.assertIn("要求报告展开 omitted_product_count 中省略的产品", summary_prompt)
 
     def test_invalid_judge_output_fails_closed(self) -> None:
         model = _FakeModel({"passed": "yes", "reason": "无效"})

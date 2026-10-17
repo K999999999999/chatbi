@@ -14,6 +14,7 @@ from src.query_api.execution_runtime import (
     ExecutionRuntime,
     ExecutionRuntimeClosed,
 )
+from src.query_api.history_contracts import HistoryError
 
 
 class Lease:
@@ -285,6 +286,37 @@ def test_authorization_loss_monitor_fails_closed_and_keeps_worker_lease_until_re
     finally:
         leave_downstream.set()
         runtime.close()
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (
+            HistoryError("AUTHORIZATION_DENIED", "权限撤销"),
+            ExecutionStopReason.AUTHORIZATION_REVOKED,
+        ),
+        (
+            HistoryError("AUTHENTICATION_REQUIRED", "登录失效"),
+            ExecutionStopReason.AUTHORIZATION_REVOKED,
+        ),
+        (SimpleNamespace(status_code=401), ExecutionStopReason.AUTHORIZATION_REVOKED),
+        (SimpleNamespace(status_code=403), ExecutionStopReason.AUTHORIZATION_REVOKED),
+        (
+            HistoryError("AUTHENTICATION_UNAVAILABLE", "认证不可用"),
+            ExecutionStopReason.AUTHORIZATION_UNAVAILABLE,
+        ),
+        (
+            HistoryError("HISTORY_STORAGE_UNAVAILABLE", "存储不可用"),
+            ExecutionStopReason.AUTHORIZATION_UNAVAILABLE,
+        ),
+    ],
+)
+def test_authorization_monitor_maps_history_errors_to_existing_stop_reasons(
+    error, expected
+):
+    from src.query_api.execution_runtime import _authorization_stop_reason
+
+    assert _authorization_stop_reason(error) is expected
 
 
 def _persist_first_stop(calls, durable_reason, reason):

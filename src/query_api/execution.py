@@ -48,7 +48,7 @@ def _trace_result_classification(
     )
     if not isinstance(error_code, str):
         error_code = None
-    if status == "completed":
+    if status in {"completed", "succeeded"}:
         return TraceOutcome.SUCCESS, None, None
     if error_code == "QUERY_TIMEOUT":
         return TraceOutcome.TIMEOUT, ErrorType.TIMEOUT, error_code

@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from scripts.environment_permissions import validate_environment_file
+
 from .export_schema_models import ColumnIdentity, MetadataExportError
 
 
@@ -66,6 +68,7 @@ def _column_identity(record: Mapping[str, Any]) -> ColumnIdentity:
 def load_env(path: Path) -> dict[str, str]:
     """读取本地连接配置，不输出任何 Secret（敏感信息）。"""
 
+    validate_environment_file(path)
     values: dict[str, str] = {}
     for raw_line in path.read_text(encoding="utf-8-sig").splitlines():
         line = raw_line.strip()

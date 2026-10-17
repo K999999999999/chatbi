@@ -37,6 +37,7 @@ reports/evaluation/**/*.md
 # 本地浏览器真实业务证据，不包含在源码交付。
 reports/browser-real/
 reports/browser-real-artifacts/
+reports/.verification-state/
 
 # 容器验证的本机原始证据。
 reports/deployment-simplification/

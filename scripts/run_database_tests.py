@@ -12,6 +12,8 @@ import time
 import uuid
 from pathlib import Path
 
+from scripts.environment_permissions import validate_environment_file
+
 POSTGRES_IMAGE = "postgres:16-alpine"
 RUN_ID_LABEL = "io.chatbi.database-test-run-id"
 TEMPORARY_APP_PASSWORD = "ci-app-password"
@@ -205,6 +207,8 @@ def _wait_until_ready(
                 "exec",
                 container_name,
                 "pg_isready",
+                "--host",
+                "127.0.0.1",
                 "--username",
                 "chatbi_migrator",
                 "--dbname",
@@ -432,6 +436,8 @@ def _container_query(
             "exec",
             container_name,
             "psql",
+            "--host",
+            "127.0.0.1",
             "--username",
             "chatbi_migrator",
             "--dbname",
@@ -451,6 +457,9 @@ def _container_query(
 
 
 def _compose_default_network(docker: str, project_root: Path) -> str:
+    env_file = project_root / ".env"
+    if env_file.exists():
+        validate_environment_file(env_file)
     result = _run_docker(
         docker,
         ["compose", "config", "--format", "json"],

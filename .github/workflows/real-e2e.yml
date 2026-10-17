@@ -138,10 +138,19 @@ jobs:
       - name: Initialize Control DB and checkpoints
         run: uv run --python 3.11 --locked --no-sync python -m src.bootstrap migrate
 
-      - name: Build real BGE-M3 and Qdrant assets
+      - name: Prepare pinned BGE-M3 and build Qdrant assets
+        id: model-assets
         shell: bash
         run: |
           set -euo pipefail
+
+          model_dir="$(uv run --python 3.11 --locked --no-sync python -c \
+            'from src.rag_offline.config import DEFAULT_MODEL_DIR; print(DEFAULT_MODEL_DIR)')"
+          echo "RAG_MODEL_DIR=${model_dir}" >> "$GITHUB_ENV"
+          export RAG_MODEL_DIR="$model_dir"
+
+          uv run --python 3.11 --locked --no-sync \
+            python -m src.bootstrap prepare-model
 
           build_id="ci-${GITHUB_SHA:0:12}"
           uv run --python 3.11 --locked --no-sync \

@@ -67,6 +67,26 @@ class ObservabilityConfigTest(unittest.TestCase):
         self.assertFalse(unknown_config.content_capture_enabled)
         self.assertFalse(production_config.content_capture_enabled)
 
+    def test_local_console_export_is_opt_in_and_environment_limited(self) -> None:
+        local = ObservabilityConfig.from_env(
+            {
+                "CHATBI_TRACE_CONSOLE_EXPORT_ENABLED": "true",
+                "OTEL_RESOURCE_ATTRIBUTES": "deployment.environment.name=local",
+            }
+        )
+        production = ObservabilityConfig.from_env(
+            {
+                "CHATBI_TRACE_CONSOLE_EXPORT_ENABLED": "true",
+                "CHATBI_RUNTIME_ENV": "production",
+                "OTEL_RESOURCE_ATTRIBUTES": "deployment.environment.name=production",
+            }
+        )
+        default = ObservabilityConfig.from_env({})
+
+        self.assertTrue(local.local_console_export_enabled)
+        self.assertFalse(production.local_console_export_enabled)
+        self.assertFalse(default.local_console_export_enabled)
+
     def test_content_capture_requires_explicit_local_environment(self) -> None:
         for runtime_env in ("local", "DEV", "test"):
             config = ObservabilityConfig.from_env(

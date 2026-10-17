@@ -2,7 +2,13 @@ import { test, expect, type Locator, type Page, type Request } from '@playwright
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { reportPath } from '../test-support/report-path';
-import { login, send, isFinalExecutionResponse } from './helpers';
+import {
+  isExecutionSubmissionRejection,
+  isFinalExecutionResponse,
+  login,
+  send,
+  waitForOperationsReady,
+} from './helpers';
 import { querySnapshot } from '../src/results';
 import { analysisResult } from '../src/Analysis';
 import { buildChartPlans } from '../src/chartPlan';
@@ -89,6 +95,39 @@ function safeErrorMessage(error: unknown) {
     if (secret) message = message.split(secret).join('[redacted]');
   }
   return message.slice(0, 1000);
+}
+
+async function waitForExecutionResult(page: Page, timeout: number) {
+  const response = await page.waitForResponse(async candidate =>
+    await isFinalExecutionResponse(candidate) || isExecutionSubmissionRejection(candidate),
+  { timeout });
+  if (isExecutionSubmissionRejection(response)) {
+    const payload = await response.json().catch(() => ({})) as { error_code?: unknown };
+    const code = typeof payload.error_code === 'string' && safeExecutionErrorCodes.has(payload.error_code)
+      ? payload.error_code
+      : 'UNCLASSIFIED';
+    throw new Error(`执行请求被拒绝（HTTP ${response.status()}，${code}）`);
+  }
+  return response;
+}
+
+async function readPublicReadiness(page: Page) {
+  try {
+    return await page.evaluate(async () => {
+      try {
+        const response = await fetch('/ready', { cache: 'no-store' });
+        const payload: unknown = await response.json();
+        const status = payload && typeof payload === 'object' && !Array.isArray(payload)
+          ? (payload as { status?: unknown }).status
+          : undefined;
+        return { http_status: response.status, status: typeof status === 'string' ? status : 'invalid' };
+      } catch {
+        return { http_status: null, status: 'unavailable' };
+      }
+    });
+  } catch {
+    return { http_status: null, status: 'unavailable' };
+  }
 }
 
 declare global {
@@ -272,6 +311,7 @@ async function executionView(page: Page, executionId: string, userId: number): P
 }
 
 test('源码挂载实际触发 Python 重载与 Vite 热更新', async ({ page }) => {
+  test.skip(process.env.CHATBI_CONTAINER_HOT_RELOAD_ENABLED !== '1', '源码热更新仅在隔离验收中执行');
   test.skip(process.env.CHATBI_CONTAINER_RESTART_PHASE === '1');
   const backend = '/workspace/backend-src/query_api/app.py';
   const css = '/workspace/frontend/src/style.css';
@@ -291,31 +331,25 @@ test('源码挂载实际触发 Python 重载与 Vite 热更新', async ({ page }
     await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--chatbi-hot-check').trim()),
       { timeout: 30000 }).toBe('1');
     writeFileSync(reportPath('hot-reload.json'), JSON.stringify({
-      commit: process.env.CHATBI_CONTAINER_COMMIT, experiment_dirty: true,
+      commit: process.env.CHATBI_CONTAINER_COMMIT, isolated_source_copy: true,
       python_reload: true, vite_hmr: true,
     }));
   } finally {
-    let concurrentChange = false;
-    if (readFileSync(backend, 'utf8') === changedBackend) writeFileSync(backend, originalBackend);
-    else concurrentChange = true;
-    const currentCss = readFileSync(css, 'utf8');
-    if (currentCss === changedCss) writeFileSync(css, originalCss);
-    else if (currentCss !== originalCss) concurrentChange = true;
-    if (concurrentChange) throw new Error('源码被并发修改，已恢复可安全恢复的文件并保留现场');
+    let restoreFailed = false;
+    try {
+      writeFileSync(backend, originalBackend);
+      writeFileSync(css, originalCss);
+      restoreFailed = readFileSync(backend, 'utf8') !== originalBackend
+        || readFileSync(css, 'utf8') !== originalCss;
+    } catch {
+      restoreFailed = true;
+    }
+    if (restoreFailed) throw new Error('隔离源码副本恢复失败，宿主备份仍由验收入口保留');
   }
   await expect.poll(async () => {
     try { return (await (await page.request.get('/health')).json()).status; } catch { return 'restarting'; }
   }, { timeout: 60000 }).toBe('ok');
 });
-
-async function waitForApplicationReady(page: Page, userId: number) {
-  await expect.poll(() => page.evaluate(async id => {
-    const response = await fetch('/api/v1/operations/status', {
-      headers: { 'X-ChatBI-User-ID': String(id) }, credentials: 'same-origin', cache: 'no-store',
-    });
-    return response.ok ? (await response.json()).status : 'unknown';
-  }, userId), { timeout: 60000, intervals: [250, 500, 1000] }).toBe('ready');
-}
 
 test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', async ({ page, browser }) => {
   test.skip(process.env.CHATBI_CONTAINER_RESTART_PHASE === '1');
@@ -332,9 +366,9 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
   const account = JSON.parse(readFileSync(reportPath('account.json'), 'utf8')) as { id: number };
   try {
     await login(page, process.env.CHATBI_REAL_E2E_USERNAME!, process.env.CHATBI_REAL_E2E_PASSWORD!);
-    await waitForApplicationReady(page, account.id);
+    await waitForOperationsReady(page);
     await page.evaluate(() => { window.__chatbiCaptureExecutionStreams = true; });
-    const firstResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
+    const firstResponse = waitForExecutionResult(page, 240000);
     await send(page, '2025年2月已完成订单的人民币净销售额是多少？');
     const firstHttp = await firstResponse;
     const firstPayload = await firstHttp.json();
@@ -358,7 +392,10 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     const firstSource = { kind: 'history_turn', history_id: firstPayload.history.id, turn_id: firstPayload.turn.id };
     exportedFiles.push(await captureExport(page, page.getByRole('button', { name: '下载 XLSX', exact: true }),
       'xlsx', 'r5-current-query.xlsx', firstSource, snapshotEvidence(first)));
-    const secondResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
+    evidence.step = 'readiness-before-followup';
+    evidence.readiness_before_followup = await waitForOperationsReady(page);
+    evidence.step = 'query-stage-evidence';
+    const secondResponse = waitForExecutionResult(page, 240000);
     await send(page, '改成2025年3月');
     const secondHttp = await secondResponse;
     const secondPayload = await secondHttp.json();
@@ -375,9 +412,10 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     expect(first.result_metadata?.scope.time?.start).toBe('2025-02-01');
     expect(second.result_metadata?.scope.time?.start).toBe('2025-03-01');
     await page.getByRole('button', { name: '新建问数对话' }).click();
-    const trendResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
-    await send(page, '按月份列出2025年已完成订单的人民币净销售额、人民币毛利和毛利率。');
     evidence.step = 'monthly-query';
+    evidence.monthly_readiness = await waitForOperationsReady(page);
+    const trendResponse = waitForExecutionResult(page, 240000);
+    await send(page, '按月份列出2025年已完成订单的人民币净销售额、人民币毛利和毛利率。');
     const trendHttp = await trendResponse;
     const trendPayload = await trendHttp.json();
     evidence.monthly_http_status = trendHttp.status();
@@ -410,7 +448,9 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
       'png', 'r5-current-query-chart.png', monthlySource));
     evidence.monthly_mixed_units = { rows: trend.rows.length, reference_matches: true, money_series: 2, chart_units: trendPlans.plans.map(p => p.id), metadata_status: trendMetadata.status };
     await page.getByRole('button', { name: '新建问数对话' }).click();
-    const categoryResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
+    evidence.step = 'category-query';
+    evidence.category_readiness = await waitForOperationsReady(page);
+    const categoryResponse = waitForExecutionResult(page, 240000);
     await send(page, '按产品线列出2025年已完成订单的人民币净销售额和人民币销售成本。');
     const categoryPayload = await (await categoryResponse).json();
     const category = querySnapshot(categoryPayload.turn.snapshot);
@@ -432,7 +472,8 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     evidence.category_same_unit = { rows: category.rows.length, reference_matches: true, series: 2, metadata_status: categoryMeta.status };
     evidence.step = 'analysis-request';
     await page.getByRole('button', { name: '经营分析', exact: true }).click();
-    const analysisResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 1200000 });
+    evidence.analysis_readiness = await waitForOperationsReady(page);
+    const analysisResponse = waitForExecutionResult(page, 1200000);
     await send(page, '分析2025年3月相比2025年2月的人民币毛利变化及产品因素贡献。');
     const analysisHttp = await analysisResponse;
     evidence.analysis_http_status = analysisHttp.status();
@@ -529,7 +570,8 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
       'png', 'r5-saved-query-chart.png', { kind: 'saved_result', saved_result_id: savedId }));
     await page.getByRole('button', { name: '新建问数对话', exact: true }).click();
     evidence.step = 'top-n-query';
-    const rankedResponse = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
+    evidence.top_n_readiness = await waitForOperationsReady(page);
+    const rankedResponse = waitForExecutionResult(page, 240000);
     await send(page, '2025年3月按人民币净销售额从高到低列出前3个产品。');
     const rankedPayload = await (await rankedResponse).json(); const ranked = querySnapshot(rankedPayload.turn.snapshot);
     expect(ranked.rows.map(row => [String(row[0]), Number(row[1])])).toEqual(reference.top_products.map((row: unknown[]) => [String(row[0]), Number(row[1])]));
@@ -541,6 +583,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     evidence.step = 'multi-page-disconnect-and-cancel';
     await page.evaluate(() => { window.__chatbiCaptureExecutionStreams = false; });
     const submissionsBeforeRecovery = streams.submissions.length;
+    evidence.cancelable_readiness = await waitForOperationsReady(page);
     const cancelableResponse = page.waitForResponse(isExecutionSubmission, { timeout: 30000 });
     await send(page, '只看前2个产品');
     const cancelableAcceptance = await cancelableResponse;
@@ -611,7 +654,8 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     await secondPage.close();
 
     evidence.step = 'post-cancel-new-operation';
-    const nextQuery = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
+    evidence.post_cancel_readiness = await waitForOperationsReady(page);
+    const nextQuery = waitForExecutionResult(page, 240000);
     await send(page, '只看前2个产品');
     const nextPayload = await (await nextQuery).json();
     expect(nextPayload.history.id).toBe(rankedPayload.history.id);
@@ -622,6 +666,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     evidence.after_cancel_or_completion = { terminal_status: cancelableFinal.execution.status, new_operation_reference_matches: true };
 
     evidence.step = 'restart-unconfirmed-setup';
+    evidence.restart_setup_readiness = await waitForOperationsReady(page);
     const interruptedResponse = page.waitForResponse(isExecutionSubmission, { timeout: 30000 });
     await send(page, '2025年3月人民币净销售额最高的产品是什么？');
     const interruptedAcceptance = await interruptedResponse;
@@ -640,6 +685,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
   } catch (error) {
     evidence.status = 'failed'; evidence.error_type = (error as Error).name;
     evidence.error_message = safeErrorMessage(error);
+    evidence.readiness_at_failure = await readPublicReadiness(page);
     evidence.error_locations = (error as Error).stack?.match(/container-real\.spec\.ts:\d+:\d+/g) ?? [];
     throw new Error('真实容器业务验收失败，见私有报告的步骤与安全定位。');
   } finally {
@@ -653,9 +699,12 @@ test('停止重启后读取长期快照、重登录、续聊与显式重查', as
   test.skip(process.env.CHATBI_CONTAINER_RESTART_PHASE !== '1');
   const evidence = JSON.parse(readFileSync(reportPath('browser.json'), 'utf8'));
   const input = evidence.restart_inputs; const reference = evidence.reference;
+  let restartStage = 'login';
   try {
     await login(page, process.env.CHATBI_REAL_E2E_USERNAME!, process.env.CHATBI_REAL_E2E_PASSWORD!);
+    evidence.readiness_after_restart = await waitForOperationsReady(page);
     await expect(page.getByRole('table')).toHaveCount(0);
+    restartStage = 'load-prior-history';
     await page.goto('/#history=' + input.ranked_history_id);
     await expect(page.getByRole('table')).toBeVisible();
     if (input.interrupted_execution) {
@@ -665,7 +714,10 @@ test('停止重启后读取长期快照、重登录、续聊与显式重查', as
         active_turn_cleared: true, prior_success_turn_preserved: true,
       }));
     }
-    const continued = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
+    restartStage = 'continue-prior-history-readiness';
+    evidence.readiness_before_restart_continuation = await waitForOperationsReady(page);
+    restartStage = 'continue-prior-history';
+    const continued = waitForExecutionResult(page, 240000);
     await send(page, '只看前2个产品');
     const body = await (await continued).json(); const result = querySnapshot(body.turn.snapshot);
     expect(body.history.id).toBe(input.ranked_history_id);
@@ -695,7 +747,10 @@ test('停止重启后读取长期快照、重登录、续聊与显式重查', as
       'xlsx', 'r5-restarted-saved-query.xlsx', { kind: 'saved_result', saved_result_id: savedQueryId }));
     evidence.exports.push(await captureExport(page, page.getByRole('button', { name: /下载.* PNG/ }).first(),
       'png', 'r5-restarted-saved-query-chart.png', { kind: 'saved_result', saved_result_id: savedQueryId }));
-    const requery = page.waitForResponse(isFinalExecutionResponse, { timeout: 240000 });
+    restartStage = 'explicit-requery-readiness';
+    evidence.readiness_before_explicit_requery = await waitForOperationsReady(page);
+    restartStage = 'explicit-requery';
+    const requery = waitForExecutionResult(page, 240000);
     await page.getByRole('button', { name: '重新查询当前数据', exact: true }).click();
     const newBody = await (await requery).json(); querySnapshot(newBody.turn.snapshot);
     expect(newBody.history.id).not.toBe(input.ranked_history_id);
@@ -712,7 +767,9 @@ test('停止重启后读取长期快照、重登录、续聊与显式重查', as
     };
     evidence.status = 'passed';
   } catch (error) {
-    evidence.status = 'failed'; evidence.step = 'r3-restart'; evidence.error_type = (error as Error).name;
+    evidence.status = 'failed'; evidence.step = 'r3-restart'; evidence.restart_stage = restartStage;
+    evidence.readiness_at_failure = await readPublicReadiness(page);
+    evidence.error_type = (error as Error).name;
     evidence.error_message = safeErrorMessage(error);
     throw new Error('R3重启验收未通过，请检查私有报告。');
   }

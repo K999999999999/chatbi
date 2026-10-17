@@ -12,6 +12,7 @@ from src.authorization.contracts import AuthContext, AuthorizationDecision
 from src.observability.contracts import QuerySource
 from src.observability.tracing import create_in_memory_recorder
 from src.query_api.export_runtime import ExportArtifact
+from src.query_api.history_codec import public_snapshot
 from src.query_api.history_contracts import HistoryError
 from tests.operations_support import create_app
 
@@ -62,6 +63,45 @@ class Store:
                 "result_metadata": None,
             },
         }
+
+
+def test_export_rejects_invalid_analysis_snapshot_before_starting_worker():
+    canary = "EXPORT_NESTED_CONNECTION_CANARY"
+    snapshot = {
+        "version": 1,
+        "kind": "analysis",
+        "original_question": "毛利为什么变化？",
+        "result": {
+            "request_id": "analysis-request",
+            "analysis_run_id": "analysis-run",
+            "mode": "analysis",
+            "report": {"title": "毛利变化", "connection_info": canary},
+            "task_results": [],
+        },
+    }
+
+    class CorruptStore(Store):
+        def export_snapshot(self, owner, source_kind, source_id, turn_id):
+            public_snapshot(snapshot)
+
+    client, runtime = make_client(CorruptStore())
+    with client:
+        response = client.post(
+            "/api/v1/result-exports",
+            json={
+                "source": {
+                    "kind": "history_turn",
+                    "history_id": "e53ba3b9-1f11-4024-90f9-a7f2713cd56b",
+                    "turn_id": "6e5e18d9-1d9b-4c6d-a94f-19976814f03f",
+                },
+                "format": "pdf",
+            },
+        )
+
+    assert response.status_code == 422
+    assert response.json()["error_code"] == "HISTORY_SNAPSHOT_UNAVAILABLE"
+    assert canary not in response.text
+    assert runtime._owner_active == set()
 
 
 def make_client(store=None, *, trace_recorder=None):

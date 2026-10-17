@@ -109,6 +109,8 @@ class LangChainBusinessAnalysisJudge:
             criteria=(
                 "判断总结是否直接回答了用户问题，并说明数据呈现的变化方向和主要产品贡献（适用时）。",
                 "检查报告中的指标、时期、方向、数字与已执行 Task 结果和 program_attribution 一致。",
+                "program_attribution.products 是产品贡献的唯一判定依据；经营分析 Contract 按整体变化方向只展示至多 3 个产品。不得从原始产品 TaskResult 重算贡献、要求报告展开 omitted_product_count 中省略的产品，或仅因未展开这些产品而判失败。",
+                "若报告声称产品任务未查询、失败、结果缺失或被截断，仍须按 actual_tasks 的状态和 truncated 标记核实该限制是否属实。",
                 "问题中的变化方向只是待验证前提；若与数据相反，报告必须纠正。",
                 "不得把相关性写成数据未证明的因果，不得编造未查询的区域、客户、策略或其他原因。",
                 "只引用完成且未截断的任务结果；数据不足、任务失败或截断时，报告应明确说明限制。",

@@ -1,13 +1,16 @@
 """按完整 Conversation（对话场景）运行多轮查询评测。"""
 
 import json
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+import re
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 from time import perf_counter
 from typing import Protocol
 
+from src.observability.contracts import QuerySource, TraceRecorder
 from src.online_query.contracts import (
     QueryContext,
     QueryData,
@@ -106,6 +109,7 @@ class MultiTurnTurnEvaluation:
     failure_reason: str | None
     duration_ms: int
     generated_sql: str | None = None
+    trace_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,6 +180,8 @@ def run_multi_turn_evaluation(
     client_factory: ConversationClientFactory,
     query_executor: QueryExecutor,
     context: QueryContext,
+    *,
+    trace_recorder: TraceRecorder | None = None,
 ) -> MultiTurnEvaluationRun:
     """逐个运行完整场景；场景内共享会话，场景间创建新客户端。"""
 
@@ -225,24 +231,31 @@ def run_multi_turn_evaluation(
 
             request_id = f"evaluation-{case.id}-{turn.id}"
             started = perf_counter()
-            try:
-                response = client.query(
-                    turn.question,
-                    conversation_id=conversation_id,
-                    request_id=request_id,
-                )
-            except Exception:
-                turns.append(
-                    _turn_result(
-                        turn,
-                        MultiTurnStatus.FAIL,
-                        "Query API 调用失败",
-                        duration_ms=_duration_ms(started),
+            with _evaluation_trace_scope(
+                trace_recorder,
+                case_id=case.id,
+                turn_id=turn.id,
+                request_id=request_id,
+            ) as trace_id:
+                try:
+                    response = client.query(
+                        turn.question,
+                        conversation_id=conversation_id,
+                        request_id=request_id,
                     )
-                )
-                if conversation_id is None:
-                    session_unavailable = True
-                continue
+                except Exception:
+                    turns.append(
+                        _turn_result(
+                            turn,
+                            MultiTurnStatus.FAIL,
+                            "Query API 调用失败",
+                            duration_ms=_duration_ms(started),
+                            trace_id=trace_id,
+                        )
+                    )
+                    if conversation_id is None:
+                        session_unavailable = True
+                    continue
             duration_ms = _duration_ms(started)
             result = response.result
 
@@ -256,6 +269,7 @@ def run_multi_turn_evaluation(
                     duration_ms=duration_ms,
                     order_sensitive=turn.order_sensitive,
                 )
+                turn_result = replace(turn_result, trace_id=trace_id)
                 turns.append(turn_result)
                 if next_conversation_id is not None:
                     conversation_id = next_conversation_id
@@ -269,6 +283,7 @@ def run_multi_turn_evaluation(
                 response.conversation_id,
                 duration_ms=duration_ms,
             )
+            turn_result = replace(turn_result, trace_id=trace_id)
             turns.append(turn_result)
             if isinstance(result, QuerySuccess) and response.conversation_id:
                 conversation_id = response.conversation_id
@@ -282,6 +297,45 @@ def run_multi_turn_evaluation(
         summary=_summarize(result_cases),
         reference_results=reference_results,
     )
+
+
+@contextmanager
+def _evaluation_trace_scope(
+    recorder: TraceRecorder | None,
+    *,
+    case_id: str,
+    turn_id: str,
+    request_id: str,
+) -> Iterator[str | None]:
+    """为一轮多轮评测创建可在报告中关联的 Trace 根作用域。"""
+
+    if recorder is None:
+        yield None
+        return
+    try:
+        scope = recorder.query_trace(
+            QuerySource.EVALUATION,
+            attributes={
+                "evaluation.case_id": case_id,
+                "evaluation.turn_id": turn_id,
+                "chatbi.request.id": request_id,
+            },
+        )
+        entered_scope = scope.__enter__()
+    except Exception:  # noqa: BLE001 - diagnostics must never block evaluation.
+        yield None
+        return
+
+    trace_id = entered_scope.trace_id
+    if not isinstance(trace_id, str) or not re.fullmatch(r"[0-9a-f]{32}", trace_id):
+        trace_id = None
+    try:
+        yield trace_id
+    finally:
+        try:
+            scope.__exit__(None, None, None)
+        except Exception:  # noqa: BLE001 - diagnostics must never block evaluation.
+            pass
 
 
 def _parse_case(record: object, index: int) -> MultiTurnCase:

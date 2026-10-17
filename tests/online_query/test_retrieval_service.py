@@ -1,6 +1,7 @@
 """Online Retrieval 与 OnlineQueryService（在线查询服务）集成测试。"""
 
 import unittest
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 from src.online_query.context import ContextLoadError
@@ -20,7 +21,11 @@ from src.online_query.contracts import (
     RetrievalStatus,
 )
 from src.online_query.query_understanding import candidate_from_payload
+from src.online_query.retrieval.rag_runtime import AssetSnapshot
+from src.online_query.retrieval.retrieval import OnlineRetriever
 from src.online_query.service import OnlineQueryService
+from src.rag_offline.embedding import EmbeddedText, SparseEmbedding
+from src.rag_offline.qdrant_store import QdrantAssetStore
 
 
 class RetrievalServiceTest(unittest.TestCase):
@@ -154,6 +159,55 @@ class RetrievalServiceTest(unittest.TestCase):
         self.executor.execute.assert_not_called()
         self.assertIn("status=RETRIEVAL_UNAVAILABLE", logs.output[0])
         self.assertIn("reason=qdrant unavailable", logs.output[0])
+
+    def test_qdrant_exception_canaries_do_not_reach_service_log_or_public_error(
+        self,
+    ) -> None:
+        canaries = (
+            "URL_USER_CANARY",
+            "URL_PASS_CANARY",
+            "QUERY_CANARY",
+            "API_KEY_CANARY",
+            "EXCEPTION_CANARY",
+        )
+
+        class _BrokenClient:
+            def query_points(self, **_kwargs):
+                raise RuntimeError("https://" + ":".join(canaries))
+
+        class _Embedding:
+            def embed_query(self, _text):
+                return EmbeddedText(
+                    dense=(0.1,) * 1024,
+                    sparse=SparseEmbedding(indices=(1,), values=(1.0,)),
+                )
+
+        snapshot = AssetSnapshot(
+            asset_version="test-build",
+            collection_names={
+                "TABLE": "table-test",
+                "COLUMN": "column-test",
+                "METRIC": "metric-test",
+            },
+            relationship_graph={},
+            manifest={},
+            embedding_provider=_Embedding(),
+            qdrant_store=QdrantAssetStore(_BrokenClient()),
+        )
+        provider = OnlineRetriever(SimpleNamespace(get_snapshot=lambda: snapshot))
+        service = self._service(provider)
+
+        with self.assertLogs("src.online_query.service", level="WARNING") as logs:
+            result = service.execute(QueryRequest(question="查询客户"))
+
+        self._assert_failure(result, QueryErrorCode.CONTEXT_ERROR)
+        assert isinstance(result, QueryFailure)
+        self.assertIn("Qdrant", logs.output[0])
+        self.assertIn("RuntimeError", logs.output[0])
+        self.assertNotIn("EXCEPTION_CANARY", result.error_message)
+        for canary in canaries:
+            self.assertNotIn(canary, "\n".join(logs.output))
+            self.assertNotIn(canary, result.error_message)
 
     def test_asset_snapshot_failure_returns_context_error_without_llm(self) -> None:
         provider = Mock()

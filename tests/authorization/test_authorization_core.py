@@ -114,7 +114,7 @@ class AuthorizationCoreTest(TestCase):
         self.assertEqual(event.decision, AuditDecision.DENY)
         self.assertEqual(event.reason_code, "SUBJECT_NOT_ALLOWED")
         self.assertEqual(event.policy_version, "policy-v1")
-        self.query_service.query.assert_not_called()
+        self.query_service.execute.assert_not_called()
 
     def test_bound_entry_reuses_authorization_with_explicit_context(self) -> None:
         service = self._service()

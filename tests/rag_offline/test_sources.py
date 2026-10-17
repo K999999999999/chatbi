@@ -24,7 +24,10 @@ class SourceLoadingTest(unittest.TestCase):
             metric for metric in facts.metrics if metric["name"] == "已完成订单明细行数"
         )
         self.assertEqual(line_count["formula"], "COUNT(*)")
-        self.assertEqual(line_count["aliases"], ("订单明细行数",))
+        self.assertEqual(
+            line_count["aliases"],
+            ("订单明细行数", "已完成订单明细有多少行"),
+        )
 
         quantity = next(
             metric for metric in facts.metrics if metric["name"] == "已完成销售数量"

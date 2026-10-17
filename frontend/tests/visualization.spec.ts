@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { login, send, mockFinalExecution, isFinalExecutionResponse } from './helpers';
+import { analysisResult } from '../src/Analysis';
 const columns = ['month', 'sales', 'ratio'];
 const metadata = { version: 1, status: 'complete', columns: [
   { index: 0, name: 'month', role: 'dimension', certified: true, semantic_name: '月份', definition: null, unit: null, format: 'raw' },
@@ -54,11 +55,25 @@ test('经营归因选择产品使用既有因素，方向与金额格式保持�
   await mockFinalExecution(page, (current: unknown) => {
     const body = current as Record<string, any>;
     body.report.attribution = { metric_name: '人民币毛利', comparison_period: '2025-01', current_period: '2025-02', comparison_value: '1000', current_value: '900', total_change: '-100', direction: 'decrease', reconciliation_passed: true, omitted_product_count: 2,
-      products: [{ product_name: '持续产品A', change: '-150', classification: 'continuing', effect_on_metric: 'decreases_target_metric', factors: [{ name: '成本因素', amount: '-150', effect_on_metric: 'decreases_target_metric' }] }, { product_name: '新增产品B', change: '50', classification: 'new', effect_on_metric: 'increases_target_metric', factors: [{ name: '新增产品贡献', amount: '50', effect_on_metric: 'increases_target_metric' }] }] };
+      products: [
+        { product_name: '持续产品A', change: '-150', classification: 'continuing', effect_on_metric: 'decreases_target_metric', factors: [{ name: '成本因素', amount: '-150', effect_on_metric: 'decreases_target_metric' }] },
+        { product_name: '新增产品B', change: '50', classification: 'new_product', effect_on_metric: 'increases_target_metric', factors: [{ name: '新增产品贡献', amount: '50', effect_on_metric: 'increases_target_metric' }] },
+        { product_name: '旧新增产品', change: '20', classification: 'new', effect_on_metric: 'increases_target_metric', factors: [{ name: '旧分类贡献', amount: '20', effect_on_metric: 'increases_target_metric' }] },
+        { product_name: '退出产品B', change: '-10', classification: 'exited_product', effect_on_metric: 'decreases_target_metric', factors: [] },
+        { product_name: '旧退出产品', change: '-5', classification: 'discontinued', effect_on_metric: 'decreases_target_metric', factors: [] },
+        { product_name: '未识别分类产品', change: '3', classification: 'unrecognized', effect_on_metric: 'increases_target_metric', factors: [] },
+      ] };
     return body;
   });
   await send(page, '分析2025年2月相比2025年1月的毛利变化');
   await expect(page.locator('.attribution .chart-canvas svg')).toHaveCount(2);
+  const productRows = page.locator('.attribution tbody tr');
+  await expect(productRows.nth(0).locator('td').nth(1)).toHaveText('持续产品');
+  await expect(productRows.nth(1).locator('td').nth(1)).toHaveText('新增产品');
+  await expect(productRows.nth(2).locator('td').nth(1)).toHaveText('新增产品');
+  await expect(productRows.nth(3).locator('td').nth(1)).toHaveText('退出产品');
+  await expect(productRows.nth(4).locator('td').nth(1)).toHaveText('退出产品');
+  await expect(productRows.nth(5).locator('td').nth(1)).toHaveText('分类未确认');
   await expect(page.getByText('-100.00 元', { exact: true })).toBeVisible();
   await expect(page.getByText('成本因素：-150.00 元 · 降低目标指标', { exact: true })).toBeVisible();
   await page.getByLabel('查看产品因素').selectOption('1');
@@ -84,7 +99,7 @@ test('无变化、退出产品与缺因素不造归因，不完整证据仍提�
   await mockFinalExecution(page, (current: unknown) => {
     const body = current as Record<string, any>;
     body.report.attribution = { metric_name: '人民币净销售额', comparison_period: '2025-01', current_period: '2025-02', comparison_value: '0', current_value: '0', total_change: '0', direction: 'unchanged', reconciliation_passed: true, omitted_product_count: 0,
-      products: [{ product_name: '退出产品', classification: 'discontinued', change: '0', effect_on_metric: 'no_change_to_target_metric', factors: [] }] };
+      products: [{ product_name: '退出产品', classification: 'exited_product', change: '0', effect_on_metric: 'no_change_to_target_metric', factors: [] }] };
     body.report.incomplete_tasks = [{ task_id: 'current-overall', reasons: ['返回结果已截断'] }];
     return body;
   });
@@ -94,6 +109,31 @@ test('无变化、退出产品与缺因素不造归因，不完整证据仍提�
   await expect(page.getByText('没有可用因素，不补造价格或成本贡献。')).toBeVisible();
   await expect(page.locator('.attribution .chart-canvas svg')).toHaveCount(1);
   await expect(page.getByRole('heading', { name: '证据不完整' })).toBeVisible();
+});
+
+test('分析分类接受后端新值与旧兼容值，未知值不推断', () => {
+  const result = (classification: string) => analysisResult({
+    mode: 'analysis', analysis_run_id: 'run-1', request_id: 'request-1', task_results: [],
+    report: {
+      title: '报告', executive_summary: '摘要', key_findings: [], trend_judgment: '稳定',
+      root_causes: [], action_suggestions: [], evidence_task_ids: [], incomplete_tasks: [],
+      attribution: {
+        metric_name: '人民币净销售额', comparison_period: '2025-01', current_period: '2025-02',
+        comparison_value: '0', current_value: '0', total_change: '0', direction: 'unchanged',
+        reconciliation_passed: true, omitted_product_count: 0,
+        products: [{ product_name: '产品', change: '0', classification,
+          effect_on_metric: 'no_change_to_target_metric', factors: [] }],
+      },
+    },
+  }, 'run-1').report.attribution!.products[0].classification;
+
+  expect(result('new_product')).toBe('new_product');
+  expect(result('exited_product')).toBe('exited_product');
+  expect(result('new')).toBe('new_product');
+  expect(result('discontinued')).toBe('exited_product');
+  expect(result('unrecognized')).toBeNull();
+  expect(result('toString')).toBeNull();
+  expect(result('constructor')).toBeNull();
 });
 
 test('极小非零经营贡献显示舍入提示并保留后端方向和原值', async ({ page }) => {

@@ -4,14 +4,13 @@ import os
 import sys
 import time
 
-from src.bootstrap.operations import ProcessReadinessProbe
+from src.bootstrap.readiness import probe_control_database
 
 
 def wait_for_control_database(timeout: float = 120) -> bool:
-    probe = ProcessReadinessProbe()
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        if probe()["control_database"] == "ready":
+        if probe_control_database():
             return True
         time.sleep(2)
     return False

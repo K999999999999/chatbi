@@ -1,12 +1,23 @@
 """用存储故障seam验证Application不会误执行或推进未提交状态。"""
 
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 
 from src.authorization.contracts import AuthContext
-from src.online_query.contracts import QueryErrorCode, QueryFailure, QuerySuccess
+from src.business_analysis.application import BusinessAnalysisSuccess
+from src.business_analysis.execution import TaskResult, TaskStatus
+from src.business_analysis.reporting import BusinessAnalysisReport
+from src.online_query.contracts import (
+    ExecutionStopReason,
+    ExecutionStopped,
+    QueryErrorCode,
+    QueryFailure,
+    QuerySuccess,
+)
 from src.query_api.history import HistoryApplication
 from src.query_api.history_contracts import (
     AcceptedAttempt,
@@ -50,13 +61,16 @@ class ScriptedStore:
         self.finish_calls = 0
         self.base_state = base_state
         self.finished_snapshot = None
+        self.finished_error = None
 
     def header(self, owner, history_id):
         return HEADER
 
-    def begin_attempt(self, *args):
+    def begin_attempt(self, *args, before_accept=None):
         if self.begin_error:
             raise self.begin_error
+        if before_accept is not None:
+            before_accept()
         return AcceptedAttempt(
             ExecutionToken("h", "t", "epoch", 1), TURN, self.base_state
         )
@@ -64,20 +78,25 @@ class ScriptedStore:
     def finish_attempt(self, *args):
         self.finish_calls += 1
         self.finished_snapshot = args[2]
+        self.finished_error = args[3]
         if self.finish_error:
             raise self.finish_error
+        if self.finished_error is not None:
+            return replace(TURN, status="failed", public_error=self.finished_error)
         return TURN
 
 
 class QueryEntry:
     def __init__(self):
         self.executions = 0
+        self.execution_controls = []
 
     def authorize(self, request, *, auth_context):
         return None
 
     def execute_authorized(self, request, *, auth_context):
         self.executions += 1
+        self.execution_controls.append(request.execution_control)
         return QuerySuccess(
             "r", "SELECT 1", ("n",), ((1,),), 1, False, restoration_state=query_state()
         )
@@ -93,6 +112,176 @@ def test_begin_storage_failure_never_executes_business_query():
         app.submit_query(AUTH, "r", "h", "q", "op", 0, reauthenticate=lambda: AUTH)
     assert entry.executions == 0
     assert store.finish_calls == 0
+
+
+def test_new_compat_attempt_holds_shared_admission_until_execution_finishes():
+    events = []
+    control = SimpleNamespace(checkpoint=lambda: None)
+
+    @contextmanager
+    def admission(auth, request_id, *, seconds):
+        assert auth == AUTH and request_id == "r"
+        events.append(("admit", seconds))
+        try:
+            yield control
+        finally:
+            events.append(("release", seconds))
+
+    class Entry(QueryEntry):
+        def execute_authorized(self, request, *, auth_context):
+            events.append(("execute", request.question))
+            return super().execute_authorized(request, auth_context=auth_context)
+
+    entry = Entry()
+    app = HistoryApplication(ScriptedStore(), Runtime(), entry, admission=admission)
+    app.submit_query(AUTH, "r", "h", "q", "op", 0, reauthenticate=lambda: AUTH)
+
+    assert events == [("admit", 180), ("execute", "q"), ("release", 180)]
+    assert entry.execution_controls == [control]
+
+
+def test_idempotent_compat_replay_does_not_admit_or_execute_again():
+    class ReplayStore(ScriptedStore):
+        def begin_attempt(self, *args, before_accept=None):
+            return AcceptedAttempt(None, replace(TURN, status="succeeded"), None)
+
+    admissions = []
+
+    @contextmanager
+    def admission(*_args, seconds):
+        admissions.append(seconds)
+        yield SimpleNamespace(checkpoint=lambda: None)
+
+    entry = QueryEntry()
+    result = HistoryApplication(
+        ReplayStore(), Runtime(), entry, admission=admission
+    ).submit_query(AUTH, "r", "h", "q", "op", 0, reauthenticate=lambda: AUTH)
+
+    assert result.status == "succeeded"
+    assert admissions == []
+    assert entry.executions == 0
+
+
+def test_store_failure_after_admission_releases_shared_capacity():
+    events = []
+
+    @contextmanager
+    def admission(*_args, seconds):
+        events.append(("admit", seconds))
+        try:
+            yield SimpleNamespace(checkpoint=lambda: None)
+        finally:
+            events.append(("release", seconds))
+
+    class FailingStore(ScriptedStore):
+        def begin_attempt(self, *args, before_accept=None):
+            before_accept()
+            raise HistoryError("HISTORY_STORAGE_UNAVAILABLE", "存储失败")
+
+    entry = QueryEntry()
+    app = HistoryApplication(FailingStore(), Runtime(), entry, admission=admission)
+    with pytest.raises(HistoryError):
+        app.submit_query(AUTH, "r", "h", "q", "op", 0, reauthenticate=lambda: AUTH)
+
+    assert events == [("admit", 180), ("release", 180)]
+    assert entry.executions == 0
+
+
+def test_compat_deadline_persists_a_query_timeout_instead_of_leaving_active_turn():
+    class ExpiredControl:
+        def checkpoint(self):
+            raise ExecutionStopped(ExecutionStopReason.DEADLINE_EXCEEDED)
+
+    @contextmanager
+    def admission(*_args, seconds):
+        assert seconds == 180
+        yield ExpiredControl()
+
+    store = ScriptedStore()
+    app = HistoryApplication(store, Runtime(), QueryEntry(), admission=admission)
+    result = app.submit_query(AUTH, "r", "h", "q", "op", 0, reauthenticate=lambda: AUTH)
+
+    assert result.status == "failed"
+    assert result.public_error["error_code"] == "QUERY_TIMEOUT"
+    assert store.finish_calls == 1
+    assert store.finished_error["error_code"] == "QUERY_TIMEOUT"
+
+
+@pytest.mark.parametrize(
+    ("source_kind", "resolved_kind", "expected_seconds"),
+    [
+        ("history", "query", 180),
+        ("saved", "query", 180),
+        ("saved", "analysis", 1200),
+    ],
+)
+def test_requery_uses_the_resolved_kind_deadline_and_releases_after_store_failure(
+    source_kind, resolved_kind, expected_seconds
+):
+    events = []
+
+    @contextmanager
+    def admission(_auth, _request_id, *, seconds):
+        events.append(("admit", seconds))
+        try:
+            yield SimpleNamespace(checkpoint=lambda: None)
+        finally:
+            events.append(("release", seconds))
+
+    class FailingRequeryStore(ScriptedStore):
+        def begin_requery(self, *args, before_accept=None):
+            before_accept(resolved_kind)
+            raise HistoryError("HISTORY_STORAGE_UNAVAILABLE", "存储失败")
+
+    with pytest.raises(HistoryError):
+        HistoryApplication(
+            FailingRequeryStore(), Runtime(), QueryEntry(), admission=admission
+        ).requery(
+            AUTH,
+            "r",
+            source_kind,
+            "source",
+            None,
+            "op",
+            reauthenticate=lambda: AUTH,
+        )
+
+    assert events == [
+        ("admit", expected_seconds),
+        ("release", expected_seconds),
+    ]
+
+
+def test_analysis_resume_uses_twelve_hundred_second_admission():
+    events = []
+
+    @contextmanager
+    def admission(_auth, _request_id, *, seconds):
+        events.append(("admit", seconds))
+        try:
+            yield SimpleNamespace(checkpoint=lambda: None)
+        finally:
+            events.append(("release", seconds))
+
+    class FailingResumeStore(ScriptedStore):
+        def header(self, owner, history_id):
+            return replace(
+                HEADER,
+                kind="analysis",
+                last_success_turn_id=None,
+                analysis_recovery_available=True,
+            )
+
+        def begin_analysis_attempt(self, *args, before_accept=None):
+            before_accept("analysis")
+            raise HistoryError("HISTORY_STORAGE_UNAVAILABLE", "存储失败")
+
+    with pytest.raises(HistoryError):
+        HistoryApplication(
+            FailingResumeStore(), Runtime(), QueryEntry(), admission=admission
+        ).resume_analysis(AUTH, "r", "h", "op", 0, reauthenticate=lambda: AUTH)
+
+    assert events == [("admit", 1200), ("release", 1200)]
 
 
 def test_successful_query_snapshot_keeps_the_exact_turn_question_for_requery():
@@ -189,6 +378,75 @@ def test_completed_analysis_snapshot_reads_after_checkpoint_expiry_without_execu
         AUTH, "r", "h", "op", 0, reauthenticate=lambda: AUTH
     )
     assert result == TURN and entry.executions == 0 and store.finish_calls == 0
+
+
+def test_invalid_nested_analysis_payload_is_saved_as_controlled_failure(
+    monkeypatch,
+):
+    canary = "APPLICATION_NESTED_SECRET_CANARY"
+    public_result = {
+        "request_id": "r",
+        "analysis_run_id": "analysis-run",
+        "mode": "analysis",
+        "report": {"title": "毛利分析", "metadata": {"secret": canary}},
+        "task_results": [],
+    }
+    monkeypatch.setattr(
+        "src.query_api.history.analysis_payload",
+        lambda *_args: public_result,
+    )
+
+    class AnalysisService:
+        def analyze(self, *_args, **_kwargs):
+            return BusinessAnalysisSuccess(
+                request_id="r",
+                report=BusinessAnalysisReport(
+                    title="毛利分析",
+                    executive_summary="毛利变化",
+                    key_findings=(),
+                    trend_judgment="毛利变化",
+                    root_causes=(),
+                    action_suggestions=(),
+                    evidence_task_ids=("trend",),
+                    incomplete_tasks=(),
+                ),
+                task_results=(
+                    TaskResult(
+                        "trend",
+                        TaskStatus.COMPLETED,
+                        columns=("product",),
+                        rows=(("A",),),
+                        row_count=1,
+                    ),
+                ),
+                analysis_run_id="analysis-run",
+            )
+
+    store = ScriptedStore()
+    app = HistoryApplication(
+        store,
+        Runtime(),
+        QueryEntry(),
+        analysis_service=AnalysisService(),
+    )
+
+    with pytest.raises(HistoryError) as failure:
+        app._execute_attempt(
+            AUTH,
+            "r",
+            "h",
+            "毛利分析",
+            store.begin_attempt(),
+            reauthenticate=lambda: AUTH,
+            kind="analysis",
+            analysis_run_id="analysis-run",
+        )
+
+    assert failure.value.code == "HISTORY_SNAPSHOT_UNAVAILABLE"
+    assert canary not in str(failure.value)
+    assert store.finish_calls == 1
+    assert store.finished_snapshot is None
+    assert store.finished_error["error_code"] == "HISTORY_SNAPSHOT_UNAVAILABLE"
 
 
 def test_history_passes_report_stream_port_only_for_a_capable_r4_observer():

@@ -257,6 +257,18 @@ def create_app(
 
     def publish_bindings(app: FastAPI) -> None:
         from .history import HistoryApplication
+        from .admission import admit_owner
+
+        def history_admission(auth, request_id, *, seconds):
+            return admit_owner(
+                auth,
+                request_id,
+                operations=getattr(app.state, "operations", operations),
+                runtime=getattr(
+                    app.state, "execution_runtime", active_execution_runtime
+                ),
+                seconds=seconds,
+            )
 
         app.state.history_application = (
             HistoryApplication(
@@ -267,6 +279,7 @@ def create_app(
                 certifier=getattr(service, "certify_history_query", None),
                 analysis_service=active_analysis_service,
                 analysis_guard=analysis_guard,
+                admission=history_admission,
             )
             if history_store is not None
             and history_runtime is not None

@@ -17,6 +17,35 @@ _TRACE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _ERROR_CODE_RE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
 _SAFE_OUTCOMES = frozenset(item.value for item in TraceOutcome)
 _SAFE_ERROR_TYPES = frozenset(item.value for item in ErrorType)
+_SAFE_PROVIDER_ERROR_CATEGORIES = frozenset(
+    {
+        "TIMEOUT",
+        "CONNECTION",
+        "RATE_LIMITED",
+        "AUTHENTICATION",
+        "CLIENT_ERROR",
+        "SERVER_ERROR",
+        "UNKNOWN",
+    }
+)
+_SAFE_SQL_GUARD_REJECTION_CODES = frozenset(
+    {
+        "UNCLASSIFIED",
+        "CANDIDATE_INVALID",
+        "SQL_PARSE_ERROR",
+        "STATEMENT_COUNT_INVALID",
+        "SELECT_ONLY",
+        "SUBQUERY_UNSUPPORTED",
+        "FORBIDDEN_OPERATION",
+        "UNSUPPORTED_FEATURE",
+        "UNAPPROVED_FUNCTION",
+        "TABLE_SCOPE_REJECTED",
+        "COLUMN_SCOPE_REJECTED",
+        "JOIN_CONSTRAINT_REJECTED",
+        "METRIC_CONSTRAINT_REJECTED",
+        "MULTI_METRIC_CONSTRAINT_REJECTED",
+    }
+)
 _SAFE_WARNING_STAGES = frozenset(
     {
         "attribute",
@@ -52,6 +81,7 @@ _SAFE_GEN_AI_ATTRIBUTE_RULES: dict[str, str] = {
 }
 _SAFE_ATTRIBUTE_RULES: dict[str, str] = {
     "evaluation.case_id": "identifier",
+    "evaluation.turn_id": "identifier",
     "chatbi.request.source": "source",
     "chatbi.request.id": "identifier",
     "chatbi.analysis_run_id": "identifier",
@@ -64,6 +94,10 @@ _SAFE_ATTRIBUTE_RULES: dict[str, str] = {
     "chatbi.outcome": "outcome",
     "chatbi.error.type": "error_type",
     "chatbi.error_code": "error_code",
+    "chatbi.provider.error_category": "provider_error_category",
+    "chatbi.provider.http_status_code": "http_status_code",
+    "chatbi.provider.retryable": "boolean",
+    "chatbi.sql_guard.rejection_code": "sql_guard_rejection_code",
     "chatbi.status": "status",
     "chatbi.result.status": "status",
     "chatbi.retrieval.status": "status",
@@ -145,6 +179,14 @@ def safe_attribute_value(value: Any, rule: str) -> Any:
             if isinstance(value, int) and not isinstance(value, bool) and value >= 0
             else None
         )
+    if rule == "http_status_code":
+        return (
+            value
+            if isinstance(value, int)
+            and not isinstance(value, bool)
+            and 100 <= value <= 599
+            else None
+        )
     if rule in {"identifier_list", "count_list", "number_list"}:
         if not isinstance(value, (list, tuple)):
             return None
@@ -185,6 +227,10 @@ def safe_attribute_value(value: Any, rule: str) -> Any:
         return value if value in _SAFE_OUTCOMES else None
     if rule == "error_type":
         return value if value in _SAFE_ERROR_TYPES else None
+    if rule == "provider_error_category":
+        return value if value in _SAFE_PROVIDER_ERROR_CATEGORIES else None
+    if rule == "sql_guard_rejection_code":
+        return value if value in _SAFE_SQL_GUARD_REJECTION_CODES else None
     if rule == "error_code":
         return value if is_safe_error_code(value) else None
     if rule == "identifier":

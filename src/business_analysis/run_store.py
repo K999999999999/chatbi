@@ -119,10 +119,25 @@ class PostgresAnalysisRunStore:
                 row[0]
                 for row in connection.execute(
                     text(
-                        """UPDATE business_analysis_runs
+                        """UPDATE business_analysis_runs AS run
                            SET status = 'expired', updated_at = :now
-                           WHERE expires_at <= :now AND status <> 'expired'
-                           RETURNING analysis_run_id"""
+                           WHERE run.expires_at <= :now
+                             AND (
+                               run.status <> 'expired'
+                               OR EXISTS (
+                                   SELECT 1 FROM checkpoints
+                                   WHERE thread_id = run.analysis_run_id::text
+                               )
+                               OR EXISTS (
+                                   SELECT 1 FROM checkpoint_blobs
+                                   WHERE thread_id = run.analysis_run_id::text
+                               )
+                               OR EXISTS (
+                                   SELECT 1 FROM checkpoint_writes
+                                   WHERE thread_id = run.analysis_run_id::text
+                               )
+                             )
+                           RETURNING run.analysis_run_id"""
                     ),
                     {"now": moment},
                 )

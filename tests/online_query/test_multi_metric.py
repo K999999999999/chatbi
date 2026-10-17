@@ -17,9 +17,41 @@ from src.online_query.query_understanding import (
 from src.online_query.retrieval.multi_metric import (
     plan_retrieved_metrics,
 )
+from src.semantic.metric_vocabulary import load_metric_vocabulary
 
 
 class MultiMetricPlanningTest(unittest.TestCase):
+    def test_order_line_count_phrase_resolves_from_registered_vocabulary(self) -> None:
+        vocabulary = dict(load_metric_vocabulary())
+        line_count_name = "已完成订单明细行数"
+        requested_phrase = "已完成订单明细有多少行"
+        catalog = _catalog(
+            *(
+                _entry(name, aliases=vocabulary[name])
+                for name in (
+                    "已完成订单数",
+                    line_count_name,
+                    "已完成销售数量",
+                )
+            )
+        )
+        request = _request(
+            "当前已完成订单明细有多少行？",
+            metrics=(requested_phrase,),
+        )
+
+        plan = _plan(request, catalog)
+
+        self.assertEqual(plan.status, MetricPlanStatus.SUCCESS)
+        self.assertEqual(
+            [constraint.metric_name for constraint in plan.constraints],
+            [line_count_name],
+        )
+        self.assertEqual(
+            [constraint.requested_text for constraint in plan.constraints],
+            [requested_phrase],
+        )
+
     def test_explicit_multi_shape_is_fail_closed(self) -> None:
         request = _request(
             "按客户类型统计已完成订单数、人民币销售额和毛利率",

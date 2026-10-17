@@ -87,6 +87,87 @@ class PersistentAuditTest(TestCase):
                 details={"token_hash": "should-not-be-recorded"},
             )
 
+    def test_audit_record_rejects_sensitive_keys_at_any_dict_or_list_depth(self):
+        cases = (
+            {"metadata": {"password": "AUDIT_PASSWORD_CANARY"}},
+            {"attempts": [{"context": {"access_TOKEN": "AUDIT_TOKEN_CANARY"}}]},
+            {"evidence": [{"sql_text": "AUDIT_SQL_CANARY"}]},
+        )
+
+        for index, details in enumerate(cases):
+            with self.subTest(index=index), self.assertRaises(ValueError) as failure:
+                AuditRecord(
+                    event_type="auth.login",
+                    target_type="user",
+                    target_id="analyst-1",
+                    outcome="failure",
+                    details=details,
+                )
+
+            for canary in (
+                "AUDIT_PASSWORD_CANARY",
+                "AUDIT_TOKEN_CANARY",
+                "AUDIT_SQL_CANARY",
+            ):
+                self.assertNotIn(canary, str(failure.exception))
+
+    def test_audit_record_preserves_legal_nested_details(self):
+        details = {
+            "context": {
+                "attempts": [{"phase": "login", "count": 1}],
+                "enabled": True,
+            },
+            "tags": ["manual", "support"],
+        }
+        sink = PersistentAuditSink(self.session_factory)
+        record = AuditRecord(
+            event_type="auth.login",
+            target_type="user",
+            target_id="analyst-1",
+            outcome="failure",
+            details=details,
+        )
+
+        sink.emit_record(record)
+
+        with self.session_factory() as session:
+            event = session.scalar(select(AuditEvent))
+            self.assertIsNotNone(event)
+            assert event is not None
+            self.assertEqual(event.details, details)
+
+    def test_sink_revalidates_mutated_nested_details_before_persisting(self):
+        sink = PersistentAuditSink(self.session_factory)
+        record = AuditRecord(
+            event_type="auth.login",
+            target_type="user",
+            target_id="analyst-1",
+            outcome="failure",
+            details={"metadata": {}},
+        )
+        record.details["metadata"]["password"] = "MUTATED_AUDIT_PASSWORD_CANARY"
+
+        with self.assertRaises(AuditUnavailable) as failure:
+            sink.emit_record(record)
+
+        self.assertNotIn("MUTATED_AUDIT_PASSWORD_CANARY", str(failure.exception))
+        with self.session_factory() as session:
+            self.assertIsNone(session.scalar(select(AuditEvent)))
+
+    def test_audit_record_rejects_unsupported_nested_values_without_echoing_them(self):
+        details = {"metadata": {"items": ("UNSUPPORTED_VALUE_CANARY",)}}
+
+        with self.assertRaises(ValueError) as failure:
+            AuditRecord(
+                event_type="auth.login",
+                target_type="user",
+                target_id="analyst-1",
+                outcome="failure",
+                details=details,
+            )
+
+        self.assertNotIn("UNSUPPORTED_VALUE_CANARY", str(failure.exception))
+
     def test_security_audit_failure_rolls_back_login(self) -> None:
         service = AuthService(
             self.session_factory,

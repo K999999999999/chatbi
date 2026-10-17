@@ -567,6 +567,7 @@ def _run_multi_turn_cli_impl(
         ),
         executor,
         context,
+        trace_recorder=trace_recorder,
     )
     if runtime_holder[0] is not None and rag_asset_version is not None:
         _verify_rag_asset_version(runtime_holder[0], rag_asset_version)

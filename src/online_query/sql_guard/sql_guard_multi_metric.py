@@ -199,6 +199,10 @@ def _validate_multi_metric_output(
             raise SQLRejectedError("多指标 SQL 包含额外聚合表达式")
 
     group = expression.args.get("group")
+    if group is not None and any(
+        group.args.get(key) is not None for key in ("grouping_sets", "rollup", "cube")
+    ):
+        raise SQLRejectedError("多指标 SQL 不支持扩展分组")
     group_expressions = tuple(group.expressions) if group is not None else ()
     if dimension_projections and not group_expressions:
         raise SQLRejectedError("多指标 SQL 的分组字段必须出现在 GROUP BY")
