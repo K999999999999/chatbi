@@ -671,10 +671,12 @@ test('停止重启后读取长期快照、重登录、续聊与显式重查', as
   test.skip(process.env.CHATBI_CONTAINER_RESTART_PHASE !== '1');
   const evidence = JSON.parse(readFileSync(reportPath('browser.json'), 'utf8'));
   const input = evidence.restart_inputs; const reference = evidence.reference;
+  let restartStage = 'login';
   try {
     await login(page, process.env.CHATBI_REAL_E2E_USERNAME!, process.env.CHATBI_REAL_E2E_PASSWORD!);
     evidence.readiness_after_restart = await waitForOperationsReady(page);
     await expect(page.getByRole('table')).toHaveCount(0);
+    restartStage = 'load-prior-history';
     await page.goto('/#history=' + input.ranked_history_id);
     await expect(page.getByRole('table')).toBeVisible();
     if (input.interrupted_execution) {
@@ -684,6 +686,7 @@ test('停止重启后读取长期快照、重登录、续聊与显式重查', as
         active_turn_cleared: true, prior_success_turn_preserved: true,
       }));
     }
+    restartStage = 'continue-prior-history';
     const continued = waitForExecutionResult(page, 240000);
     await send(page, '只看前2个产品');
     const body = await (await continued).json(); const result = querySnapshot(body.turn.snapshot);
@@ -714,6 +717,7 @@ test('停止重启后读取长期快照、重登录、续聊与显式重查', as
       'xlsx', 'r5-restarted-saved-query.xlsx', { kind: 'saved_result', saved_result_id: savedQueryId }));
     evidence.exports.push(await captureExport(page, page.getByRole('button', { name: /下载.* PNG/ }).first(),
       'png', 'r5-restarted-saved-query-chart.png', { kind: 'saved_result', saved_result_id: savedQueryId }));
+    restartStage = 'explicit-requery';
     const requery = waitForExecutionResult(page, 240000);
     await page.getByRole('button', { name: '重新查询当前数据', exact: true }).click();
     const newBody = await (await requery).json(); querySnapshot(newBody.turn.snapshot);
@@ -731,7 +735,24 @@ test('停止重启后读取长期快照、重登录、续聊与显式重查', as
     };
     evidence.status = 'passed';
   } catch (error) {
-    evidence.status = 'failed'; evidence.step = 'r3-restart'; evidence.error_type = (error as Error).name;
+    evidence.status = 'failed'; evidence.step = 'r3-restart'; evidence.restart_stage = restartStage;
+    try {
+      evidence.readiness_at_failure = await page.evaluate(async () => {
+        try {
+          const response = await fetch('/ready', { cache: 'no-store' });
+          const payload: unknown = await response.json();
+          const status = payload && typeof payload === 'object' && !Array.isArray(payload)
+            ? (payload as { status?: unknown }).status
+            : undefined;
+          return { http_status: response.status, status: typeof status === 'string' ? status : 'invalid' };
+        } catch {
+          return { http_status: null, status: 'unavailable' };
+        }
+      });
+    } catch {
+      evidence.readiness_at_failure = { http_status: null, status: 'unavailable' };
+    }
+    evidence.error_type = (error as Error).name;
     evidence.error_message = safeErrorMessage(error);
     throw new Error('R3重启验收未通过，请检查私有报告。');
   }

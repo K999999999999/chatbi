@@ -86,3 +86,11 @@ clean候选`e183cf73ae1e3ce19a052b95179df8c5c8bc581d`隔离验收run `20261017T1
 重启后的浏览器用例在登录并恢复历史后直接提交续聊/重查，没有先确认API当前已ready；当前代码在服务未就绪时拒绝请求，符合readiness Contract。已在`frontend/tests/container-real.spec.ts`的重启用例登录后、任何续聊/重查提交前等待现有有界匿名`/ready` helper，并把attempts/elapsed写入browser证据；不会重放或自动重试被拒绝的请求。`./dev test web` run `20261017T113736Z-e183cf7-test-web-59a43c7394f9`通过：packaged 82/82、web-dev 1/1，build和typecheck通过；provenance stable但dirty=true，为迭代验证。最新文档门禁`./dev check docs` PASS（run `20261017T114103Z-e183cf7-check-docs-38131816d00e`）。增量Review PASS，范围BASE `e183cf73ae1e3ce19a052b95179df8c5c8bc581d`、单文件`frontend/tests/container-real.spec.ts`；Diff检查通过。新clean候选隔离UAT尚未复跑。
 
 下一步：更新路线图和记录，完成文档门禁及Review后本地Commit；基于新clean detached候选复制并校验固定revision模型缓存，复跑隔离业务验收，确认重启阶段是否先等到ready再提交。Ticket 12仍in-progress；此前的正式单轮/多轮AI失败及61项条件性skip未改变，不以此次测试等待改动宣称整体目标完成。
+
+### 2026-10-17 `357e505` clean UAT 与诊断补充
+
+clean候选`357e5058a41c1998239f3fa73a1081a2f817e041`隔离容器验收run `20261017T114337Z-357e505-business-acceptance-container-dev-21760b3d49a4` provenance stable、`git_dirty=false`、cleanup passed。browser-initial为2 passed / 1 skipped，restart-recovery通过；browser-restart为1 failed / 2 skipped，exports未运行。登录后匿名`/ready`立即返回ready（1次、257ms），但重启浏览器执行仍收到`503 SERVICE_NOT_READY`。账号已禁用、活动Session为0、精确Compose资源清除、热更新源码Hash恢复，日常Compose未操作；报告和产物保留于clean UAT工作树。
+
+该结果否定了“只因重启用例没等ready”的完整解释，但没有记录被拒绝的是续聊还是显式重查，也没有记录拒绝后服务readiness状态；现有证据不足以判定为验收时序、依赖瞬时失效或实现缺陷。保持应用readiness和执行受理Contract不变，不自动重试或绕过拒绝。仅增强`frontend/tests/container-real.spec.ts`失败证据：保存重启测试阶段，并在捕获失败后读取一次匿名`/ready`的HTTP状态与安全status字段；诊断读取失败会标为unavailable且不覆盖原始错误。`./dev test web` run `20261017T120125Z-357e505-test-web-34d0333926b8`通过：packaged 82/82、web-dev 1/1、build和typecheck通过，provenance stable但`git_dirty=true`，仅为迭代验证。增量Review PASS，BASE `357e5058a41c1998239f3fa73a1081a2f817e041`，范围限于重启浏览器用例；`git diff --check`通过。
+
+下一步：提交测试诊断和记录更新，创建clean detached候选并复跑隔离验收，以新报告确定失败阶段及失败时ready状态，再决定是否存在已授权范围内的修复。Ticket 12仍in-progress；正式AI评测的S02 Provider失败、多轮`MT-FILTER-REPLACE` SQL拒绝、61项条件性skip及完整业务验收未通过均未改变，不修改readiness Contract、模型参数、案例或验收门槛，远端发布未授权。
