@@ -149,4 +149,8 @@ T12和全仓目标继续in-progress：正式AI评测仍以`97268ca`为基线，�
 
 为下一次定位在本地同时保留可查看的 Span，新增`CHATBI_TRACE_CONSOLE_EXPORT_ENABLED`可选开关。开启后，`local` / `dev` / `test`环境将相同安全 Span 写到进程标准输出；已有 OTLP exporter继续向阿里云发送。两类 Exporter 独立初始化和失败处理；仅本地出口失败或阿里云 exporter 初始化失败时，另一出口仍工作。输出使用既有安全属性白名单，内容采集保持关闭。Compose 将该开关传给API及评测tools；Runbook说明通过容器日志查看。
 
-本机真实`.env`已设置该开关为`true`，保留现有阿里云endpoint和headers，文件权限仍为`0600`；当前服务重建和运行验证待完成。定向回归`./dev test python tests/observability/test_config.py tests/observability/test_tracing.py tests/online_query/test_observability_t2.py`为35 passed、18 subtests passed；`./dev check python`与`./dev check docs`通过，增量Review待记录。下一步只重建API服务加载候选分支代码，验证健康和本地日志出口，再按用户已授权评测范围重跑`MT-FILTER-APPEND`目标案例；不重跑整套评测。
+本机真实`.env`已设置该开关为`true`，保留现有阿里云endpoint和headers，文件权限仍为`0600`。定向回归`./dev test python tests/observability/test_config.py tests/observability/test_tracing.py tests/online_query/test_observability_t2.py`为35 passed、18 subtests passed；`./dev check python`与`./dev check docs`通过，增量Review PASS（BASE `80f1d0f`），代码提交`54e90e6`。API容器重建和运行验证结果见下文。下一步只复跑`MT-FILTER-APPEND`目标案例，不重跑整套评测。
+
+本地运行验证完成：只重建了API容器，运行代码挂载为候选分支`54e90e6`；Web、PostgreSQL、Qdrant容器未重建且保持健康。API health为healthy；一个不触发LLM的校验请求返回`X-Trace-ID=780de292b8a059560a564321e92d558d`，该ID已在API容器本地日志中找到；近5分钟未见安全Exporter初始化/导出警告。容器内`CHATBI_OBSERVABILITY_ENABLED=true`、本地Console export=true、内容采集=false，OTLP endpoint/headers仍指向已配置的阿里云。未查询云端，因此仅确认本地导出和远端配置，未确认阿里云已接收该条Trace。
+
+下一步计划：仅运行现有`MT-FILTER-APPEND`目标用例，重点确认失败是否再次发生于T1（T1本身是独立的第一季度销售额查询，T2才追加华东筛选）；保留原始评测报告，并按新Trace ID检索API本地日志、检查`chatbi.sql_guard.rejection_code`和失败前链路。如果T1通过，记录本次仍不可复现，不归因于测试集或Guard规则；若失败，则按固定拒绝分类继续判断，不采集SQL/原始模型内容、不更改案例、模型参数或门槛。只在确认确定性代码缺陷后才做对应修复和定向回归。
