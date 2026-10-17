@@ -168,3 +168,7 @@ T12和全仓目标继续in-progress：正式AI评测仍以`97268ca`为基线，�
 完整套件中`MT-FILTER-APPEND-T1` Trace ID为`8594b9872c15d8d64c06242d56063be0`，关联25个本地Span，覆盖`query.request`、请求校验、Query Understanding、RAG计划与表/指标/列检索、Join解析、上下文与Prompt构建、LLM生成、候选范围校验、SQL Guard、数据库执行和响应序列化；根Span为`SUCCESS`，`chatbi.content_capture.enabled=false`，SQL Guard未拒绝。T2 Trace ID为`7d5cf439d4a1717ece90afc552c2908f`。本次阿里云OTLP endpoint/headers配置仍已传入tools；没有云端查询凭据，因此不声称云端收件已确认。
 
 该完整复跑加上此前三次目标单例均未复现历史完整套件中的一次T1 `SQL_REJECTED`。因此当前完整候选套件通过，但历史拒绝的具体类别与根因依旧未知；不能据此声称测试集有误或历史故障已经修复，也没有根据单次失败修改业务逻辑。正式旧候选报告及该历史Trace ID继续保留；Ticket 12仍需完成其余Done When验收项。
+
+### 2026-10-18 历史失败根因暂缓定位
+
+用户确认暂缓继续追查两条未复现的历史失败：S02 `PROVIDER_CALL_FAILED` 的底层 Provider 原因，以及 `MT-FILTER-APPEND-T1 SQL_REJECTED` 的历史 Guard 拒绝分类。现有报告/Trace没有足够信息回填根因，继续重复调用也没有新增诊断价值。两项保留为“历史现象、根因未知、暂缓定位”，不标成已修复、不归因测试集/LLM/Guard，也不阻止按当前候选结果继续其他验收；若后续复现，再依据完整本地 Trace 和错误分类继续定位。Ticket 12保持in-progress，其他验收门槛仍按原Spec处理。
