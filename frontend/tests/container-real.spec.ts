@@ -111,6 +111,25 @@ async function waitForExecutionResult(page: Page, timeout: number) {
   return response;
 }
 
+async function readPublicReadiness(page: Page) {
+  try {
+    return await page.evaluate(async () => {
+      try {
+        const response = await fetch('/ready', { cache: 'no-store' });
+        const payload: unknown = await response.json();
+        const status = payload && typeof payload === 'object' && !Array.isArray(payload)
+          ? (payload as { status?: unknown }).status
+          : undefined;
+        return { http_status: response.status, status: typeof status === 'string' ? status : 'invalid' };
+      } catch {
+        return { http_status: null, status: 'unavailable' };
+      }
+    });
+  } catch {
+    return { http_status: null, status: 'unavailable' };
+  }
+}
+
 declare global {
   interface Window {
     __chatbiExecutionEvidence?: Record<string, ExecutionStreamEvidence>;
@@ -393,9 +412,10 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     expect(first.result_metadata?.scope.time?.start).toBe('2025-02-01');
     expect(second.result_metadata?.scope.time?.start).toBe('2025-03-01');
     await page.getByRole('button', { name: '新建问数对话' }).click();
+    evidence.step = 'monthly-query';
+    evidence.monthly_readiness = await waitForOperationsReady(page);
     const trendResponse = waitForExecutionResult(page, 240000);
     await send(page, '按月份列出2025年已完成订单的人民币净销售额、人民币毛利和毛利率。');
-    evidence.step = 'monthly-query';
     const trendHttp = await trendResponse;
     const trendPayload = await trendHttp.json();
     evidence.monthly_http_status = trendHttp.status();
@@ -428,6 +448,8 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
       'png', 'r5-current-query-chart.png', monthlySource));
     evidence.monthly_mixed_units = { rows: trend.rows.length, reference_matches: true, money_series: 2, chart_units: trendPlans.plans.map(p => p.id), metadata_status: trendMetadata.status };
     await page.getByRole('button', { name: '新建问数对话' }).click();
+    evidence.step = 'category-query';
+    evidence.category_readiness = await waitForOperationsReady(page);
     const categoryResponse = waitForExecutionResult(page, 240000);
     await send(page, '按产品线列出2025年已完成订单的人民币净销售额和人民币销售成本。');
     const categoryPayload = await (await categoryResponse).json();
@@ -450,6 +472,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     evidence.category_same_unit = { rows: category.rows.length, reference_matches: true, series: 2, metadata_status: categoryMeta.status };
     evidence.step = 'analysis-request';
     await page.getByRole('button', { name: '经营分析', exact: true }).click();
+    evidence.analysis_readiness = await waitForOperationsReady(page);
     const analysisResponse = waitForExecutionResult(page, 1200000);
     await send(page, '分析2025年3月相比2025年2月的人民币毛利变化及产品因素贡献。');
     const analysisHttp = await analysisResponse;
@@ -547,6 +570,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
       'png', 'r5-saved-query-chart.png', { kind: 'saved_result', saved_result_id: savedId }));
     await page.getByRole('button', { name: '新建问数对话', exact: true }).click();
     evidence.step = 'top-n-query';
+    evidence.top_n_readiness = await waitForOperationsReady(page);
     const rankedResponse = waitForExecutionResult(page, 240000);
     await send(page, '2025年3月按人民币净销售额从高到低列出前3个产品。');
     const rankedPayload = await (await rankedResponse).json(); const ranked = querySnapshot(rankedPayload.turn.snapshot);
@@ -559,6 +583,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     evidence.step = 'multi-page-disconnect-and-cancel';
     await page.evaluate(() => { window.__chatbiCaptureExecutionStreams = false; });
     const submissionsBeforeRecovery = streams.submissions.length;
+    evidence.cancelable_readiness = await waitForOperationsReady(page);
     const cancelableResponse = page.waitForResponse(isExecutionSubmission, { timeout: 30000 });
     await send(page, '只看前2个产品');
     const cancelableAcceptance = await cancelableResponse;
@@ -629,6 +654,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     await secondPage.close();
 
     evidence.step = 'post-cancel-new-operation';
+    evidence.post_cancel_readiness = await waitForOperationsReady(page);
     const nextQuery = waitForExecutionResult(page, 240000);
     await send(page, '只看前2个产品');
     const nextPayload = await (await nextQuery).json();
@@ -640,6 +666,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
     evidence.after_cancel_or_completion = { terminal_status: cancelableFinal.execution.status, new_operation_reference_matches: true };
 
     evidence.step = 'restart-unconfirmed-setup';
+    evidence.restart_setup_readiness = await waitForOperationsReady(page);
     const interruptedResponse = page.waitForResponse(isExecutionSubmission, { timeout: 30000 });
     await send(page, '2025年3月人民币净销售额最高的产品是什么？');
     const interruptedAcceptance = await interruptedResponse;
@@ -658,6 +685,7 @@ test('实际 Compose 网页登录 → 真实问数 → 同一对话追问', asyn
   } catch (error) {
     evidence.status = 'failed'; evidence.error_type = (error as Error).name;
     evidence.error_message = safeErrorMessage(error);
+    evidence.readiness_at_failure = await readPublicReadiness(page);
     evidence.error_locations = (error as Error).stack?.match(/container-real\.spec\.ts:\d+:\d+/g) ?? [];
     throw new Error('真实容器业务验收失败，见私有报告的步骤与安全定位。');
   } finally {
@@ -686,6 +714,8 @@ test('停止重启后读取长期快照、重登录、续聊与显式重查', as
         active_turn_cleared: true, prior_success_turn_preserved: true,
       }));
     }
+    restartStage = 'continue-prior-history-readiness';
+    evidence.readiness_before_restart_continuation = await waitForOperationsReady(page);
     restartStage = 'continue-prior-history';
     const continued = waitForExecutionResult(page, 240000);
     await send(page, '只看前2个产品');
@@ -717,6 +747,8 @@ test('停止重启后读取长期快照、重登录、续聊与显式重查', as
       'xlsx', 'r5-restarted-saved-query.xlsx', { kind: 'saved_result', saved_result_id: savedQueryId }));
     evidence.exports.push(await captureExport(page, page.getByRole('button', { name: /下载.* PNG/ }).first(),
       'png', 'r5-restarted-saved-query-chart.png', { kind: 'saved_result', saved_result_id: savedQueryId }));
+    restartStage = 'explicit-requery-readiness';
+    evidence.readiness_before_explicit_requery = await waitForOperationsReady(page);
     restartStage = 'explicit-requery';
     const requery = waitForExecutionResult(page, 240000);
     await page.getByRole('button', { name: '重新查询当前数据', exact: true }).click();
@@ -736,22 +768,7 @@ test('停止重启后读取长期快照、重登录、续聊与显式重查', as
     evidence.status = 'passed';
   } catch (error) {
     evidence.status = 'failed'; evidence.step = 'r3-restart'; evidence.restart_stage = restartStage;
-    try {
-      evidence.readiness_at_failure = await page.evaluate(async () => {
-        try {
-          const response = await fetch('/ready', { cache: 'no-store' });
-          const payload: unknown = await response.json();
-          const status = payload && typeof payload === 'object' && !Array.isArray(payload)
-            ? (payload as { status?: unknown }).status
-            : undefined;
-          return { http_status: response.status, status: typeof status === 'string' ? status : 'invalid' };
-        } catch {
-          return { http_status: null, status: 'unavailable' };
-        }
-      });
-    } catch {
-      evidence.readiness_at_failure = { http_status: null, status: 'unavailable' };
-    }
+    evidence.readiness_at_failure = await readPublicReadiness(page);
     evidence.error_type = (error as Error).name;
     evidence.error_message = safeErrorMessage(error);
     throw new Error('R3重启验收未通过，请检查私有报告。');

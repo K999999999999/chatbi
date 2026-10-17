@@ -94,3 +94,11 @@ clean候选`357e5058a41c1998239f3fa73a1081a2f817e041`隔离容器验收run `2026
 该结果否定了“只因重启用例没等ready”的完整解释，但没有记录被拒绝的是续聊还是显式重查，也没有记录拒绝后服务readiness状态；现有证据不足以判定为验收时序、依赖瞬时失效或实现缺陷。保持应用readiness和执行受理Contract不变，不自动重试或绕过拒绝。仅增强`frontend/tests/container-real.spec.ts`失败证据：保存重启测试阶段，并在捕获失败后读取一次匿名`/ready`的HTTP状态与安全status字段；诊断读取失败会标为unavailable且不覆盖原始错误。`./dev test web` run `20261017T120125Z-357e505-test-web-34d0333926b8`通过：packaged 82/82、web-dev 1/1、build和typecheck通过，provenance stable但`git_dirty=true`，仅为迭代验证。增量Review PASS，BASE `357e5058a41c1998239f3fa73a1081a2f817e041`，范围限于重启浏览器用例；`git diff --check`通过。
 
 下一步：提交测试诊断和记录更新，创建clean detached候选并复跑隔离验收，以新报告确定失败阶段及失败时ready状态，再决定是否存在已授权范围内的修复。Ticket 12仍in-progress；正式AI评测的S02 Provider失败、多轮`MT-FILTER-REPLACE` SQL拒绝、61项条件性skip及完整业务验收未通过均未改变，不修改readiness Contract、模型参数、案例或验收门槛，远端发布未授权。
+
+### 2026-10-17 `7a2032e` 首轮隔离验收定位
+
+clean候选`7a2032e9a2288a93f3e17701034d1a231f79cc06`隔离容器验收run `20261017T120640Z-7a2032e-business-acceptance-container-dev-789e7feadb0d` provenance stable、`git_dirty=false`、cleanup passed。browser-initial为1 passed / 1 failed / 1 skipped：首条真实问数成功，同一会话追问返回200，之后“按月份列出2025年已完成订单的人民币净销售额、人民币毛利和毛利率”提交收到`503 SERVICE_NOT_READY`；最近一次ready检查是在更早的追问之前（ready、1次、29ms），月度提交前没有检查。重启及exports阶段未运行。验收账号已禁用、活动Session为0、专用Compose容器/volume/network清除、热更新源码Hash恢复、日常Compose未操作；报告和产物保留于clean UAT工作树。
+
+这个结果把失败从重启流程扩大到长会话中的后续提交；它不能证明失败时服务真的已ready，因为报告没采集拒绝后的状态。针对遗漏的验收前置条件，现为每次独立问数/分析提交前调用既有75秒有界匿名`/ready` helper（不自动重放拒绝请求），并在失败报告保存HTTP状态与安全ready值。已覆盖月度、分类、分析、Top-N、取消后的新操作、重启续聊和显式重查等步骤，服务端readiness与admission Contract未变。完整Web run `20261017T121342Z-7a2032e-test-web-e41158c68e72`通过：packaged 82/82、web-dev 1/1、build和typecheck通过，provenance stable但`git_dirty=true`，为迭代验证。`./dev check docs` PASS（run `20261017T121730Z-7a2032e-check-docs-d58f12b82e79`）。增量Review PASS，BASE `7a2032e9a2288a93f3e17701034d1a231f79cc06`，范围限于`frontend/tests/container-real.spec.ts`：每次用户新提交前检查readiness、记录失败阶段和失败后公开状态；未改服务端逻辑或自动重试行为。`git diff --check`通过。
+
+下一步：完成文档检查、Review和本地Commit；在新clean候选上重新运行隔离业务验收，确认首次、多次连续提交及重启阶段，不能把该测试门禁修正视为API 503根因已消除。Ticket 12仍in-progress；正式AI报告及61项条件性skip未变，不改readiness Contract、模型参数、案例或验收门槛，远端发布未授权。
