@@ -53,4 +53,4 @@ ChatBI是面向销售数据的领域AI引擎，提供电脑端问数、多轮追
 | 应用运行保护与诊断 | [就绪规则](docs/specs/application-readiness.md)、[observability](src/observability) |
 | 测试、评测与协作 | [tests](tests)、[evaluation](evaluation)、[AGENTS.md](AGENTS.md) |
 
-当前为本机单API进程，不承诺公网、多副本或多用户容量。历史项目审计见 `docs/audits/`；历史方案、旧部署验收与开发记录保存在[.scratch](.scratch)，不作为当前启动教程；本机运行报告不随clone分发。
+当前为本机单API进程，不承诺公网、多副本或多用户容量。历史项目审计见 `docs/audits/`；历史方案、旧部署验收与开发记录保存在[.scratch](.scratch)，不作为当前启动教程；原始本机报告不随clone分发。

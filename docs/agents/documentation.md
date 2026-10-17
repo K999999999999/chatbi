@@ -15,9 +15,10 @@
 | `docs/runbook.md` | 当前安装、运行、测试、评测和故障处理步骤。 |
 | `docs/roadmap.md` | 当前阶段、已确认方向、依赖和优先级确认状态。 |
 | `docs/agents/` | ChatBI 特有的协作、领域、工作项、交付和文档维护规则。 |
+| `docs/audits/` | 项目级审计报告及其基线、发现和证据边界；不定义产品行为 Contract。 |
 | `.scratch/` | 工作规划、过程、历史决定、旧方案和历史验收。 |
 
-新工作的 Spec、Design、Ticket 和过程记录可以先保存在 `.scratch/`。功能交付后，当前行为 Contract 应归入正式 Spec；历史方案或验收留在所属工作记录，不作为当前唯一规则入口。
+新工作的 Spec、Design、Ticket 和过程记录可以先保存在 `.scratch/`。功能交付后，当前行为 Contract 应归入正式 Spec；历史方案或验收留在所属工作记录，不作为当前唯一规则入口。项目级审计报告可归档到 `docs/audits/`，并明确审计基线及证据边界。
 
 ## 更新与归档
 
