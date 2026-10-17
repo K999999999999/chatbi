@@ -78,3 +78,11 @@ clean候选`8f3719463909f0701d5334d566bcdf8180d8431e`隔离验收run `20261017T1
 根因是该候选的`frontend/vite.config.ts`开发代理只映射`/auth`、`/api`和`/health`，不映射API已有的匿名`/ready`；浏览器页请求未到达API。活动审计分支为Vite增加`/ready`转发，并扩展`frontend/tests/dev.spec.ts`在未登录状态请求`/ready`、断言200与`status=ready`后再运行登录、问数和分析主流程。变更仅使开发代理可访问已有公开探针，不改API、鉴权或readiness Contract。`./dev test web` run `20261017T111458Z-8f37194-test-web-35ecafb1c852`通过：packaged 82/82，web-dev 1/1；build和typecheck通过。报告provenance stable但`git_dirty=true`，为迭代验证；最新文档门禁`./dev check docs` PASS（run `20261017T111926Z-8f37194-check-docs-f4da659c3bc4`）。本次增量只读Review PASS，BASE `8f3719463909f0701d5334d566bcdf8180d8431e`，范围`frontend/vite.config.ts`、`frontend/tests/dev.spec.ts`；`git diff --check`通过。
 
 下一步：本地提交Vite映射、回归测试及本记录更新，创建新的clean detached候选后重新执行隔离容器验收。T12继续in-progress；正式AI评测的单轮S02提供方错误、多轮`MT-FILTER-REPLACE` SQL拒绝、61项条件性skip均未因本改动改变。
+
+### 2026-10-17 `e183cf7` clean UAT 重启阶段
+
+clean候选`e183cf73ae1e3ce19a052b95179df8c5c8bc581d`隔离验收run `20261017T112224Z-e183cf7-business-acceptance-container-dev-c421d9a6522b` provenance stable、cleanup passed。browser-initial 2 passed / 1 skipped，真实登录、问数和同一会话追问通过；restart-recovery通过；browser-restart为1 failed / 2 skipped，错误为重启后的执行提交收到`503 SERVICE_NOT_READY`，最终exports阶段未运行。账号已禁用、活动Session为0、专用Compose资源清除、热更新源码Hash恢复、日常Compose未操作，报告与产物保留。
+
+重启后的浏览器用例在登录并恢复历史后直接提交续聊/重查，没有先确认API当前已ready；当前代码在服务未就绪时拒绝请求，符合readiness Contract。已在`frontend/tests/container-real.spec.ts`的重启用例登录后、任何续聊/重查提交前等待现有有界匿名`/ready` helper，并把attempts/elapsed写入browser证据；不会重放或自动重试被拒绝的请求。`./dev test web` run `20261017T113736Z-e183cf7-test-web-59a43c7394f9`通过：packaged 82/82、web-dev 1/1，build和typecheck通过；provenance stable但dirty=true，为迭代验证。最新文档门禁`./dev check docs` PASS（run `20261017T114103Z-e183cf7-check-docs-38131816d00e`）。增量Review PASS，范围BASE `e183cf73ae1e3ce19a052b95179df8c5c8bc581d`、单文件`frontend/tests/container-real.spec.ts`；Diff检查通过。新clean候选隔离UAT尚未复跑。
+
+下一步：更新路线图和记录，完成文档门禁及Review后本地Commit；基于新clean detached候选复制并校验固定revision模型缓存，复跑隔离业务验收，确认重启阶段是否先等到ready再提交。Ticket 12仍in-progress；此前的正式单轮/多轮AI失败及61项条件性skip未改变，不以此次测试等待改动宣称整体目标完成。

@@ -673,6 +673,7 @@ test('停止重启后读取长期快照、重登录、续聊与显式重查', as
   const input = evidence.restart_inputs; const reference = evidence.reference;
   try {
     await login(page, process.env.CHATBI_REAL_E2E_USERNAME!, process.env.CHATBI_REAL_E2E_PASSWORD!);
+    evidence.readiness_after_restart = await waitForOperationsReady(page);
     await expect(page.getByRole('table')).toHaveCount(0);
     await page.goto('/#history=' + input.ranked_history_id);
     await expect(page.getByRole('table')).toBeVisible();
