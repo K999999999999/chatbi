@@ -35,11 +35,27 @@ def fixture_repo(parent: Path) -> Path:
         target = repo / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(REPOSITORY / relative, target)
-    subprocess.run(["git", "-C", str(repo), "init", "-b", "master"], check=True, capture_output=True)
-    subprocess.run(["git", "-C", str(repo), "add", "dev", "scripts", ".harness"], check=True)
     subprocess.run(
-        ["git", "-C", str(repo), "-c", "user.name=Harness fixture", "-c",
-         "user.email=harness@example.invalid", "commit", "-m", "fixture"],
+        ["git", "-C", str(repo), "init", "-b", "master"],
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repo), "add", "dev", "scripts", ".harness"], check=True
+    )
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "-c",
+            "user.name=Harness fixture",
+            "-c",
+            "user.email=harness@example.invalid",
+            "commit",
+            "-m",
+            "fixture",
+        ],
         check=True,
         capture_output=True,
     )
@@ -53,7 +69,9 @@ def fixture_repo(parent: Path) -> Path:
     return repo
 
 
-def adapter_env(tmp_path: Path, *, image_missing: bool = False) -> tuple[dict[str, str], Path]:
+def adapter_env(
+    tmp_path: Path, *, image_missing: bool = False
+) -> tuple[dict[str, str], Path]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
     docker_log = tmp_path / "docker-args.log"
@@ -63,14 +81,18 @@ def adapter_env(tmp_path: Path, *, image_missing: bool = False) -> tuple[dict[st
         "set -euo pipefail\n"
         'printf "%s\\0" "$@" >> "$HARNESS_ADAPTER_TEST_DOCKER_LOG"\n'
         'printf "\\n" >> "$HARNESS_ADAPTER_TEST_DOCKER_LOG"\n'
-        'if [[ ${1:-} == image && ${HARNESS_ADAPTER_TEST_IMAGE_MISSING:-false} == true ]]; then exit 1; fi\n'
+        "if [[ ${1:-} == image && ${HARNESS_ADAPTER_TEST_IMAGE_MISSING:-false} == true ]]; then exit 1; fi\n"
         'if [[ ${1:-} == image ]]; then printf "sha256:fixture\\n"; fi\n'
         'if [[ ${1:-} == run ]]; then exit "${HARNESS_ADAPTER_TEST_RUN_EXIT:-0}"; fi\n',
         encoding="utf-8",
     )
     docker.chmod(0o755)
     env = os.environ.copy()
-    for name in ("LOCAL_WORKSPACE_FOLDER", "CHATBI_GIT_COMMON_DIR_HOST", "CHATBI_ENGINEERING_WORKFLOW_SOURCE_ROOT"):
+    for name in (
+        "LOCAL_WORKSPACE_FOLDER",
+        "CHATBI_GIT_COMMON_DIR_HOST",
+        "CHATBI_ENGINEERING_WORKFLOW_SOURCE_ROOT",
+    ):
         env.pop(name, None)
     env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
     env["HARNESS_ADAPTER_TEST_DOCKER_LOG"] = str(docker_log)
@@ -95,7 +117,9 @@ def calls(log: Path) -> list[list[str]]:
     return result
 
 
-def run_dev(repo: Path, env: dict[str, str], *args: str) -> subprocess.CompletedProcess[str]:
+def run_dev(
+    repo: Path, env: dict[str, str], *args: str
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["bash", str(repo / "dev"), *args],
         cwd=repo,
@@ -106,7 +130,9 @@ def run_dev(repo: Path, env: dict[str, str], *args: str) -> subprocess.Completed
     )
 
 
-def test_read_only_control_uses_fixture_source_and_read_only_mounts(tmp_path: Path) -> None:
+def test_read_only_control_uses_fixture_source_and_read_only_mounts(
+    tmp_path: Path,
+) -> None:
     repo = fixture_repo(tmp_path)
     env, log = adapter_env(tmp_path)
 
@@ -153,11 +179,22 @@ def test_read_only_control_uses_fixture_source_and_read_only_mounts(tmp_path: Pa
     ]
 
 
-def test_write_mount_is_limited_to_existing_work_item_and_linked_common_dir(tmp_path: Path) -> None:
+def test_write_mount_is_limited_to_existing_work_item_and_linked_common_dir(
+    tmp_path: Path,
+) -> None:
     primary = fixture_repo(tmp_path)
     linked = tmp_path / "linked-chatbi"
     subprocess.run(
-        ["git", "-C", str(primary), "worktree", "add", "-b", "linked-fixture", str(linked)],
+        [
+            "git",
+            "-C",
+            str(primary),
+            "worktree",
+            "add",
+            "-b",
+            "linked-fixture",
+            str(linked),
+        ],
         check=True,
         capture_output=True,
     )
@@ -188,7 +225,9 @@ def test_write_mount_is_limited_to_existing_work_item_and_linked_common_dir(tmp_
     assert f"{linked}:{linked}:ro" in run
 
 
-def test_plugin_package_root_is_accepted_but_package_without_cli_fails_closed(tmp_path: Path) -> None:
+def test_plugin_package_root_is_accepted_but_package_without_cli_fails_closed(
+    tmp_path: Path,
+) -> None:
     repo = fixture_repo(tmp_path)
     env, log = adapter_env(tmp_path)
     package_root = PLUGIN_FIXTURE / "plugins/engineering-workflow"
@@ -231,11 +270,51 @@ def test_plugin_package_root_is_accepted_but_package_without_cli_fails_closed(tm
 @pytest.mark.parametrize(
     ("arguments", "expected"),
     [
-        (("harness", "control", "state", "--work-item", WORK_ITEM), "未指定 Plugin 源码根目录"),
-        (("harness", "control", "--plugin-source", str(PLUGIN_FIXTURE), "state", "--adapter", "tests/fixtures/other.json", "--work-item", WORK_ITEM), "项目适配文件由适配器固定"),
-        (("harness", "control", "--plugin-source", "/missing/plugin", "state"), "Plugin 源码路径不存在"),
-        (("harness", "control", "--plugin-source", str(PLUGIN_FIXTURE), "onboard", "apply"), "只允许写 Harness 状态目录"),
-        (("harness", "control", "--plugin-source", str(PLUGIN_FIXTURE), "migrate", "--expected-sha", "0" * 64), "状态写入必须指定有效的 --work-item"),
+        (
+            ("harness", "control", "state", "--work-item", WORK_ITEM),
+            "未指定 Plugin 源码根目录",
+        ),
+        (
+            (
+                "harness",
+                "control",
+                "--plugin-source",
+                str(PLUGIN_FIXTURE),
+                "state",
+                "--adapter",
+                "tests/fixtures/other.json",
+                "--work-item",
+                WORK_ITEM,
+            ),
+            "项目适配文件由适配器固定",
+        ),
+        (
+            ("harness", "control", "--plugin-source", "/missing/plugin", "state"),
+            "Plugin 源码路径不存在",
+        ),
+        (
+            (
+                "harness",
+                "control",
+                "--plugin-source",
+                str(PLUGIN_FIXTURE),
+                "onboard",
+                "apply",
+            ),
+            "只允许写 Harness 状态目录",
+        ),
+        (
+            (
+                "harness",
+                "control",
+                "--plugin-source",
+                str(PLUGIN_FIXTURE),
+                "migrate",
+                "--expected-sha",
+                "0" * 64,
+            ),
+            "状态写入必须指定有效的 --work-item",
+        ),
     ],
 )
 def test_invalid_or_unsupported_requests_fail_without_invoking_docker(
@@ -251,7 +330,9 @@ def test_invalid_or_unsupported_requests_fail_without_invoking_docker(
     assert calls(log) == []
 
 
-def test_bad_plugin_identity_and_missing_image_fail_without_legacy_fallback(tmp_path: Path) -> None:
+def test_bad_plugin_identity_and_missing_image_fail_without_legacy_fallback(
+    tmp_path: Path,
+) -> None:
     repo = fixture_repo(tmp_path)
     env, log = adapter_env(tmp_path)
     bad_source = tmp_path / "bad-plugin"
@@ -266,7 +347,9 @@ def test_bad_plugin_identity_and_missing_image_fail_without_legacy_fallback(tmp_
     assert "元数据名称不匹配" in bad_plugin.stderr
     assert calls(log) == []
 
-    missing_env, missing_log = adapter_env(tmp_path / "missing-image", image_missing=True)
+    missing_env, missing_log = adapter_env(
+        tmp_path / "missing-image", image_missing=True
+    )
     missing_image = run_dev(
         repo,
         missing_env,
@@ -281,7 +364,9 @@ def test_bad_plugin_identity_and_missing_image_fail_without_legacy_fallback(tmp_
     assert len(calls(missing_log)) == 1
 
 
-def test_legacy_harness_check_still_calls_existing_read_only_module(tmp_path: Path) -> None:
+def test_legacy_harness_check_still_calls_existing_read_only_module(
+    tmp_path: Path,
+) -> None:
     repo = fixture_repo(tmp_path)
     env, log = adapter_env(tmp_path)
 
@@ -291,16 +376,31 @@ def test_legacy_harness_check_still_calls_existing_read_only_module(tmp_path: Pa
     assert "只读 Plugin 源码工作树" not in result.stderr
     run = calls(log)[0]
     assert run[run.index("--entrypoint") + 1] == "python"
-    assert run[-5:] == ["-m", "scripts.check_harness_state", "--repo", str(repo), "--json"]
+    assert run[-5:] == [
+        "-m",
+        "scripts.check_harness_state",
+        "--repo",
+        str(repo),
+        "--json",
+    ]
 
 
-def test_legacy_python_state_checker_remains_available_and_read_only(tmp_path: Path) -> None:
+def test_legacy_python_state_checker_remains_available_and_read_only(
+    tmp_path: Path,
+) -> None:
     repo = fixture_repo(tmp_path)
     common = Path(git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir"))
     shutil.rmtree(common / "harness")
 
     result = subprocess.run(
-        [sys.executable, "-m", "scripts.check_harness_state", "--repo", str(repo), "--json"],
+        [
+            sys.executable,
+            "-m",
+            "scripts.check_harness_state",
+            "--repo",
+            str(repo),
+            "--json",
+        ],
         cwd=REPOSITORY,
         text=True,
         capture_output=True,
@@ -313,14 +413,21 @@ def test_legacy_python_state_checker_remains_available_and_read_only(tmp_path: P
     assert any(item["code"] == "LOCAL_RECORDS_ABSENT" for item in report["findings"])
 
 
-def test_project_profile_and_dynamic_manifest_reference_existing_authority(tmp_path: Path) -> None:
-    adapter = json.loads((REPOSITORY / ".harness/project.json").read_text(encoding="utf-8"))
+def test_project_profile_and_dynamic_manifest_reference_existing_authority(
+    tmp_path: Path,
+) -> None:
+    adapter = json.loads(
+        (REPOSITORY / ".harness/project.json").read_text(encoding="utf-8")
+    )
     manifest_path = REPOSITORY / adapter["dynamic_file_manifest"]
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert adapter["repository"] == "github.com/K999999999999/chatbi"
     assert adapter["work_item_record_directory"] == "harness/work-items"
     assert "实施中" in adapter["workflow"]["stages"]
-    assert any(edge["from"] == "实施中" and edge["to"] == "验证 / Review" for edge in adapter["workflow"]["transitions"])
+    assert any(
+        edge["from"] == "实施中" and edge["to"] == "验证 / Review"
+        for edge in adapter["workflow"]["transitions"]
+    )
     assert manifest["delivery_required"] is True
     for item in manifest["files"]:
         assert (REPOSITORY / item["path"]).is_file()
