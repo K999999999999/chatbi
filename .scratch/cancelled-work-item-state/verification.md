@@ -23,3 +23,7 @@
 
 - `harness-candidate-preflight`：`Spec 待确认` → `cancelled`；迁移前摘要 `e675f54e9b27097c6e6eb864d4db830eb45ef3f5d90f65bc190e7b60c8744251`。
 - `long-task-progress-clarity`：`需求发现` → `cancelled`；迁移前摘要 `46d675bf24b98f5b072030a427abef1dcc259ecff39907486dfcf4263b6a8fa1`。
+
+## 发布准备补充
+
+2026-10-19，用户确认 Plugin 当前记录的 Skill 来源与改写范围可公开分发，并保留 `engineering-workflow` manifest 的 `Local Workflow Maintainer` / `Proprietary` 元数据。Plugin 提交 `7773325` 仅更新 `PROVENANCE.md` 记录此决定，不改运行行为；既有 57/57 Plugin 测试仍对应代码提交 `67cfb13`，未因纯文档更新重跑。该确认不构成 Push 或创建 PR 的授权。
