@@ -27,3 +27,5 @@
 ## 发布准备补充
 
 2026-10-19，用户确认 Plugin 当前记录的 Skill 来源与改写范围可公开分发，并保留 `engineering-workflow` manifest 的 `Local Workflow Maintainer` / `Proprietary` 元数据。Plugin 提交 `7773325` 仅更新 `PROVENANCE.md` 记录此决定，不改运行行为；既有 57/57 Plugin 测试仍对应代码提交 `67cfb13`，未因纯文档更新重跑。该确认不构成 Push 或创建 PR 的授权。
+
+同日，ChatBI 候选 `7ef4035` 通过 `bash scripts/check_python_quality.sh`（315 个文件已格式化，所有检查通过）及 `uv run --python 3.11 --locked python -m scripts.check_documentation`（通过）。两项检查覆盖该候选；随后只追加本验证记录，没有变更代码或产品文档。
