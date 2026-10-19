@@ -1,12 +1,16 @@
 # Harness 改进规划状态
 
-Status: local-complete
-Stage: 本地实现、验证、Review 与 Commit 完成；远端发布 / 安装未授权
+Status: ChatBI 与 Plugin 远端代码已交付；新版 Plugin 已安装启用；新会话加载核验与 closeout PR 待完成
+Stage: 已合并待复盘
 
 当前会话已逐项确认通用能力归 engineering-workflow Plugin、ChatBI 首轮适配、工具化状态管理、人工介入规则、3轮 / 30分钟无进展预算、聊天批准候选及显式项目接入方式。
 
-用户已整体确认[Spec](spec.md)。[Design Review](design-review.md)为PASS WITH MINOR FIXES，D1–D4在[设计说明](design.md)中落实并核对；[8项Ticket草案](ticket-drafts.md)的[Readiness](ticket-readiness.md)为READY。用户于 2026-10-19 确认8项拆分并授权整体本地实施、验证、Review和Commit。未获Plugin安装更新、付费调用、Push / PR、远端设置或实验授权。
+用户已整体确认[Spec](spec.md)。[Design Review](design-review.md)为PASS WITH MINOR FIXES，D1–D4在[设计说明](design.md)中落实并核对；[8项Ticket草案](ticket-drafts.md)的[Readiness](ticket-readiness.md)为READY。用户于 2026-10-19 确认8项拆分并授权整体本地实施、验证、Review和Commit；之后确认外部交付，指定 Plugin 直接推送且不新增 required-check 规则。未授权修改 ChatBI / Plugin 远端规则或进行隔离失败实验。
 
-本目标 ID 为 `harness-task-control-v1`；实时进度以 Git 公共目录下同 ID 的主记录为准。相关问题发现 `long-task-progress-clarity` 保留原生命周期，关联不继承授权，也不提前标记解决。
+正式 Tickets 01–08 的本地实现、验收、Review 与 Commit 已完成。Plugin `140f2ef95f611f378047683c379ae3724e4f5826` 已直接推送至 `agent-plugins:master`，GitHub Actions run `39237092713` 成功（53项）；未创建 Plugin PR、未配置 required checks。ChatBI PR [#90](https://github.com/K999999999999/chatbi/pull/90) 于 2026-10-19 10:29:59 UTC 由既有 Squash Auto-merge 合并，merge commit 为 `248ec84d4716d6ff0526df9b82ccfc33a03284db`；最终 head `61b4645ea480ed202b912208f4f533eda6086b08` 的8项 required checks 全部通过。首轮 CI 的 `Code quality` 因适配器测试未格式化而失败；补充格式提交后质量检查与该 head 的 CI 均通过。
 
-正式 Tickets 01–08 均已完成本地实现 / 验收、Review 与 Commit。ChatBI 实现提交 `0e8189bf0eeace38cffdc2ca16debd103e7e1b19`；Plugin 提交 `140f2ef95f611f378047683c379ae3724e4f5826`。验收证据见 [acceptance.md](acceptance.md)、[code-review.md](code-review.md) 和 [remote-release-plan.md](remote-release-plan.md)。Plugin 53 项 unittest 在 Python 3.14.4 与 3.11.16 均通过；ChatBI Python 范围 1118 passed / 61 skipped、无失败或错误，报告保留 incomplete 状态。Hosted CI、Push / PR、安装 / 同步、远端规则和隔离实验均未执行，均不在本次授权内。原 Plugin 源 worktree 与用户 7z 归档保持不动。最终 ChatBI / Plugin HEAD 与工作区状态以 Git 公共目录主实时记录为准。
+为避免整体替换 `personal` Marketplace（其中 `agent-engineering-skills` 当前为 `0.1.1`），已新增独立 Marketplace `harness-task-control-v1`，只安装并启用 `engineering-workflow@harness-task-control-v1` `0.2.0+codex.20261019`；旧 `engineering-workflow@personal` 已卸载，另一个 Plugin 保持不变。原 `feature/harness-workflow-control` checkout 及未跟踪的 `engineering-process-audit.7z` 保持未改。缓存含 `tools/harness.py`；`--help`、状态读取成功。只读 `onboard discover` 返回 `complete=false`，未发现测试入口且 CI 文件只标记为本地观察，未远程核验。主实时状态记录已显式迁移并保留备份，当前 Harness `state` 查询成功。新会话仍需重新加载后核验 Skill 实际生效。
+
+本次 `closeout check` 返回 `local_ready=false`、`overall_ready=false`：工作项在 Harness 上线前未捕获 task / slice baseline，且旧验证、Review 与动态文件语义评估没有绑定到当前候选，因此工具拒绝完成声明。验收文档保留既有手工评估与证据；此旧候选记录不会被伪改成新工具已通过。远端发布、Hosted CI 和本地源 / 缓存事实以[验收记录](acceptance.md)、[发布与回退状态](remote-release-plan.md)及 GitHub 实时状态为准。
+
+合并复盘发现可行动的 Harness 缺口：首次发布前遗漏运行仓库指定的 `bash scripts/check_python_quality.sh`，导致首轮 CI 失败。跟进工作项 `harness-candidate-preflight` 已登记为待确认提案；它不代表已授权实施。原问题发现 `long-task-progress-clarity` 保留原生命周期，不继承本目标授权，也不提前标记解决。

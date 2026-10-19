@@ -1,12 +1,12 @@
-# Harness Task Control V1 本地验收
+# Harness Task Control V1 验收与远端交付
 
-Status: 本地验收记录；不代表已 Push、PR、安装、同步或启用
-Snapshot: 2026-10-19 07:38 UTC
+Status: 本地验收、Hosted CI、ChatBI / Plugin 远端代码交付及 Plugin 安装启用已完成；新会话加载核验待完成
+Snapshot: 2026-10-19 10:46 UTC
 ChatBI baseline: `2897302038fa42167e79a0b5ad483c2b628359b9` (`docs/harness-task-control-v1`)
 Plugin baseline: `6681366453eedce45e36f989a082df8a78b85819` (`feature/harness-task-control-v1`)
 Plugin candidate version: `0.2.0+codex.20261019`
 
-本记录验证已确认 Spec 的本地工具和 ChatBI 适配行为。ChatBI 主记录仍是旧格式，实际工具查询明确返回 `legacy_read_only: true`；没有伪造 task / slice 起始基线，也没有把当前真实工作项迁移成“已通过新版门禁”。跨仓端到端行为在临时合成仓库中验证。最终 Code Review 为 PASS AFTER FIX。ChatBI 实现提交为 `0e8189bf0eeace38cffdc2ca16debd103e7e1b19`，Plugin 提交为 `140f2ef95f611f378047683c379ae3724e4f5826`；本记录随 ChatBI 收尾提交更新，最终工作项身份以 Git 公共目录主实时记录为准。
+本记录验证已确认 Spec 的本地工具和 ChatBI 适配行为。初次验收时 ChatBI 主记录仍为旧格式，实际工具查询明确返回 `legacy_read_only: true`；没有伪造 task / slice 起始基线。PR #90 合并后的 Harness 收尾复核中，主实时记录已按显式迁移命令升级并保留原件备份；当前 `state` 查询返回 `legacy_read_only: false`。跨仓端到端行为在临时合成仓库中验证。最终 Code Review 为 PASS AFTER FIX。ChatBI 实现提交为 `0e8189bf0eeace38cffdc2ca16debd103e7e1b19`，最终 PR head 为 `61b4645ea480ed202b912208f4f533eda6086b08`，Squash merge commit 为 `248ec84d4716d6ff0526df9b82ccfc33a03284db`；Plugin 提交 `140f2ef95f611f378047683c379ae3724e4f5826` 已直推远端 `master`。本机实时进度以 Git 公共目录主记录为准。
 
 ## Spec 覆盖与证据
 
@@ -22,30 +22,41 @@ Plugin candidate version: `0.2.0+codex.20261019`
 | ChatBI 实际命令到 Plugin 包的组合行为 | 临时合成 Git 仓库，经 ChatBI 容器 adapter 执行 Plugin 候选 CLI | 验证旧记录只读、显式备份迁移、非法转换不改状态、task / slice baseline、Diff、3 轮升级和拒绝第 4 轮、read-only recovery / onboarding、follow-up 效果门槛、逐项 Manifest 评估及缺验证 / Review 时不 closeout。临时仓库由临时目录清理，无用户文件参与 |
 | ChatBI 现有状态检查兼容和文档结构 | `python3 -m scripts.check_harness_state`、`./dev check docs` | 检查 54 条记录：0 ERROR、3 REVIEW。Review 为本工作项未完成、无关工作项 `long-task-progress-clarity` 仍 open、当前任务工作区 dirty；均按事实保留。文档检查通过 |
 
-Plugin 完整 unittest 在宿主 Python 3.14.4 与现有开发容器 Python 3.11.16 均通过 53 项；宿主 Python 3.14.4 已在 Plugin manifest 版本调整后再次复跑。ChatBI `./dev test python` exit code 为 0，Python 3.11.16 容器内 1118 passed、0 failed、0 errors、61 skipped、155 subtests passed；报告状态为 `incomplete`，因为隔离 PostgreSQL / PDF renderer / 真实 LLM 覆盖被跳过，Business Acceptance 未运行。定向 adapter 测试 12 项、`./dev check docs` 和 Markdown 链接检查通过。ChatBI 完整产品验收未运行。两仓 Code Review 和本地 Commit 已完成；无托管 CI、发布、安装 / 同步或远端规则结果。
+Plugin 完整 unittest 在宿主 Python 3.14.4 与现有开发容器 Python 3.11.16 均通过 53 项；Hosted Actions run `39237092713` 对 Plugin `master` 成功。ChatBI `./dev test python` exit code 为 0，Python 3.11.16 容器内 1118 passed、0 failed、0 errors、61 skipped、155 subtests passed；报告状态为 `incomplete`，因为本地隔离 PostgreSQL / PDF renderer / 真实 LLM 覆盖被跳过，Business Acceptance 未运行。定向 adapter 测试 12 项、`bash scripts/check_python_quality.sh`、`./dev check docs` 和 Markdown 链接检查通过。ChatBI PR [#90](https://github.com/K999999999999/chatbi/pull/90) 最终 head 的 8 项 required checks 均通过，CI run `39237424659`，并由仓库既有 Squash Auto-merge 合并。首轮 head `92136a0e4a6f954c7cc29732d65a6925b172cd39` 的 `Code quality` 失败，原因是新增 adapter 测试未通过 Ruff 格式检查；提交 `61b4645` 只格式化该测试文件，之后本地质量检查与最终 Hosted CI 均通过。ChatBI 完整产品验收未运行。
 
 ## 动态文件评估
 
-以下为 `.harness/dynamic-files.json` 中 8 项文件的语义核对。临时合成 E2E 验证工具可逐项记录评估；当前真实任务记录为旧格式，没有把评估伪登记到该旧记录中。
+以下为 `.harness/dynamic-files.json` 中 8 项文件的语义核对。初次验收时真实任务记录为旧格式；本机 Plugin 更新后已显式迁移，但该工作项缺少先前捕获的 task / slice baseline，`closeout check` 因候选不完整拒绝登记文件评估。人工评估和结果保存在本表，未伪称工具已记录或自动通过。
 
 | 文件 | 结论 | 本次处理 |
 | --- | --- | --- |
 | `AGENTS.md` | updated | 添加 Harness 工作状态恢复、动态文件和检查边界入口 |
 | `docs/agents/documentation.md` | updated | 登记清单职责和维护入口 |
 | `docs/agents/issue-tracker.md` | updated | 增加 Harness 状态恢复与本机检查说明 |
-| `docs/agents/git-pr-workflow.md` | reviewed-no-change | 只读核对现有 PR / Auto-merge Contract；本次没有发布授权，也没有改其授权边界 |
-| `docs/roadmap.md` | updated | 记录已确认目标的本地候选和未发布状态，不标为远端交付完成 |
+| `docs/agents/git-pr-workflow.md` | reviewed-no-change | 核对现有 PR / Auto-merge Contract 并按用户授权交付；继续沿用仓库既有规则，没有修改规则或授权边界 |
+| `docs/roadmap.md` | updated | 初次候选记录了当时的本地 / 未发布状态；本次 closeout 更新为 PR #90 已合并及 Plugin master 已发布 |
 | `docs/runbook.md` | updated | 记录 Plugin 工具的显式容器入口和约束 |
 | `.harness/project.json` | updated | 登记项目阶段、转换和记录位置 |
 | `.harness/dynamic-files.json` | updated | 建立本项目动态文件唯一清单 |
 
-候选 Diff 含全部 `updated` 路径；PR 正文与合并后记录不适用，因为没有 PR。业务产品 Spec / Domain Contract 未变，保持不适用。原始测试输出由本地测试入口管理，未把 ignored 报告纳入源码提交。两仓 `git diff --check`、`./dev check docs` 和 Markdown 链接检查通过。
+初次候选 Diff 含全部 `updated` 路径。PR 正文的 Harness 复盘字段已回填 `gap-found` 并从 GitHub 读回核验；由于 PR 合并后发布事实发生变化，本次 closeout 同步更新路线图、验收记录和远端发布状态。新版 CLI 对本工作项返回 `local_ready=false` 与 `overall_ready=false`；除 task / slice baseline 和动态文件评估外，已有验证、Code Review、PR Review、merge 与 cleanup 证据也未通过 Harness extension 绑定到当前候选。该结果作为未通过保留，不以人工记录替代工具证据。业务产品 Spec / Domain Contract 未变，保持不适用。原始测试输出由本地测试入口管理，未把 ignored 报告纳入源码提交。初次实现候选的两仓 `git diff --check`、本次 closeout 的 `git diff --check`、`./dev check docs` 和 Markdown 链接检查通过；文档检查报告之一为 `reports/tests/20261019T104616Z-248ec84-check-docs-b56b8bbb2f2c.json`。
+
+## Hosted CI 与发布结果
+
+- Plugin `master` 为 `140f2ef95f611f378047683c379ae3724e4f5826`；GitHub Actions run `39237092713` 的 53 项标准库测试通过。按用户决定未创建 Plugin PR、未设置 required checks；仓库仍没有分支保护规则。
+- ChatBI PR [#90](https://github.com/K999999999999/chatbi/pull/90) 以 `61b4645ea480ed202b912208f4f533eda6086b08` 为 head，经既有 Squash Auto-merge 于 `2026-10-19T10:29:59Z` 合并，merge commit 为 `248ec84d4716d6ff0526df9b82ccfc33a03284db`。8 项 required checks 全部通过，CI run `39237424659`。
+- Agent Harness 复盘为 `gap-found`：首次 Push 前遗漏运行仓库指定的 `bash scripts/check_python_quality.sh`，导致首轮 Code quality 失败；格式修复与复测已完成。后续提案 [harness-candidate-preflight](../harness-candidate-preflight/spec.md) 已登记，尚未确认或授权实施。
+
+## 本机 Plugin 安装与 Harness CLI 核验
+
+- 为避免替换含另一个新版 Plugin 的 `personal` Marketplace，新增本机独立 Marketplace `harness-task-control-v1`，其 manifest 仅提供 `engineering-workflow`，Git source 为 `K999999999999/agent-plugins` 的 `plugins/engineering-workflow` 子目录，跟随 `master`。
+- `codex plugin add engineering-workflow@harness-task-control-v1` 成功安装并启用 `0.2.0+codex.20261019`；Codex 管理的缓存包含 `tools/harness.py`。旧 `engineering-workflow@personal` 已卸载；`agent-engineering-skills@personal` `0.1.1` 保持启用。原 Plugin source checkout 与未跟踪 `engineering-process-audit.7z` 均未修改。
+- 新版 CLI `--help`、ChatBI `state --work-item harness-task-control-v1 --json` 和只读 `onboard discover` 均已运行。状态查询确认项目已接入、工作项处于 `in-progress / 已合并待复盘`；显式迁移保留原状态文件 `.bak` 备份。
+- `closeout check` 仍返回 `local_ready=false`、`overall_ready=false`：该长期工作项在工具上线前没有 task / slice baseline，验证、Review 与动态文件评估也未绑定当前候选，工具因此拒绝完成声明。本记录保留既有人工验收矩阵作为历史证据，不把工具缺失证据伪报为通过。
+- 当前 API 会话无法证明已热加载刚安装的 Skill。需在新 Codex 会话 / 重启后核对 `engineering-workflow` 为 `0.2.0+codex.20261019`，并在新会话执行只读状态查询；安装成功不等于本会话已加载。
 
 ## 未验证及授权边界
 
-- 尚无托管 GitHub CI 结果；本地通过不等于远端 workflow 已运行或 required check 生效。
-- 尚未 Push / 创建 PR；没有候选远端 SHA、PR 状态或 Auto-merge 结果。
-- 尚未安装 / 同步 Plugin 或重启会话。当前启用配置源指向原 Plugin checkout；当前安装缓存仍缺 Harness CLI。候选 Plugin 位于另一隔离 worktree。
-- 尚未修改 ChatBI Ruleset，尚未在隔离仓库注入失败或移动 base；远端状态及后续计划见 [远端发布与回退计划](remote-release-plan.md)。
+- 未修改 ChatBI Ruleset，未在隔离仓库注入失败或移动 base；远端配置和回退事实见 [远端发布与回退状态](remote-release-plan.md)。
 - 未运行真实模型、付费 API、真实业务数据或生产应用变更；这些不适用于本地工程工具行为验收。
 - 旧工作项 `long-task-progress-clarity` 仍 open；本目标不继承其授权，也不将其标记为解决。
