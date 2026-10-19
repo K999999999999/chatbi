@@ -119,6 +119,12 @@ python -m scripts.check_harness_state --json
 
 新 clone 缺少本机记录时必须依据长期记录和 Git / PR 恢复；工具不会生成记录。GitHub CI 无法读取开发机 `.git/harness`，既有确定性测试验证工具行为，本机实际检查由会话 / 交付执行。工具不判断任意自然语言状态矛盾，也不能替代产品文档语义 Review。
 
+### Plugin Harness 项目适配
+
+ChatBI 的 `.harness/project.json` 声明阶段图、Git 公共目录下的记录位置、敏感路径和动态文档清单。需要查看新工具状态或 Diff 时，按 [Runbook Harness Task Control](../runbook.md#harness-task-control) 显式调用容器适配器。它可识别旧 Markdown 状态，但旧记录保持只读，必须显式迁移后才能写入扩展；现有 54 条本机记录不批量迁移，也不因本次适配而伪装成已由新工具管理。`./dev harness check` 和本文件所述 `python -m scripts.check_harness_state` 继续按旧逻辑只读检查。
+
+容器读取时仓库、Git 公共目录和 Plugin 包均只读；写状态时只有指定工作项目录可写。容器不读 `.env`、不联网、不挂载 Docker socket；缺少镜像或包内 CLI 时失败，不自动安装、不回退。指定源码或缓存只证明此次调用使用了该包路径，不证明 Codex 当前会话已加载相同内容。
+
 写入与恢复规则：
 
 - 一个目标同一时间由一个主 Agent / 会话写实时状态；不能同时由两个未协调的 writer 更新。交接时先读取最新记录，再明确由新的 writer 接手。

@@ -680,6 +680,7 @@ case "$task" in
     database) database_task "$@" ;;
     web) web_task "$@" ;;
     renderer) renderer_tests "$@" ;;
+    harness-control) exec bash "$root/scripts/harness_container_adapter.sh" "$@" ;;
     all)
         (($# == 0)) || { echo '用法: ./dev test all' >&2; exit 2; }
         test_all ;;

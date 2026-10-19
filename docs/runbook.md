@@ -153,6 +153,8 @@ OTel/OTLP诊断可选，默认关闭；端点/认证配置只在本地，内容�
 ./dev reset postgres
 ./dev reset qdrant
 ./dev harness check
+python -m scripts.check_harness_state --json
+./dev harness control --plugin-source /path/to/agent-plugins state --work-item WORK_ITEM --json
 ```
 
 doctor检查选中项目的依赖、health/ready、网页与必要资产；缺失/未知不报告就绪，LLM标记not_probed，不收费探测、不改密。需要已有工具镜像；缺服务或资产时安全失败，不自动补齐。
@@ -161,7 +163,22 @@ metadata使用开发项目已配置的既有结构导出权限，只执行catalo
 
 reset仅支持明确选中的开发项目。PG删除Sales Mart及Control DB账号、Session、历史和成果；Qdrant删除集合和索引。核实项目/卷并输入DELETE POSTGRES DATA或DELETE QDRANT DATA；自动化可显式--confirm。取消/EOF、外部卷、标签不符或停止失败均不删除。命令先停止本项目API/Web和目标服务，再验证卷身份后删除；其他卷、模型缓存、旧APP与Stable资源保持。PG重建Seed并迁移但不创建管理员；Qdrant仅重建，需显式build-rag。结束后API/Web保持停止，按初始化步骤显式up。删除不可回滚，不能作为普通故障修复。
 
-Hook入口修改当前clone的本机hooksPath；Harness只读本机Git及公共目录中的记录，不访问远端，不修改进度或分支。旧run_database_tests.py和npm test:real保留独有profile/Windows路径及SQL真值/追问/分析断言的兼容能力，属非推荐旧宿主入口；统一推荐test database和verify dev。旧start-dev.ps1只提示使用WSL/dev，不再启动宿主uv/npm。CI专用smoke_web.py可能改专用测试账号密码，不作为doctor或日常账号检查入口。
+Hook入口修改当前clone的本机hooksPath。旧 `./dev harness check` 与 `python -m scripts.check_harness_state` 仍只读本机Git和公共目录记录，不访问远端，也不修改进度或分支。
+
+### Harness Task Control
+
+`./dev harness control` 是独立的 Plugin Harness 入口，不改变旧 `harness check`。`--plugin-source` 可指向包含 `plugins/engineering-workflow` 的只读源码仓库根目录，也可直接指向含 `.codex-plugin/plugin.json` 和 `tools/harness.py` 的 Plugin 包根目录；也可通过 `CHATBI_ENGINEERING_WORKFLOW_SOURCE_ROOT` 指定。第一次使用时需确认路径来源与版本；路径可读不代表该版本已安装或已加载到当前 Codex 会话。
+
+```bash
+./dev harness control --plugin-source /path/to/agent-plugins state --work-item WORK_ITEM
+./dev harness control --plugin-source /path/to/agent-plugins diff --work-item WORK_ITEM
+./dev harness control --plugin-source /path/to/agent-plugins diagnostic report --work-item WORK_ITEM
+./dev harness control --plugin-source /path/to/agent-plugins closeout check --work-item WORK_ITEM
+```
+
+适配使用已有 `chatbi-python-dev:local` 容器和宿主 Docker CLI，不要求宿主 Python / uv / Node；不构建或拉取镜像，不读 `.env`，不联网，不挂载 Docker socket。项目源码、Plugin 包、Git 公共目录只读；显式状态写命令仅将 `.git/harness/work-items/<work-item-id>/` 对应目录作为可写挂载。它不会创建状态记录，不批量迁移旧记录；读取旧记录时会标记 `legacy_read_only`，需要先由用户明确目标后显式执行 `migrate`。`onboard apply` 会修改项目文件，因此不通过此状态写入适配器执行。
+
+缺少 Plugin 路径、包内 CLI、容器镜像或状态目录时命令以非零退出；它不会回退到 `harness check` 并声称新 Harness 已运行。GitHub CI 使用仓库内合成 Plugin fixture 检查调用参数和挂载边界；该测试只证明 ChatBI adapter 命令组装，不证明真实 Plugin 已安装、同步、加载或可在托管 CI 运行。旧 `run_database_tests.py` 和 `npm test:real` 保留独有 profile / Windows 路径及 SQL 真值 / 追问 / 分析断言的兼容能力，属非推荐旧宿主入口；统一推荐 `test database` 和 `verify dev`。旧 `start-dev.ps1` 只提示使用 WSL/dev，不再启动宿主 uv/npm。CI 专用 `smoke_web.py` 可能改专用测试账号密码，不作为 doctor 或日常账号检查入口。
 
 ## 7. 管理员忘记密码
 

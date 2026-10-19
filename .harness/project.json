@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "repository": "github.com/K999999999999/chatbi",
+  "base_branch": "master",
+  "work_item_record_directory": "harness/work-items",
+  "dynamic_file_manifest": ".harness/dynamic-files.json",
+  "sensitive_paths": [
+    ".env",
+    ".env.*",
+    "**/*.pem",
+    "**/*.key",
+    "**/secrets/**",
+    "reports/evaluation/**",
+    "reports/browser-real-artifacts/**"
+  ],
+  "workflow": {
+    "stages": [
+      "需求发现",
+      "需求与技术澄清",
+      "Spec 待确认",
+      "设计审查",
+      "Ticket 待确认",
+      "实施中",
+      "验证 / Review",
+      "待发布授权",
+      "PR 跟进",
+      "已合并待复盘",
+      "待清理",
+      "完成"
+    ],
+    "transitions": [
+      {"from": "需求发现", "to": "需求与技术澄清", "required_evidence": [], "candidate_required": false},
+      {"from": "需求与技术澄清", "to": "Spec 待确认", "required_evidence": ["candidate-spec"], "candidate_required": false},
+      {"from": "Spec 待确认", "to": "设计审查", "required_evidence": ["spec-confirmation"], "candidate_required": false},
+      {"from": "Spec 待确认", "to": "实施中", "required_evidence": ["implementation-authorization"], "candidate_required": false},
+      {"from": "设计审查", "to": "Ticket 待确认", "required_evidence": ["design-review"], "candidate_required": false},
+      {"from": "Ticket 待确认", "to": "实施中", "required_evidence": ["ticket-readiness", "ticket-split-confirmation", "implementation-authorization"], "candidate_required": false},
+      {"from": "实施中", "to": "验证 / Review", "required_evidence": ["candidate-diff-review"], "candidate_required": true},
+      {"from": "验证 / Review", "to": "实施中", "required_evidence": ["review-findings"], "candidate_required": false},
+      {"from": "验证 / Review", "to": "待发布授权", "required_evidence": ["verification", "code-review", "closeout"], "candidate_required": true},
+      {"from": "待发布授权", "to": "PR 跟进", "required_evidence": ["publication-authorization"], "candidate_required": false},
+      {"from": "PR 跟进", "to": "已合并待复盘", "required_evidence": ["merge-fact"], "candidate_required": false},
+      {"from": "已合并待复盘", "to": "待清理", "required_evidence": ["harness-review"], "candidate_required": false},
+      {"from": "待清理", "to": "完成", "required_evidence": ["cleanup-evidence"], "candidate_required": false}
+    ]
+  }
+}
