@@ -6,7 +6,7 @@ ChatBI baseline: `2897302038fa42167e79a0b5ad483c2b628359b9` (`docs/harness-task-
 Plugin baseline: `6681366453eedce45e36f989a082df8a78b85819` (`feature/harness-task-control-v1`)
 Plugin candidate version: `0.2.0+codex.20261019`
 
-本记录验证已确认 Spec 的本地工具和 ChatBI 适配行为。ChatBI 主记录仍是旧格式，实际工具查询明确返回 `legacy_read_only: true`；没有伪造 task / slice 起始基线，也没有把当前真实工作项迁移成“已通过新版门禁”。跨仓端到端行为在临时合成仓库中验证。最终 Code Review 为 PASS AFTER FIX；提交候选身份写入 Git 公共目录主实时记录，工作树改动可由目标分支 Diff 核对。
+本记录验证已确认 Spec 的本地工具和 ChatBI 适配行为。ChatBI 主记录仍是旧格式，实际工具查询明确返回 `legacy_read_only: true`；没有伪造 task / slice 起始基线，也没有把当前真实工作项迁移成“已通过新版门禁”。跨仓端到端行为在临时合成仓库中验证。最终 Code Review 为 PASS AFTER FIX。ChatBI 实现提交为 `0e8189bf0eeace38cffdc2ca16debd103e7e1b19`，Plugin 提交为 `140f2ef95f611f378047683c379ae3724e4f5826`；本记录随 ChatBI 收尾提交更新，最终工作项身份以 Git 公共目录主实时记录为准。
 
 ## Spec 覆盖与证据
 
@@ -22,7 +22,7 @@ Plugin candidate version: `0.2.0+codex.20261019`
 | ChatBI 实际命令到 Plugin 包的组合行为 | 临时合成 Git 仓库，经 ChatBI 容器 adapter 执行 Plugin 候选 CLI | 验证旧记录只读、显式备份迁移、非法转换不改状态、task / slice baseline、Diff、3 轮升级和拒绝第 4 轮、read-only recovery / onboarding、follow-up 效果门槛、逐项 Manifest 评估及缺验证 / Review 时不 closeout。临时仓库由临时目录清理，无用户文件参与 |
 | ChatBI 现有状态检查兼容和文档结构 | `python3 -m scripts.check_harness_state`、`./dev check docs` | 检查 54 条记录：0 ERROR、3 REVIEW。Review 为本工作项未完成、无关工作项 `long-task-progress-clarity` 仍 open、当前任务工作区 dirty；均按事实保留。文档检查通过 |
 
-Plugin 完整 unittest 在宿主 Python 3.14.4 与现有开发容器 Python 3.11.16 均通过 53 项；宿主 Python 3.14.4 已在 Plugin manifest 版本调整后再次复跑。ChatBI `./dev test python` exit code 为 0，Python 3.11.16 容器内 1118 passed、0 failed、0 errors、61 skipped、155 subtests passed；报告状态为 `incomplete`，因为隔离 PostgreSQL / PDF renderer / 真实 LLM 覆盖被跳过，Business Acceptance 未运行。定向 adapter 测试 12 项、`./dev check docs` 和 Markdown 链接检查通过。ChatBI 完整产品验收未运行。两仓 Code Review 已通过，当前仅待本地 Commit。
+Plugin 完整 unittest 在宿主 Python 3.14.4 与现有开发容器 Python 3.11.16 均通过 53 项；宿主 Python 3.14.4 已在 Plugin manifest 版本调整后再次复跑。ChatBI `./dev test python` exit code 为 0，Python 3.11.16 容器内 1118 passed、0 failed、0 errors、61 skipped、155 subtests passed；报告状态为 `incomplete`，因为隔离 PostgreSQL / PDF renderer / 真实 LLM 覆盖被跳过，Business Acceptance 未运行。定向 adapter 测试 12 项、`./dev check docs` 和 Markdown 链接检查通过。ChatBI 完整产品验收未运行。两仓 Code Review 和本地 Commit 已完成；无托管 CI、发布、安装 / 同步或远端规则结果。
 
 ## 动态文件评估
 

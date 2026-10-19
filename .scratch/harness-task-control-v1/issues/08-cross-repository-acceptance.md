@@ -1,6 +1,6 @@
 # 08 — 两仓候选验收、恢复走查与交付计划
 
-Status: in-progress
+Status: done
 Ticket Readiness: READY
 
 
@@ -34,5 +34,5 @@ Done When: 本地验收覆盖、证据、两仓Review与项目规定本地Commit
 
 用户确认拆分和本地实施授权后，依赖连续实施，不逐Ticket等待“继续”。如只确认粒度未授权实施，先一次确认范围。发布、安装、远端设置及实验授权不由此推定。
 
-Result: Ticket 07 完成后开展两仓交叉验收。Plugin 包内 CLI 的标准库 unittest 在宿主 Python 3.14.4 与 Python 3.11.16 容器中各 53 项通过；ChatBI `./dev test python` 的 1118 项通过、61 项隔离数据库 / renderer / 真实 LLM 检查跳过、0 失败 / 错误，另有 155 subtests；报告标记 `incomplete`，Business Acceptance 未运行。ChatBI adapter 定向测试 12 项、Markdown 文档检查、Shell 语法检查及两仓 `git diff --check` 通过。临时合成仓库的真实容器 adapter → Plugin CLI 走查验证旧状态只读、显式迁移 / 备份、非法转换拒绝、Diff、预算升级 / 停止、恢复、onboarding、动态文件清单及缺验证 / Review 时拒绝 closeout。GitHub 只读快照确认 ChatBI master active Ruleset 和 8 个 required checks、strict=false；Plugin master 无 Ruleset，auto-merge=false。当前用户级配置仍指向旧源 worktree，启用缓存不含 Harness CLI；未安装 / 同步、未运行 hosted CI、未改远端规则、未执行隔离实验。两仓 Code Review 均通过；适配器允许 `--adapter` 覆盖项目规则的发现项已修复并有回归测试。验收矩阵和具体回退步骤见 [acceptance.md](../acceptance.md)、[remote-release-plan.md](../remote-release-plan.md)。当前待按授权完成两个本地 Commit，提交后核对工作区与候选 SHA。
+Result: 完成两仓联合验收、远端只读核验、动态文件语义核对与本地 Code Review。Plugin 包内 CLI 的标准库 unittest 在宿主 Python 3.14.4 与 Python 3.11.16 容器中各 53 项通过；ChatBI `./dev test python` 的 1118 项通过、61 项隔离数据库 / renderer / 真实 LLM 检查跳过、0 失败 / 错误，另有 155 subtests；报告标记 `incomplete`，Business Acceptance 未运行。ChatBI adapter 定向测试 12 项、Markdown 文档检查、Shell 语法检查及两仓 `git diff --check` 通过。临时合成仓库的真实容器 adapter → Plugin CLI 走查验证旧状态只读、显式迁移 / 备份、非法转换拒绝、Diff、预算升级 / 停止、恢复、onboarding、动态文件清单及缺验证 / Review 时拒绝 closeout。GitHub 只读快照确认 ChatBI master active Ruleset 和 8 个 required checks、strict=false；Plugin master 无 Ruleset，auto-merge=false。当前用户级配置仍指向旧源 worktree，启用缓存不含 Harness CLI；未安装 / 同步、未运行 hosted CI、未改远端规则、未执行隔离实验。适配器允许 `--adapter` 覆盖项目规则的发现项已修复并有回归测试。验收矩阵和具体回退步骤见 [acceptance.md](../acceptance.md)、[remote-release-plan.md](../remote-release-plan.md)。ChatBI 实现提交 `0e8189bf0eeace38cffdc2ca16debd103e7e1b19`，Plugin 提交 `140f2ef95f611f378047683c379ae3724e4f5826`；本 Ticket 的收尾记录提交后，分支和最终工作区状态写入 Git 公共目录主实时记录。
 Comments: 用户于 2026-10-19 确认 8 项拆分并授权整体本地实施、验证、Review 和 Commit；不含 Push / PR、Plugin 安装更新、远端设置或实验。
