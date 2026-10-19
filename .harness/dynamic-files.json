@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "delivery_required": true,
+  "files": [
+    {
+      "id": "agent-entrypoint",
+      "path": "AGENTS.md",
+      "owner": "ChatBI 工程维护者",
+      "authority": "AGENTS.md 与 docs/agents/documentation.md",
+      "triggers": ["Agent 协作规则、阶段门禁或安全边界变化"],
+      "history_path": ".scratch/harness-task-control-v1/spec.md"
+    },
+    {
+      "id": "documentation-rules",
+      "path": "docs/agents/documentation.md",
+      "owner": "ChatBI 工程维护者",
+      "authority": "docs/agents/documentation.md",
+      "triggers": ["权威文档归属、更新、归档或检查方式变化"],
+      "history_path": ".scratch/harness-task-control-v1/spec.md"
+    },
+    {
+      "id": "issue-tracker",
+      "path": "docs/agents/issue-tracker.md",
+      "owner": "ChatBI 工程维护者",
+      "authority": "docs/agents/issue-tracker.md",
+      "triggers": ["本机实时状态、关联工作项、恢复或 Harness 检查 Contract 变化"],
+      "history_path": ".scratch/harness-task-control-v1/spec.md"
+    },
+    {
+      "id": "git-pr-workflow",
+      "path": "docs/agents/git-pr-workflow.md",
+      "owner": "ChatBI 工程维护者",
+      "authority": "docs/agents/git-pr-workflow.md 与 GitHub 实时仓库规则",
+      "triggers": ["候选、验证、发布授权、Auto-merge 或收尾规则变化"],
+      "history_path": ".scratch/harness-task-control-v1/spec.md"
+    },
+    {
+      "id": "roadmap",
+      "path": "docs/roadmap.md",
+      "owner": "ChatBI 工程维护者",
+      "authority": "docs/roadmap.md",
+      "triggers": ["已确认目标、依赖、验收方式或完成事实变化"],
+      "history_path": ".scratch/harness-task-control-v1/spec.md"
+    },
+    {
+      "id": "runbook",
+      "path": "docs/runbook.md",
+      "owner": "ChatBI 工程维护者",
+      "authority": "docs/runbook.md",
+      "triggers": ["开发入口、Harness、验证或故障处理命令变化"],
+      "history_path": ".scratch/harness-task-control-v1/spec.md"
+    },
+    {
+      "id": "harness-adapter",
+      "path": ".harness/project.json",
+      "owner": "ChatBI 工程维护者",
+      "authority": ".harness/project.json 的阶段、路径与风险声明",
+      "triggers": ["项目工作阶段、状态记录路径、敏感路径或动态文件清单位置变化"],
+      "history_path": ".scratch/harness-task-control-v1/spec.md"
+    },
+    {
+      "id": "dynamic-file-manifest",
+      "path": ".harness/dynamic-files.json",
+      "owner": "ChatBI 工程维护者",
+      "authority": ".harness/dynamic-files.json 与 docs/agents/documentation.md",
+      "triggers": ["动态维护文件、Owner、更新触发条件或历史记录规则变化"],
+      "history_path": ".scratch/harness-task-control-v1/spec.md"
+    }
+  ],
+  "tickets": [],
+  "child_work_items": []
+}

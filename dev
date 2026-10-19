@@ -13,10 +13,10 @@ AI评测         evaluate [参数]；evaluate validate [报告校验参数]
 容器验收       verify dev [isolated|real]（真实LLM费用；real触及当前开发环境）
 诊断与维护     doctor [dev]；metadata export [参数]；reset postgres|qdrant [--confirm]
 账号恢复       recover-admin dev --username NAME（可信本机操作，隐藏输入）
-开发协作       hooks install；harness check [参数]
+开发协作       hooks install；harness check [参数]；harness control [--plugin-source PATH] <Plugin命令>
 帮助无需.env或Docker。初始化、恢复与数据删除均须显式执行。
 evaluate validate: --report FILE 或 --report-dir DIR；必填 --expected-commit FULL_SHA --expected-rag-version VERSION；可选 --cases FILE --suite NAME。
-metadata export: --env-file FILE、--output-dir DIR；harness check: --repo DIR、--json。
+metadata export: --env-file FILE、--output-dir DIR；harness check: --repo DIR、--json。harness control: Plugin源码根目录可由 --plugin-source 或 CHATBI_ENGINEERING_WORKFLOW_SOURCE_ROOT 指定。
 create-admin: --username NAME；build-rag: --structure-dir DIR、--metrics-path FILE、--output-dir DIR、--build-id ID。
 evaluate沿用原套件/案例/资源参数：--online-retrieval、--business-analysis、--multi-turn、--query-understanding等，详见Runbook。
 HELP
@@ -47,9 +47,15 @@ case "$command" in
         cd "$root"
         exec bash "$root/scripts/install_git_hooks.sh" ;;
     harness)
-        [[ ${1:-} == check ]] || { usage >&2; exit 2; }
-        shift
-        exec bash "$root/scripts/container_tasks.sh" harness "$@" ;;
+        case ${1:-} in
+            check)
+                shift
+                exec bash "$root/scripts/container_tasks.sh" harness "$@" ;;
+            control)
+                shift
+                exec bash "$root/scripts/container_tasks.sh" harness-control "$@" ;;
+            *) usage >&2; exit 2 ;;
+        esac ;;
     doctor)
         (($# <= 1)) && [[ ${1:-dev} == dev ]] || { usage >&2; exit 2; }
         exec bash "$root/scripts/dev_maintenance.sh" doctor "${1:-dev}" ;;
