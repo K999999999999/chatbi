@@ -1,6 +1,6 @@
 # Harness 改进规划状态
 
-Status: ChatBI 与 Plugin 远端代码及 PR #91 文档收尾均已交付；新版 Plugin 已安装启用；新会话加载核验与 Harness closeout evidence 待完成
+Status: ChatBI 与 Plugin 远端代码及 PR #90–#92 文档收尾均已交付；新版 Plugin 已安装启用并在当前会话加载；历史 task / slice baseline 已于 2026-10-19 重建，当前 Harness closeout 状态以本机实时记录为准
 Stage: 已合并待复盘
 
 当前会话已逐项确认通用能力归 engineering-workflow Plugin、ChatBI 首轮适配、工具化状态管理、人工介入规则、3轮 / 30分钟无进展预算、聊天批准候选及显式项目接入方式。
