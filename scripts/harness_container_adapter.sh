@@ -24,7 +24,7 @@ fail() {
     exit 2
 }
 
-(($#)) || fail 'Harness 命令缺失；请显式指定 state、diff、diagnostic、closeout、maintenance 或 onboard 子命令。'
+(($#)) || fail 'Harness 命令缺失；请显式指定 state、diff、cancel、diagnostic、closeout、maintenance 或 onboard 子命令。'
 [[ -n "$plugin_source" ]] || fail '未指定 Plugin 源码根目录；使用 --plugin-source 或 CHATBI_ENGINEERING_WORKFLOW_SOURCE_ROOT。'
 [[ -d "$plugin_source" ]] || fail 'Plugin 源码路径不存在或不是目录；未执行 Harness 命令。'
 plugin_source=$(cd -- "$plugin_source" && pwd -P)
@@ -69,7 +69,7 @@ case "$tool_command" in
             *) fail '不支持的 onboard 子命令。' ;;
         esac
         ;;
-    capture-baseline|attest-evidence|migrate|transition|set-runtime) write_operation=true ;;
+    capture-baseline|attest-evidence|migrate|cancel|transition|set-runtime) write_operation=true ;;
     *) fail '不支持的 Harness 命令；未执行旧工具或替代检查。' ;;
 esac
 

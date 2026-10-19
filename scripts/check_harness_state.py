@@ -20,7 +20,9 @@ FIELDS = {
     "Harness evidence",
     "Harness follow-up work item",
 }
-STATUSES = {"open", "in-progress", "blocked", "done"}
+WORK_ITEM_STATUSES = {"open", "in-progress", "blocked", "done", "cancelled"}
+TICKET_STATUSES = {"open", "in-progress", "blocked", "done"}
+TERMINAL_WORK_ITEM_STATUSES = {"done", "cancelled"}
 HARNESS_REVIEW_STATUSES = {"no-gap", "gap-found"}
 
 
@@ -81,7 +83,7 @@ def inspect(repo: Path) -> dict:
         except (OSError, UnicodeError, ValueError):
             add("ERROR", "RECORD_INVALID", item, "当前记录不可读取或含重复字段")
             continue
-        if values.get("ID") != item or values.get("Status") not in STATUSES:
+        if values.get("ID") != item or values.get("Status") not in WORK_ITEM_STATUSES:
             add(
                 "ERROR",
                 "RECORD_INVALID",
@@ -93,7 +95,7 @@ def inspect(repo: Path) -> dict:
 
     for item, values in records.items():
         status = values["Status"]
-        if status != "done":
+        if status not in TERMINAL_WORK_ITEM_STATUSES:
             add(
                 "REVIEW", "OPEN_WORK_ITEM", item, f"状态为 {status}；需核对下一步及授权"
             )
@@ -109,13 +111,24 @@ def inspect(repo: Path) -> dict:
                         item,
                         f"{key} 引用的当前记录不存在或无效",
                     )
-                elif key == "Active work item" and records[target]["Status"] == "done":
-                    add(
-                        "ERROR",
-                        "ACTIVE_COMPLETED",
-                        item,
-                        "Active work item 已完成，汇总需同步",
-                    )
+                elif (
+                    key == "Active work item"
+                    and records[target]["Status"] in TERMINAL_WORK_ITEM_STATUSES
+                ):
+                    if records[target]["Status"] == "done":
+                        add(
+                            "ERROR",
+                            "ACTIVE_COMPLETED",
+                            item,
+                            "Active work item 已完成，汇总需同步",
+                        )
+                    else:
+                        add(
+                            "ERROR",
+                            "ACTIVE_CANCELLED",
+                            item,
+                            "Active work item 已取消，汇总需同步",
+                        )
                 elif key == "Follow-up work item":
                     add(
                         "INFO",
@@ -210,7 +223,7 @@ def inspect(repo: Path) -> dict:
                 ticket_status = fields(ticket).get("Status")
             except (OSError, UnicodeError, ValueError):
                 ticket_status = None
-            if ticket_status not in STATUSES:
+            if ticket_status not in TICKET_STATUSES:
                 add(
                     "ERROR",
                     "TICKET_INVALID",

@@ -225,6 +225,38 @@ def test_write_mount_is_limited_to_existing_work_item_and_linked_common_dir(
     assert f"{linked}:{linked}:ro" in run
 
 
+def test_cancel_uses_the_existing_work_item_only_write_mount(tmp_path: Path) -> None:
+    repo = fixture_repo(tmp_path)
+    env, log = adapter_env(tmp_path)
+
+    result = run_dev(
+        repo,
+        env,
+        "harness",
+        "control",
+        "--plugin-source",
+        str(PLUGIN_FIXTURE),
+        "cancel",
+        "--work-item",
+        WORK_ITEM,
+        "--reason",
+        "user stopped work",
+        "--confirmed-by",
+        "user session",
+        "--expected-sha",
+        "0" * 64,
+    )
+
+    assert result.returncode == 0, result.stderr
+    run = calls(log)[1]
+    common = git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    item_dir = Path(common) / "harness/work-items" / WORK_ITEM
+    assert f"{common}:{common}:ro" in run
+    assert f"{item_dir}:{item_dir}:rw" in run
+    writable_mounts = [arg for arg in run if arg.endswith(":rw")]
+    assert writable_mounts == [f"{item_dir}:{item_dir}:rw"]
+
+
 def test_plugin_package_root_is_accepted_but_package_without_cli_fails_closed(
     tmp_path: Path,
 ) -> None:

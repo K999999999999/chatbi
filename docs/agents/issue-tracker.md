@@ -46,7 +46,7 @@ git rev-parse --path-format=absolute --git-common-dir
 ```md
 # 实时工作状态
 ID: <稳定工作项 ID，与 branch 无关>
-Status: open | in-progress | blocked | done
+Status: open | in-progress | blocked | done | cancelled
 Stage: <需求发现 | 需求与技术澄清 | Spec 待确认 | 设计审查 | Ticket 待确认 | 实施中 | 验证 / Review | 待发布授权 | PR 跟进 | 已合并待复盘 | 待清理 | 完成>
 Owner: <当前状态写入负责人>
 Last updated: <含时区的时间>
@@ -113,7 +113,7 @@ python -m scripts.check_harness_state --json
 
 入口只读本机 Git、Git common-dir 的 `work-items/*/status.md` 及显式 Ticket；支持 linked worktree，不读取同目录历史快照，不访问远端、不更新记录、不清理分支。`--repo` 可指定目标 worktree。Git 命令关闭可选写锁。
 
-- `ERROR`：当前字段无效 / 重复、引用缺失、active 子工作项已完成、done 工作项声明的 Ticket 未完成、Ticket 越出仓库、已提供的 Harness 复盘字段不完整 / 自相矛盾，或检查未完成；退出码 1，修复后才能宣称收尾完整。
+- `ERROR`：当前字段无效 / 重复、引用缺失、Active 子工作项已完成或取消、done 工作项声明的 Ticket 未完成、Ticket 越出仓库、已提供的 Harness 复盘字段不完整 / 自相矛盾，或检查未完成；退出码 1，修复后才能宣称收尾完整。
 - `REVIEW`：未完成目标、工作区有修改、保留分支有 master 不可达提交，或缺少本机记录 / master。逐项结合授权、真实 PR、归属与保留原因核对；明确处置或后续引用，不能默默忽略，也不自动阻止其他无冲突目标。
 - 仅含 `INFO` / `REVIEW` 时退出 0；这只表示没有发现可确定错误，不表示所有工作完成。时间较旧或文档出现历史关键词不构成错误；不可达提交不能单独证明未合并，Squash 后仍可能不可达。
 
@@ -131,6 +131,7 @@ ChatBI 的 `.harness/project.json` 声明阶段图、Git 公共目录下的记�
 - 每次写前重新读取最新记录；若 `Last updated` 或进度已经前进，先合并已证实的信息，不覆盖后来的状态。
 - 准备完整内容后写到同目录临时文件，再用同文件系统的原子替换完成更新，避免半写文件。发现记录损坏、字段缺失或归属冲突时保留原件，核实事实后恢复；不从损坏状态推定授权。
 - `Status` 表示整个目标生命周期，`Stage` 表示当前主阶段。普通 CI / Review 等待为 `in-progress`，不是阻塞；只有无法继续且有明确解除条件才标 `blocked`。
+- `cancelled` 表示工作项经明确决定停止，是终态但不代表交付完成；它不要求 `done` 的整体交付收尾证据，也不能作为 `Active work item`。取消保留记录和当前阶段，不自动清理分支 / worktree、关闭 PR 或级联取消 Ticket / 关联工作项；这些对象各自保留生命周期。需要迁移旧记录后，通过 Harness `cancel` 命令写入原因和确认来源。
 - 阶段转换、关键决定、Ticket 交接、验证、PR 创建 / 更新 / 合并、真实阻塞和会话交接时更新；`Next` 必须可直接执行。
 - 新会话同时检查当前 branch、HEAD、worktree、Git 状态、`.scratch` 和公共目录实时记录；根据工作项 ID、仓库身份和 branch / worktree / PR 事实匹配。已合并工作在当前 master 上也能通过 PR 身份恢复。
 - 对记录中的活动 PR 只读核实 GitHub 实时状态后续做已授权跟进；不要只因当前 branch 不匹配就忽略，也不要求用户选择明确归属的旧记录。若同时有多个互不冲突工作，不因此停顿；仅报告当前请求相关状态。
@@ -178,7 +179,7 @@ Ticket 状态和独立完成条件仍保存在各 Ticket 的 `Status` / `Result`
 
 ## 状态和边界
 
-长期 Ticket 工作项可使用以下状态：
+长期 Ticket 可使用以下状态；Ticket 状态不包含工作项的 `cancelled`：
 
 ```text
 Status: open | in-progress | done | blocked

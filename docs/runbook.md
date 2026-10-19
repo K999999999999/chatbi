@@ -174,9 +174,10 @@ Hook入口修改当前clone的本机hooksPath。旧 `./dev harness check` 与 `p
 ./dev harness control --plugin-source /path/to/agent-plugins diff --work-item WORK_ITEM
 ./dev harness control --plugin-source /path/to/agent-plugins diagnostic report --work-item WORK_ITEM
 ./dev harness control --plugin-source /path/to/agent-plugins closeout check --work-item WORK_ITEM
+./dev harness control --plugin-source /path/to/agent-plugins cancel --work-item WORK_ITEM --reason '停止原因' --confirmed-by '确认来源' --expected-sha RECORD_SHA256
 ```
 
-适配使用已有 `chatbi-python-dev:local` 容器和宿主 Docker CLI，不要求宿主 Python / uv / Node；不构建或拉取镜像，不读 `.env`，不联网，不挂载 Docker socket。项目源码、Plugin 包、Git 公共目录只读；显式状态写命令仅将 `.git/harness/work-items/<work-item-id>/` 对应目录作为可写挂载。它不会创建状态记录，不批量迁移旧记录；读取旧记录时会标记 `legacy_read_only`，需要先由用户明确目标后显式执行 `migrate`。`onboard apply` 会修改项目文件，因此不通过此状态写入适配器执行。
+适配使用已有 `chatbi-python-dev:local` 容器和宿主 Docker CLI，不要求宿主 Python / uv / Node；不构建或拉取镜像，不读 `.env`，不联网，不挂载 Docker socket。项目源码、Plugin 包、Git 公共目录只读；显式状态写命令仅将 `.git/harness/work-items/<work-item-id>/` 对应目录作为可写挂载。它不会创建状态记录，不批量迁移旧记录；读取旧记录时会标记 `legacy_read_only`，需要先由用户明确目标后显式执行 `migrate`。`cancel` 仅接受已迁移记录、`PRs: None`、非终态工作项和当前 SHA，并要求记录取消原因与确认来源；它保留 Stage 和历史，不完成交付收尾，也不删除分支 / worktree、关闭 PR 或级联修改 Ticket / 关联工作项。`done` 仍要求原有整体收尾证据。`onboard apply` 会修改项目文件，因此不通过此状态写入适配器执行。
 
 缺少 Plugin 路径、包内 CLI、容器镜像或状态目录时命令以非零退出；它不会回退到 `harness check` 并声称新 Harness 已运行。GitHub CI 使用仓库内合成 Plugin fixture 检查调用参数和挂载边界；该测试只证明 ChatBI adapter 命令组装，不证明真实 Plugin 已安装、同步、加载或可在托管 CI 运行。旧 `run_database_tests.py` 和 `npm test:real` 保留独有 profile / Windows 路径及 SQL 真值 / 追问 / 分析断言的兼容能力，属非推荐旧宿主入口；统一推荐 `test database` 和 `verify dev`。旧 `start-dev.ps1` 只提示使用 WSL/dev，不再启动宿主 uv/npm。CI 专用 `smoke_web.py` 可能改专用测试账号密码，不作为 doctor 或日常账号检查入口。
 

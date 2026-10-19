@@ -60,6 +60,38 @@ def test_completed_child_cannot_remain_active_in_product_summary(repo: Path) -> 
     assert "ACTIVE_COMPLETED" in codes(report)
 
 
+def test_cancelled_item_is_terminal_and_not_reported_as_open(repo: Path) -> None:
+    record(repo, "cancelled-item", "cancelled")
+    exit_code, report = check(repo)
+    assert exit_code == 0
+    assert "OPEN_WORK_ITEM" not in codes(report)
+    assert not any(f["level"] == "ERROR" for f in report["findings"])
+
+
+def test_cancelled_child_cannot_remain_active_in_product_summary(repo: Path) -> None:
+    record(repo, "cancelled-item", "cancelled")
+    record(repo, "product", "in-progress", "Active work item: cancelled-item\n")
+    exit_code, report = check(repo)
+    assert exit_code == 1
+    assert "ACTIVE_CANCELLED" in codes(report)
+
+
+def test_cancelled_parent_does_not_require_its_tickets_to_be_done(repo: Path) -> None:
+    (repo / "ticket.md").write_text("# Ticket\nStatus: in-progress\n", encoding="utf-8")
+    record(repo, "cancelled-parent", "cancelled", "Ticket files: ticket.md\n")
+    exit_code, report = check(repo)
+    assert exit_code == 0
+    assert "TICKET_NOT_DONE" not in codes(report)
+
+
+def test_cancelled_is_not_a_valid_ticket_status(repo: Path) -> None:
+    (repo / "ticket.md").write_text("# Ticket\nStatus: cancelled\n", encoding="utf-8")
+    record(repo, "parent", "in-progress", "Ticket files: ticket.md\n")
+    exit_code, report = check(repo)
+    assert exit_code == 1
+    assert "TICKET_INVALID" in codes(report)
+
+
 def test_completed_item_requires_declared_ticket_completion(repo: Path) -> None:
     ticket = repo / "ticket.md"
     ticket.write_text("# Ticket\nStatus: in-progress\n", encoding="utf-8")
