@@ -1,18 +1,19 @@
 # Harness Task Control V1 远端发布、同步与回退计划
 
-Status: Plugin 与 ChatBI 远端代码已交付；新版 Plugin 已安装启用；新会话加载核验待完成；未修改远端规则或执行隔离实验
-Last checked: 2026-10-19 10:46 UTC
+Status: Plugin 与 ChatBI 远端代码已交付；PR #90–#92 均已合并；新版 Plugin 已安装启用并在当前会话加载；历史 baseline 已于 2026-10-19 重建；未修改远端规则或执行隔离实验
+Last checked: 2026-10-19 12:02 UTC
 Sources: GitHub PR / Actions / branch / ruleset reads; local Codex CLI marketplace / plugin state, source worktree and cache manifest
 
 ## 当前事实
 
 ### ChatBI
 
-- `K999999999999/chatbi` 默认分支为 `master`，当前 HEAD 为 `248ec84d4716d6ff0526df9b82ccfc33a03284db`；本目标 PR #90 已通过 Squash Auto-merge 合并。
+- `K999999999999/chatbi` 默认分支为 `master`，当前 HEAD 为 `08020cb81c2578c168d89504ab697ee2613b4de3`；本目标 PR #90、#91、#92 已依次通过既有 Squash Auto-merge 合并。
 - `master` 的 GitHub `protected` 为 true；活动 Ruleset `main-protection`（ID `23564531`）适用于默认分支。不能把传统 Branch Protection endpoint 的单独结果当成没有保护。
 - Ruleset 要求以下 8 个检查，来源均为 GitHub Actions integration ID `15368`：`Deterministic tests`、`SQL Guard tests`、`PostgreSQL integration`、`Application startup smoke`、`Dependency audit`、`Secret scan`、`Static security scan`、`Code quality`。
 - 当前 `strict_required_status_checks_policy` 为 false；规则不要求 PR approval、Code Owner review 或 thread resolution；限制删除 / 非快进并要求 linear history；仓库允许 Auto-merge、合并、Squash、Rebase。当前没有 bypass actor。
 - PR [#90](https://github.com/K999999999999/chatbi/pull/90) head `61b4645ea480ed202b912208f4f533eda6086b08` 于 `2026-10-19T10:29:59Z` 合并，merge commit `248ec84d4716d6ff0526df9b82ccfc33a03284db`。该 head 的8项 required checks 均通过，Actions run `39237424659`；自动合并由仓库 workflow 启用并由 GitHub 执行。
+- PR [#91](https://github.com/K999999999999/chatbi/pull/91) head `7f1c41f7e4f48bf6251ca6b89e7dc2ec7749ca4c` 于 `2026-10-19T10:51:04Z` 合并，merge commit `b0ed0d85a862ab53c4fb4b4d20402d0111bd27ed`；PR [#92](https://github.com/K999999999999/chatbi/pull/92) head `048d705650430c18c660b922e8a5179d76e88411` 于 `2026-10-19T10:57:42Z` 合并，merge commit / 当前 `master` 为 `08020cb81c2578c168d89504ab697ee2613b4de3`。两项 PR 的8个 required checks 均通过（Actions runs `39239982987`、`39240801605`）。
 - 首轮 CI 在 head `92136a0e4a6f954c7cc29732d65a6925b172cd39` 的 `Code quality` 失败，原因为新 adapter 测试文件未格式化。运行 `bash scripts/check_python_quality.sh` 定位并修复后，质量检查及最终 head 的 CI 通过。该遗漏记录为 `gap-found`，follow-up `harness-candidate-preflight` 尚未授权实施。
 
 ### Plugin 仓库
@@ -29,7 +30,7 @@ Sources: GitHub PR / Actions / branch / ruleset reads; local Codex CLI marketpla
 - 该源目录是既有 `feature/harness-workflow-control` worktree，HEAD `9d97431b0e8d3870db5d06c748a23ddae6a2d1cd`，与新 `master` 分叉，merge-base 为 `86731d4dcdfbcefea1efd33f5c4bfd33863ab10d`；它包含用户未跟踪的 `engineering-process-audit.7z`。本次没有改动该 source checkout 或归档，后续刷新不能覆盖或重置它。
 - 新增本机 Marketplace `/home/jojo/.codex/.tmp/marketplaces/harness-task-control-v1/.agents/plugins/marketplace.json`，只提供 `engineering-workflow`，source 指向 `https://github.com/K999999999999/agent-plugins.git` 的 `./plugins/engineering-workflow` 子目录和 `master` ref。没有修改原 `personal` manifest。
 - `engineering-workflow@harness-task-control-v1` 已安装并启用，版本 `0.2.0+codex.20261019`，由 `agent-plugins:master@140f2ef95f611f378047683c379ae3724e4f5826` 提供；缓存路径 `/home/jojo/.codex/plugins/cache/harness-task-control-v1/engineering-workflow/0.2.0+codex.20261019`，其中存在 `tools/harness.py`。Codex CLI `plugin list`、Harness CLI `--help` 和项目状态只读查询均核验成功；`onboard discover` 正常返回但 `complete=false`，没有发现测试入口，CI 文件只标记为本地观察，未远程核实。当前 API 会话是否热加载新版尚未验证，需新会话 / 重启后检查。
-- 主实时记录已按显式 `migrate` 操作升级，原件备份保留；当前状态查询成功且为 `legacy_read_only=false`。工具的 `closeout check` 未放行完成声明：初次使用前缺少 task / slice baseline，验证、Review 和动态文件评估未绑定此候选；该限制已写入验收记录。
+- 主实时记录已按显式 `migrate` 操作升级，原件备份保留；当前状态查询成功且为 `legacy_read_only=false`。2026-10-19 在临时 linked worktree 中依据历史提交 `2897302038fa42167e79a0b5ad483c2b628359b9` 和 `b0ed0d85a862ab53c4fb4b4d20402d0111bd27ed` 重新捕获 task / slice baseline，并写入共享本机实时记录；`captured_at` 明确是本次重建时间。此前因缺基线而未就绪的结果保留为历史事实；当前候选的收尾结果以 Harness 实时记录为准。
 
 ## 后续发布与同步顺序
 
@@ -37,9 +38,9 @@ Sources: GitHub PR / Actions / branch / ruleset reads; local Codex CLI marketpla
 
 1. **发布候选前检查。已完成。** 重新核对两仓 master、候选 HEAD / Diff、源 checkout 与 archive；Plugin 候选基于当时远端 master，没有覆盖旧 checkout。
 2. **Plugin 发布。已完成。** 按用户指示直接将 Plugin commit `140f2ef95f611f378047683c379ae3724e4f5826` 推至 `agent-plugins:master`；Hosted Actions run `39237092713` 的53项标准库测试通过。没有配置 required-check 规则，也没有创建 Plugin PR。
-3. **ChatBI 发布。已完成。** PR [#90](https://github.com/K999999999999/chatbi/pull/90) 指向 `chatbi:master`，最终 head `61b4645ea480ed202b912208f4f533eda6086b08` 的8项 required checks 全部通过；既有 workflow 启用 Squash Auto-merge，GitHub 于 `2026-10-19T10:29:59Z` 合并，merge commit 为 `248ec84d4716d6ff0526df9b82ccfc33a03284db`。
+3. **ChatBI 发布。已完成。** PR [#90](https://github.com/K999999999999/chatbi/pull/90) 指向 `chatbi:master`，最终 head `61b4645ea480ed202b912208f4f533eda6086b08` 的8项 required checks 全部通过；既有 workflow 启用 Squash Auto-merge，GitHub 于 `2026-10-19T10:29:59Z` 合并，merge commit 为 `248ec84d4716d6ff0526df9b82ccfc33a03284db`。后续 PR [#91](https://github.com/K999999999999/chatbi/pull/91) 与 [#92](https://github.com/K999999999999/chatbi/pull/92) 分别同步验收 / 发布事实和最终状态，均由同一自动合并策略完成且8项 required checks 全部通过。
 4. **保护原 Marketplace source。已完成核对。** `personal` 仍指向原 `feature/harness-workflow-control` checkout；该 checkout 与新 `master` 分叉，且包含用户归档。它和归档均未改动。安全激活不能通过覆盖或重置旧 source 来实现。
-5. **Plugin 安装与 CLI 核验。已完成；新会话加载核验待完成。** 新增独立 Marketplace 后安装并启用 `0.2.0+codex.20261019`，移除旧 `engineering-workflow@personal`，保留原 Marketplace、另一个 Plugin、source worktree 和归档。缓存包存在 Harness CLI，状态查询及只读 `onboard discover` 通过。新会话重启前不声称当前 API 会话已加载新版。
+5. **Plugin 安装、CLI 与当前会话加载核验。已完成。** 新增独立 Marketplace 后安装并启用 `0.2.0+codex.20261019`，移除旧 `engineering-workflow@personal`，保留原 Marketplace、另一个 Plugin、source worktree 和归档。缓存包存在 Harness CLI，状态查询及只读 `onboard discover` 通过；当前会话 Skill 目录提供并已实际调用 `workflow-delivery` 与 `workflow-code-review`。
 
 ## ChatBI strict-base 远端规则变更方案
 
