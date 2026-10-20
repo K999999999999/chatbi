@@ -10,12 +10,12 @@ from urllib.request import Request, urlopen
 from .operations import ProcessReadinessProbe
 
 
-def http_status(url, *, ready=False):
+def http_status(url, *, ready=False, headers=None):
     try:
         if urlsplit(url).scheme not in {"http", "https"}:
             return "not_ready"
         # 仅HTTP(S)；标准urllib重定向处理器也拒绝file/custom协议。
-        with urlopen(Request(url), timeout=3) as response:  # nosec B310
+        with urlopen(Request(url, headers=headers or {}), timeout=3) as response:  # nosec B310
             if response.status != 200:
                 return "not_ready"
             if ready and json.loads(response.read(4096)).get("status") != "ready":
@@ -40,7 +40,8 @@ def diagnose():
     result["api_health"] = http_status("http://api:8000/health")
     result["api_ready"] = http_status("http://api:8000/ready", ready=True)
     result["web"] = http_status(
-        "http://web:" + os.environ.get("CHATBI_DEV_WEB_PORT", "5173")
+        "http://web:" + os.environ.get("CHATBI_DEV_WEB_PORT", "5173"),
+        headers={"Host": "localhost"},
     )
     result["model"] = (
         "ready"

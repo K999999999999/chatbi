@@ -90,6 +90,49 @@ def test_recovery_template_preserves_runtime_credentials_without_application_dep
     )
 
 
+def test_doctor_template_preserves_published_model_path_and_bind_identity():
+    config = minimal_config()
+    config["services"]["tools"]["environment"].update(
+        RAG_MODEL_DIR="/workspace/.model-cache/model",
+        RAG_OUTPUT_DIR="/workspace/data/rag",
+    )
+    config["services"]["tools"]["volumes"] = [
+        {
+            "type": "bind",
+            "source": "/container/repo/.model-cache/bge-m3-pinned",
+            "target": "/workspace/.model-cache/model",
+            "read_only": True,
+        },
+        {
+            "type": "bind",
+            "source": "/container/repo/data/rag",
+            "target": "/workspace/data/rag",
+        },
+    ]
+
+    result = maintenance_template(
+        config,
+        operation="doctor",
+        container_id="a" * 64,
+        local_root="/container/repo",
+        host_root="/host/repo",
+    )
+    service = result["services"]["maintenance"]
+    mapped = map_runtime_paths(
+        result, local_root="/container/repo", host_root="/host/repo"
+    )["services"]["maintenance"]
+
+    model_mount = next(
+        volume for volume in mapped["volumes"] if ".model-cache" in volume["source"]
+    )
+    assert (
+        service["environment"]["RAG_MODEL_DIR"]
+        == "/host/repo/.model-cache/bge-m3-pinned"
+    )
+    assert model_mount["source"] == "/host/repo/.model-cache/bge-m3-pinned"
+    assert model_mount["target"] == service["environment"]["RAG_MODEL_DIR"]
+
+
 @pytest.mark.parametrize("setting", ["env_file", "privileged", "devices", "cap_add"])
 def test_unsupported_tool_settings_fail_closed(setting):
     config = minimal_config()

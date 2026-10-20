@@ -33,9 +33,9 @@
 
 ### Result / Comments
 
-Status: in-progress
-Result: 当前最近正式评测候选为 `97268ca67cdba7523de61be7e6acb95f17096410`；之后审计分支新增本地Commit `f67221b`（S02别名）和 `c345827`（验收readiness时序），尚未在新clean candidate上重跑隔离容器验收，正式AI门槛仍未通过，T12保持in-progress。
-Comments: 按已确认Spec、设计审查和READY拆分登记。审计报告副本、README入口与路线图链接所需的本工作项记录一并纳入最终候选，原始审计文件不改写。最终验收首次暴露冷启动下完整readiness探针耗时超过其10秒子进程超时，以及验收器自身`.verification-state`导致dirty provenance；已增加定向修正与回归。全量数据库回归又显示，worker-timeout故障注入未能在外层20秒预算内完成资源清理；将6秒`statement_timeout`明确限定在注入查询事务内，保留锁观察、错误诊断和连接清理断言。首轮隔离验收的业务与资源清理步骤均完成，但总结发布器依赖随后已删除的临时Compose文件而返回未确认；验证报告工具现改为独立只读Python容器调用。首轮 BA03 正式经营分析评测 9/10，失败历史保留；用户于2026-10-17确认修复总结对被省略产品的表达及 Judge 对 top-3 Contract 的判定边界，不更改案例/Seed/门槛，修复后须在新候选重跑。
+Status: done
+Result: 本Ticket及 `project-audit-remediation` 已完成，PR #88 于 2026-10-17 合并至 `master`，merge commit `34867d83049d35ee6567dbcabef8b197c5cfa9ea`，8/8 required checks 通过。clean 最终软件候选 `a43b320` 的 `./dev test all` 为 1255/1255、0 skip，`./dev check` 通过；formal Evaluation 在 clean 候选 `c95ca34` 为 single-turn 29/29、business-analysis 10/10、multi-turn 7/7（15/15 轮），三套 validator 通过；隔离业务验收 3/3、0 skip，报告 clean/stable。`a43b320` 相对评测候选只更改测试编排和收尾文档，结果适用边界及报告 SHA 保留原记录。历史 S02 `PROVIDER_CALL_FAILED` 底层原因和历史 `MT-FILTER-APPEND-T1 SQL_REJECTED` 分类 / 根因按用户决定暂缓，仍未确认；阿里云 Trace 收件未查询确认。授权内交付已经完成，这些未知没有标记为已修复。
+ Comments: 以下按时间保留的实施记录描述当时状态；当前终态与适用证据以本节 `Status` / `Result` 为准。按已确认Spec、设计审查和READY拆分登记。审计报告副本、README入口与路线图链接所需的本工作项记录一并纳入最终候选，原始审计文件不改写。最终验收首次暴露冷启动下完整readiness探针耗时超过其10秒子进程超时，以及验收器自身`.verification-state`导致dirty provenance；已增加定向修正与回归。全量数据库回归又显示，worker-timeout故障注入未能在外层20秒预算内完成资源清理；将6秒`statement_timeout`明确限定在注入查询事务内，保留锁观察、错误诊断和连接清理断言。首轮隔离验收的业务与资源清理步骤均完成，但总结发布器依赖随后已删除的临时Compose文件而返回未确认；验证报告工具现改为独立只读Python容器调用。首轮 BA03 正式经营分析评测 9/10，失败历史保留；用户于2026-10-17确认修复总结对被省略产品的表达及 Judge 对 top-3 Contract 的判定边界，不更改案例/Seed/门槛，修复后须在新候选重跑。
 
 候选 `7ba52e1` 的最终 `./dev check` 通过，run `20261016T225747Z-7ba52e1-check-all-6032420bb987`；`./dev test all` 1245 passed、61 条件性 skipped、0 failed，报告状态 incomplete，provenance stable（run `20261016T225820Z-7ba52e1-test-all-85816718c743`）。提交前经营分析相关定向测试73 passed / 2 subtests（run `20261016T225617Z-bdb4452-test-python-572afe804931`）时 HEAD 为`bdb4452`且`git_dirty=true`，仅作实现迭代证据，不作为clean candidate门禁；代码修改的只读 Review PASS，`git diff --check` PASS。固定BGE revision `5617a9f61b028005a4858fdac845db406aefb181`；新 RAG `audit-7ba52e1` 包含7张表、69列、7个指标和9条关系，构建失败数0。
 

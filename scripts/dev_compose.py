@@ -94,6 +94,28 @@ def maintenance_template(
         "environment": environment,
         "volumes": [],
     }
+    doctor_model_target = None
+    doctor_model_path = None
+    if operation == "doctor":
+        doctor_model_target = environment.get("RAG_MODEL_DIR")
+        model_mount = next(
+            (
+                volume
+                for volume in tools.get("volumes", [])
+                if volume.get("type") == "bind"
+                and volume.get("target") == doctor_model_target
+            ),
+            None,
+        )
+        if model_mount is not None:
+            doctor_model_path = model_mount["source"]
+            if (
+                local_root
+                and host_root
+                and doctor_model_path.startswith(local_root + "/")
+            ):
+                doctor_model_path = host_root + doctor_model_path[len(local_root) :]
+            environment["RAG_MODEL_DIR"] = doctor_model_path
     declared_volumes = {}
     for volume in tools.get("volumes", []):
         destination = volume.get("target", "")
@@ -102,6 +124,13 @@ def maintenance_template(
         source_code = destination in {"/workspace/src", "/workspace/scripts"}
         if source_code or operation == "doctor":
             mapped = {**volume, "read_only": True}
+            if (
+                operation == "doctor"
+                and volume["type"] == "bind"
+                and destination == doctor_model_target
+                and doctor_model_path is not None
+            ):
+                mapped["target"] = doctor_model_path
             if (
                 volume["type"] == "bind"
                 and local_root
