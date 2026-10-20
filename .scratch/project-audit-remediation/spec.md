@@ -1,6 +1,6 @@
 # 全仓审计问题修复与回归验证
 
-Status: 用户已在当前会话确认完整 Spec、12 项 Ticket 拆分及整体本地实施/验证/Review/Commit 授权；实现进行中。设计审查为 PASS WITH MINOR FIXES，修订落实情况见[设计审查](design-review.md)。远端发布未授权。
+Status: 已完成；PR #88 已于 2026-10-17 合并至 `master`，merge commit `34867d83049d35ee6567dbcabef8b197c5cfa9ea`，8/8 required checks 通过。Ticket 01–12 的实现、验证、Review 与交付状态见各 Ticket，最终收尾证据见 [Ticket 12](issues/12-final-validation-and-documentation.md)。设计审查为 PASS WITH MINOR FIXES，修订落实情况见[设计审查](design-review.md)。
 
 工作项 ID：`project-audit-remediation`。审计与起始代码基线：`8d01740474b2c727131e54a70a2f186713b306ad`。
 
@@ -23,7 +23,7 @@ Status: 用户已在当前会话确认完整 Spec、12 项 Ticket 拆分及整�
 - 用户已在当前会话明确回复“确认”批准本完整 Spec、12 项 Ticket 拆分及整体本地实施/验证/Review/Commit。按依赖连续完成全部 Ticket，不逐项等待确认。
 - 2026-10-17，用户再次回复“确认”，批准在既有经营分析 Contract 内修复 BA03 首轮失败暴露的总结与 Judge 边界：总结明确“仅未在报告中展开”的产品限制，Judge 以程序归因返回的至多 3 个产品判定贡献，不要求总结重算或补列其余产品；不得更改案例、数据、模型参数或通过门槛，必须保留首轮失败并在修复后新候选上重跑受影响的正式验收。
 - 真实调用授权只覆盖本目标的现有合成数据、标准案例、正常模型输入及 Judge 输入；不读取并发送真实私有业务数据或凭证。复用既有模型配置，不更换 Provider、模型或引入新依赖。
-- 本目标默认本地交付；Push、PR、远端工作流触发和其他远端写入尚未授权。
+- 本 Spec 默认本地交付，不自行授予 Push / PR 授权。用户于 2026-10-18 单独授权向 `master` 提交 PR #88；该 PR 已于 2026-10-17 合并，授权已完成。
 
 ### Scope 与正常结果
 
