@@ -41,6 +41,7 @@ ChatBI是面向销售数据的领域AI引擎，提供电脑端问数、多轮追
 
 | 内容 | 入口 |
 | --- | --- |
+| 从业务目标到架构、代码与运行验证的完整讲解 | [项目全景详解](docs/project-explained.md) |
 | 能力、支持范围与当前方向 | [Product Scope](docs/product-scope.md)、[Roadmap](docs/roadmap.md) |
 | 模块、数据与核心链路 | [Architecture](docs/architecture.md) |
 | 当前行为与实现机制 | [Specs](docs/specs)、[Designs](docs/designs) |
