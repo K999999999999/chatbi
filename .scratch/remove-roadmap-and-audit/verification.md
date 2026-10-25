@@ -73,3 +73,15 @@ Findings: 当前交付无阻断项；DOC001/002不作为已解决Contract，后�
 Review Dimensions: 无Domain / Authorization / State不变量变更；旧同步API兼容与当前网页入口分清；未让测试或已合并Commit反向覆盖原要求；文档链接、Secret、历史证据和源码范围已检查。
 Harness Feedback: 同前次已记录的事实源同步缺口，无额外通用流程改动；本轮未扩大到插件或检查器建设。
 Next: 最终文档 / Diff检查通过后本地Commit；远端交付仍待授权。
+
+## COLUMN 50 确认与文档同步（base 143de69）
+
+用户接受保留50并明确要求同步文档；授权依据、范围及验收见spec.md本轮追加段。检索Spec的配置、合计预算、Join Key说明和验收统一Top-50；Design与审计当前状态同步。DOC001完成，DOC002调度差异仍待决定，旧核实表和初始审核保留历史语义。
+
+Review: PASS（当前上下文 workflow-code-review）
+Scope: 143de69以上的两份检索文档、审计当前状态及本工作项记录。
+Findings: 无本轮阻断项；确认仅覆盖预算50，不扩展到并行要求、代码或远端发布。50不是每表数量、不是保证取满，也不宣称经对比最优。
+Verification: 最终组合文档检查和git diff --check执行结果见本轮命令记录；文本复核配置 / 资源 / Join Key / 验收无Top-20现行规则残留。源码 / 测试 / 配置无变化，复用上一切片7项定向通过证据（不改标新候选测试），不重跑真实LLM、数据库或全量回归。
+Dynamic files: 现有7项均reviewed-no-change；本轮不涉及Runbook命令、Agent规则、工作项格式、Git交付规则或Harness清单。无Roadmap恢复。
+Harness: 原记录legacy且缺历史baseline，沿用前述Plugin overall未通过的限制，不宣称新整体收尾通过；本轮只做授权的文档同步。
+Harness Feedback: 未观察到新的、符合门槛且未被前述记录覆盖的缺口。
