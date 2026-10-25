@@ -1,6 +1,6 @@
 # 将 scripts 纳入现有 Ruff 质量门禁
 
-Status: implemented locally; hosted verification pending
+Status: done
 Owner: ChatBI 维护者（用户）；实施执行：本会话 Codex
 Change Profile: Lifetime 短期；Size S；Risk 低；Evidence 本地质量检查 / hosted CI；Delivery 本地 PR
 Canonical Source: `.scratch/ci-merge-gate-hardening/spec.md`；`docs/runbook.md`
@@ -21,5 +21,5 @@ Owned files: `scripts/check_python_quality.sh`；必要的 `scripts/*.py` 格式
 
 Verification evidence: `./dev check python`、Ruff 目标目录检查、CI `Code quality`。
 Migration / Rollback: 不适用；修改可随候选提交回滚。
-Result: `scripts/`已纳入固定Ruff入口；全目录格式与lint、本地Python确定性套件通过。Hosted CI证据待取得发布授权后验证。
+Result: `scripts/` 已纳入固定 Ruff 入口；全目录格式与 lint、本地 Python 确定性套件通过。PR #99 于 2026-10-25T16:38:21Z 合入 master；Hosted run `40212394127` 的 Code quality 通过，且 8 项 required checks 全部成功。
 Comments: 不新增类型检查，也不重构业务逻辑。

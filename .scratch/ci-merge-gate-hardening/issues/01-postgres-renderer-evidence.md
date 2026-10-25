@@ -1,6 +1,6 @@
 # 阻止不完整的 PostgreSQL / renderer 证据通过 CI
 
-Status: implemented locally; hosted verification pending
+Status: done
 Owner: ChatBI 维护者（用户）；实施执行：本会话 Codex
 Change Profile: Lifetime 短期；Size M；Risk 中；Evidence 确定性软件测试 / hosted CI；Delivery 本地 PR
 Canonical Source: `.scratch/ci-merge-gate-hardening/spec.md`；`docs/runbook.md`
@@ -23,5 +23,5 @@ Owned files: `.github/workflows/ci.yml`；必要时新增 `scripts/` 报告核�
 
 Verification evidence: 核验器确定性测试；PostgreSQL 两个 profile 与 renderer hosted 产物；差异化失败报告。
 Migration / Rollback: 不适用；CI 脚本 / job 可随候选提交回滚。
-Result: 本地实现、定向测试和文档检查通过；首次 Hosted CI 通过数据库与 renderer 测试，但身份核验发现生成的 `reports/ci/` 未被忽略，导致源码 dirty 标记；已按根因补忽略规则，等待 Hosted 重验。
+Result: PR #99 已于 2026-10-25T16:38:21Z 合入 master（merge commit `480adf94b34e6eb10406f5229b192e679e06ad88`）。首轮 Hosted run `40211914522` 发现 CI 生成的 `reports/ci/` 未被忽略；follow-up `d82f87b1339a0194e258019bd1eb61604ab8730e` 增加忽略规则和回归测试。二轮 Hosted run `40212394127` 的 PostgreSQL integration 与 renderer 证据核验通过，8 项 required checks 全部成功。
 Comments: Real E2E 不纳入本 Ticket 的 PR required checks。CI 环境记录的提交、`uv.lock`摘要和测试镜像ID与renderer摘要逐项核对；核验器继续要求源码身份未变化。
