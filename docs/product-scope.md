@@ -1,6 +1,6 @@
 # ChatBI产品范围
 
-本文说明当前可用能力、支持场景和限制。具体功能规则见 [Spec](specs)，技术结构见 [架构](architecture.md)，后续方向见 [Roadmap](roadmap.md)。
+本文说明当前可用能力、支持场景和限制。具体功能规则见 [Spec](specs)，技术结构见 [架构](architecture.md)。
 
 ## 产品定位
 

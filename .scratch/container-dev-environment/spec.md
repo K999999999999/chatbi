@@ -9,7 +9,7 @@ Work item: `container-dev-environment`
 
 当前 Compose 只管理 PostgreSQL、Qdrant 和保留的 Dev Container；FastAPI 与 Vite 仍由开发者分别在本机启动。默认 API 命令未启用自动重载，新环境还需安装 Python、uv 和 Node。目标是在 R2 开发前统一开发入口，减少重复启动与本机依赖配置，并为后续 R6 打包积累可复现的运行基础。
 
-事实源：[Runbook](../deployment-simplification/history/docs--runbook.md)、[Compose](../../docker-compose.yml)、[Bootstrap Contract](../../docs/specs/bootstrap.md)、[Web Contract](../../docs/specs/web-dialogue-v1.md)、[Architecture](../../docs/architecture.md)、[路线图](../../docs/roadmap.md)。当前仓库状态不等于新容器入口已通过验收。
+事实源：[Runbook](../deployment-simplification/history/docs--runbook.md)、[Compose](../../docker-compose.yml)、[Bootstrap Contract](../../docs/specs/bootstrap.md)、[Web Contract](../../docs/specs/web-dialogue-v1.md)、[Architecture](../../docs/architecture.md)、[路线图](../../.scratch/remove-roadmap-and-audit/history/roadmap.md)。当前仓库状态不等于新容器入口已通过验收。
 
 ## Solution 与范围
 

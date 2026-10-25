@@ -11,7 +11,7 @@
 ## 架构与产品边界
 
 - [Architecture](../../../docs/architecture.md)说明模块化单体、依赖方向和核心查询链路。
-- [Product Scope](../../../docs/product-scope.md)与[Roadmap](../../../docs/roadmap.md)说明当前产品边界及V1需求顺序。
+- [Product Scope](../../../docs/product-scope.md)与[Roadmap](../../../.scratch/remove-roadmap-and-audit/history/roadmap.md)说明当前产品边界及V1需求顺序。
 - 每项行为的权威Contract见`docs/specs/`对应文档；本文不重复定义业务语义。
 
 ## 交付与验收证据

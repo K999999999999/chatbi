@@ -12,7 +12,7 @@ R1–R4 已提供电脑端问数、结果图表、完成的经营分析报告、
 
 R5 让指定账号从既有成功快照导出文件，保证内容、口径、精度和证据与所选结果一致，同时沿用当前身份、归属与权限边界。
 
-事实源：[Roadmap](../../docs/roadmap.md)、[产品范围](../../docs/product-scope.md)、[Architecture](../../docs/architecture.md)、[历史领域上下文快照](../context-file-removal/history/domain-context-snapshot.md)、[R2 Spec](../../docs/specs/result-visualization-v1.md)、[R3 Spec](../../docs/specs/history-results-v1.md)、[R4 Spec](../../docs/specs/execution-streaming-v1.md)、[Evaluation](../../docs/specs/evaluation.md)、[Runbook](../deployment-simplification/history/docs--runbook.md)。R3 PR #54 与 R4 PR #55 已合并；上述 baseline 是 R4 merge commit，不把此前 Evaluation 报告改称该提交的通过结果。
+事实源：[Roadmap](../../.scratch/remove-roadmap-and-audit/history/roadmap.md)、[产品范围](../../docs/product-scope.md)、[Architecture](../../docs/architecture.md)、[历史领域上下文快照](../context-file-removal/history/domain-context-snapshot.md)、[R2 Spec](../../docs/specs/result-visualization-v1.md)、[R3 Spec](../../docs/specs/history-results-v1.md)、[R4 Spec](../../docs/specs/execution-streaming-v1.md)、[Evaluation](../../docs/specs/evaluation.md)、[Runbook](../deployment-simplification/history/docs--runbook.md)。R3 PR #54 与 R4 PR #55 已合并；上述 baseline 是 R4 merge commit，不把此前 Evaluation 报告改称该提交的通过结果。
 
 ## Solution / Scope
 

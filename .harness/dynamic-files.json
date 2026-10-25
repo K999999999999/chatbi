@@ -35,14 +35,6 @@
       "history_path": ".scratch/harness-task-control-v1/spec.md"
     },
     {
-      "id": "roadmap",
-      "path": "docs/roadmap.md",
-      "owner": "ChatBI 工程维护者",
-      "authority": "docs/roadmap.md",
-      "triggers": ["已确认目标、依赖、验收方式或完成事实变化"],
-      "history_path": ".scratch/harness-task-control-v1/spec.md"
-    },
-    {
       "id": "runbook",
       "path": "docs/runbook.md",
       "owner": "ChatBI 工程维护者",
