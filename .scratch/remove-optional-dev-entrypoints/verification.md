@@ -25,3 +25,18 @@ Harness Feedback: 未观察到符合门槛的 Harness 缺口。
 
 ## Compose 研究建议
 原拆分决定见 .scratch/container-dev-environment/design.md：基础文件只启动 PostgreSQL / Qdrant，开发叠加文件承载 API / Web / 工具。移除编辑器入口后此职责划分仍成立。当前建议保留两个文件，由 ./dev 统一加载；合并可以单独评估，但本任务未授权合并。
+
+## 已授权的 Vite CI 修复
+
+用户确认 Vite 8.3.2 升级至 8.3.5 后，更新 package.json 与 package-lock.json。必要传递依赖为 rolldown 1.2.15（Vite 要求 ~1.2.14）、其平台 binding 与 @oxc-project/types 0.155.0、postcss 8.5.31（Vite 要求 ^8.5.30）及 nanoid 3.3.20（postcss 要求 ^3.3.20）；其他直接依赖不变。
+
+- 使用官方 npm registry 生成锁文件；首次容器命令在写入文件后因镜像内 node_modules 的权限导致退出 243；随后在独立可写 tmpfs 工作目录运行 npm install --package-lock-only --ignore-scripts --no-audit --no-fund 成功。宿主 node_modules 未修改。
+- 基于更新锁文件构建 chatbi-node-vite835:local；npm ci 成功且 found 0 vulnerabilities；安装版本实际核验为 8.3.5。
+- npm audit --package-lock-only --audit-level=low：found 0 vulnerabilities。
+- 在新镜像中以 network none 执行 npm run build -- --configLoader runner（含 TypeScript 检查）及 npm run build:export -- --configLoader runner：通过。
+- 更新后的文档检查、git diff --check：通过。Python 源码与测试实现未再次改变，复用已通过的 Python 质量检查。
+- 本地浏览器运行 reports/tests/20261025T134621Z-15a36af-test-web-943986000cd8.json 在锁文件生成完成前启动，实际使用 Vite 8.3.2，期间源身份变化；即使机器计数 83/83 也不作为升级验证。
+- 升级后尝试 CHATBI_DEV_BROWSER_IMAGE=chatbi-browser-vite835:local ./dev test web；系统依赖镜像下载缓慢，主动取消构建，未执行新版浏览器测试，不作为通过证据。报告 reports/tests/20261025T134815Z-15a36af-test-web-d7b745315ba9.json。
+- 新版 Chrome、开发服务器回归交由 PR 的必需 Deterministic tests CI 执行；其 workflow 明确运行 npm test 与 npm run test:dev，CI 结果待真实核验。
+
+当前上下文 engineering-workflow:workflow-code-review：PASS。检查直接依赖仅 Vite 补丁版本变化，传递依赖满足新版本要求，固定版本与完整性摘要由 npm 生成；无应用配置或行为实现改动，不调整安全门禁。Roadmap 与正式文档中未声明具体 Vite 版本，无额外同步位置；本短 Spec 已记录授权及验收调整。
