@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from scripts.compose_volume_reset import (
-    ComposeVolumeResetError,
+    ComposeVolumeResetError as ComposeVolumeResetError,
     configured_volume,
     reset_compose_volume,
     validate_volume_labels,

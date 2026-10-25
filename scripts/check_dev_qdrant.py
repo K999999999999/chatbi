@@ -14,7 +14,9 @@ from scripts.environment_permissions import validate_environment_file
 
 def _environment_path() -> Path:
     configured = os.environ.get("CHATBI_DEV_ENV_FILE", "").strip()
-    return Path(configured) if configured else Path(__file__).resolve().parents[1] / ".env"
+    return (
+        Path(configured) if configured else Path(__file__).resolve().parents[1] / ".env"
+    )
 
 
 def _setting(name: str, default: str) -> str:

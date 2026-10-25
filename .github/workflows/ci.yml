@@ -174,8 +174,10 @@ jobs:
         run: |
           set -euo pipefail
           python_path="$(uv python find 3.11)"
+          git_commit="$(git rev-parse --verify HEAD)"
           postgres_image_id="$(docker image inspect postgres:16-alpine --format '{{.Id}}')"
           {
+            printf 'git_commit=%s\n' "$git_commit"
             printf 'python_version=%s\n' "$("$python_path" --version 2>&1)"
             printf 'uv_version=%s\n' "$(uv --version)"
             printf 'postgres_image_id=%s\n' "$postgres_image_id"
@@ -268,6 +270,12 @@ jobs:
         run: |
           set -euo pipefail
           ./dev test renderer
+
+      - name: Validate PostgreSQL and renderer evidence
+        if: always()
+        run: >-
+          uv run --python 3.11 --locked python -m scripts.check_ci_test_evidence
+          --ci-reports reports/ci --test-reports reports/tests
 
       - name: Upload PostgreSQL and renderer evidence
         if: always()

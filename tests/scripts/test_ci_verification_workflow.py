@@ -66,6 +66,8 @@ def test_ci_evidence_records_tool_lock_and_actual_postgres_image_identity(
 ) -> None:
     identity = step(job, "Record PostgreSQL test environment identity")
     assert "uv python find 3.11" in identity
+    assert "git rev-parse --verify HEAD" in identity
+    assert "git_commit" in identity
     assert "uv --version" in identity
     assert "postgres_image_id" in identity
     assert "uv_lock_sha256" in identity
@@ -153,3 +155,25 @@ def test_postgres_job_always_uploads_available_test_evidence(job: str) -> None:
         "Run real PDF renderer tests",
     ):
         assert "continue-on-error: true" not in step(job, test_step)
+
+
+def test_postgres_job_validates_required_report_evidence_before_upload(
+    job: str,
+) -> None:
+    validation = step(job, "Validate PostgreSQL and renderer evidence")
+    assert "if: always()" in validation
+    assert "scripts.check_ci_test_evidence" in validation
+    assert "--ci-reports reports/ci" in validation
+    assert "--test-reports reports/tests" in validation
+    assert job.index(
+        "      - name: Validate PostgreSQL and renderer evidence"
+    ) > job.index("      - name: Run real PDF renderer tests")
+    assert job.index(
+        "      - name: Upload PostgreSQL and renderer evidence"
+    ) > job.index("      - name: Validate PostgreSQL and renderer evidence")
+
+
+def test_ci_generated_evidence_directory_is_ignored_by_git() -> None:
+    gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+
+    assert "reports/ci/" in gitignore

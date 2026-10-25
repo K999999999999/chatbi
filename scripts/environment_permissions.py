@@ -5,9 +5,7 @@ from pathlib import Path
 import stat
 
 
-_UNSAFE_ENVIRONMENT_FILE = (
-    "本地配置必须由当前用户拥有且仅当前用户可读；请检查属主并执行 chmod 600 <配置文件> 后重试。"
-)
+_UNSAFE_ENVIRONMENT_FILE = "本地配置必须由当前用户拥有且仅当前用户可读；请检查属主并执行 chmod 600 <配置文件> 后重试。"
 
 
 def validate_environment_file(path: Path) -> None:
