@@ -51,7 +51,7 @@
 
 ## 兼容与验证
 
-基础Compose不隐式启动应用；Dev Container保留原配置，不是本次验收入口。端口冲突不杀未知进程；故障修复后重试，停止后仍通过同一dev容器入口恢复，数据保留。
+基础Compose不隐式启动应用；项目不再维护 VS Code Dev Container 编辑入口，统一从 WSL / Linux Bash 使用 `./dev`。端口冲突不杀未知进程；故障修复后重试，停止后仍通过同一dev容器入口恢复，数据保留。
 
 运行验收覆盖独立空卷初始化、热更新、持久性、故障、实际Compose网页的真实两轮查询和账号清理；证据绑定候选 / 资源。日期化结果见[历史验收记录](../../.scratch/container-dev-environment/history/acceptance--container-dev-environment-20261003.md)，不改写历史 Evaluation 身份。
 

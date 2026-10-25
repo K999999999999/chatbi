@@ -29,9 +29,9 @@ Owner: 当前主 Agent，2026-10-03；当前上下文只读审查，未启动独
 ## Evidence Sources
 
 - [Architecture](../../docs/architecture.md)、[产品范围](../../docs/product-scope.md)、[Bootstrap](../../docs/specs/bootstrap.md)、[Web Spec](../../docs/specs/web-dialogue-v1.md)、[Runbook](../deployment-simplification/history/docs--runbook.md)。
-- [基础 Compose](../../docker-compose.yml)、[Dev Container](../../.devcontainer/devcontainer.json)、[环境模板](../../.env.example)、[Vite](../../frontend/vite.config.ts)、[Python依赖](../../pyproject.toml)、[前端依赖](../../frontend/package.json)。
+- [基础 Compose](../../docker-compose.yml)、Dev Container（历史文件 `.devcontainer/devcontainer.json`，见 `0e8a198`；已按[入口精简 Spec](../remove-optional-dev-entrypoints/spec.md)退役）、[环境模板](../../.env.example)、[Vite](../../frontend/vite.config.ts)、[Python依赖](../../pyproject.toml)、[前端依赖](../../frontend/package.json)。
 - [API配置加载](../../src/query_api/config.py)、[Bootstrap命令](../../src/bootstrap/commands.py)、[管理员及migration](../../src/bootstrap/control.py)、[模型准备](../../src/bootstrap/model.py)。
-- [真实浏览器配置](../../frontend/playwright.real.config.ts)、[真实浏览器测试](../../frontend/tests/real.spec.ts)、[账号支持](../../tests/browser_real_support.py)、[参考值](../../tests/browser_real_reference.py)、[现有Dev Container回归](../../tests/scripts/test_devcontainer_config.py)。
+- [真实浏览器配置](../../frontend/playwright.real.config.ts)、[真实浏览器测试](../../frontend/tests/real.spec.ts)、[账号支持](../../tests/browser_real_support.py)、[参考值](../../tests/browser_real_reference.py)、当时的 Dev Container 回归（历史文件 `tests/scripts/test_devcontainer_config.py`，见 `0e8a198`；其数据库换行检查现保留于[独立测试](../../tests/scripts/test_database_script_line_endings.py)）。
 
 本次没有构建镜像、执行真实API、下载模型或初始化数据。PASS表示设计可进入拆分，不表示运行已通过或取得实施授权。
 
