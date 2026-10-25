@@ -20,3 +20,6 @@
 
 ## 已确认的 CI 修复范围
 用户在依赖告警说明后确认将 Vite 8.3.2 升级至审计建议的 8.3.5，更新必要的前端依赖锁文件并纳入同一 PR #98。此确认覆盖实现、验证及同 PR 发布跟进；不修改其他直接依赖，不关闭或弱化安全门禁。验收增加 npm audit 无告警、前端与导出构建以及相关浏览器软件回归；初始候选 CI 7/8 通过，唯一失败为既有 Vite 依赖审计。
+
+## 已确认的 Python 依赖修复范围
+用户在六项 Python 依赖告警及兼容性说明后要求“那还是先处理这个吧”，确认先修复这些告警并完成 #98，不加入其他新改动。按审计建议更新 certifi 2026.10.19、filelock 4.2.1、langgraph-checkpoint-postgres 3.1.3、opentelemetry-api 1.45.1、pypdf 6.21.2、setuptools 84.1.0，并允许必要的 OpenTelemetry 配套依赖和 langgraph-checkpoint 4.3.0 升级。直接依赖提高安全版本下限，其他业务实现 / Contract 不变。验收增加 Python 依赖审计、状态持久化 / PostgreSQL、追踪与 PDF 相关回归；运行项目适用软件检查，AI Evaluation 与真实 LLM 业务验收不适用，因为未改模型、Prompt 或业务行为。
