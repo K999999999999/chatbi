@@ -85,3 +85,14 @@ Verification: 最终组合文档检查和git diff --check执行结果见本轮�
 Dynamic files: 现有7项均reviewed-no-change；本轮不涉及Runbook命令、Agent规则、工作项格式、Git交付规则或Harness清单。无Roadmap恢复。
 Harness: 原记录legacy且缺历史baseline，沿用前述Plugin overall未通过的限制，不宣称新整体收尾通过；本轮只做授权的文档同步。
 Harness Feedback: 未观察到新的、符合门槛且未被前述记录覆盖的缺口。
+
+## 顺序检索确认与文档同步（base a53792a）
+
+用户已确认保留当前顺序检索并授权修文档，依据见spec.md最新追加段。检索Spec / Design统一TABLE→可选METRIC→COLUMN，多指标逐个检索、实体跳过METRIC；移除旧并行要求及未裁决表。审核报告和核实记录顶部现列DOC001–DOC010文档修复完成，初次发现保留历史身份。
+
+Review: PASS（当前上下文workflow-code-review）
+Scope: a53792a以上的检索文档、审计当前状态及本工作项记录。
+Verification: 运行代码_resource阶段仍先TABLE后逐指标METRIC，COLUMN在资源校验后进入；本轮仅改文档。最终运行组合文档检查、git diff --check和现行调度文字检查；不新写测试，复用此前7项定向证据的适用行为，不改标为本轮新测试成绩。未运行真实LLM / 数据库 / 全量回归 / 托管CI。
+Dynamic files: 7项均reviewed-no-change；未触及Runbook、Agent / Git规则、状态Contract或adapter清单。Roadmap不恢复。
+Findings: 无本轮阻断项；用户确认范围覆盖调度描述，不新增并发实现、性能结论或产品支持承诺。历史调度冲突已由本轮确认解决。
+Harness: 沿用此前缺历史baseline与扩展证据的Plugin整体限制，不宣称整体交付收尾通过；无Push/PR授权。未观察到新的、符合门槛且未被前述记录覆盖的Harness缺口。

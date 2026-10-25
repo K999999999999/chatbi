@@ -4,11 +4,12 @@
 
 ## 用途与范围
 
-为实体查询、单指标查询和多指标查询提供同一条 Online Retrieval 流程。以下为原已确认流程，当前实现偏差见[差异说明](#已确认要求与当前实现差异)。
+为实体查询、单指标查询和多指标查询提供同一条 Online Retrieval 流程，检索按 TABLE → 可选 METRIC → COLUMN 的顺序执行。
 
 ```text
 同一版本资产快照
-→ TABLE 检索 + 可选 METRIC 检索（并行）
+→ TABLE 检索
+→ 按请求的指标说法依次进行 METRIC 检索（实体查询跳过）
 → 在候选表范围内进行 COLUMN 检索
 → 直接 FK-PK Relationship Graph
 → 最小结构化上下文
@@ -30,15 +31,11 @@ METRIC Top-K = 10，threshold = 0.30
 
 其中 `COLUMN = 50` 是所有候选表合计的 COLUMN 候选预算上限，不是每张表各取 50 列，也不要求每次取满；`METRIC = 10` 是每个指标说法的候选数，不是最终输出指标数。V1 一条查询最多明确请求 5 个指标。
 
-### 已确认要求与当前实现差异
+### 检索预算与调度
 
-2026-10-25 用户确认保留现有 COLUMN 默认上限 50，本次同步配置、资源规则与验收描述。该决定不代表 50 已经过参数对比证明最优；认证关系键等受限补充规则保持。以下调度差异仍未完成 Contract 裁决：
+COLUMN 默认上限为 50；该上限是候选预算，不代表已经通过参数对比证明最优。TABLE 完成后，按用户请求的指标说法依次检索 METRIC；实体查询跳过 METRIC。随后在候选表范围内检索 COLUMN，同一请求始终使用同一发布资产快照。
 
-| 项目 | 原已确认要求 | 当前实现事实 | 处理状态 |
-| --- | --- | --- | --- |
-| TABLE / METRIC 调度 | 上图要求并行 | `_retrieve_resources` 先完成 TABLE，再逐个指标说法同步检索 METRIC，最后进行 COLUMN 阶段 | 未找到取消原并行要求的明确确认；当前没有并行执行证明 |
-
-实际机制见[检索设计](../designs/online-retrieval.md#候选与必需资源)，追溯范围与证据见[核实记录](../../.scratch/remove-roadmap-and-audit/documentation-repair.md)。上图保留原并行要求，不代表当前实现已满足；后续调度 Contract 的调整仍需确认。本次将 COLUMN 预算及其验收描述统一为已确认的 50，不修改运行代码。
+2026-10-25 用户确认保留现有 COLUMN 默认上限 50 及顺序检索方式，文档与当前实现保持一致；不新增并发调度或改变认证、失败关闭和 SQL 安全规则。实现机制见[检索设计](../designs/online-retrieval.md#候选与必需资源)，历史要求及确认依据见[核实记录](../../.scratch/remove-roadmap-and-audit/documentation-repair.md)。
 
 ## 检索规则
 
@@ -60,6 +57,7 @@ METRIC Top-K = 10，threshold = 0.30
 
 ### Resource Retrieval（资源检索）
 
+- 检索依次完成 TABLE、可选 METRIC、COLUMN；多指标按请求说法逐个检索，不将 TABLE / METRIC 调度为并行任务。
 - TABLE 检索最多保留 5 个候选，低于 `0.30` 的结果不进入有效候选集。
 - METRIC 在存在指标意图时按每个用户请求的指标说法分别执行检索，每次最多保留 10 个候选，低于 `0.30` 的结果不进入有效候选集；各次检索仍绑定同一发布资产版本。
 - 无指标意图的实体类查询跳过 METRIC，空的指标上下文不视为技术失败。

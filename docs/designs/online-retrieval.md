@@ -10,7 +10,7 @@
 
 当前 `_retrieve_resources` 先完成 TABLE，再按每个请求的指标说法同步检索 METRIC，COLUMN 随后限定在已召回表范围内；实体查询跳过 METRIC。资源选择与组合由一条流水线处理。指标公式、固定条件、时间关系与明确分组所需字段只在候选范围内受限恢复。
 
-当前普通列候选预算由 `RetrievalConfig.column_top_k` 控制，默认 50；认证关系键与必要日历字段可在候选表范围内受限补充，不把普通预算理解为全部认证字段的总数。COLUMN 默认上限 50 已由用户确认，规则与验收见[检索 Spec](../specs/online-retrieval.md)。TABLE / METRIC 顺序执行与原并行要求的[差异](../specs/online-retrieval.md#已确认要求与当前实现差异)仍待决定，本次预算确认不改变调度要求。
+当前普通列候选预算由 `RetrievalConfig.column_top_k` 控制，默认 50；认证关系键与必要日历字段可在候选表范围内受限补充，不把普通预算理解为全部认证字段的总数。COLUMN 默认上限 50 已由用户确认，规则与验收见[检索 Spec](../specs/online-retrieval.md)。TABLE → 可选 METRIC → COLUMN 的顺序执行方式也已由用户确认，实体查询跳过 METRIC，多指标逐个检索；调度规则见[检索 Spec](../specs/online-retrieval.md#检索预算与调度)。
 
 TABLE候选池不意味着所有候选都必须连接。Join Key作为结构事实单独提供，不占普通COLUMN候选预算；不补入中间表扩大范围。
 
