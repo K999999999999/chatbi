@@ -171,3 +171,9 @@ def test_postgres_job_validates_required_report_evidence_before_upload(
     assert job.index(
         "      - name: Upload PostgreSQL and renderer evidence"
     ) > job.index("      - name: Validate PostgreSQL and renderer evidence")
+
+
+def test_ci_generated_evidence_directory_is_ignored_by_git() -> None:
+    gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+
+    assert "reports/ci/" in gitignore

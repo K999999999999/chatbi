@@ -13,7 +13,7 @@ Blocked by: None (can start immediately)
 - 只在 CI 消费侧判定现有验证报告；不改变 `scripts.verification_report` 生成报告后返回 0 的 Contract。
 - 更新 Runbook 中 CI 必跑测试及报告判定说明。
 
-Owned files: `.github/workflows/ci.yml`；必要时新增 `scripts/` 报告核验工具；相关 `tests/scripts/`；`docs/runbook.md` 的测试说明部分。
+Owned files: `.github/workflows/ci.yml`；必要时新增 `scripts/` 报告核验工具；相关 `tests/scripts/`；忽略生成的 `reports/ci/` 证据目录；`docs/runbook.md` 的测试说明部分。
 
 ## Acceptance criteria
 
@@ -23,5 +23,5 @@ Owned files: `.github/workflows/ci.yml`；必要时新增 `scripts/` 报告核�
 
 Verification evidence: 核验器确定性测试；PostgreSQL 两个 profile 与 renderer hosted 产物；差异化失败报告。
 Migration / Rollback: 不适用；CI 脚本 / job 可随候选提交回滚。
-Result: 本地实现、定向测试和文档检查通过；Hosted CI 证据待取得发布授权后验证。
-Comments: Real E2E 不纳入本 Ticket 的 PR required checks。CI 环境记录的提交、`uv.lock`摘要和测试镜像ID与renderer摘要逐项核对。
+Result: 本地实现、定向测试和文档检查通过；首次 Hosted CI 通过数据库与 renderer 测试，但身份核验发现生成的 `reports/ci/` 未被忽略，导致源码 dirty 标记；已按根因补忽略规则，等待 Hosted 重验。
+Comments: Real E2E 不纳入本 Ticket 的 PR required checks。CI 环境记录的提交、`uv.lock`摘要和测试镜像ID与renderer摘要逐项核对；核验器继续要求源码身份未变化。

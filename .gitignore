@@ -39,6 +39,7 @@ reports/browser-real/
 reports/browser-real-artifacts/
 reports/.verification-state/
 
-# 容器验证的本机原始证据。
+# CI与容器验证的本机原始证据。
+reports/ci/
 reports/deployment-simplification/
 reports/tests/

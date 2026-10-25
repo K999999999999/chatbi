@@ -22,9 +22,21 @@ Correctness / Comprehension / Consistency / Testability / Architecture / Securit
 ## Tests
 
 - TDD Red：18 个缺陷场景首先失败。
-- Green：`tests/scripts/test_check_ci_test_evidence.py` 与 `tests/scripts/test_ci_verification_workflow.py`，35 passed。
+- Green（初次）：`tests/scripts/test_check_ci_test_evidence.py` 与 `tests/scripts/test_ci_verification_workflow.py`，35 passed。
 - Ruff 0.16.8 对本 Ticket Python 文件执行 format check 与 `E4,E7,E9,F` lint，均通过。
 - `scripts.check_documentation` 与 `git diff --check` 通过。
-- Hosted PostgreSQL / renderer artifact 验证尚未运行；需本地候选获准发布并触发 CI 后完成。
+- 首次 Hosted run `40211914522` 的两个 PostgreSQL profile 和 renderer pytest 均通过；新增核验器仅因 `reports/ci/` 未忽略而读到 `git_dirty=true`。环境提交、锁文件、镜像及 tracked changes hash 均匹配。
 
-Next: 实施 Ticket 02。
+## Hosted CI 根因修复复审
+
+Review: PASS
+Scope: base `d050cb074a8d6e0a5d71e50fe361aee9359f8b17`；仅新增 `reports/ci/` 忽略规则及其静态回归测试。
+
+- 将 `reports/ci/` 与既有 `reports/tests/` 一并视作生成证据目录，避免报告文件自身污染源码身份。
+- 未放宽核验器对源码 dirty 状态的要求；核验器仍会拒绝真实源码变化。
+- TDD Red：新回归测试在缺少忽略规则时失败；Green：Ticket01定向测试36 passed，Ruff该测试文件通过。
+- `git check-ignore -v reports/ci/environment.txt` 确认规则命中；Hosted 重新验证等待新 commit。
+
+Review Dimensions: Correctness / Comprehension / Consistency / Testability / Architecture / Security：PASS。
+
+Next: 推送修复提交，确认新 head 的 Hosted CI 完成后再收尾。
