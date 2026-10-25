@@ -871,7 +871,7 @@ def _begin_session(args: argparse.Namespace) -> int:
 def _update_step(args: argparse.Namespace, *, complete: bool) -> int:
     state_path = _state_file(args.reports_directory, args.run_id)
     state = _read_state(state_path)
-    start = _start_from_state(state.get("start"))
+    _start_from_state(state.get("start"))
     steps = state.get("steps")
     if not isinstance(steps, list):
         raise ValueError("verification step state is invalid")

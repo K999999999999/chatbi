@@ -54,6 +54,38 @@ from .export_schema_output import (
     write_outputs,
 )
 
+__all__ = [
+    "COLUMNS_QUERY",
+    "CONSTRAINTS_QUERY",
+    "TABLES_QUERY",
+    "UNIQUE_INDEXES_QUERY",
+    "extract_schema",
+    "connection_config",
+    "load_column_value_examples",
+    "load_env",
+    "DEFAULT_OUTPUT_DIR",
+    "EXPECTED_TABLES",
+    "OUTPUT_FILES",
+    "ROOT",
+    "TARGET_SCHEMA",
+    "CanonicalSchema",
+    "ColumnIdentity",
+    "ColumnMetadata",
+    "ConstraintMetadata",
+    "ForeignKeyMetadata",
+    "MetadataExportError",
+    "TableMetadata",
+    "UniqueIndexMetadata",
+    "project_columns",
+    "project_outputs",
+    "project_relationships",
+    "project_tables",
+    "render_json",
+    "write_outputs",
+    "export_schema",
+    "main",
+]
+
 
 def export_schema(
     env_file: Path = ROOT / ".env",

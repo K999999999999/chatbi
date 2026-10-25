@@ -79,11 +79,13 @@ docker run --rm -it --user "$(id -u):$(id -g)" -v "$PWD:$PWD:ro" -w "$PWD" --ent
 ./dev test all
 ```
 
-`./dev check docs`、`./dev check python`、`./dev check boundaries`仅执行所选检查；Python与CI共用固定Ruff0.16.8入口，定向通过不等于完整check通过。帮助`./dev help`不读取.env或访问Docker。
+`./dev check docs`、`./dev check python`、`./dev check boundaries`仅执行所选检查；Python与CI共用固定Ruff0.16.8入口，format与lint覆盖`src/`、`evaluation/`、`tests/`和`scripts/`，定向通过不等于完整check通过。帮助`./dev help`不读取.env或访问Docker。
 
 check包含锁文件、文档/链接/模块边界、Python质量和网页/导出构建。Python全量回归不等于数据库或renderer验证；database分别启动独立CI/development fixture，覆盖真实权限、迁移、checkpoint、history和execution。并发History用例只观察自己 worker 的 PostgreSQL backend PID；失败时先释放本用例锁，再限时取消 / 回收自己创建的连接，故障路径也由有时限的子进程验证。web使用隔离mock API和浏览器；首次改密用例由`tests.browser_support`按用例创建独立测试账号，并清理其Session / 账号，管理路由不进入生产App。renderer启用真实Chromium/PDF与字体。失败返回非零，汇报skip和未执行范围。
 
 CI保留`PostgreSQL integration` job及其临时PostgreSQL服务，依次运行与本地相同的CI / development数据库fixture、migration、测试选择和开关，再用`docker/python-dev.Dockerfile`构建测试依赖镜像运行真实PDF renderer（不是业务APP镜像）。pytest JUnit、renderer本地摘要和安全环境身份分开保存在`reports/ci/`、`reports/tests/`；artifact步骤在前置测试失败后仍尝试上传可得证据，绝不写入`reports/evaluation/`。CI实际结果以对应GitHub Actions运行记录及artifact为准；本地提交不会代替托管CI执行。
+
+该job在上传artifact前强制核验`postgres-ci.xml`、`postgres-development.xml`及renderer JSON / JUnit：三个报告都必须存在、可解析、至少包含一个实际通过的测试且零失败 / 错误 / 跳过；renderer摘要计数必须与JUnit一致，源码提交、`uv.lock`摘要和测试镜像身份必须与CI环境记录一致。任何报告缺失、损坏或不完整都会使该job失败；原始报告仍会在失败后尝试上传以便诊断。
 
 每次`dev test` / `dev check`都会创建`reports/tests/<run_id>.json`摘要，不覆盖既有运行；JUnit / Playwright原始机器结果按同一Run ID保存。摘要显示源码起止身份、命令范围、各步骤状态、退出 / 清理结果、测试计数，以及适用的`uv.lock` / `package-lock.json` SHA-256和实际Python / Node / Browser / PostgreSQL容器镜像ID；环境身份无法核实也不会显示完整通过。check的构建 / lint步骤计数为null（不适用）。测试计数缺失、存在skip、来源身份变化 / 无法核实或后续步骤未运行时，摘要不会显示完整通过；因此命令退出码为0不等于所有测试均已通过。目录本地ignored；一般本地验证不上传CI或写入Git，CI仅按上段规则选择性上传测试证据。
 
