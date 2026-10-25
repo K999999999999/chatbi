@@ -51,3 +51,25 @@ Next: 最终文档与 Diff 检查通过后本地提交；远端发布等待用�
 - 案例数复核：single_turn=29、multi_turn=7、business_analysis=10、query_understanding=7，与当前正式评测 Spec 一致。
 - Plugin `diff --json` 与 `closeout check` 已实际运行；缺 task / slice baseline，缺扩展状态的文档评估与候选绑定证据，overall_ready=false；无发布授权。首次 closeout 误传 --json 被 CLI 拒绝，移除该参数后正确运行；不把参数解析失败计为审核通过。
 - 本地 Review PASS；DOC001–DOC010 未修是用户所要求审核的输出，不是本次删除目标的遗留实现项。
+
+## 2026-10-25 文档修复切片（base e69eb2b）
+
+用户已追加核实 / 修文档授权，范围见 spec.md 追加段与 documentation-repair.md。前次审核的“尚未修复”是历史阶段结论，本轮具体状态为 DOC003–DOC010 已修，DOC001/002 已如实标注原要求 / 当前偏差，Contract 冲突待确认。本轮不修改原审核结果或旧测试成绩。
+
+验证：
+
+- `./dev check docs`：PASS；Run ID `20261025T145516Z-e69eb2b-check-docs-6756339ef1a0`，源码起止 provenance stable，dirty文档候选。
+- `./dev test python tests/online_query/test_contracts.py tests/online_query/test_retrieval_observability_t3a.py`：7 passed / 0 failed / 0 skipped；Run ID `20261025T145528Z-e69eb2b-test-python-9e447d59c6d8`，provenance stable，dirty文档候选。该结果确认现有默认50和逐指标Span次数，不能证明旧Contract已获调整。
+- 文档 / 核实记录后续只增加来源说明及本轮验证，不触及源码 / 测试 / 配置，软件证据仍适用；最终组合文档检查覆盖这些收尾变化。
+- 不运行真实LLM / 数据库 / 浏览器 / 全量回归：文档修复没有改变其行为，不冒称新运行验收通过。
+- Plugin diff / closeout 已显式只读执行，仍缺历史 task / slice baseline 与扩展状态候选证据，overall_ready=false；未迁移原记录，未获发布授权，不宣称Plugin整体收尾通过。
+
+动态文档清单：runbook updated（日志命令）；其余6项 reviewed-no-change（不改变Agent规则、工作项状态Contract、Git流程、adapter及清单自身）；Roadmap继续退役，不新建替代路线图。正式行为来源、Design机制与原归档的职责保持；本轮只将恢复Contract的现行入口改链正式Spec，不删除历史。
+
+Review: PASS（当前上下文 workflow-code-review）
+Scope: e69eb2b 之上的文档修复Diff和本工作项记录。
+Change Description: 用正式历史 / 执行 / 就绪 / 恢复 / 评测规则修复旧文档，检索冲突单列，保留原要求和可核实当前事实。
+Findings: 当前交付无阻断项；DOC001/002不作为已解决Contract，后续调整规则或实现须取得决定。旧测试函数名未改，无源码变更。
+Review Dimensions: 无Domain / Authorization / State不变量变更；旧同步API兼容与当前网页入口分清；未让测试或已合并Commit反向覆盖原要求；文档链接、Secret、历史证据和源码范围已检查。
+Harness Feedback: 同前次已记录的事实源同步缺口，无额外通用流程改动；本轮未扩大到插件或检查器建设。
+Next: 最终文档 / Diff检查通过后本地Commit；远端交付仍待授权。

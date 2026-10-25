@@ -101,7 +101,7 @@ QueryRequest.source = INTERNAL
 
 ### HTTP 路径
 
-Query API 增加只覆盖 `/api/v1/query` 的 Middleware（中间件）：
+`src/query_api/app.py` 的 Middleware 覆盖 `/api/v1/query` 以及 histories、saved-results、executions、result-exports 命名空间。业务写请求建立 HTTP Root；GET / HEAD 读取和 SSE 观察只返回诊断编号，不创建业务 Root Trace。下面是旧同步查询的执行示意：
 
 ```text
 读取或生成 request_id（早于请求体解析）
@@ -124,7 +124,7 @@ Query API 增加只覆盖 `/api/v1/query` 的 Middleware（中间件）：
 - `/health` 不属于 Query Trace，不创建 `query.request`。
 - `X-Trace-ID` 不加入现有成功或错误 JSON Body。
 
-FastAPI Middleware 持有 HTTP 路径的 Root Trace（根链路），所以能够覆盖请求解析和响应序列化。`OnlineQueryService` 发现活动 Query Trace 后复用它。
+FastAPI Middleware 持有当前业务写请求的 HTTP Root Trace，覆盖请求解析和响应构造；同步下游复用活动 Trace。后台执行在 worker 中创建独立 Root，并以服务端进程内签发的 carrier 建立 Link，不能延长已结束的受理 Span。GET / SSE 观察不因轮询 / 重连产生新的业务 Root。
 
 ### 直接调用和 Evaluation 路径
 
@@ -158,25 +158,25 @@ Evaluation 外层拥有自己创建的 Root Trace；`OnlineQueryService` 只借�
 | `query.request` | 一次 `query()` 或整个 HTTP Query 生命周期 | 最终状态、行数、截断 | 公开错误码和安全失败分类 |
 | `request.validate` | 请求编号和 question 校验 | 合法请求 | `INVALID_REQUEST` |
 | `retrieval.plan` | `build_retrieval_request()` | shape、fallback policy | 安全技术分类 |
-| `retrieval.execute` | `RetrievalProvider.retrieve()` 与结果处理 | asset、状态、候选数量 | 无候选、技术失败、fallback |
+| `retrieval.execute` | `RetrievalProvider.retrieve()` 与结果处理 | asset、状态、候选数量 | 无候选、技术失败 |
 | `prompt.build` | `build_prompt()` | Prompt 长度，不含正文 | 安全技术分类 |
 | `llm.generate` | `SQLGenerator.generate()` | model、Token、耗时 | `LLM_ERROR` 或 `CANNOT_ANSWER` |
 | `candidate_scope.validate` | `validate_candidate_scope()` | 通过 | `SQL_REJECTED` |
 | `sql.guard` | `validate_sql()` | SQL Hash | `SQL_REJECTED` |
 | `database.execute` | `QueryExecutor.execute()` | 行数、截断 | 超时或数据库错误 |
 
-`response.serialize` 只在 `src/query_api/app.py` 的 `_result_response()` 中记录，范围是构造最终 `JSONResponse` 的 JSON 序列化，不延伸到 FastAPI/ASGI 的网络发送过程。
+同步查询 / 分析的 `response.serialize` 在 `src/query_api/app.py` 的 `_result_response()` / `_analysis_result_response()` 中记录，范围是构造最终 `JSONResponse`，不延伸到 FastAPI/ASGI 网络发送。后台执行和文件交付按各自实际生命周期记录，不把持续 SSE 观察当作同步结果序列化。
 
 ### Retrieval 内部
 
-`src/online_query/retrieval/retrieval.py` 在现有调用位置记录：
+`OnlineRetriever` 通过 resource / join stage 及 `_RetrievalExecution` 在实际调用位置记录：
 
 | Span | 边界 |
 |---|---|
 | `asset.resolve` | `RagRuntime.get_snapshot()` |
 | `embedding.query` | 实际 Query Embedding 调用；基线和多指标按真实调用次数记录 |
 | `table.search` | 现有 TABLE Search 调用 |
-| `metric.search` | 现有一次综合指标检索，不新增第二次检索 |
+| `metric.search` | 每个请求的指标说法实际触发的独立搜索；无指标时不记录 |
 | `column.search` | 在候选表范围内执行现有 COLUMN Search |
 | `join.resolve` | 现有确定性关系图路径解析 |
 | `context.assemble` | Dynamic Schema、指标上下文和 `QueryContext` 组装 |
@@ -185,8 +185,8 @@ Evaluation 外层拥有自己创建的 Root Trace；`OnlineQueryService` 只借�
 
 - Span 包裹现有调用，不能改变调用顺序和次数。
 - 只有实际执行了对应动作才创建 Span。
-- Multi-Metric（多指标）仍只做规格确认的一次综合指标检索。
-- Static fallback（静态回退）的上下文组装在 Service 中记录 `context.assemble`，并标记 `context_source=static_fallback`。
+- Multi-Metric 按请求的指标说法逐个检索；三个说法通常产生三个 `metric.search` Span，不能因观测增加额外检索。
+- 在线 RAG 使用 `FAIL_CLOSED`；检索技术失败记录实际错误和 `fallback_used=false`，不生成静态回退或其 Span。显式无 Retrieval Provider 的静态模式独立装配，不是故障恢复路径。
 - 不记录原始 `warnings` 文本，只记录受控状态和分类。
 
 ### LLM Token
@@ -266,9 +266,9 @@ chatbi.database.truncated
 | `BUSINESS_REJECTION` | `UNSET` | 无法回答、请求无效、SQL 被安全拒绝 |
 | `TECHNICAL_FAILURE` | `ERROR` | LLM、Retrieval、数据库等技术失败 |
 | `TIMEOUT` | `ERROR` | 数据库超时 |
-| `FALLBACK_SUCCESS` | `OK` | 原路径失败但允许的 fallback 成功 |
+| `FALLBACK_SUCCESS` | `OK` | 保留的兼容状态；当前在线 RAG 不走静态 fallback |
 
-业务拒绝不冒充系统故障，但必须记录公开 `error_code`。发生 fallback 时，原失败 Span 标为 `ERROR`，上层 `retrieval.execute` 标为 `FALLBACK_SUCCESS`；如果最终查询成功，Root Trace 最终仍为 `SUCCESS`。
+业务拒绝不冒充系统故障，但必须记录公开 `error_code`。当前在线 RAG 技术失败时，原失败 Span 与 Root 记录技术失败，不使用 `FALLBACK_SUCCESS` 冒充成功；业务资源不足则按受控拒绝分类。
 
 OTel Status 也不能从异常自动带出原始文本：所有 `start_as_current_span()` 调用显式关闭自动异常记录和自动 Status 描述；业务代码只根据固定映射写入 `StatusCode.ERROR` 或受控的 `StatusCode.UNSET`。
 Trace 仅记录固定的 `chatbi.error.type`、公开 `chatbi.error_code`、白名单 Provider 分类 / HTTP 状态 / 可重试分类和 SQL Guard 原因代码；不记录异常类名、`str(exc)`、完整堆栈、连接信息或 Provider 原始响应。
@@ -327,19 +327,19 @@ CHATBI_OTLP_TIMEOUT_SECONDS=5
 
 ### Query API
 
-`src/query_api/main.py`：
+`src/query_api/main.py` 只用 `create_app(runtime_factory=create_runtime)` 创建应用，导入时不加载配置或打开资源；装配与释放发生在 lifespan：
 
-1. 继续使用 `load_local_environment()`，且不覆盖平台注入变量；
-2. 构建一个 Safe `TraceRecorder`；
-3. 将同一个实例传给 `LangChainSQLGenerator`、`OnlineRetriever`、`OnlineQueryService` 和 `create_app()`；
-4. `create_app()` 注册只覆盖 Query API 的 Middleware：在 FastAPI 解析请求体前先解析或生成 `request_id`，再创建带该编号的 Root Trace，并把编号传入路由和 Service；
-5. FastAPI shutdown 时尝试异步队列 Flush/Shutdown；失败只写安全 Warning。
+1. `src/bootstrap/runtime.py` 的 `create_runtime()` 加载本地配置，保留已有环境变量优先级；
+2. 构建 Safe `TraceRecorder` 并立即登记 shutdown 清理；
+3. 将同一 recorder 注入模型、检索和查询服务，通过 RuntimeDependencies 绑定到应用与后台能力；
+4. `create_app()` 的 Middleware 按上文路径 / 方法区分业务写请求与只读观察，在解析请求体前建立编号及适用的 HTTP Root；
+5. 关闭时先停止受理、结束 worker / 观察并释放业务资源，再由 Bootstrap 生命周期关闭 recorder；初始化局部失败也释放已取得资源，安全降级不改变业务结果。
 
 ### Evaluation
 
 `evaluation/__main__.py` 使用相同构造函数创建 TraceRecorder，并将同一实例传入正式查询链路。
 `run_evaluation()` 增加有默认值的可选 TraceRecorder 参数，每个实际调用 Online Query 的案例由 Evaluation 外层持有 TraceScope，Service 复用该 Trace。
-CLI 退出前只执行一次 Flush，使 20 个案例的 Span 能发送完成。
+CLI 在资源清理阶段最多关闭一次 recorder，完成适用的批量导出 / shutdown；不按案例数逐次 flush。案例范围与报告身份遵循[评测规则](../specs/evaluation.md)，不在此固定旧案例数量。
 
 
 `CaseEvaluation` 和 JSON/Markdown 报告增加可选 `trace_id`：

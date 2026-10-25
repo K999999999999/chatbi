@@ -45,7 +45,7 @@ Decimal /日期沿用现有Pydantic JSON公开编码，不先转JS浮点；结�
 
 
 私有state为state_version=1的CertifiedQueryState，含经程序认证的完整结构化业务条件、绝对时间及相关定义来源。
-排序、业务row_limit、实体distinct /选择、既有合法聚合过滤不可遗漏；[完整结构化恢复Contract](../../.scratch/history-results-v1/history/documentation-docs--designs--history-query-restoration.md)明确profile兼容、字段 /delta、当前发布资产认证、SQL Guard和覆盖证据。
+排序、业务row_limit、实体distinct /选择、既有合法聚合过滤不可遗漏；[完整结构化恢复Contract](../specs/query-restoration.md)明确profile兼容、字段 /delta、当前发布资产认证、SQL Guard和覆盖证据。
 网页成功须证明完整状态与执行SQL一致，不能以“成功但不可恢复”作为实现降级。
 旧Bearer与分析内部任务默认profile保持，结果展示 result_metadata只作展示，不能充当恢复证书。
 

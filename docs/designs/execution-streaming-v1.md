@@ -58,7 +58,7 @@ FK 使用 ON DELETE CASCADE，只清除随历史删除的执行元数据；owner
 
 配置 `CHATBI_EXECUTION_MAX_PER_USER=1`、`CHATBI_EXECUTION_MAX_TOTAL=4`，要求正整数且 per-user ≤ total；错误启动失败。时限固定为已确认 query180s / analysis1200s，从受理时间计入 worker 交接，monotonic clock 裁决当前进程 deadline，PG 时间用于重开说明，不用于接管旧进程。
 
-取消 / 停止中占额度；同操作重发不再占额度。worker finally 真正结束后一次释放；成功 / 失败 / 未确认处理不重复释放。旧同步 `/api/v1/query` 不新增 后台执行 额度承诺，但同 analysis run 仍受已有共享 Guard 和 registry 封锁，不绕过已取消运行。
+取消 / 停止中占额度；同操作重发不再占额度。worker finally 真正结束后一次释放；成功 / 失败 / 未确认处理不重复释放。旧同步 `/api/v1/query` 的问数 / 分析与后台入口共用同一 Runtime 的账号 / 全局额度（默认 1 / 4），并检查应用就绪；同步请求保持原响应 Contract，不创建后台执行持久记录。同 analysis run 仍受共享 Guard 和 registry 封锁，不绕过已取消运行。完整受理边界见[应用就绪与执行保护](../specs/application-readiness.md)。
 
 ## 停止、提交与分析 checkpoint 协调
 

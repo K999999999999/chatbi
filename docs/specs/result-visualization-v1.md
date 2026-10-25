@@ -14,7 +14,7 @@
 
 结果说明由Online Query在SQL Guard通过、数据库成功返回之后生成，来源是已校验SemanticQuery、实际SQL、当前QueryContext、权威Semantic及认证物理身份。指标认证核对实际公式及固定筛选，不靠输出别名、模型意图或数据库技术类型推断单位。实际完成日期连接角色才可标注订单完成日期；无时间条件声明未限定范围，不拿数据最早/最晚日期代替查询范围。
 
-`src/semantic/metrics.json`仍拥有公式、定义、固定筛选与时间口径；`src/semantic/result_display.json`仅拥有展示属性及维度物理引用，加载时检查引用。新属性不修改RAG源指纹或旧manifest。说明失败不改变查询成功、授权、Guard或状态提交；局部未认证列保留原值，可信列仍可展示。
+`src/semantic/metrics.json`仍拥有公式、定义、固定筛选与时间口径；`src/semantic/result_display.json`仅拥有指标单位 / 格式等展示属性；维度物理引用由 `src/semantic/query_bindings.json` 维护，展示 loader 引用并校验该绑定，不另建一份映射。绑定规则见[完整查询条件与恢复](query-restoration.md#business-semantic-resolution--认证映射)。新属性不修改RAG源指纹或旧manifest。说明失败不改变查询成功、授权、Guard或状态提交；局部未认证列保留原值，可信列仍可展示。
 
 公共可选字段 `result_metadata` 详见[Query API](query-api.md#结果说明协议)。旧响应无该字段时继续展示原始表格；旧客户端可忽略该字段。位置绑定输出列，不能猜别名。未知版本或损坏的范围说明安全降级。
 
