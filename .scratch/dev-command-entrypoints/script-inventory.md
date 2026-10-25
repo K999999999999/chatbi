@@ -60,7 +60,7 @@
 | [.githooks/pre-commit](../../.githooks/pre-commit) | Git自动调用的分支护栏 | Git自动运行；只公开hooks install，不新增手动pre-commit命令 |
 | [frontend npm scripts](../../frontend/package.json) | dev、typecheck、build、build:export、test、test:dev、test:real | 容器up/build/check/test web已覆盖主链；保持Node内部命令，避免额外暴露每个npm脚本 |
 | [playwright.real.config.ts](../../frontend/playwright.real.config.ts)及test:real | 旧真实浏览器链：宿主uv启动测试应用，真实LLM、专用账号/报告 | 现行完整容器验收已有替代主入口；先检查独有断言/兼容需求，再决定迁移/归档，不直接包装旧宿主路径 |
-| [.devcontainer配置](../../.devcontainer/devcontainer.json) | 编辑环境/工具装配与postCreate依赖安装 | 保持可选编辑环境；dev仍是运行入口，不新增另一套启动命令 |
+| 历史 `.devcontainer` 配置（见 `0e8a198`） | 编辑环境/工具装配与postCreate依赖安装 | 当时保持可选编辑环境；后按[入口精简 Spec](../remove-optional-dev-entrypoints/spec.md)退役，dev 仍是运行入口 |
 | [CI workflow](../../.github/workflows/ci.yml) | 质量、软件/数据库/浏览器/renderer、Smoke与依赖审计 | 保留CI编排和脚本复用；dev统一本机操作不意味着本机模拟所有GitHub任务 |
 | [Real E2E workflow](../../.github/workflows/real-e2e.yml) | 专用CI环境真实模型/RAG/三套基线与诊断 | 本机已有evaluate/报告校验；CI可继续直接调用同一Python能力 |
 | [Auto-merge workflow](../../.github/workflows/enable-auto-merge.yml) | 已授权PR的远端自动合并 | 属于交付流程，不纳入开发工具命令或自动发布 |

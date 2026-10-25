@@ -648,7 +648,6 @@ chatbi-engine/
 ├── docker-compose.dev.yml       开发 API、Web、工具与迁移服务
 ├── docs/                        当前正式文档、教学说明与审计
 ├── .github/                     PR 模板、CI 与自动合并工作流
-├── .devcontainer/               可选容器编辑环境配置
 ├── .harness/                    工程任务控制的项目适配
 └── .scratch/                    工作项规划、过程与历史证据
 ```
