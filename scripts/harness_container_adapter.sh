@@ -120,7 +120,7 @@ if [[ "$write_operation" == true ]]; then
     host_status_dir="$host_common/harness/work-items/$work_item"
     [[ -d "$host_status_dir" && ! -L "$host_status_dir" ]] \
         || fail '宿主无法定位 Git 公共目录中的工作项状态目录；未写入状态。'
-    status_mount=(-v "$host_status_dir:$status_dir:rw")
+    status_mount=(--mount "type=bind,src=$host_status_dir,dst=$status_dir")
 else
     source "$root/scripts/dev_environment.sh"
     prepare_git_mounts
@@ -140,17 +140,17 @@ plugin_mount_root=/opt/engineering-workflow
 docker_args=(
     run --rm --init --read-only --user "$uid:$gid" --workdir "$root"
     --network none --tmpfs /tmp:rw,noexec,nosuid,size=16m
-    -v "$host_root:$root:ro"
+    --mount "type=bind,src=$host_root,dst=$root,readonly"
     "${git_mounts[@]}"
-    -v "$plugin_root:$plugin_mount_root:ro"
+    --mount "type=bind,src=$plugin_root,dst=$plugin_mount_root,readonly"
     "${status_mount[@]}"
     -e PYTHONDONTWRITEBYTECODE=1
     "${git_environment[@]}"
     --entrypoint python "$python_image"
-    "$plugin_mount_root/tools/harness.py"
+    -m scripts.harness_control --plugin-root "$plugin_mount_root"
     --project-root "$root"
     --adapter "$root/.harness/project.json"
     "${tool_args[@]}"
 )
 echo 'Harness CLI 来源为显式指定的只读 Plugin 包；这不证明该包已安装或已加载到当前会话。' >&2
-exec docker "${docker_args[@]}"
+docker_run_checked "${docker_args[@]:1}"

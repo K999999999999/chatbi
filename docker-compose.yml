@@ -19,10 +19,12 @@ services:
         source: ${LOCAL_WORKSPACE_FOLDER:-.}/database
         target: /workspace/database
         read_only: true
+        bind: {create_host_path: false}
       - type: bind
         source: ${LOCAL_WORKSPACE_FOLDER:-.}/database/init/10_chatbi_dev_environment.sh
         target: /docker-entrypoint-initdb.d/10_chatbi_dev_environment.sh
         read_only: true
+        bind: {create_host_path: false}
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "sh /workspace/database/init/healthcheck.sh"]

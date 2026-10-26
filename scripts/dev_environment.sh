@@ -1,5 +1,32 @@
 #!/usr/bin/env bash
 # 共享宿主目标解析；调用方先验证命令和参数，再读取配置。
+require_bind_source() {
+    if [[ "$1" != /* || "$1" == *','* || "$1" == *$'\n'* || "$1" == *$'\r'* || ! -e "$1" ]]; then
+        echo '宿主 bind source 不存在或当前调用方不可核实；未启动容器，不创建源码目录。请核对宿主映射并从可验证该路径的环境调用。' >&2
+        return 2
+    fi
+}
+
+docker_run_checked() {
+    local previous= argument spec field source
+    local -a fields=()
+    for argument in "$@"; do
+        spec=
+        if [[ "$previous" == --mount ]]; then spec=$argument; previous=;
+        elif [[ "$argument" == --mount ]]; then previous=--mount; continue;
+        elif [[ "$argument" == --mount=* ]]; then spec=${argument#--mount=}; fi
+        [[ "$spec" == type=bind,* ]] || continue
+        IFS=, read -r -a fields <<< "$spec"
+        source=
+        for field in "${fields[@]}"; do
+            case "$field" in src=*|source=*) source=${field#*=} ;; esac
+        done
+        [[ -n "$source" ]] || { echo 'bind source 缺失；未启动容器。' >&2; return 2; }
+        require_bind_source "$source" || return 2
+    done
+    command docker run "$@"
+}
+
 validate_env_file_permissions() {
     local path=$1 metadata owner mode mode_bits
     if [[ ! -f "$path" ]]; then
@@ -27,6 +54,7 @@ initialize_environment() {
     fi
     target=dev
     host_root=${LOCAL_WORKSPACE_FOLDER:-$root}
+    require_bind_source "$host_root" || return 2
     env_file=${CHATBI_DEV_ENV_FILE:-$root/.env}
     override=${CHATBI_DEV_COMPOSE_OVERRIDE:-}
     compose_files=(-f "$root/docker-compose.yml" -f "$root/docker-compose.dev.yml")
@@ -45,6 +73,7 @@ initialize_environment() {
 
 # 在容器中保持真实worktree和Git公共目录身份；挂载只读。
 prepare_git_mounts() {
+    require_bind_source "$host_root" || return 2
     git_mounts=()
     local git_common git_worktree git_host_common git_host_worktree
     git_common=$(git -C "$root" rev-parse --path-format=absolute --git-common-dir) || return 1
@@ -53,10 +82,33 @@ prepare_git_mounts() {
     if [[ "$git_common" == "$root/"* ]]; then git_host_common="$host_root/${git_common#"$root/"}"; fi
     git_host_worktree=$git_worktree
     if [[ "$git_worktree" == "$git_common"* ]]; then git_host_worktree="$git_host_common${git_worktree#"$git_common"}"; fi
-    git_mounts=(-v "$git_host_common:$git_common:ro")
-    [[ "$git_worktree" == "$git_common" ]] || git_mounts+=(-v "$git_host_worktree:$git_worktree:ro")
+    require_bind_source "$git_host_common" || return 2
+    require_bind_source "$git_host_worktree" || return 2
+    git_mounts=(--mount "type=bind,src=$git_host_common,dst=$git_common,readonly")
+    [[ "$git_worktree" == "$git_common" ]] || git_mounts+=(--mount "type=bind,src=$git_host_worktree,dst=$git_worktree,readonly")
     git_environment=(-e GIT_OPTIONAL_LOCKS=0 -e GIT_CONFIG_COUNT=1
         -e GIT_CONFIG_KEY_0=safe.directory -e "GIT_CONFIG_VALUE_0=$root")
+}
+
+# Harness 检查所有登记工作树；仅挂载现存登记，绝不创建缺失源码。
+prepare_harness_worktree_mounts() {
+    local repository=${1:-$root} entry checkout= prunable=false source fd reader
+    exec {fd}< <(git -C "$repository" worktree list --porcelain -z)
+    reader=$!
+    while IFS= read -r -d '' entry <&"$fd"; do
+        case "$entry" in
+            'worktree '*) checkout=${entry#worktree }; prunable=false ;;
+            prunable*) prunable=true ;;
+            '')
+                if [[ -n "$checkout" && "$checkout" != "$root" && "$checkout" != "$repository" && "$prunable" != true ]]; then
+                    source=$(host_source_path "$checkout")
+                    git_mounts+=(--mount "type=bind,src=$source,dst=$checkout,readonly")
+                fi
+                checkout= ;;
+        esac
+    done
+    exec {fd}<&-
+    wait "$reader"
 }
 
 host_source_path() {

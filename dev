@@ -16,7 +16,7 @@ AI评测         evaluate [参数]；evaluate validate [报告校验参数]
 开发协作       hooks install；harness check [参数]；harness control [--plugin-source PATH] <Plugin命令>
 帮助无需.env或Docker。初始化、恢复与数据删除均须显式执行。
 evaluate validate: --report FILE 或 --report-dir DIR；必填 --expected-commit FULL_SHA --expected-rag-version VERSION；可选 --cases FILE --suite NAME。
-metadata export: --env-file FILE、--output-dir DIR；harness check: --repo DIR、--json。harness control: Plugin源码根目录可由 --plugin-source 或 CHATBI_ENGINEERING_WORKFLOW_SOURCE_ROOT 指定。
+metadata export: --env-file FILE、--output-dir DIR；harness check: --repo DIR、--json、--work-item ID（归属）、--closeout ID（本机收尾）。harness control: Plugin源码根目录可由 --plugin-source 或 CHATBI_ENGINEERING_WORKFLOW_SOURCE_ROOT 指定。
 create-admin: --username NAME；build-rag: --structure-dir DIR、--metrics-path FILE、--output-dir DIR、--build-id ID。
 evaluate沿用原套件/案例/资源参数：--online-retrieval、--business-analysis、--multi-turn、--query-understanding等，详见Runbook。
 HELP
@@ -111,7 +111,7 @@ trap 'result=$?; echo "开发环境操作失败（退出码 $result）；使用 
 # 只从 Compose 的内存流中提取资产路径，完整配置及 Secret 不输出、不落盘。
 prepare_directories() {
     local directories
-    directories=$("${compose[@]}" --profile tools config --format json | docker run --rm -i --network none \
+    directories=$("${compose[@]}" --profile tools config --format json | docker_run_checked --rm -i --network none \
         --entrypoint /opt/venv/bin/python chatbi-python-dev:local -c \
         'import json,sys; s=json.load(sys.stdin)["services"]["tools"]; print("\n".join(next(v["source"] for v in s["volumes"] if v["target"]==s["environment"][key]) for key in ("RAG_MODEL_DIR","RAG_OUTPUT_DIR")))')
     while IFS= read -r directory; do
@@ -126,7 +126,7 @@ prepare_directories() {
 check_application_ports() {
     source "$root/scripts/loopback_probe.sh"
     local published service port running mapping
-    published=$("${compose[@]}" config --format json | docker run --rm -i --network none \
+    published=$("${compose[@]}" config --format json | docker_run_checked --rm -i --network none \
         --entrypoint python chatbi-python-dev:local -c \
         'import json,sys; c=json.load(sys.stdin); print("\n".join(s+" "+str(c["services"][s]["ports"][0]["published"]) for s in ("api","web")))')
     while read -r service port; do

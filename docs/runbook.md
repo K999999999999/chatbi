@@ -155,6 +155,8 @@ OTel/OTLP诊断可选，默认关闭；端点/认证配置只在本地，内容�
 ./dev reset postgres
 ./dev reset qdrant
 ./dev harness check
+./dev harness check --work-item WORK_ITEM --json
+./dev harness check --closeout WORK_ITEM --json
 python -m scripts.check_harness_state --json
 ./dev harness control --plugin-source /path/to/agent-plugins state --work-item WORK_ITEM --json
 ```
@@ -165,7 +167,9 @@ metadata使用开发项目已配置的既有结构导出权限，只执行catalo
 
 reset仅支持明确选中的开发项目。PG删除Sales Mart及Control DB账号、Session、历史和成果；Qdrant删除集合和索引。核实项目/卷并输入DELETE POSTGRES DATA或DELETE QDRANT DATA；自动化可显式--confirm。取消/EOF、外部卷、标签不符或停止失败均不删除。命令先停止本项目API/Web和目标服务，再验证卷身份后删除；其他卷、模型缓存、旧APP与Stable资源保持。PG重建Seed并迁移但不创建管理员；Qdrant仅重建，需显式build-rag。结束后API/Web保持停止，按初始化步骤显式up。删除不可回滚，不能作为普通故障修复。
 
-Hook入口修改当前clone的本机hooksPath。旧 `./dev harness check` 与 `python -m scripts.check_harness_state` 仍只读本机Git和公共目录记录，不访问远端，也不修改进度或分支。
+Hook入口修改当前clone的本机hooksPath。`./dev harness check` 与 `python -m scripts.check_harness_state` 仍只读本机Git和公共目录记录，不访问远端，也不修改进度或分支；检查全部登记工作树，容器入口将其源码只读挂载。显式归属 / 收尾参数及旧记录兼容边界见[工作树归属与收尾](agents/issue-tracker.md#工作树归属与收尾)。
+
+源码、配置、Plugin 和 Git 的 Docker bind mount 使用 `--mount` 或 Compose `create_host_path: false`，并在调用 Docker 前验证宿主源存在。本机 Docker Desktop 的真实验证发现仅靠 `--mount` 仍可能创建缺失路径，因此必须保留调用前校验。已有容器调用方若看不到 `LOCAL_WORKSPACE_FOLDER` 指定的宿主路径，会明确失败，应从可验证该路径的宿主环境调用。报告等显式输出目录由命令有意创建；缺失源码目录不得自动补成空目录。旧 worktree 删除后出现 `package.json` 等同名空目录时，核对旧命令的挂载源与映射，不要反复删除后继续运行旧路径。
 
 ### Harness Task Control
 
@@ -180,6 +184,10 @@ Hook入口修改当前clone的本机hooksPath。旧 `./dev harness check` 与 `p
 ```
 
 适配使用已有 `chatbi-python-dev:local` 容器和宿主 Docker CLI，不要求宿主 Python / uv / Node；不构建或拉取镜像，不读 `.env`，不联网，不挂载 Docker socket。项目源码、Plugin 包、Git 公共目录只读；显式状态写命令仅将 `.git/harness/work-items/<work-item-id>/` 对应目录作为可写挂载。它不会创建状态记录，不批量迁移旧记录；读取旧记录时会标记 `legacy_read_only`，需要先由用户明确目标后显式执行 `migrate`。`cancel` 仅接受已迁移记录、`PRs: None`、非终态工作项和当前 SHA，并要求记录取消原因与确认来源；它保留 Stage 和历史，不完成交付收尾，也不删除分支 / worktree、关闭 PR 或级联修改 Ticket / 关联工作项。`done` 仍要求原有整体收尾证据。`onboard apply` 会修改项目文件，因此不通过此状态写入适配器执行。
+
+容器内 `scripts.harness_control` 在调用 Plugin 前核验当前任务归属。state 在未绑定、checkout 不匹配或记录仍为 legacy read-only 时仍可读进度，但返回 `record_only: true`，candidate / closeout 等当前 checkout 派生字段为空；候选相关操作拒绝不匹配，且不执行状态写入。migrate、cancel、运行状态、诊断记录，以及 adapter 声明不需要 candidate 的早期阶段转换，继续按明确工作项与 Plugin 原有语义门禁执行，不要求创建无意义的开发分支。此 preflight 不替代 Plugin 的证据、阶段或授权门禁。
+
+遇到取消状态或扩展格式不兼容时，先核实实际 marketplace、已发布源码及安装包内容。获准更新后使用 `codex plugin add engineering-workflow@MARKETPLACE` 等当前官方入口刷新，再验证受影响记录和源 / 安装摘要；不手改缓存。相同版本号不能证明文件一致，CLI 验证成功也不证明当前会话已重载，需按客户端支持方式在新会话确认。
 
 缺少 Plugin 路径、包内 CLI、容器镜像或状态目录时命令以非零退出；它不会回退到 `harness check` 并声称新 Harness 已运行。GitHub CI 使用仓库内合成 Plugin fixture 检查调用参数和挂载边界；该测试只证明 ChatBI adapter 命令组装，不证明真实 Plugin 已安装、同步、加载或可在托管 CI 运行。旧 `run_database_tests.py` 和 `npm test:real` 保留独有 profile / Windows 路径及 SQL 真值 / 追问 / 分析断言的兼容能力，属非推荐旧宿主入口；统一推荐 `test database` 和 `verify dev`。旧 `start-dev.ps1` 只提示使用 WSL/dev，不再启动宿主 uv/npm。CI 专用 `smoke_web.py` 可能改专用测试账号密码，不作为 doctor 或日常账号检查入口。
 
