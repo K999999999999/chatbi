@@ -96,3 +96,11 @@ Verification: 运行代码_resource阶段仍先TABLE后逐指标METRIC，COLUMN�
 Dynamic files: 7项均reviewed-no-change；未触及Runbook、Agent / Git规则、状态Contract或adapter清单。Roadmap不恢复。
 Findings: 无本轮阻断项；用户确认范围覆盖调度描述，不新增并发实现、性能结论或产品支持承诺。历史调度冲突已由本轮确认解决。
 Harness: 沿用此前缺历史baseline与扩展证据的Plugin整体限制，不宣称整体交付收尾通过；无Push/PR授权。未观察到新的、符合门槛且未被前述记录覆盖的Harness缺口。
+
+## 2026-10-26 PR 候选复核（基于 master@c869b0f）
+
+原 4 个已提交文档 Commit 已重放到独立候选分支 `docs/remove-roadmap-and-audit-pr`，当前 HEAD `fdebfee432473974c86d4c036e4ebd74d1e3be09`，最终 base `c869b0fc3a2a75036449c23a9154a95706d6419b`。重放时 `docs/agents/documentation.md` 有一处冲突；解决结果同时保留 PR #101 新增的“事实绑定工作项 / branch / commit / worktree”规则与本工作项 Roadmap 退役规则。候选共 47 个路径、451 insertions / 129 deletions，无运行时代码、测试或配置行为改动。
+
+当前候选验证：`./dev check docs` PASS（报告 `reports/tests/20261026T111716Z-fdebfee-check-docs-b4584c909362.json`）；`git diff --check origin/master...HEAD` PASS。旧提交的定向 Retrieval Contract 7 passed 证据保持其原提交身份，未改称当前候选新测试。未运行托管 CI、真实 LLM / 数据库 / 浏览器或全量回归；文档范围不需要重跑这些行为验证。
+
+复核：现行入口、规则与 PR 模板不再要求维护 Roadmap；原文存于 `.scratch/remove-roadmap-and-audit/history/roadmap.md`；动态清单仅删除 Roadmap 项，其他动态文档 Owner 与 adapter 配置不变。DOC001–DOC010 的修订遵守用户已确认的 COLUMN=50 与 TABLE→可选 METRIC→COLUMN 顺序；未把当前实现反向作为 Contract 依据。无发现超出已授权文档目标的运行行为变更。远端发布授权已于聊天“确认授权”取得，授权范围为该工作项单一 master PR 与其 CI、自动合并、复盘和清理。
