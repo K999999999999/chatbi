@@ -18,7 +18,7 @@ R1–R3 已提供电脑端问数、独立经营分析、结果展示及私人历
 
 R4 在同一业务链路增加真实执行状态、SSE 反馈、取消与重连，先实现并验收执行状态与最终结果，再实现并验收分析文字真实增量展示。
 
-事实源：[Roadmap](../../../docs/roadmap.md)、[产品范围](../../../docs/product-scope.md)、[Architecture](../../../docs/architecture.md)、[历史领域上下文快照](../../context-file-removal/history/domain-context-snapshot.md)、[R3 Spec](../../../docs/specs/history-results-v1.md)、[R3 Design](../../../docs/designs/history-results-v1.md)、[Query API](../../../docs/specs/query-api.md)、[Web Spec](../../../docs/specs/web-dialogue-v1.md)、[R2 Spec](../../../docs/specs/result-visualization-v1.md)、[Evaluation](../../../docs/specs/evaluation.md)、[Runbook](../../deployment-simplification/history/docs--runbook.md)。R4 确认后扩展网页执行 Contract；旧同步 API 的适用边界保持。
+事实源：[Roadmap](../../../.scratch/remove-roadmap-and-audit/history/roadmap.md)、[产品范围](../../../docs/product-scope.md)、[Architecture](../../../docs/architecture.md)、[历史领域上下文快照](../../context-file-removal/history/domain-context-snapshot.md)、[R3 Spec](../../../docs/specs/history-results-v1.md)、[R3 Design](../../../docs/designs/history-results-v1.md)、[Query API](../../../docs/specs/query-api.md)、[Web Spec](../../../docs/specs/web-dialogue-v1.md)、[R2 Spec](../../../docs/specs/result-visualization-v1.md)、[Evaluation](../../../docs/specs/evaluation.md)、[Runbook](../../deployment-simplification/history/docs--runbook.md)。R4 确认后扩展网页执行 Contract；旧同步 API 的适用边界保持。
 
 ## Compatibility / Migration / Documentation
 

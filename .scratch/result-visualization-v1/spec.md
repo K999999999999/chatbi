@@ -9,7 +9,7 @@ Baseline: `f182cf369217e7775c756101f45baff0ec301f44`
 
 R1 已建立电脑端登录、问数 / 追问和独立经营分析闭环；现有查询表格按原始值展示，缺少统一数字格式、完整的列语义、单位与实际查询范围。经营分析已展示后端报告与确定性归因数值，但没有贡献图。用户需同时看清走势和具体数值，能够核对数据及其业务含义。
 
-事实源：[路线图](../../docs/roadmap.md)、[产品范围](../../docs/product-scope.md)、[架构](../../docs/architecture.md)、[Web Contract](../../docs/specs/web-dialogue-v1.md)、[Query API](../../docs/specs/query-api.md)、[Online Query](../../docs/specs/online-query.md)、[历史领域上下文快照](../context-file-removal/history/domain-context-snapshot.md)。指标与维度的权威来源为仓库 Semantic 记录；归因来源为既有 Business Analysis 确定性结果。代码只能证明当前行为，不能替代用户确认的新 Contract。
+事实源：[路线图](../../.scratch/remove-roadmap-and-audit/history/roadmap.md)、[产品范围](../../docs/product-scope.md)、[架构](../../docs/architecture.md)、[Web Contract](../../docs/specs/web-dialogue-v1.md)、[Query API](../../docs/specs/query-api.md)、[Online Query](../../docs/specs/online-query.md)、[历史领域上下文快照](../context-file-removal/history/domain-context-snapshot.md)。指标与维度的权威来源为仓库 Semantic 记录；归因来源为既有 Business Analysis 确定性结果。代码只能证明当前行为，不能替代用户确认的新 Contract。
 
 ## Solution / Scope
 

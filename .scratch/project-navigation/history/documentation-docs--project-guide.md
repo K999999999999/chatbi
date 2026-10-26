@@ -6,7 +6,7 @@
 
 建议按以下顺序熟悉项目：
 
-1. **先看边界**：阅读本页的[产品是什么](#产品是什么)和[架构与主查询链路](#架构与主查询链路)，再读 [`docs/product-scope.md`](../../../docs/product-scope.md)；当前路线概况看 [`docs/roadmap.md` 的当前阶段](../../../docs/roadmap.md#当前阶段)，更细的阶段记录按需查阅。
+1. **先看边界**：阅读本页的[产品是什么](#产品是什么)和[架构与主查询链路](#架构与主查询链路)，再读 [`docs/product-scope.md`](../../../docs/product-scope.md)；当前路线概况看 [`docs/roadmap.md` 的当前阶段](../../../.scratch/remove-roadmap-and-audit/history/roadmap.md#当前阶段)，更细的阶段记录按需查阅。
 2. **认识代码地图**：先看[主要能力地图](#主要能力地图)和[仓库结构](#仓库结构)，遇到模块职责冲突时以 [`docs/architecture.md`](../../../docs/architecture.md) 为准。
 3. **沿一条真实链路深入**：从[在线问数链路](#在线问数链路)开始，沿 Web → API → 授权 → Online Query → SQL Guard → PostgreSQL 追踪。
 4. **按工作场景扩展**：在[功能专题路线](#功能专题路线)中选择历史、经营分析、导出、RAG、运行保障或 Evaluation。
@@ -19,7 +19,7 @@
 
 ChatBI 是面向业务数据查询的 Domain AI Engine（领域 AI 引擎），采用 Modular Monolith（模块化单体）。它把自然语言问题转为业务语义、受控 SQL 和数据库结果，并提供经营分析、图表、历史成果、流式执行状态、结果导出及本机运行保障。
 
-系统的核心原则是 **Model proposes, program decides**：模型输出始终是候选，程序和权威事实负责业务口径、授权、数据范围、SQL 安全与状态裁决。产品边界、已支持能力和不支持项以 [`docs/product-scope.md`](../../../docs/product-scope.md) 为准；跨阶段状态和优先级以 [`docs/roadmap.md`](../../../docs/roadmap.md) 为准。MVP 和本机 Stable 能力不代表公网生产部署或通用多租户、多数据源能力。
+系统的核心原则是 **Model proposes, program decides**：模型输出始终是候选，程序和权威事实负责业务口径、授权、数据范围、SQL 安全与状态裁决。产品边界、已支持能力和不支持项以 [`docs/product-scope.md`](../../../docs/product-scope.md) 为准；跨阶段状态和优先级以 [`docs/roadmap.md`](../../../.scratch/remove-roadmap-and-audit/history/roadmap.md) 为准。MVP 和本机 Stable 能力不代表公网生产部署或通用多租户、多数据源能力。
 
 ## 架构与主查询链路
 
@@ -123,7 +123,7 @@ Natural Language
 | AI Evaluation | 模型 / 生成行为对标准案例的结果 | [`evaluation/`](../../../evaluation)、[Evaluation Spec](../../../docs/specs/evaluation.md) |
 | Business Acceptance | 候选或运行环境是否满足业务验收 | [Runbook 测试章节](../../deployment-simplification/history/docs--runbook.md#8-运行测试)；历史验收按功能保存在所属 `.scratch/` 工作记录中，报告受候选 / 时间 / 环境身份约束 |
 | 开发、测试和运维步骤 | 命令如何执行及其前提 / 副作用 | [`docs/runbook.md`](../../deployment-simplification/history/docs--runbook.md) |
-| 当前方向与历史阶段 | 依赖、路线和优先级状态 | [`docs/roadmap.md`](../../../docs/roadmap.md) |
+| 当前方向与历史阶段 | 依赖、路线和优先级状态 | [`docs/roadmap.md`](../../../.scratch/remove-roadmap-and-audit/history/roadmap.md) |
 
 冲突时依照 `AGENTS.md`：已确认的上层事实源优先于旧代码、历史 Metadata 或派生产物；若事实源之间冲突，先指出冲突并核实，不以导航页自行裁定业务事实。
 

@@ -4,11 +4,12 @@
 
 ## 用途与范围
 
-为实体查询、单指标查询和多指标查询提供同一条 Online Retrieval 流程。
+为实体查询、单指标查询和多指标查询提供同一条 Online Retrieval 流程，检索按 TABLE → 可选 METRIC → COLUMN 的顺序执行。
 
 ```text
 同一版本资产快照
-→ TABLE 检索 + 可选 METRIC 检索（并行）
+→ TABLE 检索
+→ 按请求的指标说法依次进行 METRIC 检索（实体查询跳过）
 → 在候选表范围内进行 COLUMN 检索
 → 直接 FK-PK Relationship Graph
 → 最小结构化上下文
@@ -20,15 +21,21 @@
 
 单指标和多指标的差异只体现在 `METRIC` 是否存在以及指标数量，不建立两条完整流水线。
 
-V1 的初始检索配置为：
+当前检索配置为：
 
 ```text
 TABLE  Top-K = 5，threshold = 0.30
-COLUMN Top-K = 20，threshold = 0.25
+COLUMN Top-K = 50，threshold = 0.25
 METRIC Top-K = 10，threshold = 0.30
 ```
 
-其中 `COLUMN = 20` 是所有候选表合计最多 20 个列；`METRIC = 10` 是候选数，不是最终输出指标数。V1 一条查询最多明确请求 5 个指标。
+其中 `COLUMN = 50` 是所有候选表合计的 COLUMN 候选预算上限，不是每张表各取 50 列，也不要求每次取满；`METRIC = 10` 是每个指标说法的候选数，不是最终输出指标数。V1 一条查询最多明确请求 5 个指标。
+
+### 检索预算与调度
+
+COLUMN 默认上限为 50；该上限是候选预算，不代表已经通过参数对比证明最优。TABLE 完成后，按用户请求的指标说法依次检索 METRIC；实体查询跳过 METRIC。随后在候选表范围内检索 COLUMN，同一请求始终使用同一发布资产快照。
+
+2026-10-25 用户确认保留现有 COLUMN 默认上限 50 及顺序检索方式，文档与当前实现保持一致；不新增并发调度或改变认证、失败关闭和 SQL 安全规则。实现机制见[检索设计](../designs/online-retrieval.md#候选与必需资源)，历史要求及确认依据见[核实记录](../../.scratch/remove-roadmap-and-audit/documentation-repair.md)。
 
 ## 检索规则
 
@@ -50,10 +57,11 @@ METRIC Top-K = 10，threshold = 0.30
 
 ### Resource Retrieval（资源检索）
 
+- 检索依次完成 TABLE、可选 METRIC、COLUMN；多指标按请求说法逐个检索，不将 TABLE / METRIC 调度为并行任务。
 - TABLE 检索最多保留 5 个候选，低于 `0.30` 的结果不进入有效候选集。
 - METRIC 在存在指标意图时按每个用户请求的指标说法分别执行检索，每次最多保留 10 个候选，低于 `0.30` 的结果不进入有效候选集；各次检索仍绑定同一发布资产版本。
 - 无指标意图的实体类查询跳过 METRIC，空的指标上下文不视为技术失败。
-- COLUMN 检索必须在 TABLE 候选范围内进行，最多保留所有候选表合计 20 个列，低于 `0.25` 的普通语义结果不进入有效候选集。
+- COLUMN 检索必须在 TABLE 候选范围内进行，最多保留所有候选表合计 50 个列，低于 `0.25` 的普通语义结果不进入有效候选集。
 - 不增加字段白名单、黑名单、加权或条件匹配规则引擎。
 - 允许在候选表范围内恢复指标公式、固定过滤条件和时间关系明确引用的必需字段；允许对用户明确请求的分组维度执行有限字段检索。
 - 不通过全库字段扫描、候选表外检索或隐藏业务规则绕过候选范围。
@@ -83,7 +91,7 @@ METRIC Top-K = 10，threshold = 0.30
 - 不支持必须经过中间表的多跳 Join；此类请求返回 `CANNOT_ANSWER`。
 - TABLE 候选是候选池，不代表所有候选表都必须 Join。
 - Graph 只返回候选表之间允许使用的直接 Join Facts（连接事实）；不自动把候选表全部连接起来。
-- Join Key 不占用 COLUMN Top-20；它作为 Graph 的结构事实提供给结构化上下文和 SQL Guard。
+- Join Key 不占用 COLUMN Top-50；它作为 Graph 的结构事实提供给结构化上下文和 SQL Guard。
 - 指标类请求使用指标 `data_source` 对应的事实表作为 `anchor_table`。
 - 无指标请求使用被列候选命中且表检索分数最高的表作为主表；无法确定时返回 `CANNOT_ANSWER`。
 - 事实表作为主表时，维表统一使用 `LEFT JOIN`。
@@ -162,7 +170,7 @@ LLM 不得：
 
 必须覆盖：
 
-- TABLE Top-5、COLUMN 总 Top-20、METRIC Top-10 和三个阈值；
+- TABLE Top-5、COLUMN 总 Top-50、METRIC Top-10 和三个阈值；
 - 实体类查询跳过 METRIC；
 - 单指标和多指标使用同一编排流程；
 - 多指标最多 5 个、全部命中、全部返回且顺序正确；超过 5 个时拒答；

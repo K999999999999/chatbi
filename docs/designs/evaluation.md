@@ -120,8 +120,8 @@ provenance
 - `judge_configuration` / `judge_configuration_hash`：仅经营分析适用；单独记录 Judge 模型及配置，Judge 的 temperature 固定为 `0`。
 - `model_endpoint_hash`：只记录地址指纹，不把真实 Endpoint（端点）写入报告。
 - `test_set_hash`：标准测试集内容指纹。
-- `context_hash`：五个结构和指标文件的整体内容指纹。
-- `reference_result_hash`：21 条标准 SQL 结果的整体指纹，用于识别相关数据库数据是否变化。
+- `context_hash`：本套件实际上下文文件集合的内容指纹；单轮默认包含 tables / columns / relationships / metrics 四份文件，经营分析另外包含 dimensions，以 CLI 的适用输入集合为准。
+- `reference_result_hash`：本次实际取得的标准 SQL 结果集合的整体指纹，用于识别参考结果是否变化；单轮仅 result_match 案例生成标准结果，澄清 / 拒答案例不执行标准 SQL，不以固定案例数量定义该 Hash。
 - `sales_mart_seed_version`：开发 Seed 中登记的版本。
 - `sales_mart_data_summary`：Sales Mart 固定业务表的行数、总行数和日期范围，不包含明细记录。
 - `sales_mart_data_hash`：在 `chatbi_app` 只读连接的同一 `REPEATABLE READ READ ONLY` 事务中，按固定表名、字段名和稳定主键顺序规范化实际行值后计算的 SHA-256。它反映实际数据状态，不依赖 Seed 文件版本或评测结果。
@@ -140,7 +140,7 @@ reports/evaluation/<run_id>.md
 JSON 是机器可读评测证据；Markdown 是由同一份 JSON 数据确定性生成的人类可读总结，不重新调用 LLM 或数据库。
 JSON 与 Markdown 以排他方式创建，必须属于同一 Run ID；撞名时返回失败且保留旧文件，部分写入失败不能返回成功。历史报告保持可读、Baseline 比较兼容；历史内容不得补造 provenance，正式验收器拒绝缺少新证明或 `consistency` 非 `stable` 的报告。
 
-报告文件是评测证据，可以单独 Commit。版本 Tag 遵循仓库整体版本规则，不由 Evaluation 模块单独决定；不自动 Push（推送）远程仓库。
+新生成报告是被 Git 忽略的本机评测产物，不作为源码 Commit 或远端交付内容；长期工作记录保存适用提交、报告身份、结果与限制。已有被跟踪历史报告保留原身份。版本 Tag 遵循仓库整体版本规则，不由 Evaluation 模块单独决定；不自动 Push（推送）远程仓库。
 
 ## Baseline 与回归比较
 

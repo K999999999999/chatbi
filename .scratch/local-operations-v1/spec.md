@@ -10,7 +10,7 @@ R6 已提供固定版本本机部署与兼容升级 / 回滚，但 `/health` 仅
 
 Canonical Source: 本文件保留用户确认的规划来源；正式行为Contract已固化到 [运行保障Spec](../deployment-simplification/history/docs--specs--local-operations-v1.md)，相同范围不形成第二份竞争事实。实时进度/授权以Git common-dir为准。
 
-事实源：[Roadmap](../../docs/roadmap.md)、[Architecture](../../docs/architecture.md)、[Product Scope](../../docs/product-scope.md)、[R6 Contract](../deployment-simplification/history/docs--specs--local-deployment-v1.md)、[R4](../../docs/specs/execution-streaming-v1.md)、[R5](../../docs/specs/result-export-v1.md)、[Observability](../../docs/specs/observability.md)、[Web](../../docs/specs/web-dialogue-v1.md)。规划基线 master `0c77d80f35cde135160e4a8806f639397f1867ff`；稳定运行与原验收身份仍为 `2b4a8c8`，不改写历史报告身份。
+事实源：[Roadmap](../../.scratch/remove-roadmap-and-audit/history/roadmap.md)、[Architecture](../../docs/architecture.md)、[Product Scope](../../docs/product-scope.md)、[R6 Contract](../deployment-simplification/history/docs--specs--local-deployment-v1.md)、[R4](../../docs/specs/execution-streaming-v1.md)、[R5](../../docs/specs/result-export-v1.md)、[Observability](../../docs/specs/observability.md)、[Web](../../docs/specs/web-dialogue-v1.md)。规划基线 master `0c77d80f35cde135160e4a8806f639397f1867ff`；稳定运行与原验收身份仍为 `2b4a8c8`，不改写历史报告身份。
 
 ## Solution / Scope
 

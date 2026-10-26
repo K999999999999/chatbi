@@ -42,10 +42,10 @@ ChatBI是面向销售数据的领域AI引擎，提供电脑端问数、多轮追
 | 内容 | 入口 |
 | --- | --- |
 | 从业务目标到架构、代码与运行验证的完整讲解 | [项目全景详解](docs/project-explained.md) |
-| 能力、支持范围与当前方向 | [Product Scope](docs/product-scope.md)、[Roadmap](docs/roadmap.md) |
+| 能力与支持范围 | [Product Scope](docs/product-scope.md) |
 | 模块、数据与核心链路 | [Architecture](docs/architecture.md) |
 | 当前行为与实现机制 | [Specs](docs/specs)、[Designs](docs/designs) |
-| 项目级审计记录 | [2026-10-16 全仓项目审计](docs/audits/project-audit-20261016.md) |
+| 项目级审计记录 | [2026-10-25 文档一致性审核](docs/audits/documentation-audit-20261025.md)、[2026-10-16 全仓项目审计](docs/audits/project-audit-20261016.md) |
 | HTTP、身份与控制数据 | [query_api](src/query_api)、[authorization](src/authorization)、[chatbi_control](src/chatbi_control) |
 | 问数、检索与SQL安全 | [online_query](src/online_query) |
 | 分析与归因 | [business_analysis](src/business_analysis) |

@@ -8,7 +8,7 @@ ChatBI 同时提供容器开发、宿主调试和自研 Stable 发布运维入�
 
 目标是源码交付、单一推荐容器开发入口，以及标准 Dockerfile / Compose 运行能力。无需开发者在宿主安装 Python、uv 或 Node，不维护预构建镜像发布流程，不实现企业发布运维平台。
 
-审查基线：`master@f4d0693`。正式事实源：[Architecture](../../docs/architecture.md)、[Product Scope](../../docs/product-scope.md)、[Roadmap](../../docs/roadmap.md)、[Bootstrap](../../docs/specs/bootstrap.md)、[Container Dev](../../docs/specs/container-dev-environment.md)、[Local Deployment](history/docs--specs--local-deployment-v1.md)、[Local Operations](history/docs--specs--local-operations-v1.md)、[Runbook](history/docs--runbook.md)。本草案确认后定义本次变更范围；正式当前 Contract 在交付时同步，旧 R6/R7 证据保留为历史。
+审查基线：`master@f4d0693`。正式事实源：[Architecture](../../docs/architecture.md)、[Product Scope](../../docs/product-scope.md)、[Roadmap](../../.scratch/remove-roadmap-and-audit/history/roadmap.md)、[Bootstrap](../../docs/specs/bootstrap.md)、[Container Dev](../../docs/specs/container-dev-environment.md)、[Local Deployment](history/docs--specs--local-deployment-v1.md)、[Local Operations](history/docs--specs--local-operations-v1.md)、[Runbook](history/docs--runbook.md)。本草案确认后定义本次变更范围；正式当前 Contract 在交付时同步，旧 R6/R7 证据保留为历史。
 
 ## Solution / Scope
 

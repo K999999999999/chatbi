@@ -34,7 +34,7 @@
 | 多轮状态 | [Multi-Turn Spec](../multi-turn-conversation-v1/spec.md)：最后一次成功结构化状态、30 分钟无成功更新 TTL、服务重启失效、单会话单并发 |
 | 经营分析 | [Analysis Spec](../business-analysis-root-cause-v1/spec.md)：两个时期、人民币净销售额 / 毛利、产品因素归因、24 小时 checkpoint |
 | 身份实现及证据 | `src/authorization/auth_service.py`、`src/query_api/app.py`、`tests/query_api/test_auth_api.py`：数据库 Session、首次改密、Bearer 接口 |
-| 交付路线 | [Roadmap](../../docs/roadmap.md)：R1 → R2 → R3 → R4 → R5；R6 基础提前准备 |
+| 交付路线 | [Roadmap](../../.scratch/remove-roadmap-and-audit/history/roadmap.md)：R1 → R2 → R3 → R4 → R5；R6 基础提前准备 |
 
 以上相对链接以本文件位置解析。账号行为依据现有实现及测试核实；已有 Query API 文档仍含“不负责用户登录”等与当前内置账号能力不一致的旧描述，本次实施须同步相关接口边界，不据此删除现有账号能力。
 

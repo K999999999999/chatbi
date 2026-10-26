@@ -122,4 +122,4 @@ Status: confirmed；七项 Ticket 已实施并随 PR #86 合并（2026-10-15T16:
 
 本轮由用户明确要求“当做需求”，随后逐项讨论并扩展报告追溯范围；用户已确认完整 Spec、七项拆分及实施。设计细化见 [Design](design.md)，审查记录见 [Design Review](design-review.md)，Ticket 验收与结果见 [issues](issues/)。七项工作已随 PR #86 合并；真实 LLM 评测与业务验收未运行。合并后路线图状态更正由[路线图收尾 Spec](../test-reliability-roadmap-closeout/spec.md)跟踪。
 
-正式事实源见[架构](../../docs/architecture.md)、[产品范围](../../docs/product-scope.md)、[路线图](../../docs/roadmap.md)、[评测 Contract](../../docs/specs/evaluation.md)、[容器开发 Contract](../../docs/specs/container-dev-environment.md)与[本地工作规则](../../docs/agents/issue-tracker.md)。历史源文件由调查基线提交定位；本 Spec 不把旧实现提升为新的业务真相。
+正式事实源见[架构](../../docs/architecture.md)、[产品范围](../../docs/product-scope.md)、[路线图](../../.scratch/remove-roadmap-and-audit/history/roadmap.md)、[评测 Contract](../../docs/specs/evaluation.md)、[容器开发 Contract](../../docs/specs/container-dev-environment.md)与[本地工作规则](../../docs/agents/issue-tracker.md)。历史源文件由调查基线提交定位；本 Spec 不把旧实现提升为新的业务真相。

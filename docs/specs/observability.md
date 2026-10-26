@@ -8,7 +8,7 @@
 
 - 请求成功还是失败；
 - 时间主要花在哪个处理节点；
-- 失败、拒绝或 fallback（回退）发生在哪个节点；
+- 失败或拒绝发生在哪个节点；
 - 使用了哪个 RAG 资产版本、哪些候选资源和哪个模型；
 - 查询业务结果是否在接入可观测能力后保持不变。
 
@@ -26,7 +26,7 @@ Observability 只记录和关联已有业务行为，不决定业务事实、RAG
 - 沿用同步、单次请求/响应的 Online Query 运行方式。
 - API 请求和调用 `BoundAuthorizedQueryService.query()` 的评测路径都必须可以形成完整 Trace；下游 `OnlineQueryService.execute()` 继续复用活动 Trace。
 - 进程内已有可信活动 Trace 时继续使用；HTTP 客户端传入的 `traceparent` / `tracestate` 在 V1 不视为可信上游，不直接继承；没有可信活动 Trace 时由系统创建。
-- HTTP Middleware 必须在请求体解析前先读取或生成 `request_id`，再创建带该编号的 Root Trace；同一个 `request_id` 必须传入后续 Service 和响应体。
+- HTTP Middleware 对所覆盖的业务写请求在请求体解析前读取或生成 `request_id`，再创建带该编号的 Root Trace；同一个编号传入后续 Service 和响应体。GET / HEAD 观察请求保留诊断编号而不创建业务 Root Trace，具体边界见[后台执行与容器观测](#后台执行与容器观测)。
 - 可观测记录属于旁路行为，不增加业务重试，不改变节点顺序和调用次数。
 - 可观测能力关闭、配置错误或后端不可用时，查询主链路继续按原 Contract 运行。
 
@@ -75,9 +75,9 @@ query.request
 规则：
 
 - 没有执行的节点不得伪造 Span。
-- METRIC 路线仍然只执行既有的一次综合指标检索，记录 Span 不得导致重复检索。
+- METRIC 路线按每个请求的指标说法分别执行一次检索，每次实际搜索记录对应 `metric.search` Span；实体查询跳过 METRIC。记录 Span 不得额外触发检索，次数遵循[在线检索规则](online-retrieval.md#resource-retrieval资源检索)。
 - Retrieval 总 Span 和已执行的内部 Span 都要记录耗时，便于区分 Embedding、搜索、Join 和上下文组装问题。
-- fallback 必须同时记录原失败状态、实际采用的路径和最终结果。
+- 在线 RAG 技术失败按 `FAIL_CLOSED` 记录原失败状态与受控错误，不进入静态上下文；显式静态模式是单独装配选择。
 - 业务拒绝、技术失败和成功必须使用不同状态表达，不得都记录为普通成功。
 
 ## 最小观察数据
@@ -114,7 +114,7 @@ query.request
 - `llm.generate` 使用标准 GenAI 操作、模型和 Usage 属性；若通用属性不能被验收平台识别，只能在基础设施适配器中增加最小平台兼容字段；
 - V1 不计算或承诺费用。
 
-本地 API 与 Evaluation 工具容器复用 `CHATBI_OBSERVABILITY_ENABLED`、`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` 和 `OTEL_EXPORTER_OTLP_HEADERS` 向配置的 OTLP 后端导出 Trace。开发者可设置 `CHATBI_TRACE_CONSOLE_EXPORT_ENABLED=true`，在 `local`、`dev` 或 `test` 环境把同一批安全 Span 同步输出到应用标准输出，供 `docker compose logs api` 或工具容器日志本地查询；其他运行环境会忽略该开关。`CHATBI_TRACE_CONTENT_ENABLED` 在 Evaluation 工具容器中固定为 `false`，并且 Console 导出仍受相同的 Span 属性白名单和内容采集规则约束。Trace 配置缺失或任一 Exporter 导出失败不得改变业务结果。
+本地 API 与 Evaluation 工具容器复用 `CHATBI_OBSERVABILITY_ENABLED`、`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` 和 `OTEL_EXPORTER_OTLP_HEADERS` 向配置的 OTLP 后端导出 Trace。开发者可设置 `CHATBI_TRACE_CONSOLE_EXPORT_ENABLED=true`，在 `local`、`dev` 或 `test` 环境把同一批安全 Span 同步输出到应用标准输出，供 `./dev logs --since 10m` 或工具容器日志本地查询；其他运行环境会忽略该开关。`CHATBI_TRACE_CONTENT_ENABLED` 在 Evaluation 工具容器中固定为 `false`，并且 Console 导出仍受相同的 Span 属性白名单和内容采集规则约束。Trace 配置缺失或任一 Exporter 导出失败不得改变业务结果。
 
 ### SQL 与数据库
 
@@ -156,7 +156,7 @@ query.request
 - SQL 被拒绝：对应检查 Span 标记拒绝，数据库 Span 不得出现。
 - LLM、Retrieval 或数据库技术故障：对应 Span 标记技术失败并记录安全分类；Provider 故障使用固定 Provider 分类，SQL 拒绝使用固定 Guard 原因代码。
 - 数据库超时：数据库 Span 标记超时，最终状态关联 `QUERY_TIMEOUT`。
-- Retrieval fallback：原失败 Span 和 fallback 路径都必须可见。
+- Retrieval 技术失败：原失败 Span 和最终受控错误必须可见，`fallback_used=false`；不记录未发生的静态回退。
 - 可观测后端不可用：不得改变原 QuerySuccess、QueryFailure、HTTP 状态和错误码，不得触发业务重试。
 - 可观测功能关闭：查询输入、输出、调用次数和原有日志行为保持兼容。
 
@@ -190,7 +190,7 @@ query.request
 
 ### AI Evaluation（AI 评测）
 
-- 现有 20 条真实 Online RAG Evaluation 使用原查询链路运行，业务结果不因可观测接入而变化。
+- 按[评测规则](evaluation.md)的当前标准案例集执行真实 Online RAG Evaluation，使用原查询链路运行，业务结果不因可观测接入而变化。
 - 每个评测请求能够关联模型、RAG 资产版本、总耗时和实际执行节点。
 - 本阶段只建立节点延迟和 Token Baseline（基线），不预设性能提升目标。
 

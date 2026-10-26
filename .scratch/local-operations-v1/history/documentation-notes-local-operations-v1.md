@@ -16,7 +16,7 @@ R6 已提供固定版本本机部署与兼容升级 / 回滚，但 `/health` 仅
 
 Canonical Source: 本文件是已确认R7行为Contract；实现和验收进度见工作记录及Acceptance。既有未改变行为以原Spec为准。
 
-事实源：[Roadmap](../../../docs/roadmap.md)、[Architecture](../../../docs/architecture.md)、[Product Scope](../../../docs/product-scope.md)、[R6 Contract](../../deployment-simplification/history/docs--specs--local-deployment-v1.md)、[R4](../../../docs/specs/execution-streaming-v1.md)、[R5](../../../docs/specs/result-export-v1.md)、[Observability](../../../docs/specs/observability.md)、[Web](../../../docs/specs/web-dialogue-v1.md)。规划基线 master `0c77d80f35cde135160e4a8806f639397f1867ff`；稳定运行与原验收身份仍为 `2b4a8c8`，不改写历史报告身份。
+事实源：[Roadmap](../../../.scratch/remove-roadmap-and-audit/history/roadmap.md)、[Architecture](../../../docs/architecture.md)、[Product Scope](../../../docs/product-scope.md)、[R6 Contract](../../deployment-simplification/history/docs--specs--local-deployment-v1.md)、[R4](../../../docs/specs/execution-streaming-v1.md)、[R5](../../../docs/specs/result-export-v1.md)、[Observability](../../../docs/specs/observability.md)、[Web](../../../docs/specs/web-dialogue-v1.md)。规划基线 master `0c77d80f35cde135160e4a8806f639397f1867ff`；稳定运行与原验收身份仍为 `2b4a8c8`，不改写历史报告身份。
 
 ## Documentation / Done When
 
