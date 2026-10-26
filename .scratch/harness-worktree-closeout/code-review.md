@@ -15,5 +15,5 @@ Change Description: 任务候选绑定实际 branch / worktree，跨目录状态
 
 Review Dimensions: Correctness / Comprehension / Consistency / Testability / Architecture / Security：PASS。未触及 Domain / Application 依赖方向或业务安全链；保留只读项目、Plugin、Git 及单工作项可写挂载，无 Secret 改动。没有创建任务平台、通用迁移器或自动清理其他目录。
 
-Tests: 复用 [验证记录](verification.md) 对应源码 / Contract 证据；未以软件测试证明真实 AI 或生产验收。
-Next: 最终文档 / Diff 核对后本地提交；新 Push / PR 仍需独立发布授权。
+Tests: 原候选 Review 对应源码 / Contract 证据；PR #101 CI 发现的 Compose 默认值断言已按实际规范化语义修正，本机定向失败用例及 scripts 回归通过；Diff 复核确认缺省值仅表示 Compose 默认 false，源 YAML 仍显式声明 false。未以软件测试证明真实 AI 或生产验收。
+Next: 提交已复核的 CI 断言修正，等待新 head 的完整 required checks。

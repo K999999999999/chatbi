@@ -529,7 +529,7 @@ def test_compose_config_excludes_secrets_and_migration_identity_from_api(tmp_pat
     assert all(Path(v["source"]).name != ".env" for v in api["volumes"])
     assert all(v["read_only"] for v in api["volumes"])
     assert all(
-        v["bind"]["create_host_path"] is False
+        v.get("bind", {}).get("create_host_path", False) is False
         for v in services["postgres"]["volumes"]
         if v["type"] == "bind"
     )

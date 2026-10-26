@@ -35,6 +35,12 @@
 | `.harness/dynamic-files.json` | 文件归属和触发条件不变，已逐项复核；不为本次改动修改其他工作项的通用清单。 |
 | 本目标 Spec / Design / Tickets / Review | 保留当前决定及验证，实际运行原始产物归档于本机 Git common-dir。 |
 
+## PR #101 托管 CI 与兼容性修正
+
+- 首轮 required check 中 7 项通过；`Deterministic tests` 为 1182 passed、61 skipped、155 subtests passed、1 failed。失败用例 `test_compose_config_excludes_secrets_and_migration_identity_from_api` 直接索引规范化 Compose 输出的 `create_host_path` 字段；GitHub Compose 将默认 false 省略，触发 `KeyError`。配置源仍显式声明 `create_host_path: false`，不是运行行为失败。
+- 将断言改为 `v.get("bind", {}).get("create_host_path", False) is False`，适配规范化输出省略默认值的行为。本机 Docker Compose v5.1.4 下定向用例通过，报告 `20261026T102903Z-b605a5a-test-python-390717497b39.json`。
+- 修正已更新到 PR 后，全部 required checks 将针对新 head 重跑；在重跑完成前不把 PR 标为可合并。
+
 ## 未执行与交付边界
 
-未运行付费 AI Evaluation、真实业务端到端或生产运行验收；本目标无相应业务行为变化。未发布本目标的新 PR，Hosted CI 不属于当前本地证据；最终候选等待独立发布授权。历史审计目录的具体创建命令仍未确认，本次验证解决已复现的缺失源重建机制。
+未运行付费 AI Evaluation、真实业务端到端或生产运行验收；本目标无相应业务行为变化。历史审计目录的具体创建命令仍未确认，本次验证解决已复现的缺失源重建机制。
