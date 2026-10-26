@@ -238,6 +238,10 @@ PR 确认已 `MERGED` 后，每个交付都必须完成一次简短 Harness 复�
 8. 保留仍有回滚价值的 `backup/*` 和 `codex/backup-*` branch，不把它们当作日常开发线；
 9. 只有以上检查全部通过，才能在完成报告中明确说明：“当前工作区已恢复到干净的 `master`，可以开始下一个 Feature”。
 
+临时 worktree 与主目录分别核对：提前在本机记录写清本任务 Feature branch、实施目录、返回主目录和目录最终去向。同步默认分支时注明实际操作的目录；不能把临时目录切到 master 就认定主目录已经恢复。移除临时目录前检查 ignored 环境、报告和缓存，保存必要证据，并核对容器挂载 / 其他依赖。删除目标始终是已核实属于本任务的目录和 Feature branch，不能因该目录已检出 master 而误删主分支。
+
+主目录仍承载另一项工作时，保留该任务；在共享记录明确 parked / retained、保留原因和后续动作。若选择把已提交候选 parked 后恢复 master，分支提交必须保留。只有完成约定清理、运行 `./dev harness check --closeout WORK_ITEM --json` 并核对实际远端，才将整个目标记为 done；无法清理时保持待清理，不能仅凭 CI 全绿写 no-gap / done。
+
 #### 6.4 PR 尚未合并或异常时
 
 - `OPEN`、`BLOCKED`、CI / required checks 仍在运行或失败：保留 head branch，不执行分支清理，报告 PR 状态、检查进度和下一等待条件；

@@ -29,6 +29,8 @@ def fixture_repo(parent: Path) -> Path:
         "scripts/container_tasks.sh",
         "scripts/dev_environment.sh",
         "scripts/harness_container_adapter.sh",
+        "scripts/harness_control.py",
+        "scripts/check_harness_state.py",
         ".harness/project.json",
         ".harness/dynamic-files.json",
     ):
@@ -157,17 +159,23 @@ def test_read_only_control_uses_fixture_source_and_read_only_mounts(
     assert run[0] == "run"
     assert "--network" in run and run[run.index("--network") + 1] == "none"
     assert "--read-only" in run
-    assert f"{repo}:{repo}:ro" in run
+    assert f"type=bind,src={repo},dst={repo},readonly" in run
     plugin_root = PLUGIN_FIXTURE / "plugins/engineering-workflow"
-    assert f"{plugin_root}:/opt/engineering-workflow:ro" in run
+    assert f"type=bind,src={plugin_root},dst=/opt/engineering-workflow,readonly" in run
     common = git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir")
-    assert f"{common}:{common}:ro" in run
-    assert not any(value.endswith(":rw") for value in run)
+    assert f"type=bind,src={common},dst={common},readonly" in run
+    assert not any(
+        value.startswith("type=bind,") and not value.endswith(",readonly")
+        for value in run
+    )
     assert "/var/run/docker.sock" not in run
     assert str(tmp_path / "must-not-read.env") not in run
     assert run[run.index("--entrypoint") + 1] == "python"
-    assert run[-9:] == [
-        "/opt/engineering-workflow/tools/harness.py",
+    assert run[run.index("--entrypoint") + 3 :] == [
+        "-m",
+        "scripts.harness_control",
+        "--plugin-root",
+        "/opt/engineering-workflow",
         "--project-root",
         str(repo),
         "--adapter",
@@ -177,6 +185,43 @@ def test_read_only_control_uses_fixture_source_and_read_only_mounts(
         WORK_ITEM,
         "--json",
     ]
+
+
+def test_harness_check_mounts_other_registered_worktrees_read_only(
+    tmp_path: Path,
+) -> None:
+    repo = fixture_repo(tmp_path)
+    linked = tmp_path / "another checkout"
+    git(repo, "worktree", "add", "-b", "fix/other", str(linked))
+    env, log = adapter_env(tmp_path)
+    result = run_dev(repo, env, "harness", "check", "--json")
+    assert result.returncode == 0, result.stderr
+    run = calls(log)[0]
+    assert f"type=bind,src={linked},dst={linked},readonly" in run
+
+
+def test_missing_host_workspace_is_refused_before_any_docker_call(
+    tmp_path: Path,
+) -> None:
+    repo = fixture_repo(tmp_path)
+    env, log = adapter_env(tmp_path)
+    missing = tmp_path / "removed-worktree"
+    env["LOCAL_WORKSPACE_FOLDER"] = str(missing)
+    result = run_dev(
+        repo,
+        env,
+        "harness",
+        "control",
+        "--plugin-source",
+        str(PLUGIN_FIXTURE),
+        "state",
+        "--work-item",
+        WORK_ITEM,
+    )
+    assert result.returncode == 2
+    assert not missing.exists()
+    assert not log.exists()
+    assert "bind source" in result.stderr
 
 
 def test_write_mount_is_limited_to_existing_work_item_and_linked_common_dir(
@@ -218,11 +263,15 @@ def test_write_mount_is_limited_to_existing_work_item_and_linked_common_dir(
     run = calls(log)[1]
     common = git(linked, "rev-parse", "--path-format=absolute", "--git-common-dir")
     item_dir = Path(common) / "harness/work-items" / WORK_ITEM
-    assert f"{common}:{common}:ro" in run
-    assert f"{item_dir}:{item_dir}:rw" in run
-    writable_mounts = [arg for arg in run if arg.endswith(":rw")]
-    assert writable_mounts == [f"{item_dir}:{item_dir}:rw"]
-    assert f"{linked}:{linked}:ro" in run
+    assert f"type=bind,src={common},dst={common},readonly" in run
+    assert f"type=bind,src={item_dir},dst={item_dir}" in run
+    writable_mounts = [
+        arg
+        for arg in run
+        if arg.startswith("type=bind,") and not arg.endswith(",readonly")
+    ]
+    assert writable_mounts == [f"type=bind,src={item_dir},dst={item_dir}"]
+    assert f"type=bind,src={linked},dst={linked},readonly" in run
 
 
 def test_cancel_uses_the_existing_work_item_only_write_mount(tmp_path: Path) -> None:
@@ -251,10 +300,14 @@ def test_cancel_uses_the_existing_work_item_only_write_mount(tmp_path: Path) -> 
     run = calls(log)[1]
     common = git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir")
     item_dir = Path(common) / "harness/work-items" / WORK_ITEM
-    assert f"{common}:{common}:ro" in run
-    assert f"{item_dir}:{item_dir}:rw" in run
-    writable_mounts = [arg for arg in run if arg.endswith(":rw")]
-    assert writable_mounts == [f"{item_dir}:{item_dir}:rw"]
+    assert f"type=bind,src={common},dst={common},readonly" in run
+    assert f"type=bind,src={item_dir},dst={item_dir}" in run
+    writable_mounts = [
+        arg
+        for arg in run
+        if arg.startswith("type=bind,") and not arg.endswith(",readonly")
+    ]
+    assert writable_mounts == [f"type=bind,src={item_dir},dst={item_dir}"]
 
 
 def test_plugin_package_root_is_accepted_but_package_without_cli_fails_closed(
@@ -277,7 +330,10 @@ def test_plugin_package_root_is_accepted_but_package_without_cli_fails_closed(
     )
 
     assert result.returncode == 0, result.stderr
-    assert f"{package_root}:/opt/engineering-workflow:ro" in calls(log)[1]
+    assert (
+        f"type=bind,src={package_root},dst=/opt/engineering-workflow,readonly"
+        in calls(log)[1]
+    )
 
     incomplete = tmp_path / "incomplete-package"
     shutil.copytree(package_root, incomplete)

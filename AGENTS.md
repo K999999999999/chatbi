@@ -32,6 +32,7 @@
 - 会话恢复、合并收尾和新目标实施前运行 `python -m scripts.check_harness_state`；处理相关 ERROR，说明 REVIEW 的归属、授权与处置。产品汇总引用子工作项进度；clean 工作区、工具退出 0 和 CI 全绿均不能单独证明全部收尾完成。字段和检查边界见 [`本机检查说明`](docs/agents/issue-tracker.md#同仓库关联与本机检查)。
 - `./dev harness check` 与 `python -m scripts.check_harness_state` 保留旧只读检查语义。Plugin Harness 通过 `./dev harness control` 显式调用；其容器适配只读挂载 Plugin 包，状态写入仅挂载指定工作项目录，不自动迁移历史记录。源码或缓存可读不代表 Plugin 已加载到当前会话；缺工具 / 镜像时不得回退后声称新版通过。命令和路径配置见 [Runbook Harness 入口](docs/runbook.md#harness-task-control)。
 - 以工作项 ID、仓库身份和记录里的 branch / worktree / PR 身份核实活动工作；不要求当前 branch 必须匹配，也不因位于 `master` 就忽略已发布的未完成交付。`.scratch/<feature>/status.md` 是长期规划与历史依据，本机记录是实时进度；前者过期时检查实时 Git / 远端后继续修正，不能直接要求用户辨认旧候选。
+- 新任务以结构化 `Branch`、`Worktree`、`Worktree disposition` 绑定候选；跨目录恢复查询只读记录，不使用当前目录冒充其他任务的 candidate。完成前清点全部登记工作树，运行显式本机收尾检查，并说明临时目录的移除或保留依据。字段与边界见 [工作树归属与收尾](docs/agents/issue-tracker.md#工作树归属与收尾)。
 - 自动继续可由明确记录的授权范围覆盖的同一工作项，尤其是已经发布的 PR 跟进与收尾。归属或授权无法核实、多个工作互相冲突、发现用户修改阻碍写入 / 清理，才停下来说明事实并询问最关键的问题。没有相关未完成工作时，正常处理当前请求。
 - 工作区有修改时先列明并判断归属。能由当前活动工作记录确认属于正在继续的任务时，可以恢复该任务；归属不明或属于其他任务时，暂停新的写入操作并请用户决定。不得自动 stash、reset、checkout、commit、覆盖或移动改动。
 - 先判断用户是在需求发现、需求澄清、Spec 待确认、待拆 Ticket、待实施、实施、验证 / Review、PR 检查、合并后 Harness 复盘或其他状态。问题 / 机会尚无明确目标时进入需求发现，通过讨论和必要的只读查证整理候选目标；已有候选目标但行为、范围或验收仍不清时进入 `workflow-grill-with-docs`；不得把两者都称作需求澄清。

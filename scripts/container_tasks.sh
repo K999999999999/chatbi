@@ -27,8 +27,8 @@ check_work=
 check_work_host=
 
 python_run() {
-    docker run --rm --init --user "$uid:$gid" --workdir "$root" \
-        -v "$host_root:$root:ro" "${git_mounts[@]}" -e PYTHONDONTWRITEBYTECODE=1 \
+    docker_run_checked --rm --init --user "$uid:$gid" --workdir "$root" \
+        --mount "type=bind,src=$host_root,dst=$root,readonly" "${git_mounts[@]}" -e PYTHONDONTWRITEBYTECODE=1 \
         "${git_environment[@]}" "${verification_report_mounts[@]}" \
         "${python_options[@]}" --entrypoint python "$python_image" "$@"
 }
@@ -159,23 +159,23 @@ compose_cli_mounts() {
     cli=$(command -v docker)
     compose_plugin=$(docker info --format '{{range .ClientInfo.Plugins}}{{if eq .Name "compose"}}{{.Path}}{{end}}{{end}}')
     [[ -n "$compose_plugin" ]] || { echo 'Docker Compose CLI不可用。' >&2; return 2; }
-    python_options+=(-v "$cli:/usr/local/bin/docker:ro" \
-        -v "$compose_plugin:/usr/local/lib/docker/cli-plugins/docker-compose:ro")
+    python_options+=(--mount "type=bind,src=$cli,dst=/usr/local/bin/docker,readonly" \
+        --mount "type=bind,src=$compose_plugin,dst=/usr/local/lib/docker/cli-plugins/docker-compose,readonly")
 }
 
 node_run() {
-    docker run --rm --init --user "$uid:$gid" --workdir /workspace/frontend \
-        -v "$host_root/frontend/src:/workspace/frontend/src:ro" \
-        -v "$host_root/frontend/tests:/workspace/frontend/tests:ro" \
-        -v "$host_root/frontend/test-support:/workspace/frontend/test-support:ro" \
-        -v "$host_root/frontend/tsconfig.json:/workspace/frontend/tsconfig.json:ro" \
-        -v "$host_root/frontend/vite.config.ts:/workspace/frontend/vite.config.ts:ro" \
-        -v "$host_root/frontend/vite.export.config.ts:/workspace/frontend/vite.export.config.ts:ro" \
-        -v "$host_root/frontend/export.html:/workspace/frontend/export.html:ro" \
-        -v "$host_root/frontend/index.html:/workspace/frontend/index.html:ro" \
-        -v "$host_root/frontend/package.json:/workspace/frontend/package.json:ro" \
-        -v "$host_root/frontend/playwright.config.ts:/workspace/frontend/playwright.config.ts:ro" \
-        -v "$host_root/frontend/playwright.dev.config.ts:/workspace/frontend/playwright.dev.config.ts:ro" \
+    docker_run_checked --rm --init --user "$uid:$gid" --workdir /workspace/frontend \
+        --mount "type=bind,src=$host_root/frontend/src,dst=/workspace/frontend/src,readonly" \
+        --mount "type=bind,src=$host_root/frontend/tests,dst=/workspace/frontend/tests,readonly" \
+        --mount "type=bind,src=$host_root/frontend/test-support,dst=/workspace/frontend/test-support,readonly" \
+        --mount "type=bind,src=$host_root/frontend/tsconfig.json,dst=/workspace/frontend/tsconfig.json,readonly" \
+        --mount "type=bind,src=$host_root/frontend/vite.config.ts,dst=/workspace/frontend/vite.config.ts,readonly" \
+        --mount "type=bind,src=$host_root/frontend/vite.export.config.ts,dst=/workspace/frontend/vite.export.config.ts,readonly" \
+        --mount "type=bind,src=$host_root/frontend/export.html,dst=/workspace/frontend/export.html,readonly" \
+        --mount "type=bind,src=$host_root/frontend/index.html,dst=/workspace/frontend/index.html,readonly" \
+        --mount "type=bind,src=$host_root/frontend/package.json,dst=/workspace/frontend/package.json,readonly" \
+        --mount "type=bind,src=$host_root/frontend/playwright.config.ts,dst=/workspace/frontend/playwright.config.ts,readonly" \
+        --mount "type=bind,src=$host_root/frontend/playwright.dev.config.ts,dst=/workspace/frontend/playwright.dev.config.ts,readonly" \
         "${node_options[@]}" "${verification_node_mounts[@]}" "$node_image" "$@"
 }
 node_options=()
@@ -300,11 +300,11 @@ POSTGRES_CONTROL_MIGRATOR_USER=chatbi_migrator
 EOF
         args=()
         if [[ "$profile" == development ]]; then
-            args+=(-v "$host_root/database/init/10_chatbi_dev_environment.sh:/docker-entrypoint-initdb.d/10_chatbi_dev_environment.sh:ro")
+            args+=(--mount "type=bind,src=$host_root/database/init/10_chatbi_dev_environment.sh,dst=/docker-entrypoint-initdb.d/10_chatbi_dev_environment.sh,readonly")
         fi
-        if docker run -d --name "$project" --network "$project" --network-alias postgres \
+        if docker_run_checked -d --name "$project" --network "$project" --network-alias postgres \
             --label "com.chatbi.test=$project" --env-file "$work/postgres.env" \
-            -v "$host_root/database:/workspace/database:ro" "${args[@]}" postgres:16-alpine >/dev/null; then
+            --mount "type=bind,src=$host_root/database,dst=/workspace/database,readonly" "${args[@]}" postgres:16-alpine >/dev/null; then
             :
         else
             exit $?
@@ -454,10 +454,10 @@ web_tests() (
     for suite in packaged dev; do
         origin=http://127.0.0.1:18001
         [[ "$suite" == dev ]] && origin=http://127.0.0.1:5173
-        if docker run -d --name "$api" --network "$project" --network-alias api \
+        if docker_run_checked -d --name "$api" --network "$project" --network-alias api \
             --label "com.chatbi.test=$project" --user "$uid:$gid" --workdir "$root" \
-            -v "$host_root:$root:ro" "${git_mounts[@]}" -e CHATBI_RESULT_EXPORT_BROWSER_TEST=1 \
-            -v "$work_host/dist:$root/frontend/dist:ro" \
+            --mount "type=bind,src=$host_root,dst=$root,readonly" "${git_mounts[@]}" -e CHATBI_RESULT_EXPORT_BROWSER_TEST=1 \
+            --mount "type=bind,src=$work_host/dist,dst=$root/frontend/dist,readonly" \
             -e "CHATBI_BROWSER_TEST_ORIGIN=$origin" --entrypoint python "$python_image" \
             -m uvicorn tests.browser_support:create_browser_app --factory --host 0.0.0.0 --port 18001 >/dev/null; then
             :
@@ -561,9 +561,9 @@ test_all() {
 }
 
 check_lock() {
-    docker run --rm --user "$uid:$gid" \
-        -v "$host_root/pyproject.toml:/workspace/pyproject.toml:ro" \
-        -v "$host_root/uv.lock:/workspace/uv.lock:ro" \
+    docker_run_checked --rm --user "$uid:$gid" \
+        --mount "type=bind,src=$host_root/pyproject.toml,dst=/workspace/pyproject.toml,readonly" \
+        --mount "type=bind,src=$host_root/uv.lock,dst=/workspace/uv.lock,readonly" \
         -e UV_CACHE_DIR=/tmp/chatbi-uv-cache --entrypoint uv "$python_image" lock --check
 }
 
@@ -653,12 +653,14 @@ check_task() {
 
 # 只读文件参数可位于仓库外；不隐式创建报告或目标worktree。
 mount_readonly_arguments() {
-    local previous= arg path directory host_path common
+    local previous= option arg path directory host_path common
     for arg in "$@"; do
         if [[ -n "$previous" ]]; then
+            option=$previous
             path=$arg
             previous=
         else
+            option=${arg%%=*}
             case "$arg" in
                 --repo|--report|--report-dir|--cases) previous=$arg; continue ;;
                 --repo=*|--report=*|--report-dir=*|--cases=*) path=${arg#*=} ;;
@@ -667,11 +669,12 @@ mount_readonly_arguments() {
         fi
         [[ -e "$path" ]] || continue
         if [[ -d "$path" ]]; then directory=$(cd -- "$path" && pwd); else directory=$(cd -- "$(dirname -- "$path")" && pwd); fi
+        if [[ "$task" == harness && "$option" == --repo ]]; then harness_repository=$directory; fi
         [[ "$directory" == "$root" || "$directory" == "$root/"* ]] && continue
         host_path=$directory
-        python_options+=(-v "$host_path:$directory:ro")
+        python_options+=(--mount "type=bind,src=$host_path,dst=$directory,readonly")
         if common=$(git -C "$directory" rev-parse --path-format=absolute --git-common-dir 2>/dev/null); then
-            [[ "$common" == "$directory/"* ]] || python_options+=(-v "$common:$common:ro")
+            [[ "$common" == "$directory/"* ]] || python_options+=(--mount "type=bind,src=$common,dst=$common,readonly")
         fi
     done
 }
@@ -689,7 +692,7 @@ case "$task" in
         if (($#)); then shift; fi
         (($# == 0)) || { echo '用法: ./dev check [docs|python|boundaries]' >&2; exit 2; }
         check_task "$scope" ;;
-    harness) mount_readonly_arguments "$@"; python_run -m scripts.check_harness_state "$@" ;;
+    harness) harness_repository=$root; mount_readonly_arguments "$@"; prepare_harness_worktree_mounts "$harness_repository"; python_run -m scripts.check_harness_state "$@" ;;
     evaluate-validate) mount_readonly_arguments "$@"; python_run -m evaluation.common.real_e2e_acceptance "$@" ;;
     evaluate)
         [[ -f "${CHATBI_DEV_ENV_FILE:-$root/.env}" ]] || { echo '缺少评测配置。' >&2; exit 2; }

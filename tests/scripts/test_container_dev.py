@@ -11,6 +11,24 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def host_workspace(path: Path) -> Path:
+    """Expose real read-only sources while keeping report output in this fixture."""
+    path.mkdir()
+    for name in (
+        ".git",
+        "frontend",
+        "src",
+        "scripts",
+        "database",
+        "pyproject.toml",
+        "uv.lock",
+    ):
+        (path / name).symlink_to(
+            ROOT / name, target_is_directory=(ROOT / name).is_dir()
+        )
+    return path
+
+
 def test_help_requires_neither_config_nor_docker():
     result = invoke(
         ["help"], {"PATH": "/usr/bin:/bin", "CHATBI_DEV_ENV_FILE": "/missing"}
@@ -209,7 +227,7 @@ def test_test_command_rejects_unknown_suite_before_docker(docker_fake):
 
 
 def test_python_tests_run_in_a_container_and_propagate_failure(docker_fake):
-    workspace = Path(docker_fake["DOCKER_CALLS"]).parent / "workspace"
+    workspace = host_workspace(Path(docker_fake["DOCKER_CALLS"]).parent / "workspace")
     result = invoke(
         ["test", "python"],
         {
@@ -227,7 +245,7 @@ def test_python_tests_run_in_a_container_and_propagate_failure(docker_fake):
 
 
 def test_python_tests_request_junit_and_publish_command_summary(docker_fake):
-    workspace = Path(docker_fake["DOCKER_CALLS"]).parent / "workspace"
+    workspace = host_workspace(Path(docker_fake["DOCKER_CALLS"]).parent / "workspace")
     result = invoke(
         ["test", "python"],
         {**docker_fake, "LOCAL_WORKSPACE_FOLDER": str(workspace)},
@@ -253,7 +271,7 @@ def test_python_tests_request_junit_and_publish_command_summary(docker_fake):
 
 
 def test_check_records_each_machine_check_without_inventing_test_counts(docker_fake):
-    workspace = Path(docker_fake["DOCKER_CALLS"]).parent / "workspace"
+    workspace = host_workspace(Path(docker_fake["DOCKER_CALLS"]).parent / "workspace")
     result = invoke(
         ["check"], {**docker_fake, "LOCAL_WORKSPACE_FOLDER": str(workspace)}
     )
@@ -286,7 +304,7 @@ def test_check_records_each_machine_check_without_inventing_test_counts(docker_f
 
 
 def test_all_failure_report_marks_remaining_suites_not_run(docker_fake, tmp_path):
-    workspace = tmp_path / "isolated-workspace"
+    workspace = host_workspace(tmp_path / "isolated-workspace")
     result = invoke(
         ["test", "all"],
         {
@@ -307,7 +325,7 @@ def test_all_failure_report_marks_remaining_suites_not_run(docker_fake, tmp_path
 
 
 def test_all_interruption_report_marks_running_suite_interrupted(docker_fake, tmp_path):
-    workspace = tmp_path / "isolated-workspace"
+    workspace = host_workspace(tmp_path / "isolated-workspace")
     result = invoke(
         ["test", "all"],
         {
@@ -329,7 +347,7 @@ def test_all_interruption_report_marks_running_suite_interrupted(docker_fake, tm
 
 
 def test_check_failure_report_does_not_run_later_checks(docker_fake, tmp_path):
-    workspace = tmp_path / "isolated-workspace"
+    workspace = host_workspace(tmp_path / "isolated-workspace")
     result = invoke(
         ["check"],
         {
@@ -510,6 +528,11 @@ def test_compose_config_excludes_secrets_and_migration_identity_from_api(tmp_pat
     )
     assert all(Path(v["source"]).name != ".env" for v in api["volumes"])
     assert all(v["read_only"] for v in api["volumes"])
+    assert all(
+        v["bind"]["create_host_path"] is False
+        for v in services["postgres"]["volumes"]
+        if v["type"] == "bind"
+    )
     assert services["migrator"]["profiles"] == ["tools"]
     assert "POSTGRES_MIGRATOR_PASSWORD" in services["migrator"]["environment"]
 
@@ -549,9 +572,10 @@ def test_sensitive_commands_reject_invalid_or_nonterminal_input_before_docker(
     assert not Path(docker_fake["DOCKER_CALLS"]).exists()
 
 
-def test_devcontainer_environment_keeps_host_project_identity(docker_fake):
+def test_devcontainer_environment_keeps_host_project_identity(docker_fake, tmp_path):
+    workspace = host_workspace(tmp_path / "selected-project")
     result = invoke(
-        ["infra"], {**docker_fake, "LOCAL_WORKSPACE_FOLDER": "/host/selected-project"}
+        ["infra"], {**docker_fake, "LOCAL_WORKSPACE_FOLDER": str(workspace)}
     )
     assert result.returncode == 0
     calls = [

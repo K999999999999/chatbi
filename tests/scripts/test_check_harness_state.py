@@ -38,9 +38,9 @@ def record(repo: Path, item: str, status: str, extra: str = "") -> Path:
     return path
 
 
-def check(repo: Path) -> tuple[int, dict]:
+def check(repo: Path, *args: str) -> tuple[int, dict]:
     result = subprocess.run(
-        [sys.executable, str(SCRIPT), "--repo", str(repo), "--json"],
+        [sys.executable, str(SCRIPT), "--repo", str(repo), "--json", *args],
         text=True,
         capture_output=True,
         check=False,
@@ -162,6 +162,147 @@ def test_linked_worktree_reads_shared_common_directory(repo: Path) -> None:
     assert exit_code == 1
     assert report["records"] == 2
     assert "ACTIVE_COMPLETED" in codes(report)
+
+
+def binding(repo: Path, branch: str, disposition: str = "active") -> str:
+    return f"Branch: {branch}\nWorktree: {repo}\nWorktree disposition: {disposition}\n"
+
+
+def test_dirty_linked_worktree_is_visible_from_clean_primary(repo: Path) -> None:
+    linked = repo.parent / "another checkout"
+    git(repo, "worktree", "add", "-b", "fix/other", str(linked))
+    (linked / "user-note.txt").write_text("keep this user work")
+    exit_code, report = check(repo)
+    assert exit_code == 0
+    assert "DIRTY_WORKTREE" in codes(report)
+    assert any(w["path"] == str(linked) and w["dirty"] for w in report["worktrees"])
+    assert (linked / "user-note.txt").read_text() == "keep this user work"
+
+
+def test_unowned_extra_worktree_needs_review(repo: Path) -> None:
+    git(repo, "worktree", "add", "-b", "fix/orphan", str(repo.parent / "orphan"))
+    _, report = check(repo)
+    assert "UNOWNED_WORKTREE" in codes(report)
+
+
+def test_parked_candidate_is_preserved_but_cannot_use_another_checkout(
+    repo: Path,
+) -> None:
+    git(repo, "branch", "docs/pending")
+    p = record(repo, "pending", "in-progress", binding(repo, "docs/pending", "parked"))
+    before = p.read_bytes()
+    exit_code, report = check(repo)
+    assert exit_code == 0
+    assert not any(f["level"] == "ERROR" for f in report["findings"])
+    exit_code, report = check(repo, "--work-item", "pending")
+    assert exit_code == 1
+    assert "CHECKOUT_MISMATCH" in codes(report)
+    assert p.read_bytes() == before
+    assert git(repo, "rev-parse", "docs/pending") == git(repo, "rev-parse", "master")
+
+
+def test_matching_checkout_passes_explicit_identity_check(repo: Path) -> None:
+    git(repo, "switch", "-c", "fix/current")
+    record(repo, "current", "in-progress", binding(repo, "fix/current"))
+    exit_code, report = check(repo, "--work-item", "current")
+    assert exit_code == 0
+    assert "CHECKOUT_MISMATCH" not in codes(report)
+
+
+def test_done_with_active_worktree_is_not_complete(repo: Path) -> None:
+    record(repo, "unfinished-cleanup", "done", binding(repo, "master"))
+    exit_code, report = check(repo)
+    assert exit_code == 1
+    assert "CLEANUP_INCOMPLETE" in codes(report)
+
+
+def closed_record(repo: Path, *, temporary: Path | None = None) -> Path:
+    sha = git(repo, "rev-parse", "master")
+    git(repo, "update-ref", "refs/remotes/origin/master", sha)
+    path = temporary or repo.parent / "removed checkout"
+    return record(
+        repo,
+        "closed",
+        "done",
+        binding(path, "fix/completed", "removed")
+        + f"Return worktree: {repo}\nMerge commit: {sha}\n"
+        + "Cleanup evidence: merged PR checked; artifacts archived\n",
+    )
+
+
+def test_closed_item_passes_local_closeout_without_remote_calls(repo: Path) -> None:
+    p = closed_record(repo)
+    before = p.read_bytes(), git(repo, "show-ref")
+    exit_code, report = check(repo, "--closeout", "closed")
+    assert exit_code == 0
+    assert not any(f["level"] == "ERROR" for f in report["findings"])
+    assert before == (p.read_bytes(), git(repo, "show-ref"))
+
+
+def test_deleted_worktree_with_remaining_directory_fails_closeout(repo: Path) -> None:
+    leftover = repo.parent / "leftover"
+    leftover.mkdir()
+    closed_record(repo, temporary=leftover)
+    exit_code, report = check(repo)
+    assert exit_code == 1
+    assert "WORKTREE_NOT_REMOVED" in codes(report)
+
+
+def test_retained_feature_branch_fails_closeout(repo: Path) -> None:
+    closed_record(repo)
+    git(repo, "branch", "fix/completed")
+    exit_code, report = check(repo, "--closeout", "closed")
+    assert exit_code == 1
+    assert "FEATURE_BRANCH_NOT_REMOVED" in codes(report)
+
+
+def test_return_directory_must_be_on_master(repo: Path) -> None:
+    closed_record(repo)
+    git(repo, "switch", "-c", "fix/another-task")
+    exit_code, report = check(repo)
+    assert exit_code == 1
+    assert "RETURN_WORKTREE_NOT_READY" in codes(report)
+
+
+def test_old_done_record_cannot_pass_explicit_closeout_without_evidence(
+    repo: Path,
+) -> None:
+    record(repo, "legacy", "done")
+    exit_code, report = check(repo, "--closeout", "legacy")
+    assert exit_code == 1
+    assert "CLEANUP_EVIDENCE_MISSING" in codes(report)
+
+
+def test_parked_candidate_branch_cannot_silently_disappear(repo: Path) -> None:
+    record(repo, "missing", "in-progress", binding(repo, "docs/missing", "parked"))
+    exit_code, report = check(repo)
+    assert exit_code == 1
+    assert "CANDIDATE_BRANCH_MISSING" in codes(report)
+
+
+def test_retained_worktree_requires_an_explicit_reason(repo: Path) -> None:
+    record(repo, "retained", "in-progress", binding(repo, "master", "retained"))
+    exit_code, report = check(repo)
+    assert exit_code == 1
+    assert "WORKTREE_RETENTION_INVALID" in codes(report)
+
+
+def test_branch_prefix_does_not_prove_parked_candidate_exists(repo: Path) -> None:
+    git(repo, "branch", "docs/missing/other")
+    record(repo, "missing", "in-progress", binding(repo, "docs/missing", "parked"))
+    exit_code, report = check(repo)
+    assert exit_code == 1
+    assert "CANDIDATE_BRANCH_MISSING" in codes(report)
+
+
+def test_historical_word_in_document_title_does_not_hide_ticket_status(
+    repo: Path,
+) -> None:
+    (repo / "ticket.md").write_text("# 历史事实纠正\n\nStatus: done\n")
+    record(repo, "parent", "done", "Ticket files: ticket.md\n")
+    exit_code, report = check(repo)
+    assert exit_code == 0
+    assert "TICKET_INVALID" not in codes(report)
 
 
 def test_new_clone_reports_missing_local_evidence_without_error(repo: Path) -> None:
@@ -377,3 +518,42 @@ def test_harness_review_fields_are_ignored_in_history(repo: Path) -> None:
     exit_code, report = check(repo)
     assert exit_code == 0
     assert "HARNESS_REVIEW_INVALID" not in codes(report)
+
+
+def test_parked_tickets_are_read_from_their_own_branch(repo: Path) -> None:
+    git(repo, "switch", "-c", "fix/parked")
+    (repo / "ticket.md").write_text("Status: done\n")
+    git(repo, "add", "ticket.md")
+    git(
+        repo,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "-m",
+        "ticket",
+    )
+    git(repo, "switch", "master")
+    record(
+        repo,
+        "parked",
+        "in-progress",
+        binding(repo, "fix/parked", "parked") + "Ticket files: ticket.md\n",
+    )
+    exit_code, report = check(repo)
+    assert exit_code == 0
+    assert "TICKET_INVALID" not in codes(report)
+    assert not (repo / "ticket.md").exists()
+
+
+def test_new_registered_task_does_not_invalidate_a_previous_cleanup(repo: Path) -> None:
+    closed_record(repo)
+    git(repo, "switch", "-c", "fix/next")
+    record(repo, "next", "in-progress", binding(repo, "fix/next"))
+    exit_code, report = check(repo)
+    assert exit_code == 0
+    assert "RETURN_WORKTREE_REUSED" in codes(report)
+    strict_exit, strict_report = check(repo, "--closeout", "closed")
+    assert strict_exit == 1
+    assert "RETURN_WORKTREE_NOT_READY" in codes(strict_report)

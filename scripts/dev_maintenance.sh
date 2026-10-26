@@ -28,8 +28,8 @@ cleanup() {
 trap cleanup EXIT
 trap 'echo "维护失败；未确认完成，不会扩大操作范围或自动重试。" >&2' ERR
 json_tool() {
-    docker run --rm -i --network none --user "$(id -u):$(id -g)" \
-        -v "$host_root:/workspace:ro" -w /workspace --entrypoint python \
+    docker_run_checked --rm -i --network none --user "$(id -u):$(id -g)" \
+        --mount "type=bind,src=$host_root,dst=/workspace,readonly" -w /workspace --entrypoint python \
         --pull never "$python_image" -m scripts.dev_compose "$@"
 }
 # 未插值结构可能仍含用户override中的字面Secret，只保存在0700临时目录。

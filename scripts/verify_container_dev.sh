@@ -107,7 +107,7 @@ tools() {
 }
 tools_module() {
     "${compose[@]}" run --rm --no-deps -T --entrypoint python \
-        -v "$host_root:$root:ro" "${git_mounts[@]}" \
+        --mount "type=bind,src=$host_root,dst=$root,readonly" "${git_mounts[@]}" \
         -e "GIT_DIR=$git_worktree" -e "GIT_WORK_TREE=$root" \
         "${git_environment[@]}" \
         -v "$CHATBI_CONTAINER_REPORT_DIR:/reports" \
@@ -115,10 +115,10 @@ tools_module() {
         tools "$@"
 }
 verification_module() {
-    docker run --rm --init --user "$CHATBI_DEV_UID:$CHATBI_DEV_GID" \
+    docker_run_checked --rm --init --user "$CHATBI_DEV_UID:$CHATBI_DEV_GID" \
         --workdir "$root" --network none \
         -e PYTHONDONTWRITEBYTECODE=1 \
-        -v "$host_root:$root:ro" "${git_mounts[@]}" \
+        --mount "type=bind,src=$host_root,dst=$root,readonly" "${git_mounts[@]}" \
         -e "GIT_DIR=$git_worktree" -e "GIT_WORK_TREE=$root" \
         "${git_environment[@]}" \
         -v "$CHATBI_PUBLISHED_REPORT_DIR:/published-reports" \
@@ -309,7 +309,7 @@ run_browser() {
             -v "$hot_style:/workspace/frontend/src/style.css:rw"
         )
     fi
-    docker run --rm --network "container:$web_id" --user "$(id -u):$(id -g)" \
+    docker_run_checked --rm --network "container:$web_id" --user "$(id -u):$(id -g)" \
         --env-file "$work/report/credentials.env" \
         -e LANG=C.UTF-8 -e LC_ALL=C.UTF-8 -e CHATBI_CONTAINER_REAL_E2E=1 \
         -e "CHATBI_CONTAINER_HOT_RELOAD_ENABLED=$hot_reload_enabled" \
@@ -318,12 +318,12 @@ run_browser() {
         -e "CHATBI_CONTAINER_COMMIT=$(git rev-parse HEAD)" \
         -e "CHATBI_CONTAINER_GIT_DIRTY=$dirty" \
         -v "$work/report:/reports" \
-        -v "$root/frontend/tests:/workspace/frontend/tests:ro" \
-        -v "$root/frontend/src:/workspace/frontend/src:ro" \
-        -v "$root/src:/workspace/backend-src:ro" \
-        -v "$root/frontend/playwright.container.config.ts:/workspace/frontend/playwright.container.config.ts:ro" \
-        -v "$root/frontend/playwright.container-reporter.ts:/workspace/frontend/playwright.container-reporter.ts:ro" \
-        -v "$root/frontend/test-support:/workspace/frontend/test-support:ro" \
+        --mount "type=bind,src=$root/frontend/tests,dst=/workspace/frontend/tests,readonly" \
+        --mount "type=bind,src=$root/frontend/src,dst=/workspace/frontend/src,readonly" \
+        --mount "type=bind,src=$root/src,dst=/workspace/backend-src,readonly" \
+        --mount "type=bind,src=$root/frontend/playwright.container.config.ts,dst=/workspace/frontend/playwright.container.config.ts,readonly" \
+        --mount "type=bind,src=$root/frontend/playwright.container-reporter.ts,dst=/workspace/frontend/playwright.container-reporter.ts,readonly" \
+        --mount "type=bind,src=$root/frontend/test-support,dst=/workspace/frontend/test-support,readonly" \
         "${hot_reload_mounts[@]}" \
         "$browser_image" npx playwright test --config playwright.container.config.ts "$@"
 }

@@ -119,6 +119,34 @@ python -m scripts.check_harness_state --json
 
 新 clone 缺少本机记录时必须依据长期记录和 Git / PR 恢复；工具不会生成记录。GitHub CI 无法读取开发机 `.git/harness`，既有确定性测试验证工具行为，本机实际检查由会话 / 交付执行。工具不判断任意自然语言状态矛盾，也不能替代产品文档语义 Review。
 
+### 工作树归属与收尾
+
+新任务以及本次明确恢复的任务增加下列本机字段；历史记录不批量补造：
+
+```md
+Branch: fix/example
+Worktree: /absolute/project/path
+Worktree disposition: active
+Return worktree: /absolute/primary/project
+```
+
+`active` 表示该任务正在指定目录 / branch 实施；`parked` 表示提交仍保存在分支上，目录已让给其他工作；`removed` 表示临时目录与 Git 登记均已移除；`retained` 表示明确保留，必须另写 `Retention reason`。路径只表示本机位置，不能替代仓库或工作项身份。候选相关操作要求当前目录和 branch 都匹配；纯状态发现允许跨目录。
+
+普通检查会遍历全部登记 worktree 的 Git 状态，对无结构化归属的额外工作树给出 REVIEW；对提供了新字段的 done 记录，核验本机清理事实。旧的 `Branches` / `Worktrees` 自由文本保留作说明，不用于机器推断归属。
+
+Ticket 按所属上下文读取：active 任务使用实际 worktree，parked 任务使用其分支 Git blob，已完成且提供 Merge commit 的任务使用合并提交。不得用当前目录中不存在或已改变的 Ticket 反推另一分支的状态。后续有明确登记的新任务复用主目录时，普通检查记录 INFO，不要求历史已完成任务的返回目录永久停留 master；显式 `--closeout` 仍检查当下返回目录。
+
+```bash
+./dev harness check --work-item WORK_ITEM --json
+./dev harness check --closeout WORK_ITEM --json
+```
+
+`--work-item` 是当前 checkout 的显式归属检查。`--closeout` 要求绑定字段、`Return worktree`、完整哈希 `Merge commit` 和非空 `Cleanup evidence`；Feature branch 必须已清理，临时目录必须 removed 或有原因的 retained，返回目录必须在干净 master，合并提交已进入本地 master，master 与已获取的 origin/master 一致。仍被另一任务占用时，保留工作并明确待清理阶段，不强制切换或提前标 done。新任务通过 Plugin 的语义写入 / 完成门禁维护状态，不能靠手写 done 绕过证据；本机归属字段由仓库记录负责人原子更新，不手改 Plugin JSON 扩展。
+
+这些命令不联网，不证明远端引用新鲜、PR / CI 或正文正确；发布后仍须真实 fetch 和 GitHub 读回。普通检查退出 0 的原语义不变。纯恢复可先读共享记录；缺少绑定的 legacy state 返回 record-only，恢复候选操作前只为当前获授权任务补齐归属。
+
+合并并完成清理后，原 Feature branch 可以已经不存在。只有完整本机收尾核验通过，返回的 master checkout 才可作为该任务的 `post-merge` 上下文；它的候选 / 证据身份与原 Feature checkout 有区别，不能复用失效指纹。`closeout finalize --scope overall` 在调用 Plugin 前额外检查本机收尾，之后仍执行 Plugin 自身的证据与授权门禁。
+
 ### Plugin Harness 项目适配
 
 ChatBI 的 `.harness/project.json` 声明阶段图、Git 公共目录下的记录位置、敏感路径和动态文档清单。需要查看新工具状态或 Diff 时，按 [Runbook Harness Task Control](../runbook.md#harness-task-control) 显式调用容器适配器。它可识别旧 Markdown 状态，但旧记录保持只读，必须显式迁移后才能写入扩展；现有 54 条本机记录不批量迁移，也不因本次适配而伪装成已由新工具管理。`./dev harness check` 和本文件所述 `python -m scripts.check_harness_state` 继续按旧逻辑只读检查。
